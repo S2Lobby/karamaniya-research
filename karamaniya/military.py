@@ -35,10 +35,24 @@ OFFICER_PAY = {
     "premium": {"bill": 1.28, "morale": .07, "loyalty": .08, "desert": .6, "training": .004},
 }
 PATRONAGE_PAY_CREDIT = .6   # the share of the loyalty from pay that survives an army run on patronage
+# How hard the army trains: where training settles, how fast it gets there, what it costs, and what
+# it does to the patience of the people doing it. Training feeds `quality()`, so this decides what
+# the army can actually do rather than how it is described. Named for intensity, not focus: the
+# Army office's operational `training_focus` already decides what the army trains FOR.
+TRAINING_INTENSITY = {
+    "neglect": {"target": .45, "rate": .012, "bill": .95, "morale": -.02},
+    "standard": {"target": .80, "rate": .020, "bill": 1.0, "morale": 0.0},
+    "intense": {"target": 1.00, "rate": .030, "bill": 1.10, "morale": -.03},
+}
 
 
 def officer_pay(w: World) -> dict:
     return OFFICER_PAY.get(w.policy.officer_pay, OFFICER_PAY["standard"])
+
+
+def training_intensity(w: World) -> dict:
+    return TRAINING_INTENSITY.get(getattr(w.policy, "training_intensity", "standard"),
+                                  TRAINING_INTENSITY["standard"])
 
 
 def quality(equipment: float, training: float, morale: float) -> float:
@@ -70,7 +84,9 @@ def update(w: World, fiscal: dict) -> None:
     # Pay. Soldiers and sailors are paid before anything is bought.
     budget = fiscal["mil_paid"]
     pay = officer_pay(w)
-    pay_needed = m.army.size * ARMY_COST * cpi * pay["bill"] + m.navy.size * SHIP_COST * cpi
+    focus = training_intensity(w)
+    pay_needed = (m.army.size * ARMY_COST * cpi * pay["bill"] * focus["bill"]
+                  + m.navy.size * SHIP_COST * cpi)
     if budget >= pay_needed:
         paid = 1.0
         remaining = budget - pay_needed
@@ -110,7 +126,9 @@ def update(w: World, fiscal: dict) -> None:
     # Equipment and training.
     m.arms = max(0.0, m.arms - m.army.size * 0.004)          # wear and loss
     m.army.equipment = min(1.2, m.arms / max(1.0, m.army.size))
-    m.army.training = clamp(m.army.training + 0.02 * (0.8 - m.army.training) * paid + pay["training"])
+    m.army.training = clamp(m.army.training
+                            + focus["rate"] * (focus["target"] - m.army.training) * paid
+                            + pay["training"])
     if pol.officer_pay == "freeze" and m.army.morale < .5 and w.month % 3 == 0:
         w.event("officer_resignations", "Experienced officers are resigning their commissions under the pay freeze; "
                 "training in the regiments is suffering.", importance=1)
@@ -124,7 +142,7 @@ def update(w: World, fiscal: dict) -> None:
         arrears_pain = min(1.0, force.arrears / 2)
         morale_t = (0.45 + 0.2 * (1 - arrears_pain) + 0.2 * (patriot - 0.5) + 0.1 * dip.rally
                     - (1.5 * recent_loss if force is m.army else 0.0)
-                    + (pay["morale"] if force is m.army else 0.0))
+                    + (pay["morale"] + focus["morale"] if force is m.army else 0.0))
         force.morale = clamp(force.morale + 0.12 * (morale_t - force.morale), 0.05, 0.95)
         loyal_t = 0.45 + 0.15 * (1 - arrears_pain) + 0.2 * legit - 0.15 * arrears_pain
         if force is m.army:

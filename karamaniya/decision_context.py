@@ -131,6 +131,7 @@ TRADEOFFS = {
     "posture": "deterrence against escalation and soldier safety",
     "shipbuilding": "future fleet strength against current spending and other military needs",
     "officer_pay": "the officers' loyalty and retention against the army pay bill and equipment money",
+    "training_intensity": "what the army can actually do in a fight against the pay bill and the patience of the regiments",
     "regional_fund": "calm and jobs in a region against the budget and resentment elsewhere",
 }
 

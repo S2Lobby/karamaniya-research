@@ -346,6 +346,11 @@ class Policy:
     posture: str = "defend"             # defend | fortify | attack
     purge: bool = False
     officer_pay: str = "standard"       # freeze | standard | raised | premium: the officers' pay scale
+    # How HARD the army trains, as distinct from the Army office's operational `training_focus`
+    # (which decides what it trains FOR: readiness, border works or civil support). Training feeds
+    # `quality()`, so intensity decides what the army can actually do in a fight. Intense training
+    # costs money and wears on morale; neglect saves both and shows up later at the front.
+    training_intensity: str = "standard"    # neglect | standard | intense
     # Navy Command
     navy_mission: str = "patrol"        # patrol | escort | break_blockade
     shipbuilding: bool = False          # build warships (paid from the military budget)

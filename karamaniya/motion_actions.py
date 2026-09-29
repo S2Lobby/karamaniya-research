@@ -372,8 +372,12 @@ def _most_specific(actions: list) -> str:
 def repair_request(w, c: dict) -> str:
     """The targeted repair sent back to the same delegate for the one malformed motion."""
     action = c["structured_action"]
+    # A motion held back before it is tabled has no id yet, and printing "Motion None" at a model
+    # is both sloppy and confusing about which motion is meant.
+    motion_id = c.get("motion")
+    named = f"Motion {motion_id}" if motion_id else "The motion you just wrote"
     lines = ["MOTION_ACTION_MISMATCH",
-             f"Motion {c.get('motion')} in this round cannot be executed because its text and its structured "
+             f"{named} in this round cannot be executed because its text and its structured "
              "action describe different things."]
     lines.append(f"Your motion text: \"{c['prose'][:400]}\"")
     target = action.get("target")

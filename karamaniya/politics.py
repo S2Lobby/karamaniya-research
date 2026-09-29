@@ -31,6 +31,7 @@ ENUMS = {
     "posture": ("defend", "fortify", "attack"),
     "navy_mission": ("patrol", "escort", "break_blockade"),
     "officer_pay": ("freeze", "standard", "raised", "premium"),
+    "training_intensity": ("neglect", "standard", "intense"),
     "regional_fund": ("none", "kessel", "highlands", "both"),
 }
 SHARES = {"tax": (0.05, 0.60), "military": (0.005, 0.20), "police": (0.002, 0.06),
@@ -47,7 +48,7 @@ LEVER_OFFICE = {
     **{k: "interior" for k in ("protest_response", "surveillance", "arrests", "emigration",
                                 "election_conduct")},
     **{k: "army" for k in ("recruitment", "army_target", "posture", "purge", "deploy_north",
-                            "deploy_east", "deploy_capital", "officer_pay")},
+                            "deploy_east", "deploy_capital", "officer_pay", "training_intensity")},
     "navy_mission": "navy",
     "shipbuilding": "navy",
     **PATRONAGE_LEVERS,
@@ -185,6 +186,33 @@ def _reject(code: str, explanation: str, **related) -> dict:
             "related_state": related}
 
 
+# Names delegates actually reach for that mean one lever and nothing else. Kept deliberately small
+# and unambiguous: an alias is only added when the phrasings can map to exactly one setting, because
+# guessing at a name is how a motion executes as something its author did not intend. `training_focus`
+# is NOT aliased to `training_intensity` — it is already the Army office's operational setting for
+# what the army trains *for*, and silently redirecting it would change a different thing.
+LEVER_ALIASES = {
+    "army_training_focus": "training_intensity",
+    "training_intensity_focus": "training_intensity",
+    "army_recruitment_focus": "recruitment",
+    "recruitment_focus": "recruitment",
+    "army_pay": "officer_pay",
+    "officers_pay": "officer_pay",
+    "conscription": "recruitment",
+}
+
+
+def canonical_lever(subj) -> str:
+    """Resolve a lever name a delegate wrote to the setting it means, or return it unchanged.
+
+    Recording these means a delegate who names a real intention in slightly different words is
+    understood rather than rejected — the engine's vocabulary should not be narrower than the
+    governed world's institutions.
+    """
+    text = re.sub(r"[\s\-]+", "_", str(subj).strip().lower())
+    return LEVER_ALIASES.get(text, str(subj).strip())
+
+
 def patronage_subject(subj) -> str:
     """'army patronage', 'army_patronage' or 'patronage army' -> 'patronage_army' (police = interior);
     anything else comes back as written."""
@@ -202,6 +230,12 @@ def _unknown_lever(subj: str) -> str:
     text = f"unknown policy lever '{subj}'"
     if subj.strip().lower() == "patronage":
         return text + ": patronage is directed office by office; use patronage_army, patronage_navy or patronage_interior"
+    if re.sub(r"[\s\-]+", "_", subj.strip().lower()) in ("training_focus", "army_training_focus"):
+        # Two real settings, easily confused: the council directs how HARD the army trains, while
+        # the Army office orders what it trains FOR.
+        return (text + ": how hard the army trains is the council setting training_intensity "
+                "(neglect, standard, intense). What it trains for (readiness, border works, civil "
+                "support) is an operational order for the Army office holder, not a council directive.")
     near = get_close_matches(re.sub(r"[\s-]+", "_", subj.lower()), list(LEVER_OFFICE), n=3, cutoff=.5)
     return text + (f" (did you mean {', '.join(near)}?)" if near else "; settings the council can direct: "
                    + ", ".join(sorted(LEVER_OFFICE)))
@@ -226,6 +260,7 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
     if t == "expel" and subj.upper() not in ids:
         return _reject("NOT_A_MEMBER", f"'{subj}' is not an active member", active=sorted(ids))
     if t == "set_policy":
+        subj = canonical_lever(subj)
         if subj not in LEVER_OFFICE:
             return _reject("UNKNOWN_LEVER", _unknown_lever(subj))
         parsed = parse_lever(subj, val)

@@ -61,10 +61,32 @@ class UnknownLeverNote(unittest.TestCase):
             w, {"type": "set_policy", "subject": subject, "value": "off", "proposer": "E"})["explanation"]
         self.assertIn("patronage_army", note("army patronage"))            # the council can direct it, under its own name
         self.assertIn("use patronage_army, patronage_navy or patronage_interior", note("patronage"))
-        self.assertIn("did you mean recruitment", note("army_recruitment_focus"))
+        self.assertIn("did you mean recruitment", note("army_recrutiment"))
         self.assertIn("settings the council can direct: ", note("zzzzqq"))
         self.assertEqual(politics.validate_motion_detail(
             w, {"type": "set_policy", "subject": "zzzzqq", "value": "1", "proposer": "E"})["reason_code"], "UNKNOWN_LEVER")
+
+    def test_a_name_a_delegate_reached_for_resolves_instead_of_being_suggested(self):
+        """Delegates asked for army_recruitment_focus twelve times in the archived runs.
+
+        It used to come back as "did you mean recruitment". It now resolves to `recruitment`, so
+        the real intention is carried out rather than explained back to its author.
+        """
+        w = world()
+        self.assertEqual(politics.canonical_lever("army_recruitment_focus"), "recruitment")
+        result = politics.validate_motion_detail(
+            w, {"type": "set_policy", "subject": "army_recruitment_focus", "value": "partial", "proposer": "E"})
+        self.assertIsNone(result, "a real intention was rejected because of its wording")
+
+    def test_the_two_training_settings_are_not_confused_for_one_another(self):
+        """`training_focus` is the Army office's operational setting, not a council lever."""
+        w = world()
+        result = politics.validate_motion_detail(
+            w, {"type": "set_policy", "subject": "training_focus", "value": "intense", "proposer": "E"})
+        self.assertIsNotNone(result)
+        self.assertEqual(result["reason_code"], "UNKNOWN_LEVER")
+        self.assertIn("training_intensity", result["explanation"])
+        self.assertIn("operational order", result["explanation"])
 
 
 def decision(votes, orders):

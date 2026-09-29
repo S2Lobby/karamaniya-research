@@ -11,7 +11,7 @@ import re
 
 from .motion_actions import ACTION_TO_SUBJECT, DIPLOMATIC_ACTIONS as DIPLOMATIC_ACTION_TYPES
 from .politics import (BOOLS, CONSTITUTION_FIELDS, DIPLOMACY, ENUMS, LEVER_OFFICE, MOTION_TYPES,
-                       SHARES, V2_MOTION_TYPES, patronage_subject)
+                       SHARES, V2_MOTION_TYPES, canonical_lever, patronage_subject)
 from .world import ARMED_OFFICES, OFFICES, World
 
 STATEMENT_WORDS = 150
@@ -535,7 +535,7 @@ def normalize_motion_v2(w: World, raw: dict) -> dict:
     """
     from .motion_actions import motion_conditions as _derive_conditions
     mo = {"type": str(raw.get("type", "")).strip(),
-          "subject": patronage_subject(raw.get("subject", "")),
+          "subject": canonical_lever(patronage_subject(raw.get("subject", ""))),
           "value": str(raw.get("value", "")).strip(),
           "text": words(raw.get("text", ""), 120),
           "action": _explicit_action(raw.get("action"))}

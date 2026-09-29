@@ -104,7 +104,7 @@ DOMAINS = {
                  "measure": lambda h: -h.get("arrears_gdp", 0), "step": .01},
     "order": {"offices": ("interior",), "levers": ("protest_response", "surveillance", "arrests", "police"),
               "measure": lambda h: -h.get("unrest", 0), "step": .02},
-    "army": {"offices": ("army",), "levers": ("military", "recruitment", "army_target", "posture", "purge", "officer_pay"),
+    "army": {"offices": ("army",), "levers": ("military", "recruitment", "army_target", "posture", "purge", "officer_pay", "training_intensity"),
              "measure": lambda h: h.get("army_morale", .5), "step": .03},
     "sea": {"offices": ("navy",), "levers": ("navy_mission", "shipbuilding"),
             "measure": lambda h: -h.get("blockade_eff", 0), "step": .05},

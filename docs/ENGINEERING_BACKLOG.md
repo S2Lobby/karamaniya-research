@@ -54,6 +54,14 @@ Genuinely open items were confirmed by grep, not assumed.
 | C12 | Reproducibility manifest | high | VERIFIED | `manifest.py` (new) | `test_manifest.py` | seeds, models, versions, parameters, prompt version |
 | C13 | `docs/CAUSAL_WORLD_MODEL.md` | high | VERIFIED | `docs/` | — | Equation, units, ranges, rationale, lags, limitations |
 
+### Phase 4 — governance actuators (evidence-driven)
+
+| ID | Title | Severity | Status | Files | Tests | Result |
+|---|---|---|---|---|---|---|
+| A1 | `training_intensity` lever | high | VERIFIED | `military.py`, `politics.py`, `prompts.py` | `test_training_intensity.py` | Added because agents asked for it 12x and were refused; real effect on `quality()` with a cost |
+| A2 | Lever alias resolution | medium | VERIFIED | `politics.py`, `actions.py` | `test_training_intensity.py` | Unambiguous phrasings resolve instead of being explained back |
+| A3 | Collision guard | high | VERIFIED | `tests/` | `test_training_intensity.py` | No council lever may share a name with an operational setting |
+
 ### Not started, deliberately
 
 | ID | Title | Reason |
@@ -83,6 +91,9 @@ The mission asked for the existing run logs to be mined for problems that had ne
 | R3 | Hedged warning recorded as a coup plot | high | VERIFIED | `provenance.py`, `council.py` | `test_provenance.py`, `test_leak_provenance.py` | `"may cause a coup"` matched a substring test for `coup`; fired `plot_exposed`, stripped trust, branded the speaker |
 | R4 | Productivity raised potential but not actual output | high | VERIFIED | `economy.py` | `test_causal_economy.py` | Output gap drifted permanently negative from trend growth alone |
 | R5 | Codex `invalid_json_schema` | — | CLOSED | `codex_cli.py` | — | Investigated: already fixed in this tree (`strict_schema` rewrites `required`). No change needed |
+| R6 | Agents refused levers the world needs | high | VERIFIED | `politics.py`, `military.py`, `world.py`, `prompts.py` | `test_training_intensity.py` | Mined 12,594 archived prompts: `army_training_focus` 12x, `army_recruitment_focus` 12x, `patronage` 24x. Added `training_intensity` as a typed Army lever with real tradeoffs, plus a narrow alias table |
+| R7 | New lever would have collided with an operational setting | high | VERIFIED | `operations.py`, `military.py` | `test_training_intensity.py` | `training_focus` already meant what the army trains FOR. Renamed the new lever to `training_intensity`; a general guard now asserts no lever shares a name with an operational setting |
+| R8 | Repair prompt printed "Motion None" at the model | low | VERIFIED | `motion_actions.py` | — | An untabled motion has no id; it now says "The motion you just wrote" |
 
 ### Standalone findings from the log scan
 

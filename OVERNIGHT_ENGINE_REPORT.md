@@ -22,7 +22,7 @@ of the tree as handed over):
 | `676b929` | lag registry and fiscal multiplier wired live; `docs/CAUSAL_WORLD_MODEL.md` |
 | *(final)* | manifest wiring, version stamps, backlog, this report |
 
-**Tests: 358 → 533, all passing.** No pre-existing test was weakened or removed.
+**Tests: 358 → 560, all passing.** No pre-existing test was weakened or removed.
 
 ---
 
@@ -113,7 +113,28 @@ reputation) were applied with no record of having been applied.
 derives the *same* id — a random id would let a duplicate through with a fresh identity. The
 ledger stores the real delta each action moved, not a description of one.
 
-### 4.5 Codex `invalid_json_schema` — investigated, already fixed
+### 4.5 A lever named for a thing that already had that name (high, caught before shipping)
+
+Found by mining the archived prompts for levers agents asked for and were refused. The counts were
+unambiguous — `army_training_focus` 12×, `army_recruitment_focus` 12×, `patronage` 24×, `army
+patronage` 12× — so a typed Army lever was added.
+
+The near-miss: `operations.py` **already had** a `training_focus` for the Army office, meaning what
+the army trains *for* (readiness, border works, civil support). Naming the new lever `training_focus`
+would have put two different meanings on one name — and, worse, an Army holder obeying their own
+operational order could have been recorded as **defying** the council directive, because the
+compliance check reads `w.policy`.
+
+**Fix.** Renamed to `training_intensity` (how *hard* it trains), `training_focus` deliberately not
+aliased to it, and the rejection hint now explains the difference to the delegate. `test_training_intensity.py`
+carries a general guard — *no council lever may share a name with an operational setting* — so the
+next lever added cannot repeat this.
+
+The lever is real, not cosmetic: training feeds `quality()`, which decides what the army can do in
+a fight. Intense reaches quality 0.742 against standard's 0.718 — but costs 10% more and leaves
+morale *lower* (0.635 vs 0.662). A tradeoff, not an upgrade.
+
+### 4.6 Codex `invalid_json_schema` — investigated, already fixed
 
 An archived run showed Codex rejecting the output schema (`required` missing `action_type`).
 Investigation showed `strict_schema` in the current tree already rewrites `required` to include
@@ -212,11 +233,11 @@ Across **88 runs, 11,260 calls and 962 simulated months**:
 
 ```
 python -m unittest discover -s tests -t .
-Ran 533 tests in 44s
+Ran 560 tests in 46s
 OK
 ```
 
-358 before this session → 533 now. **175 new tests**, across:
+358 before this session → 560 now. **202 new tests**, across:
 
 | File | Tests | Covers |
 |---|---|---|
@@ -228,6 +249,7 @@ OK
 | `test_causal_economy.py` | 29 | the brief's §43 qualitative sanity list |
 | `test_prompt_budget.py` | 16 | budget is a hard contract; connector cannot abort a run |
 | `test_manifest.py` | 18 | contents, comparability, served models from the log |
+| `test_training_intensity.py` | 21 | the new lever, its tradeoffs, and the name-collision guard |
 
 **Verification run, not just tests:** a two-seed scripted simulation smoke test
 (`simulate council.scripted.toml --runs 2 --months 6`), all five scenario pressure tests (A–E,
@@ -249,6 +271,10 @@ These alter simulation output. Runs are not comparable across this boundary.
    trust and reputation effects that previously fired wrongly do not.
 7. **Foreign action effects can no longer double-apply** on a replayed month.
 8. **Cline prompts may be trimmed** where they previously killed the run.
+9. **A new Army lever exists** (`training_intensity`), so the action space is wider than before —
+   and a few phrasings agents used (`army_recruitment_focus`, `conscription`, `army_pay`) now
+   resolve instead of being rejected. A run's motion record can therefore contain levers the old
+   engine would have refused.
 
 ## 10. Data and schema changes
 
@@ -284,6 +310,10 @@ all 88.
    one another.
 8. **Corruption's economic channels are thin** — tracked and fed into implementation, but
    procurement cost inflation and quality loss are not modelled.
+9. **The action vocabulary is still narrower than the governed world.** The audit found agents
+   reaching for `army_training_focus` and `army_recruitment_focus`; those two are now served, but
+   the general gap remains. Re-running the same mining over a fresh batch is the way to find the
+   next ones, and is worth doing before a large benchmark run.
 
 ## 12. Suggested next experiments
 

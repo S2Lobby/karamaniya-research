@@ -376,9 +376,25 @@ Only pay-per-token seats cost money: set their `price_in` and `price_out` so `ma
   (the monthly protocol), `backends/` (connectors: the CLIs, the APIs, local models, stand-ins), `runner.py`,
   `scorecard.py`, `report.py` and `report_template.html`, `mapgen.py` (the island) and `mapview.js` (the
   map), `gui.py` and `gui.html` (the control room), `envfile.py` (keys in `.env`).
-- `runs/<name>/`: `config.json`, `checkpoint.json` (resume point), `log.jsonl` (every call, statement,
-  vote, message, coup), `prompts.jsonl` (every prompt as sent), `system_prompt.txt`, `survey.json`,
-  `scorecard.json`, `report.html`.
+- `runs/<name>/`: `config.json`, `manifest.json` (what produced the run), `checkpoint.json` (resume
+  point), `log.jsonl` (every call, statement, vote, message, coup), `prompts.jsonl` (every prompt as
+  sent), `system_prompt.txt`, `survey.json`, `scorecard.json`, `report.html`.
+- `docs/CAUSAL_WORLD_MODEL.md`: how the economy decides what happens — every equation, unit,
+  parameter range and lag, with the accounting identities, empirical approximations and synthetic
+  assumptions kept apart, and the sources cited for shape and range.
+- `docs/ENGINEERING_BACKLOG.md`: the live task register and what was inspected versus rebuilt.
+- `tools/scan_runs.py`: scans saved runs for engine faults (NaN, negative stocks, counters running
+  backwards, unstatused motions) separately from signals the engine records deliberately.
+
+### Is a run reproducible?
+
+The **world** is: one seed drives world generation, the structural parameters, psychology, foreign
+dispositions, dilemmas and every stochastic world rule, and the same seed replays identically.
+**Model replies are not**, and nothing claims otherwise. `runs/<name>/manifest.json` records the
+seed and each seeded stream, the prompt/engine/schema versions, the world's true structural
+parameters, the sampling settings, and the model that *actually* served each seat — read from the
+call log, because a label is not evidence of what replied. `manifest.divergences()` names the axis
+on which two runs differ, so a batch reader is not left guessing whether a comparison is fair.
 
 ## Tests
 

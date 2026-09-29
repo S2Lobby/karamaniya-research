@@ -399,6 +399,7 @@ def statistics(w: World) -> None:
 
 # ---- money and prices ------------------------------------------------------------------
 def money_and_prices(w: World, prod: dict) -> None:
+    from . import causality
     e, pol = w.econ, w.policy
     launch_currency_if_due(w)
     for z in w.zones:
@@ -420,8 +421,19 @@ def money_and_prices(w: World, prod: dict) -> None:
     if e.currency == "karam":
         crown = w.zone_of("veleria")
         scandal = 1.0 if w.month - e.scandal_month < 6 else 0.0
-        e.fx_conf = clamp(0.6 + 0.4 * min(1.0, e.gold / e.gold0) - 0.15 * scandal
-                          - (0.1 if w.dip.war else 0.0), 0.3, 1.1)
+        # Reserves, scandal and war already moved confidence; so did the price ratio, which is the
+        # inflation differential. What the currency did not yet respond to was the rest of the
+        # pressure it is under: an unsustainable deficit, expected money creation, the interest
+        # rate paid to hold it, and credit arriving from abroad. Those are added here, bounded and
+        # smoothed, so the rate responds continuously rather than jumping on a single month.
+        pressure = causality.depreciation_pressure(w)
+        e.fx_pressure = pressure["total"]
+        extra = (pressure["terms"]["fiscal_risk"] + pressure["terms"]["expected_money_creation"]
+                 + pressure["terms"]["interest_rate_support"] + pressure["terms"]["foreign_credit_support"])
+        base = (0.6 + 0.4 * min(1.0, e.gold / e.gold0) - 0.15 * scandal
+                - (0.1 if w.dip.war else 0.0))
+        target = clamp(base - 1.5 * extra, 0.3, 1.1)
+        e.fx_conf = clamp(0.65 * e.fx_conf + 0.35 * target, 0.3, 1.1)
         e.fx = crown.price / z.price * e.fx_conf
     imp = 1.0 if e.currency == "crown" else 1.0 / max(0.3, e.fx_conf)
 
@@ -434,7 +446,6 @@ def money_and_prices(w: World, prod: dict) -> None:
     # Depreciation reaches consumer prices gradually, and how much of it arrives at all is a
     # structural property of the economy rather than a constant. A single month's move does not
     # land in full; the remainder is carried by `e.fx_prev` and arrives over the following months.
-    from . import causality
     fx_change = (e.fx / e.fx_prev - 1.0) if e.fx_prev > 0 else 0.0
     passthrough = causality.pass_through(w) if e.currency == "karam" else 0.0
     lagged_fx = clamp(fx_change * passthrough * (1.0 - causality.param(w, "price_rigidity")), -0.15, 0.15)

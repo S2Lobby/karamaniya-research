@@ -171,9 +171,27 @@ that. The literature also finds pass-through is nonlinear — larger moves pass 
 falls with lower inflation and better-anchored expectations; the first is partly captured by the
 `price_rigidity` term, the second by the credibility anchor.
 
-**Limitation.** The currency's price is still anchored to the zone price relation; `fx_pressure`
-is computed and traced but does not yet drive `e.fx` directly. Wiring it in was deferred rather
-than done badly, because the currency-launch continuity guarantee is a tested invariant.
+**Wiring.** The rate is the zone price relation (which carries the inflation differential) times a
+confidence term. Reserves, scandal and war already moved that confidence; the pressure terms that
+were previously absent — an unsustainable deficit, expected money creation, the interest rate paid
+to hold the currency, and credit arriving from abroad — are now folded in, bounded and smoothed so
+a single month's news moves the rate rather than repricing it:
+
+```
+target  = clamp(base_confidence - 1.5 · extra_pressure, 0.3, 1.1)
+fx_conf = clamp(0.65 · fx_conf + 0.35 · target, 0.3, 1.1)
+fx      = crown_price / karam_price · fx_conf
+```
+
+Verified live: a world with 6% monthly printing, a large welfare expansion and reserves run down
+to 5M sees the karam fall to about a quarter of its value over nine months, while a calm world
+holds above par. The currency-launch continuity guarantee still holds — the launch month moves the
+CPI by under 0.1%, against a 5% bound.
+
+**Limitation.** Pass-through is applied to the *change* in the rate, so a permanently weak currency
+does not keep feeding inflation — only its movement does. That is correct for a flow-to-price
+channel but means the model does not capture the sustained higher import costs of a permanently
+depreciated currency.
 
 ## 5. Fiscal policy
 
@@ -314,8 +332,11 @@ qualitative properties the brief specifies are each a test:
    explicit demand block and no `output = min(supply, demand)` closure. The multiplier is live
    through utilisation (§5), which is why this is a simplification rather than a gap — but it is
    still the largest one.
-2. **`fx_pressure` does not drive `e.fx`.** Computed, traced, unwired, for the reason given in §4.
-   `fx_step()` exists and is tested but is not called by the engine.
+2. **`fx_step()` is still not called by the engine.** The depreciation *pressure* now drives
+   `e.fx_conf` and therefore the rate (§4), but the separate `fx_step()` helper — which would move
+   the rate by the raw pressure with market noise — remains unused. It is tested but not wired;
+   the smoother path through confidence was used instead because it preserves the tested
+   currency-launch continuity guarantee.
 3. **Regime states do not modulate coefficients.** `inflation_persistence` and the multipliers are
    drawn per world, not per regime, so the model does not yet become more nonlinear in a crisis.
 4. **Corruption and bureaucratic capacity** are tracked and feed implementation, but their

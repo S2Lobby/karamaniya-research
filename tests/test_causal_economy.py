@@ -200,6 +200,64 @@ class ExchangeRatePassThrough(unittest.TestCase):
         self.assertEqual(w.econ.currency, "karam")
         self.assertGreater(w.econ.fx_prev, 0.0)
 
+    def test_the_currency_weakens_under_fiscal_and_monetary_pressure(self):
+        def launch(world):
+            steady(world)
+            if world.month == 1:
+                world.econ.currency_launch = 3
+
+        def stressed(world):
+            launch(world)
+            if world.month >= 1:
+                world.policy.printing = 0.06
+                world.policy.welfare = 0.14
+                world.econ.gold = 5e6
+
+        calm = run(new_world(21, 12), 10, each=launch)
+        crisis = run(new_world(21, 12), 10, each=stressed)
+        self.assertEqual(calm.econ.currency, "karam")
+        self.assertGreater(crisis.econ.fx_pressure, calm.econ.fx_pressure)
+        self.assertLess(crisis.econ.fx_conf, calm.econ.fx_conf)
+        self.assertLess(crisis.econ.fx, calm.econ.fx, "the karam did not weaken under pressure")
+
+    def test_the_exchange_rate_stays_positive_and_finite_under_a_crisis(self):
+        import math
+
+        def stressed(world):
+            steady(world)
+            if world.month == 1:
+                world.econ.currency_launch = 2
+            world.policy.printing = 0.08
+            world.econ.gold = 1e5
+
+        w = run(new_world(22, 12), 12, each=stressed)
+        self.assertTrue(math.isfinite(w.econ.fx))
+        self.assertGreater(w.econ.fx, 0.0)
+
+    def test_confidence_is_smoothed_rather_than_jumping(self):
+        """A single month of bad news should move the rate, not reprice it wholesale."""
+        def launch(world):
+            steady(world)
+            if world.month == 1:
+                world.econ.currency_launch = 3
+
+        w = run(new_world(23, 12), 8, each=launch)
+        conf = [h["fx"] for h in w.history[2:]]
+        for a, b in zip(conf, conf[1:]):
+            with self.subTest(a=a, b=b):
+                self.assertLess(abs(b / a - 1), 0.15, f"the rate jumped from {a} to {b}")
+
+    def test_a_launch_is_still_continuous_after_fx_pressure_was_wired_in(self):
+        def launch(world):
+            steady(world)
+            if world.month == 1:
+                world.econ.currency_launch = 3
+
+        w = run(new_world(24, 12), 8, each=launch)
+        self.assertEqual(w.econ.currency, "karam")
+        jump = w.history[3]["cpi"] / w.history[2]["cpi"] - 1
+        self.assertLess(abs(jump), 0.05, f"the currency launch moved prices {jump:+.2%}")
+
     def test_depreciation_carries_into_the_trace(self):
         w = new_world(17, 12)
         w.econ.currency = "karam"

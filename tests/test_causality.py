@@ -292,6 +292,88 @@ class ExchangeRate(unittest.TestCase):
         self.assertLess(cz.pass_through(w), free)
 
 
+class FiscalImpulseIsLagged(unittest.TestCase):
+    """A spending change must reach demand over time, not all at once, and not forever."""
+
+    def _spend(self, w, before, after):
+        # Pin output so the expected shares are exact rather than dependent on the founding size.
+        w.econ.gdp_nominal = 500e6
+        w.econ.spending_prev = before
+        w.econ.spending = after
+        return cz.schedule_fiscal_impulse(w)
+
+    def test_a_material_change_is_scheduled_across_the_declared_offsets(self):
+        w = new_world(1, 12)
+        result = self._spend(w, 100e6, 120e6)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["scheduled"], list(cz.CHANNEL_LAGS["fiscal"]))
+        self.assertEqual(len(cz.pending(w)), 3)
+
+    def test_nothing_arrives_in_the_first_month_except_the_first_share(self):
+        w = new_world(1, 12)
+        self._spend(w, 100e6, 120e6)
+        arrived = cz.apply_lags(w)
+        self.assertAlmostEqual(arrived["fiscal"], 0.04 * 0.50, places=6)
+        self.assertGreater(arrived["impulse"], 0)
+
+    def test_the_later_instalments_arrive_in_their_own_months(self):
+        w = new_world(1, 12)
+        self._spend(w, 100e6, 120e6)
+        first = cz.apply_lags(w)["fiscal"]
+        w.month = 3
+        second = cz.due(w)
+        self.assertEqual(len(second), 1, "the three-month instalment did not arrive on time")
+        self.assertAlmostEqual(second[0]["magnitude"], 0.04 * 0.30, places=6)
+        self.assertAlmostEqual(first, 0.04 * 0.50, places=6)
+
+    def test_a_small_change_is_ignored(self):
+        w = new_world(1, 12)
+        self.assertIsNone(self._spend(w, 100e6, 100e6 * 1.0001))
+        self.assertEqual(cz.pending(w), [])
+
+    def test_a_spending_level_is_not_itself_stimulus(self):
+        """A government that has spent heavily for years is not adding demand this month."""
+        w = new_world(1, 12)
+        self._spend(w, 100e6, 130e6)
+        cz.apply_lags(w)
+        # Hold spending flat next month: no new impulse should be scheduled.
+        self.assertIsNone(self._spend(w, 130e6, 130e6))
+        self.assertEqual(len(cz.pending(w)), 2, "flat spending scheduled fresh stimulus")
+
+    def test_the_impulse_fades_rather_than_persisting_forever(self):
+        w = new_world(1, 12)
+        self._spend(w, 100e6, 130e6)
+        cz.apply_lags(w)
+        first = w.econ.fiscal_impulse
+        for _ in range(12):
+            w.month += 1
+            cz.apply_lags(w)
+        self.assertLess(abs(w.econ.fiscal_impulse), abs(first))
+
+    def test_the_impulse_is_bounded(self):
+        w = new_world(1, 12)
+        for i in range(30):
+            self._spend(w, 100e6, 400e6)
+            cz.apply_lags(w)
+            w.month += 1
+        self.assertLessEqual(abs(w.econ.fiscal_impulse), cz.FISCAL_IMPULSE_CAP)
+
+    def test_cuts_and_expansions_have_opposite_signs(self):
+        up = new_world(1, 12)
+        self._spend(up, 100e6, 120e6)
+        down = new_world(1, 12)
+        self._spend(down, 120e6, 100e6)
+        self.assertGreater(cz.apply_lags(up)["fiscal"], 0)
+        self.assertLess(cz.apply_lags(down)["fiscal"], 0)
+
+    def test_an_effect_never_arrives_twice(self):
+        w = new_world(1, 12)
+        self._spend(w, 100e6, 120e6)
+        first = cz.apply_lags(w)["fiscal"]
+        self.assertGreater(first, 0)
+        self.assertEqual(cz.apply_lags(w)["fiscal"], 0.0, "an effect arrived a second time")
+
+
 class TraceAndCalibration(unittest.TestCase):
     def test_a_trace_records_named_contributors(self):
         w = new_world(1, 6)

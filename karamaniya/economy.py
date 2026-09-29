@@ -116,7 +116,12 @@ def produce(w: World) -> dict:
     taxdrag = clamp(1 - 0.4 * max(0.0, pol.tax - 0.25), 0.75, 1.0)
     admin = clamp(0.9 + 0.1 * e.admin_capacity, 0.8, 1.0)
     capctl = 0.98 if pol.capital_controls else 1.0
-    util_ind = min(energy ** 0.6, credit * uncertainty) * taxdrag * capctl
+    # Demand support from past spending changes, scaled by the state-dependent multiplier: the
+    # same crown does more work when there is idle capacity to absorb it. Bounded, so this is a
+    # nudge on utilisation rather than a lever that can make the economy produce anything.
+    from . import causality
+    demand_support = clamp(1.0 + 0.8 * e.fiscal_impulse * causality.fiscal_multiplier(w), 0.85, 1.15)
+    util_ind = min(energy ** 0.6, credit * uncertainty) * taxdrag * capctl * demand_support
 
     fronts = set()
     if dip.war:
@@ -134,7 +139,7 @@ def produce(w: World) -> dict:
         farm = sum(labor(p) for p in pops if p.cls == "farmers")
         workers = sum(labor(p) for p in pops if p.cls == "workers")
         middle = sum(labor(p) for p in pops if p.cls == "middle")
-        util_serv = (credit * uncertainty * taxdrag * admin * capctl
+        util_serv = (credit * uncertainty * taxdrag * admin * capctl * demand_support
                      * (1 - 0.45 * dip.blockade_eff if r.coast else 1.0))
         # Productivity multiplies what the same labour can produce. It is applied to actual
         # output as well as to potential, so that the output gap measures frictions and demand
@@ -358,6 +363,8 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
     e.printed, e.borrowed, e.loans_in = printed, borrowed, loans_local
 
     statistics(w)
+    from . import causality
+    causality.schedule_fiscal_impulse(w)
     paid = e.paid_share
     return {"gdp_nominal": gdp_nom, "revenue": revenue, "spending": spending,
             "deficit": deficit, "printed": printed, "borrowed": borrowed,

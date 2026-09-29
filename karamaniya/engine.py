@@ -31,6 +31,10 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
     rivals.monthly(w)
     prod = trade = fiscal = None
     if not w.ended():
+        # Release any scheduled effects that have matured before the month is produced, so a
+        # policy change announced months ago lands in the month it was always going to land in.
+        from . import causality
+        causality.apply_lags(w)
         prod = economy.produce(w)
         trade = economy.trade_and_food(w, prod)
         fiscal = economy.fiscal(w, prod, trade)

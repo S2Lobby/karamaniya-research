@@ -155,6 +155,55 @@ def pending(w: World) -> list:
     return [e for e in w.institutions.get("pending_effects", []) if not e.get("applied")]
 
 
+# How a change in spending reaches demand: half at once, then a third, then a fifth. The shape
+# is the point — a programme announced this month is not fully felt this month, and the later
+# instalments are what make the effect persist after the announcement is forgotten.
+FISCAL_IMPULSE_SHARES = (0.50, 0.30, 0.20)
+FISCAL_IMPULSE_FLOOR = 0.002       # ignore changes smaller than this share of output
+FISCAL_IMPULSE_DECAY = 0.75        # how fast last month's demand support fades
+FISCAL_IMPULSE_CAP = 0.06          # bounded: demand support is not an unbounded lever
+
+
+def schedule_fiscal_impulse(w: World) -> dict | None:
+    """Turn a material change in government spending into lagged demand support.
+
+    Called once a month after the budget resolves. The impulse is the *change* in spending as a
+    share of output, not its level: a government that has been spending heavily for years is not
+    adding demand this month, and treating the level as stimulus would make every high-spending
+    world permanently overheated.
+    """
+    e = w.econ
+    gdp = max(1.0, e.gdp_nominal)
+    previous = e.spending_prev
+    e.spending_prev = e.spending
+    if previous <= 0:
+        return None
+    change = (e.spending - previous) / gdp
+    if abs(change) < FISCAL_IMPULSE_FLOOR:
+        return None
+    total = clamp(change, -0.10, 0.10)
+    offsets = CHANNEL_LAGS["fiscal"]
+    for share, offset in zip(FISCAL_IMPULSE_SHARES, offsets):
+        schedule(w, "fiscal", offset, total * share, source="spending change",
+                 note=f"spending moved {change:+.2%} of output")
+    return {"change": round(change, 6), "scheduled": list(offsets)}
+
+
+def apply_lags(w: World) -> dict:
+    """Release this month's matured effects. Returns what arrived, for the trace."""
+    arrived = due(w)
+    fiscal = sum(e["magnitude"] for e in arrived if e["channel"] == "fiscal")
+    e = w.econ
+    e.fiscal_impulse = clamp(e.fiscal_impulse * FISCAL_IMPULSE_DECAY + fiscal,
+                             -FISCAL_IMPULSE_CAP, FISCAL_IMPULSE_CAP)
+    e.money_growth = sum(e_["magnitude"] for e_ in arrived if e_["channel"] == "money")
+    if arrived:
+        trace(w, "lagged_effects", fiscal,
+              {f"arrived_{e_['channel']}": e_["magnitude"] for e_ in arrived},
+              note=f"{len(arrived)} scheduled effect(s) matured")
+    return {"arrived": arrived, "fiscal": fiscal, "impulse": e.fiscal_impulse}
+
+
 # ---------------------------------------------------------------------------------------------
 # Regimes
 # ---------------------------------------------------------------------------------------------

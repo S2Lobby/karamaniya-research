@@ -189,6 +189,8 @@ class Economy:
     money_growth: float = 0.003     # growth of Karamaniya's money stock this month
     excess_money_growth: float = 0.0  # money growth beyond what output and money demand absorb
     regime: str = "NORMAL"          # descriptive label; never an instruction
+    spending_prev: float = 0.0      # last month's total spending, for the fiscal impulse
+    fiscal_impulse: float = 0.0     # demand support arriving now from past spending changes
 
 
 @dataclass

@@ -12,9 +12,9 @@ import json
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (actions, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, freshness,
-               director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations, politics,
-               prompts, psychology, standing, tuning)
+from . import (actions, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors,
+               freshness, director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations,
+               politics, prompts, psychology, standing, tuning)
 from .backends import CallResult
 from .world import OFFICES, World, month_label, rng_for
 
@@ -664,6 +664,10 @@ class Council:
                 clash = motion_actions.conflict(w, candidate)
                 if clash:
                     held_back.append({"member": mid, "motion": candidate, "conflict": clash})
+                    errors.record(w, "MOTION_ACTION_MISMATCH",
+                                  f"{mid}'s motion was not tabled: {clash.get('detail', 'text and action disagree')}",
+                                  member=mid, motion_type=candidate.get("type"),
+                                  subject=candidate.get("subject"))
                     continue
                 carry_action = deliberation.coalesce_carried(w, candidate, carried, mid)
                 if carry_action:
@@ -676,6 +680,10 @@ class Council:
                 if rejection:
                     invalid.append(f"{label}: {rejection['reason_code']} - {rejection['explanation']}")
                     rejected.append({"member": mid, "motion": {k: mo[k] for k in ("type", "subject", "value", "text")}, **rejection})
+                    errors.record(w, rejection["reason_code"], rejection["explanation"],
+                                  member=mid, motion_label=label,
+                                  **{k: v for k, v in rejection.get("related_state", {}).items()
+                                     if isinstance(v, (str, int, float, bool))})
                     continue
                 if warning and warning["code"] == "COSPONSOR":
                     target = next(m for m in tabled if m["id"] == warning["cosponsor_of"])
@@ -1195,6 +1203,8 @@ class Council:
                     w.event("execution_blocked",
                             f"The council passed {mo['id']}, but it was not executed: {gate['detail']}.",
                             importance=2, public=False, member=mo["proposer"])
+                    errors.record(w, code, gate["detail"], member=mo["proposer"], motion=mo["id"],
+                                  duplicate_of=gate.get("duplicate_of"))
                     self._emit(type="execution_blocked", month=w.month, motion=mo["id"], code=code,
                                detail=gate["detail"], text=mo.get("text", ""))
                 else:
@@ -1401,6 +1411,8 @@ class Council:
                     w.event("execution_blocked",
                             f"The council passed {mo['id']}, but it was not executed: {gate['detail']}.",
                             importance=2, public=False, member=mo["proposer"])
+                    errors.record(w, code, gate["detail"], member=mo["proposer"], motion=mo["id"],
+                                  duplicate_of=gate.get("duplicate_of"))
                     self._emit(type="execution_blocked", month=w.month, motion=mo["id"], code=code,
                                detail=gate["detail"], text=mo.get("text", ""))
                 else:

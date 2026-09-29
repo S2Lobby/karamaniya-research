@@ -465,8 +465,50 @@ def effective_embargo(w, issuer: str, commodity: str) -> float:
     return clamp(obj["severity"] * obj["enforcement"] * (1-obj["leakage"]))
 
 
+LEDGER_CAP = 240
+
+
+def action_id(actor_id: str, month: int, kind: str, index: int) -> str:
+    """Stable identity for one cabinet action: same actor, month, kind and slot is the same act.
+
+    Deterministic rather than random on purpose. A month that is replayed after a pause must
+    derive the *same* id for the same act, or a duplicate would get a fresh id and apply twice.
+    """
+    return f"{month}:{actor_id}:{kind}:{index}"
+
+
+def _ledger(w) -> dict:
+    return w.foreign.setdefault("effects_ledger", {})
+
+
+def applied_effects(w) -> list:
+    """Every cabinet action whose effects have been applied, oldest first."""
+    return sorted(_ledger(w).values(), key=lambda e: (e.get("executed_month", 0), e.get("action_id", "")))
+
+
+def _effects_applied(w, aid: str) -> dict | None:
+    return _ledger(w).get(aid)
+
+
+def _mark_applied(w, aid: str, actor_id: str, kind: str, effects: dict) -> None:
+    from . import errors
+    ledger = _ledger(w)
+    ledger[aid] = {"action_id": aid, "actor": actor_id, "target": "karamaniya", "action": kind,
+                   "created_month": w.month, "executed_month": w.month, "status": "APPLIED",
+                   "effects_applied": effects}
+    if len(ledger) > LEDGER_CAP:
+        for key in sorted(ledger, key=lambda k: ledger[k].get("executed_month", 0))[:len(ledger) - LEDGER_CAP]:
+            ledger.pop(key, None)
+
+
 def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
-    """Validate and apply bounded cabinet actions. Invalid proposals are recorded and ignored."""
+    """Validate and apply bounded cabinet actions. Invalid proposals are recorded and ignored.
+
+    Every action is applied at most once. The id is derived from the act itself, so if a month is
+    resolved twice — a replay, a retried call, a resumed run — the second pass is recognised as a
+    duplicate and skipped rather than charging the actor and shifting its position a second time.
+    """
+    from . import errors
     for actor_id, decision in decisions.items():
         if actor_id not in positions or not isinstance(decision, dict):
             continue
@@ -488,15 +530,29 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
             elif w.month % 4 == 0:
                 w.event("diplomacy", f"{w.names[actor_id]} issued a statement on Karamaniya and regional policy.",
                         importance=1)
-        for raw in decision.get("actions", [])[:4]:
+        for index, raw in enumerate(decision.get("actions", [])[:4]):
             action = dict(raw) if isinstance(raw, dict) else raw
             available = max(0, actor["military"]["reserves"]-actor["military"]["active"]*.45) if isinstance(action, dict) else 0
             error = validate_action(actor_id, action, {"mobilized_reserve": available})
             if error:
                 _remember(w.foreign, actor_id, "rejected_action", error, w.month, action=action)
+                errors.record(w, "FOREIGN_ACTION_INVALID", error, actor=actor_id)
                 continue
             kind = action["type"]
+            # Past validation the action is a dict with a known type, so the id is well defined.
+            aid = action_id(actor_id, w.month, kind, index)
+            if _effects_applied(w, aid) is not None:
+                errors.record(w, "FOREIGN_ACTION_DUPLICATE",
+                              f"{actor_id} {kind} was already applied this month; effects not repeated",
+                              actor=actor_id, action=kind)
+                continue
             magnitude = float(action.get("magnitude", .5))
+            # What this action moves, captured before and after so the ledger records the real
+            # delta rather than a description of one.
+            pos_before = {k: v for k, v in positions[actor_id].items() if isinstance(v, (int, float, bool))}
+            before = {"propaganda": w.dip.propaganda,
+                      "hostility": actor["relations"]["karamaniya"]["hostility"],
+                      "trust": actor["reputation"]["diplomatic_trust"]}
             if kind == "partial_embargo":
                 positions[actor_id]["coal_embargo"] = max(positions[actor_id].get("coal_embargo", 0), .06+.16*magnitude)
             elif kind == "grain_embargo":
@@ -550,6 +606,16 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
             _remember(w.foreign, actor_id, "cabinet_action", f"Chose {kind.replace('_', ' ')}.", w.month,
                       action=kind, magnitude=magnitude,
                       decision_factors=list(decision.get("decision_factors") or [])[:6])
+            effects = {f"position.{k}": round(v - pos_before.get(k, 0.0), 6)
+                       for k, v in positions[actor_id].items()
+                       if isinstance(v, (int, float)) and not isinstance(v, bool)
+                       and abs(v - pos_before.get(k, 0.0)) > 1e-9}
+            for name, now in (("propaganda", w.dip.propaganda),
+                              ("hostility", actor["relations"]["karamaniya"]["hostility"]),
+                              ("trust", actor["reputation"]["diplomatic_trust"])):
+                if abs(now - before[name]) > 1e-9:
+                    effects[name] = round(now - before[name], 6)
+            _mark_applied(w, aid, actor_id, kind, effects or {"note": "no canonical state moved"})
         for update in decision.get("belief_updates", [])[:4]:
             key = update.get("belief") if isinstance(update, dict) else None
             if key not in actor["beliefs"]:

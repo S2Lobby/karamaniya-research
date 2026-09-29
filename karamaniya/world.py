@@ -369,6 +369,7 @@ class World:
     counters: dict = field(default_factory=dict)    # cumulative tallies
     outcome: dict = field(default_factory=dict)     # set when the run ends
     integrity: dict = field(default_factory=lambda: {"status": "clean", "warnings": []})
+    audit_errors: list = field(default_factory=list)  # structured non-fatal engine errors (errors.py)
     tuning: dict = field(default_factory=dict)      # run overrides of tuning.DEFAULTS
     intel: dict = field(default_factory=dict)       # office reports, requests, shared and leaked items
     media: dict = field(default_factory=dict)       # press blocs, monthly narratives, credit and blame

@@ -1,0 +1,28 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "reports",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "runs"
+      ],
+      "port": 8765
+    },
+    {
+      "name": "control-room",
+      "runtimeExecutable": "C:\\Users\\litle\\karamaniya\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "-c",
+        "import os,sys; os.chdir(r'C:\\Users\\litle\\karamaniya'); sys.path.insert(0, os.getcwd()); from karamaniya.__main__ import main; sys.exit(main(['gui','--no-open','--port','8770',]))"
+      ],
+      "port": 8770
+    }
+  ]
+}

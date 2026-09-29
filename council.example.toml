@@ -1,0 +1,66 @@
+# Your council: five different AIs govern Karamaniya, run through the command-line tools you are
+# already logged into. Only DeepSeek needs a key.
+#
+# Easiest: `python -m karamaniya gui` opens the control room, where you can edit this lineup,
+# save your key, test every seat and watch the run. On the command line instead:
+#   python -m karamaniya check council.example.toml   (one tiny call per seat, shows which model answers)
+#   python -m karamaniya run council.example.toml     (the full run; the report is runs/<name>/report.html)
+#
+# Which model sits in which seat (Delegate A-L) is shuffled per run from the seed, and the AIs
+# only ever see the letters. The report shows you the real names.
+
+[run]
+months = 36            # the Union's pressure builds over about two years; war usually comes after Month 19
+seed = 1               # same seed = same scripted pressure, weather and dice
+framing = "simulation" # or "immersive": the AIs are not told it is a simulation
+founding_scenario = "random" # or fragile-independence, fiscal-inheritance, regional-divide, security-crisis, trade-dependency, post-regime-transition, custom
+founding_severity = "default" # default, mild, serious or critical
+# For founding_scenario = "custom", list 3–7 IDs such as ["food_dependence", "army_readiness", "regional_legitimacy"]
+founding_problems = []
+survey = true          # ask each AI beforehand what it would do, then compare with what it did
+max_cost_usd = 0.0     # only pay-per-token seats count (set their prices); 0 = no cap
+dm_per_turn = 3        # private messages each member may send per month
+
+# Claude through Claude Code (`claude -p`), on your Claude subscription.
+[[seat]]
+label = "claude-opus-5.5"
+provider = "claude_cli"
+model = "claude-opus-5-5"
+effort = "medium"
+
+# GPT through Codex (`codex exec`), on your ChatGPT subscription. `codex debug models` lists the
+# models your plan offers (gpt-5.6-terra, gpt-5.6-luna, gpt-5.6-sol, gpt-6-astra, ...).
+[[seat]]
+label = "gpt-5.6-terra"
+provider = "codex_cli"
+model = "gpt-5.6-terra"
+effort = "medium"
+
+# Gemini through Antigravity (`agy`). `agy models` lists what your account offers.
+[[seat]]
+label = "gemini-3.1-pro"
+provider = "antigravity_cli"
+model = "gemini-3.1-pro-high"
+
+# Kimi through Cline (`cline`), on Cline Pass.
+[[seat]]
+label = "kimi-k3"
+provider = "cline_cli"
+model = "cline-pass/kimi-k3"
+cline_provider = "cline-pass"
+
+# DeepSeek inside the Claude Code harness, through DeepSeek's Anthropic-compatible API.
+# Needs DEEPSEEK_API_KEY (save it in the control room, or set it in your environment).
+# Set price_in / price_out (dollars per million tokens) if you want max_cost_usd to count it.
+[[seat]]
+label = "deepseek-flash"
+provider = "claude_cli"
+model = "deepseek-flash"
+base_url = "https://api.deepseek.com/anthropic"
+api_key_env = "DEEPSEEK_API_KEY"
+
+# Want two GPT seats instead? Swap Gemini or Kimi for:
+#   label = "gpt-5.6-luna", provider = "codex_cli", model = "gpt-5.6-luna"
+# Pay-per-token APIs also work: provider = "anthropic" | "openai" | "deepseek" | "openrouter",
+# with the key in ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY or OPENROUTER_API_KEY.
+# A local model: provider = "ollama", model = "qwen3.5:9b" (slow on a laptop GPU).

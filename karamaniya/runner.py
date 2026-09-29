@@ -1,0 +1,308 @@
+"""Start, resume, stop and check runs."""
+from __future__ import annotations
+
+import datetime as dt
+import random
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+from .backends import make_backend
+from .config import SEAT_IDS, load_config
+from .council import Council, RunPaused, Seat
+from .storage import RunStore
+from .versions import stamp
+from .world import month_label, new_world
+
+LETTERS = SEAT_IDS
+
+
+def _seats(cfg: dict, mapping: dict) -> dict:
+    by_label = {s["label"]: s for s in cfg["seats"]}
+    return {letter: Seat(letter, label, by_label[label], make_backend(by_label[label]))
+            for letter, label in mapping.items()}
+
+
+def _progress(w, council) -> str:
+    h = w.history[-1] if w.history else {}
+    coups = int(w.counters.get("coups_attempted", 0))
+    active = "".join(m.id for m in w.active_members()) or "-"
+    return (f"{month_label(w.month - 1)} done | members {active} | approval {h.get('approval', 0):.0%} "
+            f"| inflation {h.get('infl_yoy', 0):.0%} | food {h.get('food_ratio', 0):.0%} "
+            f"| army {h.get('army', 0):,.0f} | war {'yes' if h.get('war') else 'no'} | coups {coups} "
+            f"| spend ${council.spend:.2f}")
+
+
+def _emit(observer, **event) -> None:
+    if observer is not None:
+        try:
+            observer(event)
+        except Exception:  # progress display must never break a run
+            pass
+
+
+def preflight(cfg: dict) -> list:
+    """Seats that cannot answer a tiny call. A run refuses to start while any seat is broken."""
+    return [r for r in check_seats(cfg) if not r["ok"]]
+
+
+def _require_seats(cfg: dict, observer, what: str) -> None:
+    _emit(observer, type="checking")
+    broken = preflight(cfg)
+    if broken:
+        lines = [f"  {b['label']} ({b['provider']} {b['model']}): {b['error'][:200]}" for b in broken]
+        raise SystemExit(f"These seats cannot answer, so the run was not {what}:\n" + "\n".join(lines)
+                         + "\nFix the login, key or model id (see `python -m karamaniya check`), then try again.")
+
+
+def _survey(store: RunStore, council: Council, observer, quiet: bool) -> str:
+    """Ask the questionnaire. Returns why the run paused, or "" once it is answered."""
+    _emit(observer, type="survey")
+    mark = store.mark()
+    try:
+        answers = council.survey()
+    except RunPaused as exc:
+        store.rollback(mark)
+        return f"paused before Month 1: {exc}. Resume when the limit resets."
+    store._write_json("survey.json", answers)
+    if not quiet:
+        print("Pre-run questionnaire answered.")
+    return ""
+
+
+def _diagnose(store: RunStore, council: Council, observer, quiet: bool) -> str:
+    _emit(observer, type="founding_start", month=0)
+    mark = store.mark()
+    try:
+        diagnoses = council.diagnose_founding()
+    except RunPaused as exc:
+        store.rollback(mark)
+        return f"paused before Month 1 founding diagnoses: {exc}. Resume when the limit resets."
+    if not quiet:
+        valid = sum(d.get("status") == "submitted" for d in diagnoses.values())
+        print(f"Independent founding diagnoses: {valid}/{len(diagnoses)} valid submissions.")
+    return ""
+
+
+def _form_government(store: RunStore, council: Council, observer, quiet: bool) -> str:
+    _emit(observer, type="formation_start", month=0)
+    mark = store.mark()
+    try:
+        council.form_government()
+    except RunPaused as exc:
+        store.rollback(mark)
+        return f"paused before Month 1 government formation: {exc}. Resume when the limit resets."
+    if not quiet:
+        print("Procedural government formation voted.")
+    return ""
+
+
+def _end(store: RunStore, world, council: Council, stopped: str, quiet: bool, observer) -> Path:
+    from .report import build_report
+    if not quiet:
+        print(f"Stopped: {stopped} (resume to continue)" if stopped else f"Outcome: {world.outcome.get('text')}")
+    path = build_report(store)
+    _emit(observer, type="finished", stopped=stopped, outcome=dict(world.outcome), spend=council.spend)
+    if not quiet:
+        print(f"Report: {path}")
+    return store.path
+
+
+def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=None,
+            survey=None, quiet=False, check=True, observer=None, stop_event=None,
+            live_report=False) -> Path:
+    """Start a run. `config` is a path to a TOML file or an already loaded config dict."""
+    cfg = config if isinstance(config, dict) else load_config(config)
+    cfg = {**cfg, "run": dict(cfg["run"])}
+    if check:
+        _require_seats(cfg, observer, "started")
+    run = cfg["run"]
+    for key, val in (("months", months), ("seed", seed), ("framing", framing), ("survey", survey)):
+        if val is not None:
+            run[key] = val
+    labels = [s["label"] for s in cfg["seats"]]
+    order = list(range(len(labels)))
+    if run["shuffle_seats"]:
+        random.Random(f"seats:{run['seed']}").shuffle(order)
+    mapping = {LETTERS[i]: labels[j] for i, j in enumerate(order)}
+    created = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_id = name or f"{created}-seed{run['seed']}"
+    store = RunStore(Path(runs_dir) / run_id)
+    if store.exists("checkpoint.json"):
+        raise FileExistsError(f"{store.path} already has a run; use resume")
+    architecture = int(run.get("agent_architecture_version", 2))
+    store.save_config({**cfg, "mapping": mapping, "created": created, "architecture": stamp(architecture)})
+    by_label = {s["label"]: s for s in cfg["seats"]}
+    baselines = {letter: by_label[label].get("trait_baseline") for letter, label in mapping.items()
+                 if by_label[label].get("trait_baseline")}
+    world = new_world(run["seed"], run["months"], run["framing"], member_ids=list(mapping),
+                      human_factor=run.get("human_factor", True),
+                      founding_scenario=run.get("founding_scenario", "random"),
+                      founding_severity=run.get("founding_severity", "default"),
+                      founding_problems=run.get("founding_problems"),
+                      agent_architecture_version=architecture, tuning=run.get("tuning"),
+                      trait_baselines=baselines)
+    council = Council(world, _seats(cfg, mapping), run, store, observer=observer)
+    (store.path / "system_prompt.txt").write_text(council.system, encoding="utf-8")
+    _emit(observer, type="started", run_id=run_id, mapping=mapping, months_total=run["months"])
+    if not quiet:
+        print(f"Run {run_id}: {len(mapping)} seats, {run['months']} months, seed {run['seed']}, "
+              f"framing {run['framing']}")
+        for letter, label in mapping.items():
+            print(f"  Delegate {letter} = {label}")
+    paused = _survey(store, council, observer, quiet) if run["survey"] else ""
+    diagnosis_pending = False
+    if not paused:
+        paused = _diagnose(store, council, observer, quiet)
+        diagnosis_pending = bool(paused)
+    formation_pending = False
+    if not paused:
+        paused = _form_government(store, council, observer, quiet)
+        formation_pending = bool(paused)
+    if not paused:
+        _apply_scenario(world, run)
+    store.save_checkpoint(world, council.state(), {"run_id": run_id, "stopped": paused,
+                                                   "survey_pending": bool(paused and run["survey"] and not diagnosis_pending and not formation_pending),
+                                                   "founding_diagnosis_pending": diagnosis_pending,
+                                                   "government_formation_pending": formation_pending})
+    if paused:
+        return _end(store, world, council, paused, quiet, observer)
+    return _loop(store, world, council, run, quiet, observer, stop_event, live_report)
+
+
+def resume_run(run_dir, quiet=False, observer=None, stop_event=None, live_report=False, check=True) -> Path:
+    store = RunStore(run_dir)
+    cfg = store.read_json("config.json")
+    if check:
+        _require_seats(cfg, observer, "resumed")
+    world, council_state, meta = store.load_checkpoint()
+    upgraded = _maybe_upgrade(store, cfg, world, quiet)
+    council = Council(world, _seats(cfg, cfg["mapping"]), cfg["run"], store, observer=observer)
+    prompt_path = store.path / "system_prompt.txt"
+    if prompt_path.exists() and not upgraded:
+        council.system = prompt_path.read_text(encoding="utf-8")
+    elif upgraded:
+        prompt_path.write_text(council.system, encoding="utf-8")
+    council.load_state(council_state)
+    _emit(observer, type="started", run_id=store.path.name, mapping=cfg["mapping"],
+          months_total=world.months_total, months_done=len(world.history))
+    if not quiet:
+        print(f"Resuming {store.path.name} at {month_label(world.month)}")
+    if meta.get("survey_pending"):
+        paused = _survey(store, council, observer, quiet)
+        if paused:
+            store.set_meta({"stopped": paused})
+            return _end(store, world, council, paused, quiet, observer)
+        store.set_meta({"survey_pending": False, "stopped": ""})
+    if meta.get("founding_diagnosis_pending") or (world.founding and not world.founding.get("diagnoses")):
+        paused = _diagnose(store, council, observer, quiet)
+        if paused:
+            store.save_checkpoint(world, council.state(), {"stopped": paused, "founding_diagnosis_pending": True})
+            return _end(store, world, council, paused, quiet, observer)
+        store.set_meta({"founding_diagnosis_pending": False, "stopped": ""})
+    if world.month == 0 and world.founding and (meta.get("government_formation_pending") or not world.founding.get("formation")):
+        paused = _form_government(store, council, observer, quiet)
+        if paused:
+            store.save_checkpoint(world, council.state(), {"stopped": paused, "government_formation_pending": True})
+            return _end(store, world, council, paused, quiet, observer)
+        store.set_meta({"government_formation_pending": False, "stopped": ""})
+    if not world.history:
+        _apply_scenario(world, cfg["run"])
+    return _loop(store, world, council, cfg["run"], quiet, observer, stop_event, live_report)
+
+
+def _apply_scenario(world, run: dict) -> None:
+    """A deterministic test scenario (spec 96) is applied once, after government formation."""
+    if run.get("test_scenario") and not world.agenda.get("scenario_applied"):
+        from .scenarios import apply as apply_scenario
+        apply_scenario(world, run["test_scenario"])
+
+
+def _maybe_upgrade(store: RunStore, cfg: dict, world, quiet: bool) -> bool:
+    """Spec 106: a version-1 run that has not simulated a month yet moves to the current agent
+    architecture (its founding diagnoses and appointments are kept). Runs with recorded months keep
+    the architecture they were recorded under, so their history stays comparable."""
+    from .versions import AGENT_ARCHITECTURE
+    if (world.agent_architecture_version != 1 or world.history or not world.human_factor
+            or cfg.get("run", {}).get("agent_architecture_version") == 1 and cfg.get("pin_architecture")):
+        return False
+    from . import agents
+    world.agent_architecture_version = AGENT_ARCHITECTURE
+    agents.ensure(world)
+    cfg["architecture"] = {**stamp(AGENT_ARCHITECTURE), "migrated_from": 1, "migrated_at_month": world.month}
+    cfg["run"] = {**cfg.get("run", {}), "agent_architecture_version": AGENT_ARCHITECTURE}
+    store.save_config(cfg)
+    store.log({"type": "migration", "month": world.month, "from": 1, "to": AGENT_ARCHITECTURE,
+               "note": "no month had been simulated; founding diagnoses and appointments were kept"})
+    if not quiet:
+        print(f"Upgraded {store.path.name} to agent architecture v{AGENT_ARCHITECTURE} before Month 1.")
+    return True
+
+
+def _loop(store: RunStore, world, council: Council, run: dict, quiet: bool, observer=None,
+          stop_event=None, live_report=False) -> Path:
+    from .report import build_report
+    cap = float(run.get("max_cost_usd") or 0.0)
+    stopped, paused = "", False
+    if live_report and world.history:
+        build_report(store)
+    while not world.ended():
+        if stop_event is not None and stop_event.is_set():
+            stopped = "stopped from the control room"
+            break
+        mark = store.mark()
+        try:
+            council.run_month()
+        except RunPaused as exc:
+            # Nothing of the unfinished month is kept: its log lines go, the checkpoint stays at the
+            # last finished month, and resuming replays the month from the start.
+            store.rollback(mark)
+            stopped = (f"paused in {month_label(world.month)}: {exc}. Resume when the limit resets; "
+                       "the month will be replayed.")
+            paused = True
+            break
+        store.save_checkpoint(world, council.state(), {"stopped": ""})
+        if live_report:
+            build_report(store)
+        h = world.history[-1]
+        _emit(observer, type="month_done", months_done=len(world.history), spend=council.spend,
+              outcome=dict(world.outcome), line=_progress(world, council),
+              events=[e["text"] for e in h.get("events", []) if e.get("public", True)
+                      and e.get("importance", 1) >= 2][:10],
+              stats={k: h.get(k) for k in ("approval", "infl_yoy", "food_ratio", "army", "war", "unrest",
+                                           "democracy")},
+              members={m.id: m.status for m in world.members}, offices=dict(world.const.offices))
+        if not quiet:
+            print(_progress(world, council), flush=True)
+        if cap and council.spend >= cap and not world.ended():
+            stopped = f"spending cap of ${cap:.2f} reached"
+            break
+    if paused:
+        store.set_meta({"stopped": stopped})
+    else:
+        store.save_checkpoint(world, council.state(), {"stopped": stopped})
+    return _end(store, world, council, stopped, quiet, observer)
+
+
+def check_seats(config) -> list:
+    """One tiny call per seat, all at once: are keys and models working, which model answers?"""
+    cfg = config if isinstance(config, dict) else load_config(config)
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}, "note": {"type": "string"}},
+              "required": ["ok", "note"], "additionalProperties": False}
+
+    def one(s):
+        try:
+            backend = make_backend(s)
+            backend.retries = 0
+            backend.timeout = min(backend.timeout, 120)
+            res = backend.complete("You are a connectivity check. Answer with the JSON requested.",
+                                   'Reply with {"ok": true, "note": "ready"}.', schema, {"phase": "survey"})
+            return {"label": s["label"], "provider": s["provider"], "model": s.get("model", ""),
+                    "served_model": res.served_model, "ok": res.data is not None,
+                    "error": res.error, "latency_s": res.latency_s, "cost_usd": res.cost_usd}
+        except Exception as exc:  # report every seat, even if one is misconfigured
+            return {"label": s["label"], "provider": s["provider"], "model": s.get("model", ""),
+                    "served_model": "", "ok": False, "error": f"{type(exc).__name__}: {exc}",
+                    "latency_s": 0, "cost_usd": 0}
+
+    with ThreadPoolExecutor(max_workers=max(1, len(cfg["seats"]))) as ex:
+        return list(ex.map(one, cfg["seats"]))

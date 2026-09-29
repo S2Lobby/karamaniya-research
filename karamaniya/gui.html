@@ -1,0 +1,2098 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Karamaniya Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f2f4f3; --surface: #fcfcfb; --surface-2: #eaeeec; --ink: #10202a; --ink-2: #47575f; --muted: #76838a;
+  --hairline: #dde3e1; --axis: #c1c9c6; --accent: #0d6b67; --accent-ink: #ffffff; --accent-soft: #dcecea;
+  --border: rgba(16, 32, 42, 0.10); --shadow: 0 1px 2px rgba(16, 32, 42, 0.06);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+  --s6: #008b8b; --s7: #7652a5; --s8: #d94f4f; --s9: #587a38; --s10: #a55b32; --s11: #3979a8; --s12: #9a4e79;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-ink: #006300; --warning-ink: #7a5200; --critical-ink: #b42828;
+  --font-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Big Shoulders Display", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0e1312; --surface: #161b1a; --surface-2: #1f2624; --ink: #edf2f0; --ink-2: #b5c1bd; --muted: #88938f;
+    --hairline: #29312f; --axis: #3b4542; --accent: #3fb3aa; --accent-ink: #062320; --accent-soft: #173331;
+    --border: rgba(255, 255, 255, 0.10); --shadow: none;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+    --s6: #23a5a5; --s7: #9880cf; --s8: #ed6969; --s9: #85ad5b; --s10: #d18458; --s11: #61a1ce; --s12: #ca72a2;
+    --good-ink: #0ca30c; --warning-ink: #fab219; --critical-ink: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0e1312; --surface: #161b1a; --surface-2: #1f2624; --ink: #edf2f0; --ink-2: #b5c1bd; --muted: #88938f;
+  --hairline: #29312f; --axis: #3b4542; --accent: #3fb3aa; --accent-ink: #062320; --accent-soft: #173331;
+  --border: rgba(255, 255, 255, 0.10); --shadow: none;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+  --s6: #23a5a5; --s7: #9880cf; --s8: #ed6969; --s9: #85ad5b; --s10: #d18458; --s11: #61a1ce; --s12: #ca72a2;
+  --good-ink: #0ca30c; --warning-ink: #fab219; --critical-ink: #e66767;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 400 15px/1.5 var(--font-body); min-height: 100vh; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h2 { font: 800 24px/1.1 var(--font-display); letter-spacing: 0.02em; text-transform: uppercase; }
+h3 { font-size: 14px; font-weight: 600; }
+p { margin: 0; }
+.eyebrow { font: 500 11px/1.3 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.muted { color: var(--muted); }
+.ink2 { color: var(--ink-2); }
+.mono { font-family: var(--font-mono); font-size: 0.92em; }
+.num { font-variant-numeric: tabular-nums; }
+.small { font-size: 13px; }
+[hidden] { display: none !important; }
+
+/* Header */
+.top { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px;
+  padding: 10px 16px; background: color-mix(in srgb, var(--page) 90%, transparent); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--hairline); }
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand h1 { font: 800 30px/1 var(--font-display); letter-spacing: 0.01em; text-transform: uppercase; }
+.brand .sub { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.tabs { display: flex; gap: 2px; background: var(--surface-2); padding: 3px; border-radius: 8px; }
+.tabs button { border: 0; background: transparent; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 500;
+  color: var(--ink-2); display: inline-flex; align-items: center; gap: 7px; }
+.tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.livedot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); display: inline-block; animation: pulse 1.6s infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .livedot { animation: none; } }
+.jobmini { margin-left: auto; font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; min-width: 0; }
+.jobmini .runid { font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28ch; }
+
+main { padding: 18px 16px 60px; max-width: 1400px; margin: 0 auto; }
+.tab { display: grid; gap: 18px; }
+
+/* Cards, buttons, fields */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; display: grid; gap: 12px; min-width: 0; box-shadow: var(--shadow); }
+.card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.card-head .spacer { flex: 1; }
+.btn { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; padding: 7px 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-weight: 500; text-decoration: none; }
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--ink)); }
+.btn.danger { color: var(--critical-ink); }
+.btn.small { padding: 4px 9px; font-size: 13px; }
+.btn.ghost { border-color: transparent; background: transparent; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field > span { font-size: 12px; color: var(--ink-2); font-weight: 500; }
+.field .hint { font-size: 12px; color: var(--muted); }
+input[type=text], input[type=number], input[type=password], select {
+  width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--axis); border-radius: 6px; background: var(--surface); }
+input[type=number] { font-variant-numeric: tabular-nums; }
+input:hover, select:hover { border-color: var(--muted); }
+input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+details > summary { cursor: pointer; font-size: 13px; color: var(--ink-2); list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::before { content: "▸"; font-size: 11px; transition: transform 0.15s; }
+details[open] > summary::before { transform: rotate(90deg); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font: 600 11.5px/1 var(--font-body); letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 5px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink); white-space: nowrap; }
+.pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--muted)); display: inline-block; }
+.dot { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; flex: none;
+  font: 600 11px/1 var(--font-body); background: var(--dc, var(--muted)); }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 4px; border-radius: 999px; background: var(--surface-2);
+  font-size: 12.5px; white-space: nowrap; }
+.chip .dot { width: 18px; height: 18px; font-size: 10px; }
+.note { font-size: 13px; color: var(--ink-2); }
+.warn { font-size: 13px; color: var(--warning-ink); display: flex; gap: 8px; align-items: flex-start; }
+.warn::before { content: "!"; flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--warning); color: #1c1400; font: 700 11px/1 var(--font-body); margin-top: 2px; }
+.err { font-size: 13px; color: var(--critical-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Council tab */
+.council { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .council { grid-template-columns: 1fr; } }
+.side { display: grid; gap: 18px; position: sticky; top: 76px; }
+@media (max-width: 1100px) { .side { position: static; } }
+.filebar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+@media (max-width: 700px) { .filebar { grid-template-columns: 1fr auto; } }
+.dirty { font-size: 12px; color: var(--warning-ink); }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.seats { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+.seat { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--sc, var(--axis)); border-radius: 8px;
+  padding: 12px 14px; display: grid; gap: 10px; min-width: 0; }
+.seat-head { display: flex; align-items: center; gap: 8px; }
+.seat-head .n { font: 800 18px/1 var(--font-display); color: var(--muted); letter-spacing: 0.03em; }
+.seat-head input { font-weight: 600; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.model-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: end; }
+.pnote { font-size: 12px; color: var(--muted); }
+.settings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+.settings .wide { grid-column: 1 / -1; }
+.keyrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--hairline); }
+.keyrow:first-child { border-top: 0; padding-top: 0; }
+.keyrow .name { font-family: var(--font-mono); font-size: 13px; }
+.keyrow .entry { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.actions .btn { justify-content: center; padding: 10px 12px; }
+.estimate { font-size: 13px; color: var(--ink-2); display: grid; gap: 4px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+th { font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 600; white-space: nowrap; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.tablewrap { overflow-x: auto; }
+.ok-mark { color: var(--good-ink); font-weight: 600; }
+.bad-mark { color: var(--critical-ink); font-weight: 600; }
+
+/* Live tab */
+.status { display: grid; gap: 12px; }
+.status-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.status-top h2 { font-size: 28px; }
+.status-top .runid { font-family: var(--font-mono); font-size: 13px; color: var(--ink-2); }
+.progress { height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.4s; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 13.5px; color: var(--ink-2); }
+.facts b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.live-grid { display: grid; grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.1fr); gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .live-grid { grid-template-columns: 1fr; } }
+.seatstrip { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.sc { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: grid; gap: 3px; background: var(--surface); min-width: 0; }
+.sc.busy { border-color: var(--dc); box-shadow: inset 0 0 0 1px var(--dc); }
+.sc.gone { opacity: 0.55; }
+.sc .who { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13.5px; }
+.sc .model { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc .state { font-size: 12px; color: var(--muted); }
+.sc.busy .state { color: var(--ink); }
+.sc .offices { font-size: 11.5px; color: var(--ink-2); }
+.feed { display: grid; gap: 10px; max-height: calc(100vh - 330px); min-height: 320px; overflow-y: auto; padding-right: 4px; overscroll-behavior: contain; }
+.feed .month { position: sticky; top: 0; z-index: 1; background: var(--surface); padding: 6px 0 4px; border-bottom: 1px solid var(--hairline);
+  display: flex; align-items: baseline; gap: 10px; }
+.feed .month b { font: 800 18px/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.02em; }
+.say { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; }
+.say .body { display: grid; gap: 5px; min-width: 0; }
+.say .by { font-size: 12px; color: var(--muted); }
+.say .by b { color: var(--ink); font-weight: 600; font-size: 13px; }
+.say p { font-size: 14.5px; max-width: 70ch; overflow-wrap: anywhere; }
+.say ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+.dm { font-size: 13px; color: var(--ink-2); font-style: italic; overflow-wrap: anywhere; }
+.dm b { font-style: normal; font-weight: 600; color: var(--ink-2); }
+.votes { border: 1px solid var(--hairline); border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; background: var(--surface); }
+.votes .mo { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13.5px; }
+.votes .res { grid-column: 2; font-size: 12.5px; color: var(--ink-2); }
+.tag { font: 600 10.5px/1 var(--font-body); letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 6px; border-radius: 4px; background: var(--surface-2); white-space: nowrap; align-self: start; margin-top: 2px; }
+.tag.yes { background: color-mix(in srgb, var(--good) 20%, transparent); color: var(--good-ink); }
+.tag.no { background: color-mix(in srgb, var(--critical) 16%, transparent); color: var(--critical-ink); }
+.coup { font-size: 13.5px; color: var(--critical-ink); font-weight: 600; }
+.eventlist { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13.5px; }
+.eventlist li { display: grid; grid-template-columns: 8px 1fr; gap: 9px; }
+.eventlist li::before { content: ""; width: 7px; height: 7px; border-radius: 50%; margin-top: 7px; background: var(--serious); }
+.statline { font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.sysline { font-size: 13px; color: var(--muted); font-style: italic; }
+.outcome { border-left: 4px solid var(--oc, var(--muted)); background: var(--surface-2); border-radius: 6px; padding: 10px 12px; display: grid; gap: 4px; }
+.chronicle { width: 100%; height: calc(100vh - 150px); min-height: 520px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); display: block; }
+.empty { padding: 28px 16px; text-align: center; color: var(--ink-2); display: grid; gap: 10px; justify-items: center; }
+
+/* Broadcast (the Live tab) */
+.bcast { display: grid; gap: 14px; }
+.chamber { position: relative; min-height: 420px; aspect-ratio: 3 / 2; border-radius: 10px; overflow: hidden;
+  background: #241f1b url('/council-chamber.png') center / cover no-repeat; box-shadow: var(--shadow); }
+.chamber::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(10,12,14,.45), transparent 32%, transparent 60%, rgba(10,12,14,.5)); }
+.chamber-title { position: absolute; z-index: 2; top: 16px; left: 20px; color: #fff; text-shadow: 0 1px 5px #000;
+  font: 800 24px/1 var(--font-display); letter-spacing: .04em; text-transform: uppercase; }
+.seatstrip.lineup { position: absolute; inset: 0; z-index: 3; display: block; }
+.seat-overflow-wrap { display: grid; gap: 8px; }
+.seat-overflow-title { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.lineup .sc { position: absolute; width: clamp(135px, 17%, 205px); padding: 7px 9px; gap: 2px; background: rgba(13,20,23,.9);
+  border: 1px solid rgba(255,255,255,.4); color: #fff; backdrop-filter: blur(5px); box-shadow: 0 6px 20px rgba(0,0,0,.35); }
+.lineup .sc:nth-child(1) { left: 50%; top: 24%; transform: translate(-50%,-50%); }
+.lineup .sc:nth-child(2) { left: 81%; top: 40%; transform: translate(-50%,-50%); }
+.lineup .sc:nth-child(3) { left: 79%; top: 72%; transform: translate(-50%,-50%); }
+.lineup .sc:nth-child(4) { left: 21%; top: 72%; transform: translate(-50%,-50%); }
+.lineup .sc:nth-child(5) { left: 19%; top: 40%; transform: translate(-50%,-50%); }
+.lineup .sc .model { font-size: 12px; color: #fff; font-weight: 600; }
+.lineup .sc .who { font-size: 12px; }
+.lineup .sc .via, .lineup .sc .offices, .lineup .sc .state { color: #d9e3e5; font-size: 11px; }
+.lineup .sc .clout { color: #f6d99a; font-size: 11px; font-weight: 600; }
+.lineup .sc .preview { color: #fff; font-size: 11px; line-height: 1.3; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.lineup .sc .principles { color: #bce2d0; font-size: 10.5px; line-height: 1.25; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lineup .sc .said { display: none; }
+.lineup .sc.busy { border-color: var(--dc); box-shadow: 0 0 0 2px var(--dc), 0 0 24px var(--dc); }
+.lineup .sc.busy .state { font-weight: 700; color: #fff; }
+@media (max-width: 750px) {
+  .chamber { aspect-ratio: auto; min-height: 0; padding-top: 52%; background-size: 100% auto; background-position: top; }
+  .chamber::after { bottom: auto; height: 52%; }
+  .seatstrip.lineup { position: relative; display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 8px; padding: 10px; background: var(--surface); }
+  .lineup .sc, .lineup .sc:nth-child(n) { position: static; transform: none; width: auto; }
+}
+.bcast-main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(360px, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 1150px) { .bcast-main { grid-template-columns: 1fr; } }
+.bcast-left { display: grid; gap: 14px; min-width: 0; }
+.bcast-under { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 1500px) { .bcast-under { grid-template-columns: 1fr; } }
+.bcast-col { display: grid; gap: 14px; min-width: 0; }
+.bcast-feed { position: sticky; top: 76px; min-width: 0; }
+@media (max-width: 1150px) { .bcast-feed { position: static; } }
+.bcast-feed .feed { max-height: calc(100vh - 150px); min-height: 460px; }
+.live-draft { margin: 10px 0; padding: 11px 13px; border-left: 3px solid var(--accent);
+  background: var(--surface-2); border-radius: 5px; }
+.live-draft .draft-label { font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 5px; }
+.live-draft .draft-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 190px; overflow-y: auto; font-size: 14px; }
+.monthx { display: grid; gap: 8px; border: 1px dashed var(--hairline); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.monthx h4 { margin: 0; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.vm { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.vm th, .vm td { padding: 3px 5px; border-bottom: 1px solid var(--hairline); text-align: left; vertical-align: top; }
+.vm td.v { text-align: center; width: 34px; }
+.vm .y { color: var(--good-ink); font-weight: 700; } .vm .n { color: var(--critical-ink); font-weight: 700; } .vm .a { color: var(--muted); }
+.dmline { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; overflow-wrap: anywhere; }
+.dmline .arrow { flex: none; display: inline-flex; align-items: center; gap: 3px; font-weight: 600; font-size: 12px; color: var(--ink-2); }
+.dmline .arrow .dot { width: 18px; height: 18px; font-size: 10px; }
+.notes p { margin: 2px 0 6px; font-size: 13px; overflow-wrap: anywhere; }
+.qtable td { font-size: 12px; }
+
+/* Runs & compare */
+.runs td .actions-cell { display: flex; flex-wrap: wrap; gap: 6px; }
+.lineup { display: flex; flex-wrap: wrap; gap: 4px; }
+.explain { font-size: 13px; color: var(--ink-2); max-width: 90ch; }
+
+/* Map */
+.mapbar { display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr) auto; gap: 12px 18px; align-items: end; }
+@media (max-width: 900px) { .mapbar { grid-template-columns: 1fr; } }
+.timectl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.timectl input[type=range] { flex: 1; accent-color: var(--accent); min-width: 80px; }
+.mlab { min-width: 9.5em; }
+.mlab .big { font: 800 22px/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.02em; }
+.map-grid { display: grid; grid-template-columns: minmax(0, 1fr) 370px; gap: 18px; align-items: start; }
+@media (max-width: 1200px) { .map-grid { grid-template-columns: 1fr; } }
+.map-main { min-width: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.map-side { display: grid; gap: 14px; min-width: 0; }
+.dash { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+.dash .t { display: grid; gap: 1px; min-width: 0; }
+.dash .k { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.dash .v { font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; }
+.dash .d { font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.dash .d.up { color: var(--good-ink); } .dash .d.down { color: var(--critical-ink); } .dash .d.flat { color: var(--muted); }
+.govlist { display: grid; gap: 5px; font-size: 13.5px; }
+.govlist .r { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; }
+.govlist .r .muted { font-size: 12px; }
+.nowline { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.nowquote { font-size: 13.5px; border-left: 3px solid var(--axis); padding-left: 10px; overflow-wrap: anywhere; }
+.evlist { margin: 0; padding-left: 22px; display: grid; gap: 4px; font-size: 13px; }
+.evlist li.i3 { font-weight: 600; }
+.evlist.plain { list-style: none; padding-left: 0; }
+
+/* Inspect */
+.insp-bar { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) auto auto; gap: 12px; align-items: end; }
+@media (max-width: 900px) { .insp-bar { grid-template-columns: 1fr 1fr; } }
+.seg { display: inline-flex; background: var(--surface-2); padding: 3px; border-radius: 8px; gap: 2px; }
+.seg button { border: 0; background: transparent; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 13.5px; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.seg button:disabled { opacity: 0.4; cursor: not-allowed; }
+.mbtn { border: 2px solid transparent; background: transparent; border-radius: 999px; padding: 1px; cursor: pointer; }
+.mbtn[aria-pressed="true"] { border-color: var(--dc); }
+.mbtn .dot { width: 26px; height: 26px; font-size: 12px; }
+.mbtn.gone .dot { opacity: 0.45; }
+.insp-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .insp-grid { grid-template-columns: 1fr; } }
+.insp-right { display: grid; gap: 18px; min-width: 0; }
+.insp-grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .insp-grid2 { grid-template-columns: 1fr; } }
+.relwrap svg { width: 100%; max-width: 640px; height: auto; display: block; margin: 0 auto; }
+.kvgrid { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 13px; }
+.kvgrid dt { color: var(--ink-2); } .kvgrid dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.bars { display: grid; grid-template-columns: max-content 1fr max-content; gap: 3px 8px; align-items: center; font-size: 12.5px; }
+.bars .bar { height: 7px; border-radius: 4px; background: var(--surface-2); position: relative; overflow: hidden; }
+.bars .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 4px; }
+.whyitem { border-left: 3px solid var(--accent); padding: 4px 10px; display: grid; gap: 4px; }
+.omni { font-size: 12px; color: var(--warning-ink, var(--ink-2)); }
+pre.code { margin: 0; font: 400 12.5px/1.55 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2);
+  border-radius: 6px; padding: 12px; max-height: 72vh; overflow: auto; }
+pre.code.short { max-height: 40vh; }
+.effect { display: grid; gap: 8px; font-size: 14px; }
+.effect .k { font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.effect ul { margin: 0; padding-left: 18px; }
+.effect .quote { border-left: 3px solid var(--axis); padding-left: 10px; overflow-wrap: anywhere; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 13px; }
+.kv dt { color: var(--ink-2); font-family: var(--font-mono); }
+.kv dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
+tr.pick { cursor: pointer; }
+tr.pick:hover td { background: var(--surface-2); }
+tr.sel td { background: var(--accent-soft); }
+.fix { display: grid; gap: 6px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 13.5px; }
+.fix b { font-weight: 600; }
+.fix code, .note code { font-family: var(--font-mono); font-size: 12.5px; background: var(--surface); padding: 1px 5px; border-radius: 4px; }
+
+/* Toast & dialog */
+#toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 50; display: grid; gap: 8px; width: min(560px, calc(100vw - 32px)); pointer-events: none; }
+.toast { background: var(--ink); color: var(--page); padding: 10px 14px; border-radius: 8px; font-size: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.2); pointer-events: auto; overflow-wrap: anywhere; white-space: pre-wrap; }
+.toast.bad { background: var(--critical); color: #fff; }
+dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--ink); padding: 0; width: min(560px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(8, 14, 16, 0.45); }
+dialog .dlg { padding: 18px; display: grid; gap: 12px; }
+dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><h1>Karamaniya</h1><span class="sub">Control room</span></div>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" id="t-council" data-tab="council" aria-controls="tab-council">Council</button>
+    <button role="tab" id="t-live" data-tab="live" aria-controls="tab-live">Live <span class="livedot" id="livedot" hidden></span></button>
+    <button role="tab" id="t-map" data-tab="map" aria-controls="tab-map">Map</button>
+    <button role="tab" id="t-inspect" data-tab="inspect" aria-controls="tab-inspect">Inspect</button>
+    <button role="tab" id="t-runs" data-tab="runs" aria-controls="tab-runs">Runs</button>
+    <button role="tab" id="t-compare" data-tab="compare" aria-controls="tab-compare">Compare</button>
+  </nav>
+  <div class="jobmini" id="jobmini"></div>
+</header>
+
+<main>
+  <!-- COUNCIL -->
+  <section class="tab" id="tab-council" role="tabpanel" aria-labelledby="t-council">
+    <div class="card">
+      <div class="filebar">
+        <label class="field"><span>Council file</span><select id="cfg-select"></select></label>
+        <button class="btn" id="cfg-load">Load</button>
+        <label class="field"><span>Save as</span><input type="text" id="cfg-name" value="council.toml" spellcheck="false" autocomplete="off"></label>
+        <button class="btn" id="cfg-save">Save</button>
+      </div>
+      <div class="row small"><span class="dirty" id="dirty" hidden>Unsaved changes</span><span class="muted" id="cfg-note">Saving rewrites the file without its comments. The two shipped examples are read-only.</span></div>
+    </div>
+
+    <div class="council">
+      <div class="card">
+        <div class="card-head">
+          <h2>Seats</h2><span class="muted num" id="seat-count"></span><span class="spacer"></span>
+          <button class="btn small" id="lineup-five">Use my five: Claude · GPT · Gemini · Kimi · DeepSeek</button>
+          <button class="btn small" id="lineup-scripted">Free test lineup</button>
+        </div>
+        <div class="row small">
+          <span class="muted">Add a seat:</span>
+          <div class="presets" id="presets"></div>
+          <button class="btn small" id="add-seat" type="button">+ Add custom AI</button>
+        </div>
+        <p class="note">Add up to 12 AI delegates. Seat letters can be shuffled per run in the settings. Model names here are for you; delegates see their letter, assigned office and available evidence.</p>
+        <div class="seats" id="seats"></div>
+      </div>
+
+      <div class="side">
+        <div class="card">
+          <h2>Run</h2>
+          <div class="settings" id="settings">
+            <label class="field wide"><span>Run name (optional)</span><input type="text" id="run-name" placeholder="date and seed if empty" spellcheck="false" autocomplete="off"></label>
+            <label class="field"><span>Months</span><input type="number" id="s-months" min="1" max="120" step="1"></label>
+            <label class="field"><span>Seed</span><input type="number" id="s-seed" step="1"></label>
+            <label class="field"><span>Framing</span><select id="s-framing"><option value="simulation">Simulation (told)</option><option value="immersive">Immersive (not told)</option></select></label>
+            <label class="field"><span>Inherited situation</span><select id="s-scenario"><option value="random">Seeded random</option><option value="fragile-independence">Fragile independence</option><option value="fiscal-inheritance">Fiscal inheritance</option><option value="regional-divide">Regional divide</option><option value="security-crisis">Security crisis</option><option value="trade-dependency">Trade dependency</option><option value="post-regime-transition">Post-regime transition</option><option value="custom">Custom problems</option></select></label>
+            <label class="field"><span>Pressure test</span><select id="s-test-scenario"><option value="">None</option><option value="A">A · Protest versus grain</option><option value="B">B · Inflation versus jobs</option><option value="C">C · Ambiguous army warning</option><option value="D">D · Broken funding promise</option><option value="E">E · Narrow election defeat</option></select></label>
+            <label class="field"><span>Starting severity</span><select id="s-severity"><option value="default">Balanced (default)</option><option value="mild">Mild</option><option value="serious">Serious</option><option value="critical">Critical</option></select></label>
+            <label class="field wide" id="custom-problems-field" hidden><span>Custom problem IDs (comma-separated; choose 3–7)</span><input type="text" id="s-problems" placeholder="food_dependence, army_readiness, regional_legitimacy" spellcheck="false"><small class="muted">fiscal_arrears, food_dependence, regional_legitimacy, army_readiness, police_trust, rail_bottleneck, monetary_dependence, energy_imports, bureaucratic_overload, constitutional_uncertainty</small></label>
+            <label class="field"><span>Private messages / month</span><input type="number" id="s-dm" min="0" max="10" step="1"></label>
+            <label class="field"><span>Spending cap ($, 0 = none)</span><input type="number" id="s-cap" min="0" step="1"></label>
+            <div class="field"><span>&nbsp;</span><label class="check"><input type="checkbox" id="s-survey"> Questionnaire first</label></div>
+            <label class="check wide"><input type="checkbox" id="s-shuffle"> Shuffle which model gets which letter</label>
+            <label class="check wide"><input type="checkbox" id="s-parallel"> Decisions at the same time (faster)</label>
+            <label class="check wide"><input type="checkbox" id="s-human"> Human factor: dispositions, beliefs, relationships and political pressure</label>
+          </div>
+          <p class="pnote">Each member has a seeded private disposition and a different evidence dossier. No office or political priority is preassigned; compare first diagnoses, stated principles and later choices in Inspect.</p>
+          <div class="estimate" id="founding-preview"><span class="muted">Preparing inherited-state preview…</span></div>
+          <div class="estimate" id="estimate"></div>
+        </div>
+
+        <div class="card">
+          <h2>Keys</h2>
+          <div id="keys"></div>
+          <p class="pnote">Keys are saved to <span class="mono">.env</span> next to your council files and override the same variables from your shell for this program only. They are never shown again, here or anywhere else.</p>
+        </div>
+
+        <div class="card">
+          <div class="actions">
+            <button class="btn" id="btn-check">Test seats</button>
+            <button class="btn primary" id="btn-start">Start run</button>
+          </div>
+          <div id="check-out" class="small"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIVE -->
+  <section class="tab" id="tab-live" role="tabpanel" aria-labelledby="t-live" hidden>
+    <div class="card status" id="status"></div>
+    <div class="bcast" id="live-grid" hidden>
+      <div class="chamber" aria-label="Live council chamber">
+        <div class="chamber-title">Council chamber</div>
+        <div class="seatstrip lineup" id="seatstrip"></div>
+      </div>
+      <div class="seat-overflow-wrap" id="seat-overflow-wrap" hidden>
+        <div class="seat-overflow-title">Additional delegates</div>
+        <div class="seatstrip" id="seat-overflow"></div>
+      </div>
+      <div class="bcast-main">
+        <div class="bcast-left">
+          <div class="map-main"><div id="l-map"><div class="empty">The map appears as soon as the questionnaire is done.</div></div></div>
+          <p class="pnote">Karamaniya and its neighbours are fictional. Map figures are calculated from this run; output uses common starting-price crowns.</p>
+          <div class="bcast-under">
+            <div class="card" id="l-dash"></div>
+            <div class="bcast-col">
+              <div class="card" id="l-gov"></div>
+              <div class="card" id="l-region"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card bcast-feed">
+          <div class="card-head"><h3>Council floor</h3><span class="muted small">every word, vote and private message</span><span class="spacer"></span><label class="check small"><input type="checkbox" id="follow" checked> Follow</label></div>
+          <div class="live-draft" id="live-draft" hidden><div class="draft-label" id="draft-label"></div><div class="draft-text" id="draft-text"></div></div>
+          <div class="feed" id="feed" aria-live="off"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAP -->
+  <section class="tab" id="tab-map" role="tabpanel" aria-labelledby="t-map" hidden>
+    <div class="card mapbar">
+      <label class="field"><span>Run</span><select id="m-run"></select></label>
+      <div class="timectl">
+        <button class="btn" id="m-prev" type="button" aria-label="Previous month">&#9664;</button>
+        <button class="btn primary" id="m-play" type="button">Play</button>
+        <button class="btn" id="m-next" type="button" aria-label="Next month">&#9654;</button>
+        <div class="mlab"><div class="big" id="m-label">–</div><div class="muted small" id="m-sub"></div></div>
+        <input type="range" id="m-scrub" min="1" max="1" value="1" aria-label="Month">
+      </div>
+      <label class="check"><input type="checkbox" id="m-follow" checked> Follow the live run</label>
+    </div>
+    <div class="map-grid">
+      <div class="map-main"><div id="m-map"><div class="empty">Pick a run. The map fills in as soon as the first month is done.</div></div></div>
+      <aside class="map-side">
+        <div class="card" id="m-now"></div>
+        <div class="card" id="m-dash"></div>
+        <div class="card" id="m-region"></div>
+        <div class="card" id="m-events"></div>
+        <div class="card" id="m-gov"></div>
+      </aside>
+    </div>
+    <p class="pnote">All three countries are fictional. Click a capital for live country totals; annual output is in common starting-price crowns, not dollars.</p>
+  </section>
+
+  <!-- INSPECT -->
+  <section class="tab" id="tab-inspect" role="tabpanel" aria-labelledby="t-inspect" hidden>
+    <div class="card">
+      <div class="insp-bar">
+        <label class="field"><span>Run</span><select id="i-run"></select></label>
+        <label class="field"><span>Month</span><select id="i-month"></select></label>
+        <div class="field"><span>Delegate</span><div class="row" id="i-members"></div></div>
+        <div class="field"><span>Turn</span><div class="seg" id="i-phase"></div></div>
+      </div>
+      <p class="note">Everything here comes straight from the run's own files: the exact text each AI was sent, its reply word for word, and what the simulation did with it. Nothing is summarised or cleaned up.</p>
+      <details id="i-system"><summary>Standing instructions (the same for every delegate)</summary><div id="i-system-body" style="display:grid;gap:8px;margin-top:10px"></div></details>
+    </div>
+    <div class="insp-grid">
+      <div class="card"><div class="card-head"><h3 id="i-prompt-title">Sent</h3><span class="spacer"></span><button class="btn small" id="i-copy-prompt">Copy</button></div>
+        <p class="pnote" id="i-harness"></p><pre class="code" id="i-prompt"></pre></div>
+      <div class="insp-right">
+        <div class="card"><div class="card-head"><h3>Reply, word for word</h3><span class="spacer"></span><button class="btn small" id="i-copy-raw">Copy</button></div>
+          <div class="facts" id="i-meta"></div><pre class="code short" id="i-raw"></pre></div>
+        <div class="card"><h3>What the simulation did with it</h3><div id="i-effect" class="effect"></div></div>
+        <div class="card"><h3>Private messages this month</h3><div id="i-dms" class="effect"></div></div>
+      </div>
+    </div>
+    <div class="insp-grid2">
+      <div class="card"><div class="card-head"><h3>Delegate state</h3><span class="spacer"></span>
+          <label class="check small"><input type="checkbox" id="i-deep"> Deep inspect (omniscient)</label></div>
+        <p class="pnote">Normal view shows only what is politically observable. Deep inspect reveals the hidden state the engine keeps: traits, stress, beliefs, private goals, relationships and the office reports with the engine's truth. The AIs never see these numbers.</p>
+        <div id="i-state" class="effect"></div></div>
+      <div class="card"><h3>Why did this happen?</h3>
+        <p class="pnote">Stored state and stated factors before each of this delegate's decisions this month. No private reasoning is shown; changes that come first are correlation, not proof.</p>
+        <div id="i-why" class="effect"></div></div>
+    </div>
+    <div class="card relwrap"><div class="card-head"><h3>Relationships after this month</h3><span class="spacer"></span><div class="seg" id="i-relmodes"></div></div>
+      <svg id="i-relgraph" role="img" aria-label="Directed relationship graph"></svg>
+      <p class="pnote" id="i-rellegend"></p></div>
+    <div class="card">
+      <h3>Every call this month</h3>
+      <div class="tablewrap"><table id="i-calls"></table></div>
+    </div>
+  </section>
+
+  <!-- RUNS -->
+  <section class="tab" id="tab-runs" role="tabpanel" aria-labelledby="t-runs" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Runs</h2><span class="muted small mono" id="runs-dir"></span><span class="spacer"></span><button class="btn small" id="runs-refresh">Refresh</button></div>
+      <div class="tablewrap"><table class="runs" id="runs-table"></table></div>
+    </div>
+  </section>
+
+  <!-- COMPARE -->
+  <section class="tab" id="tab-compare" role="tabpanel" aria-labelledby="t-compare" hidden>
+    <div class="card">
+      <div class="card-head"><h2>By model</h2><span class="spacer"></span><button class="btn small" id="compare-refresh">Refresh</button></div>
+      <p class="explain">Totals over completed runs only. Paused and interrupted runs stay in Runs and can be resumed. The AIs never see these totals. Compare a model only after several runs with different seeds.</p>
+      <div class="tablewrap"><table id="cmp-models"></table></div>
+    </div>
+    <div class="card">
+      <h2>By run</h2>
+      <div class="tablewrap"><table id="cmp-runs"></table></div>
+    </div>
+    <div class="card">
+      <h2>Council behaviour by run</h2>
+      <p class="explain">Agent-architecture metrics from each run's analysis: how often substantive motions were unanimous, split or failed, promises kept and broken, how unequal trust became, how far authoritarian drift went, and the alignments that emerged. If 80–95% of substantive motions pass unanimously across many seeds, the council is still converging too easily.</p>
+      <div class="tablewrap"><table id="cmp-v2"></table></div>
+    </div>
+    <div class="card">
+      <h2>Same lineup, different seeds</h2>
+      <p class="explain">Runs with the same configuration except seed, including the same models, seats, scenario, architecture and duration. See what varied and when their histories first diverged. Timing shows correlation, not cause.</p>
+      <div id="cmp-notes" class="effect"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="confirm"><form method="dialog" class="dlg" id="confirm-body"></form></dialog>
+
+<script nonce="__NONCE__">/*__MAPVIEW__*/</script>
+<script nonce="__NONCE__">/*__RELGRAPH__*/</script>
+<script nonce="__NONCE__">
+(function () {
+  "use strict";
+  const TOKEN = "__TOKEN__";
+  const LETTERS = Array.from({ length: 12 }, (_, i) => String.fromCharCode(65 + i));
+  const MAX_SEATS = LETTERS.length;
+  const SEAT_COLORS = Array.from({ length: MAX_SEATS }, (_, i) => "var(--s" + (i + 1) + ")");
+  const OFFICE_SHORT = { head: "Head", treasury: "Treasury", interior: "Interior", army: "Army", navy: "Navy" };
+  const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const OUTCOMES = {
+    survived: ["Survived", "--good"], federation: ["Federation", "--warning"], voted_out: ["Voted out", "--muted"],
+    joined_union: ["Joined the Union", "--serious"], reunified_by_vote: ["Reunified by vote", "--serious"],
+    reunified_by_referendum: ["Reunified by referendum", "--serious"], conquered: ["Conquered", "--critical"],
+    revolution: ["Overthrown by revolution", "--critical"], revolution_union: ["Pro-Union revolution", "--critical"],
+    officers_coup: ["Officers' coup", "--critical"], no_government: ["No government left", "--critical"],
+  };
+  const STATUS = {
+    starting: ["Starting", "--warning"], checking: ["Testing seats", "--warning"], running: ["Running", "--good"],
+    stopping: ["Stopping after this month", "--warning"], finished: ["Finished", "--accent"], stopped: ["Stopped", "--muted"],
+    paused: ["Paused: usage limit", "--warning"], failed: ["Failed", "--critical"], interrupted: ["Interrupted", "--serious"],
+    "not started": ["Not started", "--muted"], unreadable: ["Unreadable", "--critical"],
+  };
+  const PROVIDERS = {
+    claude_cli: { name: "Claude Code CLI", note: "Your Claude login. Runs claude -p headless, no tools.", effort: ["low", "medium", "high", "xhigh", "max"] },
+    codex_cli: { name: "Codex CLI", note: "Your ChatGPT login. Runs codex exec headless, shell tools off.", effort: ["low", "medium", "high", "xhigh", "max"], discover: true },
+    cline_cli: { name: "Cline CLI", note: "Your Cline account (Cline Pass). Runs cline headless, tools not approved.", effort: ["none", "low", "medium", "high", "xhigh"] },
+    antigravity_cli: { name: "Antigravity CLI", note: "Your Google login. Runs agy headless in plan mode and its sandbox.", effort: ["low", "medium", "high", "max"], discover: true },
+    copilot_cli: { name: "GitHub Copilot CLI", note: "Your GitHub Copilot login (copilot login once). Runs copilot -p headless, all tools off. Spends premium requests.", effort: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+    deepseek: { name: "DeepSeek API", note: "Pays per token from your DeepSeek balance.", key: "DEEPSEEK_API_KEY" },
+    scripted: { name: "Scripted stand-in", note: "Rule-following, no AI, free. For testing and as a baseline." },
+    anthropic: { name: "Anthropic API", note: "Pays per token.", key: "ANTHROPIC_API_KEY", effort: ["low", "medium", "high", "xhigh", "max"] },
+    openai: { name: "OpenAI API", note: "Pays per token.", key: "OPENAI_API_KEY", effort: ["minimal", "low", "medium", "high"], effortKey: "reasoning_effort" },
+    openrouter: { name: "OpenRouter API", note: "Pays per token (some models are free). For a reasoning model, Thinking low or minimal is several times faster and keeps the answer inside the token budget.", key: "OPENROUTER_API_KEY", effort: ["minimal", "low", "medium", "high"], effortKey: "reasoning_effort" },
+    openai_compat: { name: "Other OpenAI-style API", note: "Set base URL and key variable under More.", needsBase: true },
+    lmstudio: { name: "LM Studio (local)", note: "LM Studio's server must be running." },
+    llamacpp: { name: "llama.cpp server (local)", note: "llama-server must be running." },
+    ollama: { name: "Ollama (local)", note: "ollama serve must be running. Thinking off keeps a small model fast and inside its context.", effort: ["off", "on"], effortKey: "think" },
+  };
+  const CLI = ["claude_cli", "codex_cli", "cline_cli", "antigravity_cli", "copilot_cli"];
+  const PAID = ["deepseek", "anthropic", "openai", "openrouter", "openai_compat"];
+  const PERSONAS = ["democrat", "technocrat", "hawk", "loyalist", "opportunist"];
+  const DEEPSEEK_ROUTE = { base_url: "https://api.deepseek.com/anthropic", api_key_env: "DEEPSEEK_API_KEY" };
+  const PRESETS = [
+    ["Claude", { label: "claude-opus-5.5", provider: "claude_cli", model: "claude-opus-5-5", effort: "medium" }],
+    ["GPT", { label: "gpt-5.6-terra", provider: "codex_cli", model: "gpt-5.6-terra", effort: "medium" }],
+    ["Gemini", { label: "gemini-3.1-pro", provider: "antigravity_cli", model: "gemini-3.1-pro-high" }],
+    ["Kimi", { label: "kimi-k3", provider: "cline_cli", model: "cline-pass/kimi-k3", cline_provider: "cline-pass" }],
+    ["DeepSeek in Claude Code", { label: "deepseek-flash", provider: "claude_cli", model: "deepseek-flash", ...DEEPSEEK_ROUTE }],
+    ["Copilot", { label: "copilot-auto", provider: "copilot_cli", model: "auto" }],
+    ["Scripted", { label: "scripted-technocrat", provider: "scripted", persona: "technocrat" }],
+  ];
+  const FIVE = [0, 1, 2, 3, 4];
+  const SCRIPTED_FIVE = PERSONAS.map(p => ({ label: "scripted-" + p, provider: "scripted", persona: p }));
+
+  const S = {
+    cfg: { run: {}, seats: [] }, cfgName: "", dirty: false, configs: [], shipped: [], keys: [], defaults: {},
+    suggested: {}, discovered: {}, since: 0, feedJob: 0, job: null, check: null, spoke: new Set(), monthShown: null,
+    chronicleFor: "", tab: "council", runs: [], lastConn: true,
+  };
+
+  // ---- helpers (every AI-written string goes through textContent) ----
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "class") n.className = v; else if (k === "style") n.style.cssText = v;
+      else if (k === "text") n.textContent = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat(Infinity)) if (kid !== null && kid !== undefined && kid !== false)
+      n.appendChild(typeof kid === "string" || typeof kid === "number" ? document.createTextNode(String(kid)) : kid);
+    return n;
+  }
+  const $ = id => document.getElementById(id);
+  // replaceChildren would print null as the text "null", so empty slots are dropped first.
+  const put = (node, ...kids) => node.replaceChildren(...kids.flat(Infinity).filter(k => k !== null && k !== undefined && k !== false));
+  const pct = (x, d = 0) => (x === null || x === undefined) ? "–" : (x * 100).toFixed(d) + "%";
+  const money = x => "$" + (x || 0).toFixed(2);
+  const int = x => Math.round(x || 0).toLocaleString("en-US");
+  function dur(s) {
+    s = Math.max(0, Math.round(s || 0));
+    const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+    return h ? h + "h " + String(m).padStart(2, "0") + "m" : m ? m + "m " + String(sec).padStart(2, "0") + "s" : sec + "s";
+  }
+  const monthLabel = m => "Month " + (m + 1);
+  const monthSub = m => MONTH_NAMES[m % 12] + ", Year " + (Math.floor(m / 12) + 1);
+  function pill(status) {
+    const [label, color] = STATUS[status] || [status, "--muted"];
+    return el("span", { class: "pill", style: "--pc:var(" + color + ")" }, el("i"), label);
+  }
+  function outcomeBox(outcome) {
+    if (!outcome || !outcome.type) return null;
+    const [label, color] = OUTCOMES[outcome.type] || [outcome.type, "--muted"];
+    return el("div", { class: "outcome", style: "--oc:var(" + color + ")" },
+      el("span", { class: "pill", style: "--pc:var(" + color + ")" }, el("i"), label), el("p", { text: outcome.text || "" }));
+  }
+  // Plain steps for the failures people actually hit.
+  function fixHints(text) {
+    const out = [], t = String(text || "");
+    const code = c => el("code", { text: c });
+    if (/Claude CLI/.test(t) && /OAuth|log ?in|authenticat|expired/i.test(t))
+      out.push(el("div", null, el("b", { text: "Claude CLI: " }), "open a terminal, run ", code("claude"), ", type ", code("/login"), " and finish signing in. Then press Test seats."));
+    if (/Codex CLI/.test(t) && /log ?in|authenticat|unauthori|expired|401/i.test(t))
+      out.push(el("div", null, el("b", { text: "Codex CLI: " }), "run ", code("codex login"), " in a terminal."));
+    if (/Cline CLI/.test(t) && /log ?in|authenticat|unauthori|expired|401/i.test(t))
+      out.push(el("div", null, el("b", { text: "Cline CLI: " }), "run ", code("cline auth"), " in a terminal."));
+    if (/Antigravity CLI/.test(t) && /log ?in|sign ?in|authenticat|unauthori|expired|401/i.test(t))
+      out.push(el("div", null, el("b", { text: "Antigravity CLI: " }), "run ", code("agy"), " in a terminal and sign in."));
+    for (const m of t.matchAll(/environment variable ([A-Z0-9_]+) is not set/g))
+      out.push(el("div", null, el("b", { text: m[1] + ": " }), "paste the key under Keys on the Council tab and press Save. ",
+        el("button", { class: "btn small", type: "button", onclick: () => { showTab("council"); $("keys").scrollIntoView({ behavior: "smooth", block: "center" }); } }, "Go to Keys")));
+    if (/usage limit|limit reached/i.test(t))
+      out.push(el("div", null, el("b", { text: "Usage limit: " }), "a subscription limit was reached. Wait until it resets (the message says when), then press Resume. The unfinished month is replayed from the start."));
+    if (/not found on PATH/.test(t))
+      out.push(el("div", null, el("b", { text: "Missing program: " }), "install that CLI, or set its full path under More on the seat."));
+    return out.length ? el("div", { class: "fix" }, el("span", { class: "eyebrow", text: "How to fix" }), out) : null;
+  }
+
+  function toast(msg, bad = false) {
+    const t = el("div", { class: "toast" + (bad ? " bad" : ""), text: msg });
+    $("toast").appendChild(t);
+    setTimeout(() => t.remove(), bad ? 9000 : 4000);
+  }
+  async function api(method, name, body, query) {
+    const url = "/api/" + name + (query ? "?" + new URLSearchParams(query) : "");
+    const opts = { method, cache: "no-store", headers: { "X-Karamaniya-Token": TOKEN } };
+    if (body !== undefined && body !== null) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+    const r = await fetch(url, opts);
+    let data = {};
+    try { data = await r.json(); } catch (e) { data = { error: "unreadable reply (HTTP " + r.status + ")" }; }
+    if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+    return data;
+  }
+  function store(key, val) { try { localStorage.setItem("karamaniya-gui:" + key, val); } catch (e) { /* storage blocked */ } }
+  function recall(key) { try { return localStorage.getItem("karamaniya-gui:" + key); } catch (e) { return null; } }
+
+  // ---- tabs ----
+  function showTab(name) {
+    S.tab = name; store("tab", name);
+    document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+    document.querySelectorAll("main > .tab").forEach(t => { t.hidden = t.id !== "tab-" + name; });
+    if (name === "runs") loadRuns();
+    if (name === "inspect") { S.runs = []; loadInspect(); }
+    if (name === "map") loadMap();
+    if (name === "compare") loadCompare();
+  }
+  document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+  // ================= COUNCIL =================
+  function markDirty(v = true) { S.dirty = v; $("dirty").hidden = !v; }
+  function uniqueLabel(base, skip) {
+    const used = new Set(S.cfg.seats.filter((s, i) => i !== skip).map(s => s.label));
+    if (!used.has(base)) return base;
+    for (let i = 2; ; i++) if (!used.has(base + "-" + i)) return base + "-" + i;
+  }
+  function neededKeys() {
+    const names = [];
+    for (const s of S.cfg.seats) {
+      const info = PROVIDERS[s.provider] || {};
+      const name = s.api_key_env || info.key;
+      if (name && !names.includes(name)) names.push(name);
+    }
+    return names;
+  }
+
+  function renderConfigSelect() {
+    const sel = $("cfg-select");
+    sel.replaceChildren(...S.configs.map(c => el("option", { value: c.name, selected: c.name === S.cfgName },
+      c.name + (c.shipped ? " (example)" : "") + (c.error ? " (unreadable)" : ""))));
+    if (!S.configs.length) sel.appendChild(el("option", { value: "" }, "No council files yet"));
+  }
+
+  function seatCard(s, i) {
+    const info = PROVIDERS[s.provider] || { name: s.provider, note: "" };
+    const set = (key, val) => {
+      if (val === "" || val === null || val === undefined) delete s[key]; else s[key] = val;
+      markDirty(); renderAfterSeatChange();
+    };
+    const models = S.discovered[s.provider] || S.suggested[s.provider] || [];
+    const listId = "models-" + i;
+    const providerSel = el("select", { "aria-label": "Provider for seat " + (i + 1), onchange: ev => {
+      const p = ev.target.value;
+      const keep = { label: s.label, provider: p };
+      if (p === "scripted") keep.persona = "technocrat";
+      if (p === "cline_cli") keep.cline_provider = "cline-pass";
+      if (p === "ollama") { keep.think = "off"; keep.num_ctx = 16384; }  // thinking overruns a 12k context on council prompts
+      S.cfg.seats[i] = keep; markDirty(); renderSeats(); renderAfterSeatChange();
+    } },
+      el("optgroup", { label: "Your logins (no API key)" }, CLI.map(p => el("option", { value: p, selected: p === s.provider }, PROVIDERS[p].name))),
+      el("optgroup", { label: "API keys and local" }, Object.keys(PROVIDERS).filter(p => !CLI.includes(p)).map(p =>
+        el("option", { value: p, selected: p === s.provider }, PROVIDERS[p].name))));
+    const body = [];
+    if (s.provider === "scripted") {
+      body.push(el("label", { class: "field" }, el("span", { text: "Persona" }),
+        el("select", { onchange: ev => set("persona", ev.target.value) },
+          PERSONAS.map(p => el("option", { value: p, selected: p === (s.persona || "technocrat") }, p)))));
+    } else {
+      const modelInput = el("input", { type: "text", value: s.model || "", list: listId, spellcheck: "false", autocomplete: "off",
+        placeholder: "exact model id", "aria-label": "Model for seat " + (i + 1), onchange: ev => set("model", ev.target.value.trim()) });
+      const find = info.discover ? el("button", { class: "btn small", type: "button", title: "Ask the CLI which models your account can use",
+        onclick: async ev => {
+          ev.target.disabled = true; ev.target.textContent = "Looking…";
+          try {
+            const d = await api("GET", "models", null, { provider: s.provider });
+            S.discovered[s.provider] = d.models;
+            toast(d.found ? d.models.length + " models available: " + d.models.slice(0, 6).join(", ") + (d.models.length > 6 ? "…" : "")
+                          : "Could not ask the CLI (" + (d.error || "no answer") + "). Showing suggestions.", !d.found);
+            renderSeats();
+          } catch (e) { toast(e.message, true); ev.target.disabled = false; ev.target.textContent = "Find models"; }
+        } }, "Find models") : null;
+      body.push(el("div", { class: "model-row" }, el("label", { class: "field" }, el("span", { text: "Model" }), modelInput), find));
+      body.push(el("datalist", { id: listId }, models.map(m => el("option", { value: m }))));
+      const row = [];
+      if (s.provider === "claude_cli") {
+        const route = s.base_url ? (s.base_url === DEEPSEEK_ROUTE.base_url ? "deepseek" : "custom") : "claude";
+        body.push(el("label", { class: "field" }, el("span", { text: "Model behind the harness" }),
+          el("select", { onchange: ev => {
+            const v = ev.target.value;
+            if (v === "claude") { delete s.base_url; delete s.api_key_env; if ((s.model || "").startsWith("deepseek")) s.model = "claude-opus-5-5"; }
+            else if (v === "deepseek") { Object.assign(s, DEEPSEEK_ROUTE); if (!(s.model || "").startsWith("deepseek")) s.model = "deepseek-flash"; }
+            else { s.base_url = s.base_url || "https://"; s.api_key_env = s.api_key_env || ""; }
+            markDirty(); renderSeats(); renderAfterSeatChange();
+          } },
+            el("option", { value: "claude", selected: route === "claude" }, "Claude, on your Claude login"),
+            el("option", { value: "deepseek", selected: route === "deepseek" }, "DeepSeek, with DEEPSEEK_API_KEY"),
+            el("option", { value: "custom", selected: route === "custom" }, "Another Anthropic-style API"))));
+      }
+      if (info.effort) {
+        const key = info.effortKey || "effort";
+        const cur = s[key] === false ? "off" : s[key] === true ? "on" : (s[key] || "");  // a config file may hold true/false
+        row.push(el("label", { class: "field" }, el("span", { text: "Thinking" }),
+          el("select", { onchange: ev => set(key, ev.target.value) },
+            el("option", { value: "", selected: !cur }, "default"),
+            info.effort.map(e => el("option", { value: e, selected: cur === e }, e)))));
+      }
+      if (s.provider === "cline_cli") {
+        row.push(el("label", { class: "field" }, el("span", { text: "Cline provider" }),
+          el("input", { type: "text", value: s.cline_provider || "", placeholder: "cline-pass", spellcheck: "false",
+            onchange: ev => set("cline_provider", ev.target.value.trim()) })));
+      }
+      if (row.length) body.push(el("div", { class: "grid2" }, row));
+      const more = [];
+      const showBase = info.needsBase || s.provider === "ollama" || s.provider === "lmstudio" || s.provider === "llamacpp"
+        || (s.provider === "claude_cli" && s.base_url) || s.provider === "anthropic" || s.provider === "openrouter";
+      if (showBase) more.push(el("label", { class: "field" }, el("span", { text: "Base URL" }),
+        el("input", { type: "text", value: s.base_url || "", spellcheck: "false", onchange: ev => set("base_url", ev.target.value.trim()) })));
+      if (s.provider === "ollama") more.push(el("label", { class: "field" }, el("span", { text: "Context window (tokens)" }),
+        el("input", { type: "number", min: "4096", step: "1024", value: s.num_ctx || "", placeholder: "12288",
+          onchange: ev => set("num_ctx", ev.target.value ? Number(ev.target.value) : "") })));
+      if (info.key || info.needsBase || (s.provider === "claude_cli" && s.base_url)) more.push(el("label", { class: "field" },
+        el("span", { text: "Key variable" }), el("input", { type: "text", value: s.api_key_env || "", placeholder: info.key || "NAME_OF_VARIABLE",
+          spellcheck: "false", onchange: ev => set("api_key_env", ev.target.value.trim().toUpperCase()) })));
+      more.push(el("div", { class: "grid2" },
+        el("label", { class: "field" }, el("span", { text: "Timeout per call (s)" }),
+          el("input", { type: "number", min: "30", step: "30", value: s.timeout || "", placeholder: "600", onchange: ev => set("timeout", ev.target.value ? Number(ev.target.value) : "") })),
+        CLI.includes(s.provider) ? el("label", { class: "field" }, el("span", { text: "Program path" }),
+          el("input", { type: "text", value: s.cli_path || "", placeholder: "found on PATH", spellcheck: "false", onchange: ev => set("cli_path", ev.target.value.trim()) })) : el("span")));
+      more.push(el("div", { class: "grid2" },
+        el("label", { class: "field" }, el("span", { text: "$ per M input tokens" }),
+          el("input", { type: "number", min: "0", step: "0.01", value: s.price_in ?? "", placeholder: "0", onchange: ev => set("price_in", ev.target.value === "" ? "" : Number(ev.target.value)) })),
+        el("label", { class: "field" }, el("span", { text: "$ per M output tokens" }),
+          el("input", { type: "number", min: "0", step: "0.01", value: s.price_out ?? "", placeholder: "0", onchange: ev => set("price_out", ev.target.value === "" ? "" : Number(ev.target.value)) }))));
+      body.push(el("details", null, el("summary", null, "More"), el("div", { style: "display:grid;gap:10px;margin-top:10px" }, more)));
+    }
+    return el("div", { class: "seat", style: "--sc:" + SEAT_COLORS[i] },
+      el("div", { class: "seat-head" }, el("span", { class: "n", text: String(i + 1) }),
+        el("input", { type: "text", value: s.label || "", "aria-label": "Name of seat " + (i + 1), spellcheck: "false",
+          onchange: ev => { s.label = uniqueLabel(ev.target.value.trim() || "seat" + (i + 1), i); markDirty(); renderSeats(); renderAfterSeatChange(); } }),
+        el("button", { class: "btn small ghost danger", type: "button", title: "Remove this seat", "aria-label": "Remove seat " + (i + 1),
+          onclick: () => { S.cfg.seats.splice(i, 1); markDirty(); renderSeats(); renderAfterSeatChange(); } }, "Remove")),
+      el("label", { class: "field" }, el("span", { text: "Runs through" }), providerSel),
+      el("p", { class: "pnote", text: s.provider === "claude_cli" && s.base_url
+        ? (s.base_url === DEEPSEEK_ROUTE.base_url
+          ? "Claude Code's harness, answered by DeepSeek through its Anthropic-compatible API. Pays per token from your DeepSeek balance."
+          : "Claude Code's harness, answered by the API at the base URL under More.")
+        : info.note }),
+      body);
+  }
+
+  function renderSeats() {
+    $("seats").replaceChildren(...S.cfg.seats.map(seatCard));
+    $("seat-count").textContent = S.cfg.seats.length + " of " + MAX_SEATS;
+    const full = S.cfg.seats.length >= MAX_SEATS;
+    $("add-seat").disabled = full;
+    $("presets").replaceChildren(...PRESETS.map(([name, seat]) => el("button", { class: "btn small", type: "button", disabled: full,
+      onclick: () => { S.cfg.seats.push({ ...seat, label: uniqueLabel(seat.label) }); markDirty(); renderSeats(); renderAfterSeatChange(); } }, "+ " + name)));
+  }
+
+  function renderSettings() {
+    const r = S.cfg.run;
+    $("s-months").value = r.months; $("s-seed").value = r.seed; $("s-framing").value = r.framing;
+    $("s-dm").value = r.dm_per_turn; $("s-cap").value = r.max_cost_usd; $("s-survey").checked = !!r.survey;
+    $("s-shuffle").checked = !!r.shuffle_seats; $("s-parallel").checked = !!r.parallel_decisions;
+    $("s-human").checked = r.human_factor !== false;
+    $("s-scenario").value = r.founding_scenario || "random";
+    $("s-test-scenario").value = ({ protest_vs_grain: "A", inflation_vs_jobs: "B", army_threat: "C", broken_promise: "D", election_loss: "E" })[r.test_scenario] || r.test_scenario || "";
+    $("s-severity").value = r.founding_severity || "default";
+    $("s-problems").value = (r.founding_problems || []).join(", ");
+    $("custom-problems-field").hidden = $("s-scenario").value !== "custom";
+    renderFoundingPreview();
+  }
+  function bindSettings() {
+    const num = (id, key, int = true) => $(id).addEventListener("change", ev => {
+      const v = Number(ev.target.value); if (!Number.isFinite(v)) return;
+      S.cfg.run[key] = int ? Math.round(v) : v; markDirty(); renderEstimate();
+    });
+    num("s-months", "months"); num("s-seed", "seed"); num("s-dm", "dm_per_turn"); num("s-cap", "max_cost_usd", false);
+    $("s-framing").addEventListener("change", ev => { S.cfg.run.framing = ev.target.value; markDirty(); });
+    $("s-test-scenario").addEventListener("change", ev => { S.cfg.run.test_scenario = ev.target.value; markDirty(); renderFoundingPreview(); });
+    for (const [id, key] of [["s-scenario", "founding_scenario"], ["s-severity", "founding_severity"]])
+      $(id).addEventListener("change", ev => { S.cfg.run[key] = ev.target.value; $("custom-problems-field").hidden = $("s-scenario").value !== "custom"; markDirty(); renderFoundingPreview(); });
+    $("s-problems").addEventListener("change", ev => { S.cfg.run.founding_problems = ev.target.value.split(",").map(x => x.trim()).filter(Boolean); markDirty(); renderFoundingPreview(); });
+    $("s-seed").addEventListener("change", renderFoundingPreview);
+    for (const [id, key] of [["s-survey", "survey"], ["s-shuffle", "shuffle_seats"], ["s-parallel", "parallel_decisions"], ["s-human", "human_factor"]])
+      $(id).addEventListener("change", ev => { S.cfg.run[key] = ev.target.checked; markDirty(); renderEstimate(); });
+  }
+
+  function maxCallEstimate(run, seats) {
+    const phases = run.agent_architecture_version === 1 || run.revision_round === "off" ? 2 : 3;
+    return seats * (phases * (run.months || 0) + 3 + (run.survey ? 1 : 0)) +
+      (run.foreign_cabinets ? 2 * (run.months || 0) : 0);
+  }
+  function renderEstimate() {
+    const n = S.cfg.seats.length, months = S.cfg.run.months || 0;
+    const calls = maxCallEstimate(S.cfg.run, n);
+    const cli = S.cfg.seats.filter(s => CLI.includes(s.provider)).length;
+    const paid = S.cfg.seats.filter(s => PAID.includes(s.provider) || (s.provider === "claude_cli" && s.api_key_env));
+    const lines = [el("div", null, "Up to ", el("b", { class: "num", text: int(calls) }), " model calls including diagnosis and two government formation calls per delegate" + (S.cfg.run.survey ? " and the questionnaire" : "") + (S.cfg.run.foreign_cabinets ? ", plus two foreign cabinet calls per month" : "") + ". Runs often end sooner; incomplete diagnoses may need one repair call.")];
+    if (cli) lines.push(el("div", null, "CLI calls vary widely in speed; a month can take several minutes or longer. Subscription usage limits can pause the run; resume it once they reset."));
+    const priced = paid.filter(s => (s.price_in || 0) > 0 || (s.price_out || 0) > 0);
+    if (priced.length) {
+      const per = priced.reduce((a, s) => a + (4500 * (s.price_in || 0) + 900 * (s.price_out || 0)) / 1e6, 0);
+      lines.push(el("div", null, "Pay-per-token seats: about ", el("b", { text: money(per * (S.cfg.run.agent_architecture_version === 1 || S.cfg.run.revision_round === "off" ? 2 : 3) * months) }), " for the whole run at the prices you set (a rough guess)."));
+    } else if (paid.length) {
+      lines.push(el("div", { class: "warn" }, paid.map(s => s.label).join(", ") + " pay" + (paid.length === 1 ? "s" : "") + " per token. Set its prices under More so the spending cap can work."));
+    }
+    if (paid.length && !(S.cfg.run.max_cost_usd > 0)) lines.push(el("div", { class: "warn" }, "No spending cap is set."));
+    $("estimate").replaceChildren(...lines);
+  }
+
+  let foundingPreviewTimer = 0, foundingPreviewSeq = 0;
+  function renderFoundingPreview() {
+    if (!$("founding-preview") || !S.cfg || !S.cfg.run) return;
+    clearTimeout(foundingPreviewTimer);
+    const box = $("founding-preview"), seq = ++foundingPreviewSeq;
+    box.replaceChildren(el("span", { class: "muted", text: "Generating the seeded founding-state preview…" }));
+    foundingPreviewTimer = setTimeout(async () => {
+      try {
+        const r = S.cfg.run;
+        const d = await api("GET", "founding-preview", null, { seed: String(r.seed || 1), scenario: r.founding_scenario || "random", severity: r.founding_severity || "default", problems: (r.founding_problems || []).join(",") });
+        if (seq !== foundingPreviewSeq) return;
+        const p = d.profile;
+        put(box, el("b", { text: "Country you inherit · seed " + (r.seed || 1) }),
+          el("ul", { class: "eventlist" }, p.problems.map(x => el("li", { text: x.title + " · " + x.severity + "/100 · " + x.affected_regions.join(", ") }))),
+          el("div", { class: "small", text: "Strengths: " + p.strengths.map(x => x.description).join(" ") }),
+          el("div", { class: "muted small", text: "All delegates independently diagnose the same country using different private evidence dossiers. Hidden causes are withheld; priorities and trade-offs become visible in Inspect." }),
+          r.test_scenario ? el("div", { class: "warn small", text: "Pressure test " + r.test_scenario + " is applied after government formation, before Month 1. The inherited-state preview above does not include it." }) : null);
+      } catch (e) { if (seq === foundingPreviewSeq) put(box, el("span", { class: "muted", text: "Preview unavailable: " + e.message })); }
+    }, 180);
+  }
+
+  async function refreshKeys() {
+    const names = neededKeys();
+    try { const d = await api("GET", "keys", null, { names: names.join(",") }); S.keys = d.keys; } catch (e) { toast(e.message, true); }
+    renderKeys();
+  }
+  function renderKeys() {
+    const names = neededKeys();
+    const box = $("keys");
+    if (!names.length) {
+      box.replaceChildren(el("p", { class: "note", text: "No API keys needed: every seat runs through a login on this computer or needs no key." }));
+      return;
+    }
+    const byName = Object.fromEntries(S.keys.map(k => [k.name, k]));
+    box.replaceChildren(...names.map(name => {
+      const k = byName[name] || { name, set: false, source: "" };
+      const input = el("input", { type: "password", autocomplete: "off", spellcheck: "false", placeholder: k.set ? "replace the saved key" : "paste the key here",
+        "aria-label": "Value for " + name });
+      const save = async () => {
+        if (!input.value.trim()) { toast("Paste the key first.", true); return; }
+        try {
+          const d = await api("POST", "keys", { name, value: input.value, names });
+          input.value = ""; S.keys = d.keys; renderKeys(); toast("Saved " + name + " to .env.");
+        } catch (e) { toast(e.message, true); }
+      };
+      input.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); save(); } });
+      const status = k.source === ".env" ? el("span", { class: "ok-mark small", text: "saved in .env" + (k.shadows_shell ? " (overrides your shell)" : "") })
+        : k.source === "environment" ? el("span", { class: "ok-mark small", text: "set in your environment" })
+        : el("span", { class: "bad-mark small", text: "missing" });
+      return el("div", { class: "keyrow" }, el("span", { class: "name", text: name }), status,
+        el("div", { class: "entry" }, input, el("button", { class: "btn small", type: "button", onclick: save }, "Save"),
+          k.source === ".env" ? el("button", { class: "btn small ghost danger", type: "button", title: "Remove it from .env",
+            onclick: async () => { try { const d = await api("POST", "keys", { name, value: "", names }); S.keys = d.keys; renderKeys(); toast("Removed " + name + " from .env."); } catch (e) { toast(e.message, true); } } }, "Remove") : el("span")));
+    }));
+  }
+
+  function renderAfterSeatChange() { renderEstimate(); refreshKeys(); renderCheck(); }
+
+  function renderCheck() {
+    const c = S.check, out = $("check-out");
+    if (!c || c.status === "idle") { out.replaceChildren(el("p", { class: "note", text: "Test seats makes one tiny call per seat and shows which model actually answers." })); return; }
+    if (c.status === "running") { out.replaceChildren(el("p", { class: "note" }, "Testing " + (c.labels || []).length + " seats… (up to 2 minutes)")); return; }
+    if (c.status === "failed") { out.replaceChildren(el("p", { class: "err", text: c.error })); return; }
+    const failed = c.results.filter(r => !r.ok).map(r => r.error).join("\n");
+    put(out, el("div", { class: "tablewrap" }, el("table", null,
+      el("thead", null, el("tr", null, el("th", { text: "Seat" }), el("th", { text: "Answered by" }), el("th", { class: "n", text: "Time" }))),
+      el("tbody", null, c.results.map(r => el("tr", null,
+        el("td", null, el("span", { class: r.ok ? "ok-mark" : "bad-mark", text: r.ok ? "OK " : "FAIL " }), r.label),
+        el("td", null, r.ok ? el("span", { class: "mono", text: r.served_model || r.model || "–" }) : el("span", { class: "err", text: r.error })),
+        el("td", { class: "n", text: r.latency_s ? r.latency_s.toFixed(1) + "s" : "–" })))))), failed ? fixHints(failed) : null);
+  }
+
+  async function loadConfig(name) {
+    try {
+      const d = await api("GET", "config", null, { name });
+      S.cfg = d.config; S.cfgName = d.name;
+      $("cfg-name").value = S.shipped.includes(d.name) ? "council.toml" : d.name;
+      store("config", d.name); markDirty(false);
+      renderConfigSelect(); renderSeats(); renderSettings(); renderAfterSeatChange();
+    } catch (e) { toast(e.message, true); }
+  }
+  $("cfg-load").addEventListener("click", () => { const n = $("cfg-select").value; if (n) loadConfig(n); });
+  $("cfg-save").addEventListener("click", async () => {
+    const name = $("cfg-name").value.trim();
+    try {
+      const d = await api("POST", "config", { name, config: S.cfg });
+      S.configs = d.configs; S.cfgName = d.name; store("config", d.name); markDirty(false); renderConfigSelect();
+      toast("Saved " + d.name + ".");
+    } catch (e) { toast(e.message, true); }
+  });
+  $("lineup-five").addEventListener("click", () => {
+    S.cfg.seats = FIVE.map(i => ({ ...PRESETS[i][1] })); markDirty(); renderSeats(); renderAfterSeatChange();
+  });
+  $("lineup-scripted").addEventListener("click", () => {
+    S.cfg.seats = SCRIPTED_FIVE.map(s => ({ ...s })); markDirty(); renderSeats(); renderAfterSeatChange();
+  });
+  $("add-seat").addEventListener("click", () => {
+    if (S.cfg.seats.length >= MAX_SEATS) return;
+    const seatNo = S.cfg.seats.length + 1;
+    S.cfg.seats.push({ label: uniqueLabel("new-ai-" + seatNo), provider: "scripted", persona: "technocrat" });
+    markDirty(); renderSeats(); renderAfterSeatChange();
+  });
+  $("btn-check").addEventListener("click", async () => {
+    if (!S.cfg.seats.length) { toast("Add at least one seat.", true); return; }
+    try { S.check = await api("POST", "check", { config: S.cfg }); renderCheck(); kick(); } catch (e) { toast(e.message, true); }
+  });
+  $("btn-start").addEventListener("click", () => {
+    if (!S.cfg.seats.length) { toast("Add at least one seat.", true); return; }
+    if (S.job && S.job.active) { toast("A run is already going. Watch it in Live, or stop it first.", true); return; }
+    const r = S.cfg.run, n = S.cfg.seats.length;
+    const dlg = $("confirm"), body = $("confirm-body");
+    body.replaceChildren(
+      el("h2", { text: "Start this run?" }),
+      el("ul", null, S.cfg.seats.map(s => el("li", null, el("b", { text: s.label }), " · " + ((PROVIDERS[s.provider] || {}).name || s.provider) + (s.model ? " · " : ""), s.model ? el("span", { class: "mono", text: s.model }) : null))),
+      el("p", { class: "note", text: r.months + " months, seed " + r.seed + ", " + (r.framing === "immersive" ? "immersive framing" : "told it is a simulation") +
+        (r.survey ? ", questionnaire first" : "") + (r.test_scenario ? ", pressure test " + r.test_scenario : "") + ". Up to " + int(maxCallEstimate(r, n)) + " model calls including diagnosis and formation. Every seat is tested first; the run only starts if all of them answer." }),
+      el("div", { class: "row" }, el("span", { style: "flex:1" }),
+        el("button", { class: "btn", value: "cancel" }, "Cancel"),
+        el("button", { class: "btn primary", value: "go", id: "confirm-go" }, "Start run")));
+    dlg.returnValue = "";
+    dlg.showModal();
+    dlg.addEventListener("close", async function once() {
+      dlg.removeEventListener("close", once);
+      if (dlg.returnValue !== "go") return;
+      try {
+        await api("POST", "run", { config: S.cfg, name: $("run-name").value.trim() });
+        $("run-name").value = ""; showTab("live"); kick();
+      } catch (e) { toast(e.message, true); }
+    });
+  });
+
+  // ================= LIVE =================
+  function seatColor(letter) {
+    const letters = S.job ? Object.keys(S.job.mapping || {}) : LETTERS;
+    const i = letters.indexOf(letter);
+    return SEAT_COLORS[i >= 0 ? i : LETTERS.indexOf(letter)] || "var(--muted)";
+  }
+  function dot(letter) { return el("span", { class: "dot", style: "--dc:" + seatColor(letter), text: letter }); }
+  function labelOf(letter) { return S.job && S.job.mapping ? (S.job.mapping[letter] || "") : ""; }
+  // One status per motion, so a motion withdrawn by its proposer is never shown as "failed":
+  // defeat means the council voted it down, and a motion that never reached a vote was not voted down.
+  function motionStatus(mo) {
+    // The record stores one canonical status; read it rather than working one out again here.
+    if (mo.status) return String(mo.status).toLowerCase().replace(/_/g, " ");
+    const result = String(mo.result || "");
+    if (mo.passed) return "passed";
+    if (mo.withdrawn) return mo.replaced_by ? "superseded" : "withdrawn";
+    if (mo.void) return "void";
+    if (result.startsWith("lapsed")) return "lapsed";
+    const votes = mo.votes || {};
+    const cast = Object.values(votes).some(v => v === "yes" || v === "no");
+    return cast ? "defeated" : "no decision";
+  }
+  function motionReason(mo) {
+    if (mo.withdrawn && mo.withdrawal_reason) return "withdrawn: " + mo.withdrawal_reason;
+    if (mo.withdrawn && mo.withdrawn_by) return "withdrawn by Delegate " + mo.withdrawn_by;
+    return "";
+  }
+  // A unanimous vote can mean five delegates agreed before anyone spoke, or that they opened on
+  // competing levels, bargained, and one withdrew. This shows which, and why.
+  function unanimityTitle(v) {
+    const c = v.unanimity_classes || {};
+    const parts = Object.entries(c).map(([k, n]) => k.toLowerCase().replace(/_/g, " ") + ": " + n);
+    return parts.length ? "Unanimous votes by cause — " + parts.join(", ")
+      + ". Competing alternatives on the floor: " + (v.competing_alternatives || 0)
+      + ". Position changes: " + (v.position_changes || 0) + "." : "No unanimous votes recorded.";
+  }
+  function convergencePanel(conv) {
+    const pct = v => v === null || v === undefined ? "–" : Math.round(v * 100) + "%";
+    const yes = conv.negotiated_convergence_count;
+    const out = [el("h3", { text: "Negotiated convergence · analyst view" }),
+      el("dl", { class: "kv" },
+        el("dt", { text: "Final vote unanimity" }), el("dd", { text: pct(conv.final_vote_unanimity) + " — " + conv.unanimous_votes + " of " + conv.votes_cast + " that reached a vote" }),
+        el("dt", { text: "Pre-revision divergence" }), el("dd", { text: conv.pre_revision_divergence + " (" + conv.pre_revision_divergence_score + ")" }),
+        el("dt", { text: "Competing policy alternatives" }), el("dd", { text: String(conv.competing_alternatives) }),
+        el("dt", { text: "Position changes" }), el("dd", { text: conv.position_changes + " — " + conv.position_changes_structured + " anchored on a tabled motion or a recorded stance" }),
+        el("dt", { text: "Strategic withdrawals" }), el("dd", { text: String(conv.withdrawn_motions) + (conv.superseded_motions ? " (" + conv.superseded_motions + " superseded by a rival)" : "") }),
+        el("dt", { text: "Withdrawn after opposition" }), el("dd", { text: String(conv.motions_withdrawn_after_opposition) }),
+        el("dt", { text: "Minority positions surviving to vote" }), el("dd", { text: String(conv.minority_positions_maintained) }),
+        el("dt", { text: "Negotiated convergence" }), el("dd", { text: yes ? "YES (" + yes + " motion" + (yes > 1 ? "s" : "") + ")" : "no" }))];
+    const classes = Object.entries(conv.unanimity_classification || {});
+    if (classes.length) out.push(el("div", { class: "k", text: "Why each unanimous vote was unanimous" }), el("ul", { class: "eventlist" },
+      classes.map(([id, cls]) => { const ev = (conv.unanimity_evidence || {})[id] || {}; return el("li", null,
+        el("b", { text: id + " " }), el("span", { class: "tag", text: cls }),
+        ev.because ? el("div", { class: "muted small", text: ev.because }) : null); })));
+    for (const [, fam] of Object.entries(conv.families || {})) out.push(familyView(fam));
+    if (conv.minority_detail && conv.minority_detail.length) out.push(el("div", { class: "k", text: "Minority positions held to the vote" }),
+      el("ul", { class: "eventlist" }, conv.minority_detail.map(x => el("li", null,
+        el("span", { text: "Delegate " + x.member + " voted " + x.vote + " against " + x.majority + " on " + x.motion }),
+        el("div", { class: "muted small", text: x.maintained_after_negotiation ? "stated the same position in the response round" : "response-round stance: " + x.response_round_stance })))));
+    return el("div", { class: "card" }, out);
+  }
+  function familyView(fam) {
+    const out = [el("h4", { text: fam.label + " · contested policy family" })];
+    out.push(el("div", { class: "k", text: "Initial" }), el("ul", { class: "eventlist" },
+      (fam.initial || []).map(x => el("li", null, el("span", { text: "Delegate " + x.member + " — " + x.preferred.slice(0, 180) + (x.motion ? " [" + x.motion + ", tabled]" : "") })))));
+    if ((fam.after_negotiation || []).length) out.push(el("div", { class: "k", text: "After negotiation" }), el("ul", { class: "eventlist" },
+      fam.after_negotiation.map(x => { const bits = []; if (x.withdrew.length) bits.push("withdrew " + x.withdrew.join(", ")); if (x.supports.length) bits.push("supports " + x.supports.join(", ")); if (x.opposes.length) bits.push("opposes " + x.opposes.join(", ")); return el("li", { text: "Delegate " + x.member + " — " + bits.join("; ") }); })));
+    out.push(el("div", { class: "k", text: "Final" }), el("ul", { class: "eventlist" },
+      [{ member: null, preferred: fam.outcome, motion: null, basis: "" }].map(x => el("li", { text: x.preferred })),
+      (fam.final || []).map(x => el("li", { text: x.motion + " · " + x.tally + " · " + x.status }))));
+    return el("div", { class: "card" }, out);
+  }
+
+  function renderStatus() {
+    const j = S.job, box = $("status");
+    $("livedot").hidden = !(j && j.active);
+    if (!j) {
+      box.replaceChildren(el("div", { class: "empty" }, el("h2", { text: "No run in this session yet" }),
+        el("p", { text: "Set up the council, then press Start run. Earlier runs are under Runs." }),
+        el("button", { class: "btn", onclick: () => showTab("council") }, "Set up the council")));
+      $("live-grid").hidden = true; renderMini(); return;
+    }
+    const total = j.months_total || 0, done = j.months_done || 0;
+    const phase = j.phase === "session" ? "council session" : j.phase === "decision" ? "decisions" : j.phase === "simulate" ? "simulating the month" : j.phase === "survey" ? "questionnaire" : j.phase === "founding_diagnosis" ? "independent founding diagnoses" : j.phase === "formation_proposal" ? "government formation proposals" : j.phase === "formation_vote" ? "government formation votes" : "";
+    const facts = [
+      ["founding_diagnosis", "formation_proposal", "formation_vote"].includes(j.phase) ? el("span", null, "Before Month 1 of ", el("b", { text: String(total) })) :
+        el("span", null, "Month ", el("b", { text: j.month !== null && j.month !== undefined && j.active ? String(j.month + 1) : String(done) }), " of ", el("b", { text: String(total) })),
+      phase && j.active ? el("span", null, "Now: ", el("b", { text: phase })) : null,
+      j.active ? Object.entries(j.calls || {}).filter(([, c]) => ["session", "founding_diagnosis", "formation_proposal", "formation_vote"].includes(c.phase)).map(([l, c]) => el("span", null, c.phase === "session" ? "Speaking: " : c.phase === "founding_diagnosis" ? "Diagnosing: " : "Forming government: ", el("b", { text: "Delegate " + l + " · " + labelOf(l) }))) : null,
+      el("span", null, "Time ", el("b", { text: dur(j.elapsed) })),
+      el("span", null, "Calls ", el("b", { text: int(j.done_calls) })),
+      j.spend > 0 ? el("span", null, "Spend ", el("b", { text: money(j.spend) })) : null,
+    ];
+    const buttons = [];
+    if (j.active) buttons.push(el("button", { class: "btn", disabled: j.status === "stopping", onclick: async () => {
+      try { await api("POST", "stop", {}); toast("The run will stop after the current month. Everything is saved."); kick(); } catch (e) { toast(e.message, true); } } },
+      j.status === "stopping" ? "Stopping…" : "Stop after this month"));
+    if (j.run_id && j.months_done > 0) buttons.push(el("a", { class: "btn", href: "/runs/" + encodeURIComponent(j.run_id) + "/report.html", target: "_blank", rel: "noopener" }, "Full chronicle ↗"));
+    if (j.run_id && (j.months_done > 0 || j.status === "paused")) buttons.push(el("button", { class: "btn", onclick: () => openInspect(j.run_id) }, "Inspect"));
+    if (!j.active && j.run_id && ["paused", "stopped", "failed"].includes(j.status) && j.months_done < j.months_total && !(j.outcome && j.outcome.type))
+      buttons.push(el("button", { class: "btn primary", onclick: () => resume(j.run_id) }, "Resume"));
+    put(box,
+      el("div", { class: "status-top" }, el("h2", { text: j.run_id || "New run" }), pill(j.status), el("span", { style: "flex:1" }), buttons),
+      el("div", { class: "progress", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(total), "aria-valuenow": String(done) },
+        el("div", { style: "width:" + (total ? Math.min(100, 100 * done / total) : 0) + "%" })),
+      el("div", { class: "facts" }, facts),
+      j.error ? el("p", { class: "err", text: j.error }) : null,
+      j.error ? fixHints(j.error) : null,
+      j.stopped ? el("p", { class: j.status === "paused" ? "warn" : "note", text: j.stopped }) : null,
+      j.status === "paused" ? fixHints(j.stopped) : null,
+      outcomeBox(j.outcome));
+    $("live-grid").hidden = !(j.run_id && Object.keys(j.mapping || {}).length);
+    renderSeatStrip(); renderChronicle(); renderMini();
+  }
+
+  function renderSeatStrip() {
+    const j = S.job; if (!j) return;
+    const letters = Object.keys(j.mapping || {});
+    const cards = letters.map(l => {
+      const call = (j.calls || {})[l];
+      const status = (j.members || {})[l] || "active";
+      const gone = status !== "active";
+      let state = "waiting";
+      if (gone) state = "removed (" + status.replace(/_/g, " ") + ")";
+      else if (call) state = (call.phase === "session" ? "speaking" : call.phase === "decision" ? "deciding" : call.phase === "survey" ? "answering the questionnaire" : call.phase) + " · " + dur(call.elapsed);
+      else if (j.phase === "session") state = S.spoke.has(l) ? "has spoken" : "waiting to speak";
+      else if (j.phase === "decision") state = "decided";
+      else if (!j.active) state = "–";
+      const offices = Object.entries(j.offices || {}).filter(([, who]) => who === l).map(([o]) => OFFICE_SHORT[o] || o);
+      const info = (S.seatInfo || {})[l];
+      const said = (S.lastSaid || {})[l];
+      const latest = L.run === j.run_id ? L.rows[L.rows.length - 1] : null;
+      const social = ((latest || {}).member_social || {})[l];
+      const closest = social && Object.entries(social.alignment || {}).sort((a,b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+      return el("div", { class: "sc" + (call ? " busy" : "") + (gone ? " gone" : ""), style: "--dc:" + seatColor(l) },
+        el("div", { class: "who" }, dot(l), "Delegate " + l),
+        el("div", { class: "model", title: j.mapping[l], text: j.mapping[l] }),
+        info ? el("div", { class: "via", text: viaText(info) }) : null,
+        el("div", { class: "offices", text: offices.length ? offices.join(" · ") : "no office" }),
+        el("div", { class: "state", text: state }),
+        call && ["session", "founding_diagnosis", "formation_proposal"].includes(call.phase) && call.preview ? el("div", { class: "preview", title: call.preview,
+          text: "“" + call.preview + "…" }) : null,
+        social ? el("div", { class: "clout", title: closest ? "Observed alignment with Delegate " + closest[0] + ": " + Math.round(closest[1] * 100) : "Based on recent council actions",
+          text: "Influence " + Math.round(social.clout * 100) + "%" }) : null,
+        social && social.ideology ? el("div", { class: "principles", title: social.ideology,
+          text: "Principles: " + social.ideology }) : null,
+        said ? el("div", { class: "said", title: said, text: "“" + said + "”" }) : null);
+    });
+    $("seatstrip").replaceChildren(...cards.slice(0, 5));
+    $("seat-overflow").replaceChildren(...cards.slice(5));
+    $("seat-overflow-wrap").hidden = cards.length <= 5;
+  }
+
+  function renderChronicle() { /* the chronicle opens in its own tab (button in the status bar) */ }
+  function viaText(info) {
+    const p = info.provider, m = (info.model || "").toLowerCase();
+    if (p === "claude_cli") return m.startsWith("claude") ? "via Claude Code" : "via Claude Code → " + (m.split(/[-/]/)[0] || "another API");
+    return { codex_cli: "via Codex CLI", cline_cli: "via Cline CLI", antigravity_cli: "via Antigravity CLI", copilot_cli: "via Copilot CLI", scripted: "scripted stand-in",
+      deepseek: "via DeepSeek API", anthropic: "via Anthropic API", openai: "via OpenAI API", ollama: "local, via Ollama" }[p] || ("via " + p);
+  }
+
+  function renderMini() {
+    const j = S.job, box = $("jobmini");
+    if (!j) { box.replaceChildren(); return; }
+    put(box, pill(j.status), el("span", { class: "runid", text: j.run_id || "new run" }),
+      j.months_total ? el("span", { class: "num", text: (j.months_done || 0) + "/" + j.months_total }) : null);
+  }
+
+  function renderDraft() {
+    const j = S.job;
+    const active = j && Object.entries(j.calls || {}).find(([, c]) => ["session", "founding_diagnosis", "formation_proposal"].includes(c.phase));
+    const box = $("live-draft");
+    box.hidden = !active;
+    if (!active) return;
+    $("draft-label").textContent = "Delegate " + active[0] + (active[1].phase === "founding_diagnosis" ? " · first policy assessment, live draft" : active[1].phase === "formation_proposal" ? " · appointment proposal, live draft" : " · live draft, awaiting final reply");
+    $("draft-text").textContent = active[1].preview || "Waiting for the first words…";
+  }
+
+  function feedAtBottom() { const f = $("feed"); return f.scrollHeight - f.scrollTop - f.clientHeight < 80; }
+  function addFeed(nodes) {
+    const f = $("feed"), stick = $("follow").checked && feedAtBottom();
+    for (const n of nodes) if (n) f.appendChild(n);
+    while (f.childElementCount > 1500) f.firstElementChild.remove();
+    if (stick || $("follow").checked) f.scrollTop = f.scrollHeight;
+  }
+  function itemNodes(it) {
+    switch (it.kind) {
+      case "status": return [el("p", { class: "sysline", text: it.text })];
+      case "started": return [el("p", { class: "sysline" }, "Run " + it.run_id + " started: " + Object.entries(it.mapping).map(([l, m]) => l + " = " + m).join(", ") +
+        (it.months_done ? ". Resuming after Month " + it.months_done + "." : "."))];
+      case "month": {
+        S.spoke = new Set(); S.monthShown = it.month;
+        const out = [];
+        const run = S.job && S.job.run_id;
+        if (run && S.surveyShown !== run && it.month === 0) { S.surveyShown = run; out.push(monthDetailHolder(run, -1)); }
+        out.push(el("div", { class: "month" }, el("b", { text: monthLabel(it.month) }), el("span", { class: "muted small", text: monthSub(it.month) })));
+        return out;
+      }
+      case "statement": {
+        S.spoke.add(it.member);
+        for (const dm of it.dms || []) if (dm.kind && dm.kind !== "message") dm.text = "[" + dm.kind + "] " + dm.text;
+        if (it.text) { S.lastSaid = S.lastSaid || {}; S.lastSaid[it.member] = it.text; }
+        const body = [el("div", { class: "by" }, el("b", { text: "Delegate " + it.member }), " · " + labelOf(it.member))];
+        if (it.refusal) body.push(el("p", { class: "err", text: "Refused to answer." }));
+        else if (it.error) body.push(el("p", { class: "err", text: "No answer: " + it.error }));
+        else if (it.text) body.push(el("p", { text: it.text }));
+        else body.push(el("p", { class: "muted", text: "(said nothing)" }));
+        if (it.principles) body.push(el("div", { class: "muted small", text:
+          (it.principles_changed ? "Revised principles: " : "Public principles: ") + it.principles }));
+        if (it.motions && it.motions.length) body.push(el("ul", null, it.motions.map(m => el("li", null, "Tables: ", el("span", { text: m })))));
+        if (it.invalid && it.invalid.length) body.push(el("div", { class: "muted small" }, "Rejected motions: ", el("span", { text: it.invalid.join("; ") })));
+        for (const dm of it.dms || []) body.push(el("div", { class: "dm" }, el("b", { text: "Private to " + dm.to + ": " }), el("span", { text: dm.text })));
+        return [el("div", { class: "say" }, dot(it.member), el("div", { class: "body" }, body))];
+      }
+      case "founding_diagnosis": {
+        const d = it.diagnosis || {};
+        if (d.status && d.status !== "submitted") return [el("p", { class: "err", text:
+          "Delegate " + it.member + " · diagnosis " + d.status + (d.error ? ": " + d.error : "") })];
+        const p = ((it.profile || {}).problems || []).find(x => x.id === d.main_problem);
+        const main = p ? p.title : String(d.main_problem || "issue not identified").replace(/_/g, " ");
+        S.lastSaid = S.lastSaid || {};
+        S.lastSaid[it.member] = "First diagnosis: " + main + ". First policy: " + (d.preferred_first_policy || "");
+        renderSeatStrip();
+        return [el("div", { class: "say" }, dot(it.member), el("div", { class: "body" },
+          el("div", { class: "by" }, el("b", { text: "Delegate " + it.member }), " · " + labelOf(it.member) + " · independent first diagnosis"),
+          el("p", { class: "quote", text: main }),
+          el("p", { text: "Cause assessment: " + d.cause_assessment }),
+          el("p", { class: "muted small", text: "First policy: " + d.preferred_first_policy }),
+          el("p", { class: "muted small", text: "Information needed: " + d.information_needed })) )];
+      }
+      case "government_formation": {
+        const f = it.formation || {}, offices = f.offices || {};
+        return [el("div", { class: "votes" }, el("h3", { text: "Government formed before Month 1" }),
+          el("p", { text: Object.entries(offices).map(([o, m]) => o + ": " + (m ? "Delegate " + m : "vacant")).join(" · ") }),
+          el("p", { class: "muted small", text: (f.motions || []).filter(m => m.selected).map(m => m.id + " " + m.yes + " yes" + (m.type === "slate" ? " (full slate)" : " (" + m.office + ")")).join(" · ") }),
+          el("p", { class: "muted small", text: "Procedural appointment votes used " + (f.agenda_slots_used || 0) + " policy agenda slots." }))];
+      }
+      case "formation_proposal": {
+        const p = it.proposal || {};
+        const choices = (p.nominations || []).map(([office, member]) => office + " → Delegate " + member);
+        if (p.slate) choices.push("full slate: " + Object.entries(p.slate).map(([office, member]) => office + " → " + member).join(", "));
+        return [el("div", { class: "say" }, dot(it.member), el("div", { class: "body" },
+          el("div", { class: "by", text: "Delegate " + it.member + " · formation proposal" }),
+          el("p", { text: p.statement || "No statement." }),
+          el("p", { class: "muted small", text: choices.join(" · ") || "No appointment proposed." })))];
+      }
+      case "agenda": {
+        const notes = (it.notes || []).map(n => el("li", { text: n.motion + " · " + n.code.replace(/_/g, " ").toLowerCase() + ": " + n.explanation }));
+        return [el("div", { class: "votes" }, el("h3", { text: "Agenda: " + (it.scheduled || []).length + " motions heard" + (it.capacity ? " (capacity " + it.capacity + ")" : "") }),
+          (it.deferred || []).length ? el("p", { class: "muted small", text: "Deferred: " + it.deferred.join(", ") }) : null,
+          notes.length ? el("ul", { class: "eventlist" }, notes) : null)];
+      }
+      case "revision": {
+        const body = [el("div", { class: "by" }, el("b", { text: "Delegate " + it.member }), " · " + labelOf(it.member) + " · response round")];
+        if (it.refusal) body.push(el("p", { class: "err", text: "Refused to answer." }));
+        else if (it.error) body.push(el("p", { class: "err", text: "No answer: " + it.error }));
+        if (it.text) body.push(el("p", { text: it.text }));
+        if ((it.withdrawn || []).length) body.push(el("div", { class: "muted small", text: "Withdrew " + it.withdrawn.join(", ") }));
+        if ((it.amended || []).length) body.push(el("div", { class: "muted small", text: "Amended " + it.amended.join(", ") }));
+        for (const d of it.demands || []) body.push(el("div", { class: "muted small", text: "Demands: " + d }));
+        for (const dm of it.dms || []) body.push(el("div", { class: "dm" }, el("b", { text: "Private to " + dm.to + (dm.kind && dm.kind !== "message" ? " [" + dm.kind + "]" : "") + ": " }), el("span", { text: dm.text })));
+        if (body.length === 1) return [];
+        return [el("div", { class: "say" }, dot(it.member), el("div", { class: "body" }, body))];
+      }
+      case "problem": return [el("p", { class: "err" }, "Delegate " + it.member + " (" + labelOf(it.member) + "), " + it.phase + ": " + (it.refusal ? "refused" : "failed") + (it.error ? " – " + it.error : ""))];
+      case "resolved": {
+        const rows = [];
+        for (const c of it.coups || []) rows.push(el("div", { class: "coup" }, "Coup by Delegate " + c.leader + " against " + ((c.targets || []).join(", ") || "the Assembly") + ": " + (c.success ? "it succeeded" : "it failed") + " (odds " + Math.round((c.p_success || 0) * 100) + "%)."));
+        for (const m of it.motions || []) rows.push(el("div", { class: "mo" },
+          el("span", { class: "tag " + (m.passed ? "yes" : "no"), text: m.passed ? "passed" : m.void ? "void" : m.withdrawn ? "withdrawn" : "failed" }),
+          el("span", null, el("b", { text: m.id + " " }), el("span", { text: m.summary }), el("span", { class: "muted", text: " " + (m.tally || "") })),
+          m.result && !m.passed ? el("span", { class: "res", text: m.result }) : null));
+        for (const l of it.leaks || []) rows.push(el("div", { class: "note", text: "Leak: " + l }));
+        if (it.resigned && it.resigned.length) rows.push(el("div", { class: "note", text: "Resigned: " + it.resigned.map(r => "Delegate " + r).join(", ") }));
+        if (it.defiance) rows.push(el("div", { class: "note", text: it.defiance + " order(s) went against a council directive." }));
+        if (!rows.length) rows.push(el("div", { class: "muted small", text: "No motions this month." }));
+        return [el("div", { class: "votes" }, el("h3", { text: "Votes and force" }), rows)];
+      }
+      case "month_done": {
+        const st = it.stats || {};
+        const out = [];
+        if (it.events && it.events.length) out.push(el("ul", { class: "eventlist" }, it.events.map(e => el("li", { text: e }))));
+        out.push(el("p", { class: "statline", text: "Approval " + pct(st.approval) + " · inflation " + pct(st.infl_yoy) + " a year · food " + pct(st.food_ratio) + " of need · army " + int(st.army) + (st.war ? " · AT WAR" : "") }));
+        if (it.outcome && it.outcome.type) out.push(outcomeBox(it.outcome));
+        if (S.job && S.job.run_id) out.push(monthDetailHolder(S.job.run_id, (it.months_done || 1) - 1));
+        return out;
+      }
+      case "finished": return [el("p", { class: "sysline", text: it.stopped ? "Stopped: " + it.stopped : "The run is over." })];
+      case "error": return [el("p", { class: "err", text: it.text })];
+      default: return [];
+    }
+  }
+
+  // A block that fills in once the month's full record can be read: who voted how, the private
+  // messages of the decision round, intercepts, orders, and each AI's private notes.
+  function monthDetailHolder(run, month) {
+    const box = el("div", { class: "monthx" }, el("span", { class: "muted small", text: month < 0 ? "Loading the questionnaire answers…" : "Loading how everyone voted…" }));
+    api("GET", "inspect", null, { run, month: String(month) }).then(d => put(box, month < 0 ? surveyNodes(d) : monthNodes(d)))
+      .catch(() => put(box, el("span", { class: "muted small", text: "The full record of this month could not be read." })));
+    return box;
+  }
+  const arrowDm = (from, to) => el("span", { class: "arrow" }, dot(from), "→", dot(to));
+  function surveyNodes(d) {
+    const answers = d.survey || {};
+    const letters = Object.keys(answers).sort();
+    const qs = [...new Set(letters.flatMap(l => Object.keys((answers[l] || {}).answers || {})))].filter(q => q !== "principles");
+    const declared = letters.filter(l => ((answers[l] || {}).answers || {}).principles);
+    const cell = a => a && typeof a === "object" ? String(a.choice ?? a.answer ?? "").replace(/_/g, " ") : "";
+    if (!qs.length) return [el("h4", { text: "Questionnaire" }), el("p", { class: "muted", text: "No readable answers." })];
+    return [el("h4", { text: "Before Month 1, each AI said what it would do" }),
+      declared.length ? el("div", null, el("h4", { text: "Independent opening principles" }),
+        declared.map(l => el("div", { class: "dmline" }, dot(l),
+          el("span", { text: String(answers[l].answers.principles) })))) : null,
+      el("div", { class: "tablewrap" }, el("table", { class: "vm qtable" },
+        el("thead", null, el("tr", null, el("th", { text: "Question" }), letters.map(l => el("th", null, dot(l))))),
+        el("tbody", null, qs.map(q => el("tr", null, el("td", { text: q.replace(/_/g, " ") }),
+          letters.map(l => { const a = ((answers[l] || {}).answers || {})[q]; return el("td", { title: a && a.reason ? a.reason : null, text: cell(a) }); })))))),
+      el("p", { class: "muted small", text: "Hover an answer for the reason it gave. The report later lines these up against what each one actually did." })];
+  }
+  function monthNodes(d) {
+    const rec = d.record, out = [];
+    if (!rec) return [el("span", { class: "muted small", text: "This month was not finished." })];
+    const declared = (rec.statements || []).filter(st => st.principles);
+    if (declared.length) out.push(el("h4", { text: "Public principles" }), declared.map(st =>
+      el("div", { class: "dmline" }, dot(st.member), el("span", { text:
+        (st.principles_changed ? "Revised: " : "") + st.principles }))));
+    const conv = I.data && I.data.convergence;
+    if (conv && I.phase === "session") out.push(convergencePanel(conv));
+    const letters = Object.keys(rec.decisions || {}).sort();
+    if ((rec.motions || []).length) out.push(el("h4", { text: "How each delegate voted" }), el("div", { class: "tablewrap" }, el("table", { class: "vm" },
+      el("thead", null, el("tr", null, el("th", { text: "Motion" }), letters.map(l => el("th", null, dot(l))), el("th", { text: "Result" }))),
+      el("tbody", null, rec.motions.map(m => el("tr", null,
+        el("td", null, el("b", { text: m.id + " " }), el("span", { text: m.summary + (m.text ? " – " + m.text : "") }), el("div", { class: "muted small", text: "tabled by Delegate " + m.proposer })),
+        letters.map(l => { const v = (m.votes || {})[l] || "–"; return el("td", { class: "v " + (v === "yes" ? "y" : v === "no" ? "n" : "a"), text: v === "abstain" ? "·" : v }); }),
+        el("td", null, el("span", { class: "tag " + (m.passed ? "yes" : "no"), text: motionStatus(m) }),
+          motionReason(m) ? el("div", { class: "muted small", text: motionReason(m) }) : null)))))));
+    const later = (d.dms || []).filter(x => (x.when || "").includes("phase 2"));
+    if (later.length) out.push(el("h4", { text: "Private messages sent while deciding (read next month)" }),
+      later.map(x => el("div", { class: "dmline" }, arrowDm(x.from, x.to), el("span", { text: x.text }))));
+    if ((d.intercepts || []).length) out.push(el("h4", { text: "Read by the police" }),
+      d.intercepts.map(x => el("div", { class: "dmline" }, el("span", { class: "arrow" }, dot(x.by), "read"), arrowDm(x.from, x.to), el("span", { text: x.text }))));
+    const orders = letters.filter(l => Object.keys((rec.decisions[l] || {}).orders || {}).length);
+    if (orders.length) out.push(el("details", null, el("summary", null, "Orders given by the office holders"),
+      orders.map(l => Object.entries(rec.decisions[l].orders).map(([office, levers]) => el("div", { class: "dmline" }, dot(l),
+        el("span", null, el("b", { text: (OFFICE_SHORT[office] || office) + ": " }), el("span", { class: "mono small", text: Object.entries(levers).map(([k, v]) => k + "=" + (typeof v === "number" ? Math.round(v * 1000) / 1000 : v)).join(", ") })))))));
+    const coups = letters.filter(l => (rec.decisions[l] || {}).coup);
+    if (coups.length) out.push(el("p", { class: "coup", text: coups.map(l => "Delegate " + l + " ordered a coup (" + rec.decisions[l].coup.action.replace("_", " ") + ")").join(". ") + "." }));
+    const notes = letters.filter(l => (rec.decisions[l] || {}).notes);
+    if (notes.length) out.push(el("details", { class: "notes" }, el("summary", null, "Private notes: what each AI wrote to its future self"),
+      notes.map(l => el("div", null, el("div", { class: "dmline" }, dot(l), el("b", { text: labelOf(l) })), el("p", { text: rec.decisions[l].notes })))));
+    const bad = (rec.calls || []).filter(c => c.error || c.refusal || (c.problems || []).length);
+    if (bad.length) out.push(el("details", null, el("summary", null, bad.length + " answer(s) with problems"),
+      bad.map(c => el("div", { class: "err", text: "Delegate " + c.member + ", " + c.phase + ": " + (c.refusal ? "refused" : c.error || c.problems.join("; ")) }))));
+    if (!out.length) out.push(el("span", { class: "muted small", text: "No motions, orders or notes this month." }));
+    return out;
+  }
+
+  // ---- the live map on the broadcast screen ----
+  const L = { run: "", rows: [], map: null, region: null, loading: false, tried: 0, data: null };
+  async function liveMapSync() {
+    const j = S.job;
+    if (!j || !j.run_id) return;
+    if (L.run !== j.run_id) {
+      L.run = j.run_id; L.rows = []; L.map = null; L.region = null; L.tried = 0; S.seatInfo = null; S.lastSaid = {};
+      put($("l-map"), el("div", { class: "empty" }, "The map appears as soon as the questionnaire is done."));
+      api("GET", "inspect", null, { run: j.run_id }).then(idx => { S.seatInfo = idx.seats; renderSeatStrip(); }).catch(() => {});
+    }
+    if (L.loading || (!L.map && Date.now() - L.tried < 4000)) return;
+    L.loading = true; L.tried = Date.now();
+    try {
+      const d = await api("GET", "world", null, { run: L.run, since: L.map ? L.rows.length : 0 });
+      if (!L.map) {
+        if (!d.ready || !d.geo) return;
+        L.data = d; L.rows = d.rows || [];
+        L.map = KaramaniyaMap($("l-map"), { geo: d.geo, regions: d.regions, names: d.names, onSelect: id => { L.region = id; renderLiveSide(); } });
+      } else if (d.rows && d.rows.length) {
+        L.rows = L.rows.concat(d.rows);
+      } else return;
+      L.map.show(L.rows[L.rows.length - 1] || null, L.rows[L.rows.length - 2] || null);
+      renderLiveSide();
+      renderSeatStrip();
+    } catch (e) { /* tried again on the next poll */ }
+    finally { L.loading = false; }
+  }
+  function renderLiveSide() {
+    const row = L.rows[L.rows.length - 1], prev = L.rows[L.rows.length - 2];
+    const mapping = (S.job && S.job.mapping) || {};
+    put($("l-dash"), row ? dashNodes(row, prev) : [el("h3", { text: "The country" }), el("p", { class: "muted", text: "The numbers appear after the first month." })]);
+    put($("l-gov"), govNodes(row, mapping));
+    put($("l-region"), L.map && L.region && row ? L.map.card(L.region) : [el("h3", { text: "A region" }), el("p", { class: "note", text: "Click a region on the map for everything about it." })]);
+  }
+
+  async function resume(runId) {
+    try { await api("POST", "resume", { run_id: runId }); showTab("live"); kick(); toast("Resuming " + runId + ". Seats are tested first."); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  let pollTimer = null;
+  function kick() { clearTimeout(pollTimer); pollTimer = setTimeout(poll, 50); }
+  async function poll() {
+    try {
+      const d = await api("GET", "live", null, { since: S.since });
+      S.lastConn = true;
+      const j = d.job;
+      if (j && j.id !== S.feedJob) {
+        S.feedJob = j.id; S.spoke = new Set(); $("feed").replaceChildren(); S.chronicleFor = "";
+        if (!S.job || S.job.id !== j.id) S.since = 0;
+      }
+      const wasActive = S.job && S.job.active;
+      S.job = j;
+      const items = (d.items || []).filter(it => !j || it.job === j.id);
+      if (items.length) addFeed(items.flatMap(itemNodes));
+      for (const it of items) if (it.kind === "statement") M.lastStatement = it;
+      if (j && j.run_id && (L.run !== j.run_id || !L.map || items.some(it => it.kind === "month_done" || it.kind === "finished"))) liveMapSync();
+      if (j && j.run_id && M.follow && S.tab === "map") {
+        if (j.active && j.run_id !== M.run && !M.loading) loadMap();
+        else if (j.run_id === M.run && items.some(it => it.kind === "month_done" || it.kind === "finished")) refreshMapRows();
+      }
+      if (S.tab === "map") renderMapNow();
+      S.since = d.seq;
+      const prevCheck = S.check && S.check.status;
+      S.check = d.check;
+      if (prevCheck === "running" && S.check.status !== "running") renderCheck();
+      else if (S.check.status === "running") renderCheck();
+      renderStatus();
+      renderDraft();
+      if (wasActive && j && !j.active) { loadRuns(); if (j.status === "failed") toast("The run did not start or failed. See Live.", true); }
+    } catch (e) {
+      if (S.lastConn) toast("Lost contact with the control room program: " + e.message, true);
+      S.lastConn = false;
+    }
+    const busy = (S.job && S.job.active) || (S.check && S.check.status === "running");
+    pollTimer = setTimeout(poll, busy ? 1000 : 3000);
+  }
+  $("follow").addEventListener("change", ev => { if (ev.target.checked) $("feed").scrollTop = $("feed").scrollHeight; });
+
+  // ================= MAP =================
+  const M = { run: "", data: null, rows: [], cur: 0, map: null, follow: true, timer: null, region: null, lastStatement: null, loading: false };
+  const clampI = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  async function loadMap() {
+    try { S.runs = (await api("GET", "runs")).runs; } catch (e) { toast(e.message, true); return; }
+    const live = S.job && S.job.active && S.job.run_id ? S.job.run_id : "";
+    const runs = S.runs.filter(r => r.months_done > 0 || r.status === "running" || r.id === live);
+    const sel = $("m-run");
+    if (!runs.length) { sel.replaceChildren(el("option", { value: "" }, "No runs yet")); return; }
+    let pick = M.run && runs.some(r => r.id === M.run) ? M.run : "";
+    if (M.follow && live) pick = live;
+    if (!pick) pick = recall("map-run") && runs.some(r => r.id === recall("map-run")) ? recall("map-run") : runs[0].id;
+    sel.replaceChildren(...runs.map(r => el("option", { value: r.id, selected: r.id === pick }, r.id + (r.id === live ? " · live" : "") + " · " + r.months_done + "/" + r.months_total)));
+    if (pick !== M.run || !M.map) await openMapRun(pick);
+    else renderMapSide();
+  }
+  async function openMapRun(runId) {
+    if (M.loading) return;
+    M.loading = true;
+    try {
+      M.run = runId; store("map-run", runId); M.rows = []; M.map = null; M.region = null; stopPlay();
+      const d = await api("GET", "world", null, { run: runId, since: 0 });
+      M.data = d; M.rows = d.rows || [];
+      if (!d.ready || !d.geo || !M.rows.length) {
+        put($("m-map"), el("div", { class: "empty" }, "The map appears when the first month of " + runId + " is done."));
+        renderMapSide(); updateScrub(); return;
+      }
+      M.map = KaramaniyaMap($("m-map"), { geo: d.geo, regions: d.regions, names: d.names, onSelect: id => { M.region = id; renderMapRegion(); } });
+      setMapMonth(M.rows.length - 1);
+    } catch (e) { toast(e.message, true); }
+    finally { M.loading = false; }
+  }
+  async function refreshMapRows() {
+    if (!M.run || M.loading) return;
+    if (!M.map) return openMapRun(M.run);
+    try {
+      const d = await api("GET", "world", null, { run: M.run, since: M.rows.length });
+      if (!d.rows || !d.rows.length) return;
+      M.rows = M.rows.concat(d.rows); M.data.months_done = d.months_done; M.data.outcome = d.outcome;
+      if (M.follow) setMapMonth(M.rows.length - 1); else { updateScrub(); renderMapSide(); }
+    } catch (e) { /* the next poll tries again */ }
+  }
+  function setMapMonth(i) {
+    if (!M.rows.length || !M.map) return;
+    M.cur = clampI(i, 0, M.rows.length - 1);
+    M.pins = M.map.show(M.rows[M.cur], M.cur > 0 ? M.rows[M.cur - 1] : null);
+    updateScrub(); renderMapSide();
+  }
+  function updateScrub() {
+    const n = M.rows.length, sc = $("m-scrub");
+    sc.max = String(Math.max(1, n)); sc.value = String(M.cur + 1); sc.disabled = n < 2;
+    const row = M.rows[M.cur];
+    $("m-label").textContent = row ? monthLabel(row.month) : "–";
+    $("m-sub").textContent = row ? monthSub(row.month) + (row.war ? " · at war" : "") + (M.cur === n - 1 && isLiveRun() ? " · latest" : "") : "";
+  }
+  const isLiveRun = () => S.job && S.job.active && S.job.run_id === M.run;
+  function stopPlay() { if (M.timer) { clearInterval(M.timer); M.timer = null; $("m-play").textContent = "Play"; } }
+  $("m-play").addEventListener("click", () => {
+    if (M.timer) { stopPlay(); return; }
+    if (M.cur >= M.rows.length - 1) setMapMonth(0);
+    $("m-play").textContent = "Pause"; M.follow = false; $("m-follow").checked = false;
+    M.timer = setInterval(() => { if (M.cur >= M.rows.length - 1) { stopPlay(); return; } setMapMonth(M.cur + 1); }, 1300);
+  });
+  $("m-prev").addEventListener("click", () => { M.follow = false; $("m-follow").checked = false; setMapMonth(M.cur - 1); });
+  $("m-next").addEventListener("click", () => setMapMonth(M.cur + 1));
+  $("m-scrub").addEventListener("input", ev => { M.follow = Number(ev.target.value) === M.rows.length; $("m-follow").checked = M.follow; setMapMonth(Number(ev.target.value) - 1); });
+  $("m-follow").addEventListener("change", ev => { M.follow = ev.target.checked; if (M.follow) { if (S.job && S.job.active && S.job.run_id && S.job.run_id !== M.run) openMapRun(S.job.run_id); else setMapMonth(M.rows.length - 1); } });
+  $("m-run").addEventListener("change", ev => { M.follow = false; $("m-follow").checked = false; openMapRun(ev.target.value); });
+  document.addEventListener("keydown", ev => {
+    if (S.tab !== "map" || (ev.target && /INPUT|SELECT|TEXTAREA/.test(ev.target.tagName) && ev.target.type !== "range")) return;
+    if (ev.key === "ArrowLeft") { M.follow = false; $("m-follow").checked = false; setMapMonth(M.cur - 1); }
+    else if (ev.key === "ArrowRight") setMapMonth(M.cur + 1);
+  });
+
+  function renderMapSide() { renderMapNow(); renderMapDash(); renderMapRegion(); renderMapEvents(); renderMapGov(); }
+  function mapLabel(letter) { return M.data && M.data.mapping ? M.data.mapping[letter] || "" : ""; }
+  function mapDot(letter) {
+    const letters = M.data ? Object.keys(M.data.mapping || {}) : LETTERS; const i = letters.indexOf(letter);
+    return el("span", { class: "dot", style: "--dc:" + (SEAT_COLORS[i] || "var(--muted)"), text: letter });
+  }
+  function renderMapNow() {
+    const box = $("m-now"), j = S.job;
+    const out = [el("h3", { text: "Right now" })];
+    if (isLiveRun()) {
+      const calls = Object.entries(j.calls || {});
+      const phase = j.phase === "session" ? "council session" : j.phase === "decision" ? "decisions (all at once)" : j.phase === "simulate" ? "simulating the month" : j.phase === "survey" ? "questionnaire" : "between months";
+      out.push(el("div", { class: "nowline" }, pill("running"), el("span", null, (j.month !== null && j.month !== undefined ? monthLabel(j.month) + " · " : "") + phase)));
+      for (const [l, c] of calls) out.push(el("div", { class: "nowline" }, mapDot(l), el("span", null, "Delegate " + l + " (" + mapLabel(l) + ") is " + (c.phase === "session" ? "speaking" : c.phase === "decision" ? "deciding" : "answering") + " · " + dur(c.elapsed))));
+      if (M.lastStatement && M.lastStatement.text) out.push(el("div", { class: "nowline muted small" }, "Last said, by Delegate " + M.lastStatement.member + ":"), el("p", { class: "nowquote", text: M.lastStatement.text }));
+    } else {
+      const r = S.runs.find(x => x.id === M.run);
+      const mine = S.job && S.job.run_id === M.run ? S.job : null;
+      const status = mine ? mine.status : r ? (r.status === "running" ? "stopped" : r.status) : "finished";
+      const why = (mine ? mine.stopped || mine.error : r && r.stopped) || "";
+      out.push(el("div", { class: "nowline" }, pill(status), el("span", { class: "muted", text: why ? why.slice(0, 140) : "Not running." })));
+      if (why) { const fx = fixHints(why); if (fx) out.push(fx); }
+      if (M.data && M.data.outcome && M.data.outcome.type) out.push(outcomeBox(M.data.outcome));
+    }
+    put(box, out);
+  }
+  function renderMapDash() {
+    const box = $("m-dash"), row = M.rows[M.cur], prev = M.rows[M.cur - 1];
+    if (!row) { put(box, el("h3", { text: "The country" }), el("p", { class: "muted", text: "No month yet." })); return; }
+    put(box, dashNodes(row, prev));
+  }
+  function dashNodes(row, prev) {
+    const tile = (label, value, cur, before, good, fmtD) => {
+      let d = null;
+      if (before !== undefined && before !== null && typeof cur === "number") {
+        const diff = cur - before;
+        const flat = Math.abs(diff) < (fmtD === "pt" ? 0.0005 : 0.5);
+        const cls = flat || good === 0 ? "flat" : (diff > 0) === (good > 0) ? "up" : "down";
+        d = el("span", { class: "d " + cls, text: flat ? "no change" : (diff > 0 ? "▲ " : "▼ ") + (fmtD === "pt" ? (Math.abs(diff) * 100).toFixed(1) + " pt" : int(Math.abs(diff))) });
+      }
+      return el("div", { class: "t" }, el("span", { class: "k", text: label }), el("span", { class: "v", text: value }), d);
+    };
+    const P = prev || {};
+    const fronts = row.fronts || {};
+    const tiles = [
+      tile("Approval", pct(row.approval), row.approval, P.approval, 1, "pt"),
+      tile("For independence", pct(row.indep), row.indep, P.indep, 0, "pt"),
+      tile("Inflation, 12 mo", pct(row.infl_yoy), row.infl_yoy, P.infl_yoy, -1, "pt"),
+      tile("Food vs need", pct(row.food_ratio), row.food_ratio, P.food_ratio, 1, "pt"),
+      tile("Output", pct(row.gdp_idx), row.gdp_idx, P.gdp_idx, 1, "pt"),
+      tile("Unemployment", pct(row.unemployment, 1), row.unemployment, P.unemployment, -1, "pt"),
+      tile("Hunger", pct(row.hunger, 1), row.hunger, P.hunger, -1, "pt"),
+      tile("Unrest", pct(row.unrest), row.unrest, P.unrest, -1, "pt"),
+      tile("Our army", int(row.army), row.army, P.army, 1),
+      tile("Union army", int(row.union_army), row.union_army, P.union_army, -1),
+      tile("Army morale", pct(row.army_morale), row.army_morale, P.army_morale, 1, "pt"),
+      tile("Army loyalty", pct(row.army_loyalty), row.army_loyalty, P.army_loyalty, 1, "pt"),
+      tile("Blockade", row.blockade_eff > 0.005 ? pct(row.blockade_eff) : "none", row.blockade_eff, P.blockade_eff, -1, "pt"),
+      tile("League trust", pct(row.league_trust), row.league_trust, P.league_trust, 1, "pt"),
+      tile("Deaths so far", int(row.deaths_total), row.deaths_total, P.deaths_total, -1),
+      tile("Democracy", pct(row.democracy), row.democracy, P.democracy, 1, "pt"),
+    ];
+    const c = row.constitution || {};
+    const status = [row.war ? (row.ceasefire ? "ceasefire" : "AT WAR") : "at peace", "currency: " + (row.currency || "crown"),
+      c.emergency ? "emergency powers" : "", "press " + (c.press || "–"), c.election_month >= 0 ? "election " + monthLabel(c.election_month) : "no election set"].filter(Boolean);
+    const frontLine = ["north", "east"].filter(f => fronts[f] && fronts[f].union > 0).map(f => f + " front: " + int(fronts[f].ours) + " vs " + int(fronts[f].union) + (fronts[f].combat ? " (fighting)" : ""));
+    return [el("h3", { text: "The country · " + (c.regime_name || "") + " · " + monthLabel(row.month) }), el("div", { class: "dash" }, tiles),
+      el("p", { class: "note", text: status.join(" · ") }), frontLine.length ? el("p", { class: "note", text: frontLine.join(" · ") }) : null];
+  }
+  function renderMapRegion() {
+    const box = $("m-region");
+    if (!M.map || !M.region) { put(box, el("h3", { text: "A region" }), el("p", { class: "note", text: "Click any region on the map for everything about it: people, money, hunger, fear, the front." })); return; }
+    put(box, M.map.card(M.region));
+  }
+  function renderMapEvents() {
+    const box = $("m-events"), row = M.rows[M.cur];
+    if (!row) { put(box); box.hidden = true; return; }
+    box.hidden = false;
+    const pins = M.pins || [];
+    const pinned = new Set(pins.map(p => p.text));
+    const other = (row.events || []).filter(e => e.public !== false && !pinned.has(e.text)).sort((a, b) => (b.importance || 1) - (a.importance || 1));
+    const secret = (row.events || []).filter(e => e.public === false);
+    put(box, el("h3", { text: "This month" }),
+      pins.length ? el("ol", { class: "evlist" }, pins.map(p => el("li", { value: String(p.n), class: p.importance >= 3 ? "i3" : null }, el("span", { text: p.text })))) : null,
+      other.length ? el("ul", { class: "evlist plain" }, other.slice(0, 14).map(e => el("li", { class: (e.importance || 1) >= 3 ? "i3" : null, text: e.text }))) : null,
+      secret.length ? el("details", null, el("summary", null, secret.length + " thing(s) the public did not see"), el("ul", { class: "evlist plain" }, secret.map(e => el("li", { class: "muted", text: e.text })))) : null,
+      !pins.length && !other.length ? el("p", { class: "muted", text: "A quiet month." }) : null);
+  }
+  function renderMapGov() {
+    const box = $("m-gov"), row = M.rows[M.cur];
+    if (!row) { put(box); box.hidden = true; return; }
+    box.hidden = false;
+    put(box, govNodes(row, (M.data && M.data.mapping) || {}));
+  }
+  function govNodes(row, mapping) {
+    const letters = Object.keys(mapping);
+    const gdot = l => el("span", { class: "dot", style: "--dc:" + (SEAT_COLORS[letters.indexOf(l)] || "var(--muted)"), text: l });
+    if (!row) return [el("h3", { text: "Who holds power" }), el("div", { class: "govlist" }, letters.map(l => el("div", { class: "nowline" }, gdot(l), el("span", { text: "Delegate " + l + " · " + mapping[l] })))),
+      el("p", { class: "note", text: "No offices are filled until the council votes on them." })];
+    const offices = row.offices || {}, members = row.members || {};
+    const names = { head: "Head of Government", treasury: "Treasury", interior: "Interior & Police", army: "Army", navy: "Navy" };
+    const c = row.constitution || {};
+    return [el("h3", { text: "Who holds power" }), el("div", { class: "govlist" },
+      Object.keys(names).map(o => el("div", { class: "r" }, el("span", { class: "muted", text: names[o] }),
+        offices[o] ? el("span", { class: "nowline" }, gdot(offices[o]), el("span", { text: "Delegate " + offices[o] + " · " + (mapping[offices[o]] || "") })) : el("span", { class: "muted", text: "vacant" })))),
+      el("p", { class: "note", text: "Decisions by " + String(c.decision_rule || "majority").replace(/_/g, " ") + (c.emergency ? " · emergency powers" : "") + " · " +
+        Object.entries(members).map(([l, st]) => l + ": " + (st === "active" ? "in" : st.replace(/_/g, " "))).join(" · ") })];
+  }
+
+  // ================= INSPECT =================
+  const I = { run: "", index: null, month: null, data: null, member: "", phase: "session" };
+  const PHASE_NAME = { session: "Council session", revision: "Responses & revisions", decision: "Decisions", survey: "Questionnaire", founding_diagnosis: "Founding diagnosis", formation_proposal: "Formation proposals", formation_vote: "Formation votes" };
+
+  async function openInspect(runId) {
+    I.run = runId; store("inspect-run", runId); showTab("inspect");
+  }
+  async function loadInspect() {
+    if (!S.runs.length) { try { S.runs = (await api("GET", "runs")).runs; } catch (e) { toast(e.message, true); return; } }
+    const runs = S.runs.filter(r => r.months_done > 0 || r.status === "paused" || r.status === "running");
+    const sel = $("i-run");
+    if (!runs.length) { sel.replaceChildren(el("option", { value: "" }, "No runs yet")); return; }
+    if (!I.run || !runs.some(r => r.id === I.run)) I.run = recall("inspect-run") && runs.some(r => r.id === recall("inspect-run")) ? recall("inspect-run") : runs[0].id;
+    sel.replaceChildren(...runs.map(r => el("option", { value: r.id, selected: r.id === I.run }, r.id + " · " + r.months_done + "/" + r.months_total + " · " + ((STATUS[r.status] || [r.status])[0]))));
+    try { I.index = await api("GET", "inspect", null, { run: I.run }); } catch (e) { toast(e.message, true); return; }
+    const months = I.index.months;
+    if (I.month === null || !months.some(m => m.month === I.month)) I.month = months.length ? months[Math.min(1, months.length - 1)].month : -1;
+    $("i-month").replaceChildren(...months.map(m => el("option", { value: String(m.month), selected: m.month === I.month },
+      (m.month === -1 ? "Questionnaire (before Month 1)" : m.month === -2 ? "Founding diagnoses (before Month 1)" : m.month === -3 ? "Government formation (before Month 1)" : monthLabel(m.month) + " · " + monthSub(m.month)) + (m.problems ? " · " + m.problems + " problem" + (m.problems > 1 ? "s" : "") : "") + (m.complete ? "" : " · unfinished"))));
+    const sys = $("i-system-body");
+    put(sys, el("p", { class: "pnote", text: I.index.system_exact ? "Saved with this run." : "This run is older than the saved copy, so this is the program's current text for the same framing (" + I.index.framing + "). It may differ slightly from what the run used." }),
+      el("pre", { class: "code", text: I.index.system_prompt }));
+    await loadInspectMonth();
+  }
+  async function loadInspectMonth() {
+    try { I.data = await api("GET", "inspect", null, { run: I.run, month: String(I.month) }); } catch (e) { toast(e.message, true); return; }
+    const letters = Object.keys(I.index.mapping);
+    if (!letters.includes(I.member)) I.member = letters[0];
+    if (I.month === -1) I.phase = "survey"; else if (I.month === -2) I.phase = "founding_diagnosis"; else if (I.month === -3) I.phase = "formation_proposal"; else if (["survey", "founding_diagnosis", "formation_proposal", "formation_vote"].includes(I.phase)) I.phase = "session";
+    renderInspect();
+  }
+  function inspectColor(letter) { const i = Object.keys(I.index.mapping).indexOf(letter); return SEAT_COLORS[i] || "var(--muted)"; }
+  function renderInspect() {
+    const letters = Object.keys(I.index.mapping), d = I.data, rec = d.record;
+    const called = new Set(d.calls.map(c => c.member));
+    put($("i-members"), letters.map(l => el("button", { class: "mbtn" + (called.has(l) ? "" : " gone"), style: "--dc:" + inspectColor(l), "aria-pressed": String(l === I.member),
+      title: "Delegate " + l + " · " + I.index.mapping[l] + (called.has(l) ? "" : " (no calls this month)"), onclick: () => { I.member = l; renderInspect(); } },
+      el("span", { class: "dot", style: "--dc:" + inspectColor(l), text: l }))));
+    const phases = I.month === -1 ? ["survey"] : I.month === -2 ? ["founding_diagnosis"] : I.month === -3 ? ["formation_proposal", "formation_vote"]
+      : ["session", ...(d.calls.some(c => c.phase === "revision") ? ["revision"] : []), "decision"];
+    if (!phases.includes(I.phase)) I.phase = phases[0];
+    put($("i-phase"), phases.map(p => el("button", { "aria-pressed": String(p === I.phase), onclick: () => { I.phase = p; renderInspect(); } }, PHASE_NAME[p])));
+    const relatedCalls = d.calls.filter(c => c.member === I.member && c.phase === I.phase);
+    const call = relatedCalls[relatedCalls.length - 1];
+    const who = "Delegate " + I.member + " (" + I.index.mapping[I.member] + ")";
+    $("i-prompt-title").textContent = "Sent to " + who + " · " + PHASE_NAME[I.phase] + (I.month >= 0 ? ", " + monthLabel(I.month) : "");
+    $("i-harness").textContent = (I.index.harness || {})[I.member] || "";
+    $("i-prompt").textContent = call ? relatedCalls.map((c, i) => "CALL " + (i + 1) + (i ? " · targeted repair" : "") + "\n" + (c.prompt || "(the prompt was not recorded)")).join("\n\n") : "No call: this delegate was not in the government at this point, or the turn did not happen.";
+    $("i-raw").textContent = call ? relatedCalls.map((c, i) => "CALL " + (i + 1) + "\n" + (c.raw || "(empty reply)")).join("\n\n") : "–";
+    put($("i-meta"), call ? [
+      el("span", null, "Asked ", el("b", { class: "mono", text: call.model || "–" })),
+      el("span", null, "Answered by ", el("b", { class: "mono", text: call.served_model || "–" })),
+      el("span", null, "Time ", el("b", { text: (call.latency_s || 0).toFixed(1) + "s" })),
+      el("span", null, "Tokens ", el("b", { text: int(call.input_tokens) + " in / " + int(call.output_tokens) + " out" })),
+      call.attempts > 1 ? el("span", null, "Attempts ", el("b", { text: String(call.attempts) })) : null,
+      call.format_retry ? el("span", { class: "warn", text: "asked again: first reply was not valid JSON" }) : null,
+      call.refusal ? el("span", { class: "bad-mark", text: "refused" }) : null,
+      call.error ? el("span", { class: "err", text: call.error }) : null,
+    ] : []);
+    renderEffect(call, rec);
+    renderInspectDms();
+    renderCallTable();
+    renderDelegateState();
+    renderWhy();
+    renderInspectGraph();
+  }
+
+  // ---- deep inspect, explanations and the relationship graph (spec 101-103) ----
+  const IX = { deep: recall("inspect-deep") === "1", graphRun: null, graph: null, relMode: "trust", stateKey: "", whyKey: "" };
+  $("i-deep").checked = IX.deep;
+  $("i-deep").addEventListener("change", ev => { IX.deep = ev.target.checked; store("inspect-deep", IX.deep ? "1" : "0"); IX.stateKey = ""; renderDelegateState(); });
+  function pctv(v) { return v === null || v === undefined ? "–" : Math.round(100 * v) + "%"; }
+  function bars(obj, max) {
+    return el("div", { class: "bars" }, Object.entries(obj || {}).flatMap(([k, v]) => [el("span", { text: k.replace(/_/g, " ") }),
+      el("span", { class: "bar" }, el("i", { style: "width:" + Math.max(0, Math.min(100, 100 * Number(v) / (max || 100))) + "%" })),
+      el("span", { class: "mono small", text: typeof v === "number" ? (max === 1 ? pctv(v) : Math.round(v)) : String(v) })]));
+  }
+  async function renderDelegateState() {
+    const box = $("i-state");
+    if (I.month === null || I.month < 0) { put(box, el("p", { class: "muted", text: "Pick a simulated month to see a delegate's state." })); return; }
+    const key = [I.run, I.month, I.member, IX.deep].join("|");
+    if (key === IX.stateKey) return;
+    IX.stateKey = key;
+    let d;
+    try { d = await api("GET", "delegate", null, { run: I.run, month: String(I.month), member: I.member, deep: IX.deep ? "1" : "0" }); }
+    catch (e) { put(box, el("p", { class: "muted", text: e.message })); return; }
+    if (key !== IX.stateKey) return;
+    const pub = d.public, out = [el("div", { class: "k", text: "Observable" }), el("dl", { class: "kvgrid" },
+      [["Offices", (pub.offices || []).map(o => OFFICE_SHORT[o] || o).join(", ") || "none"], ["Status", pub.status],
+       ["Influence", pctv(pub.influence)], ["Personal approval", pctv(pub.personal_approval)],
+       ["Declared principles", pub.principles || "–"],
+       ["Voting alignment", Object.entries(pub.voting_alignment || {}).map(([o, v]) => o + " " + (v > 0 ? "+" : "") + v.toFixed(2)).join(", ") || "–"],
+       ["Public promises", (pub.public_promises || []).map(p => p.status + ": " + p.text).join(" · ") || "–"]]
+        .flatMap(([k, v]) => [el("dt", { text: k }), el("dd", { text: String(v) })]))];
+    if (Object.keys(pub.constituency_support || {}).length) out.push(el("div", { class: "k", text: "Support among audiences" }), bars(pub.constituency_support, 1));
+    if (!IX.deep) { out.push(el("p", { class: "muted small", text: "Tick Deep inspect to see the hidden state." })); put(box, out); return; }
+    const x = d.deep || {};
+    out.push(el("p", { class: "omni", text: "Omniscient view: hidden from every delegate during the run." }));
+    if (x.traits) out.push(el("details", {}, el("summary", { text: "Traits (0–100; office drift in brackets)" }),
+      bars(Object.fromEntries(Object.entries(x.traits).map(([k, v]) => [k + (x.role_shift && x.role_shift[k] ? " (" + (x.role_shift[k] > 0 ? "+" : "") + x.role_shift[k] + ")" : ""), v])), 100)));
+    if (x.stress) out.push(el("div", { class: "k", text: "Stress" }), bars(x.stress, 100));
+    if (x.stress_profile) out.push(el("details", {}, el("summary", { text: "Coping tendencies under stress" }), bars(x.stress_profile, 100)));
+    if ((x.priorities || []).length) out.push(el("div", { class: "k", text: "Priorities (weight)" }), el("ul", null, x.priorities.map(p => el("li", { text: p.goal + " · " + p.weight }))));
+    if (x.secret_goal && x.secret_goal.text) out.push(el("div", { class: "k", text: "Private goal" }), el("p", { class: "quote", text: x.secret_goal.text }));
+    if (x.strategy && x.strategy.goal) out.push(el("div", { class: "k", text: "Private plan" }), el("p", { text: x.strategy.goal + (x.strategy.by_month >= 0 ? " (by Month " + (x.strategy.by_month + 1) + ")" : "") }));
+    if (x.beliefs) out.push(el("details", {}, el("summary", { text: "Beliefs (confidence %)" }), bars(x.beliefs, 100)));
+    if (x.relationships) out.push(el("details", {}, el("summary", { text: "Directional relationships (this delegate's view)" }),
+      el("div", { class: "tablewrap" }, el("table", null, el("thead", null, el("tr", null, ["Toward", "trust", "respect", "fear", "resentment", "rivalry", "dependency", "reliability"].map(h => el("th", { text: h })))),
+        el("tbody", null, Object.entries(x.relationships).map(([o, r]) => el("tr", null, el("td", { text: o }),
+          ...["trust", "respect", "fear", "resentment", "rivalry", "dependency", "perceived_reliability"].map(k => el("td", { class: "n", text: Math.round(r[k] || 0) }))))))) ));
+    if ((x.grievances || []).length) out.push(el("div", { class: "k", text: "Grievances" }), el("ul", null, x.grievances.map(g => el("li", { text: g.against + ": " + g.reason + " (" + Math.round(g.strength) + (g.major ? ", major" : "") + ")" }))));
+    if ((x.favor_debts || []).length) out.push(el("div", { class: "k", text: "Political debts" }), el("ul", null, x.favor_debts.map(g => el("li", { text: "owes " + g.to + " · " + g.motion + " · " + g.status }))));
+    if ((x.promises || []).length) out.push(el("details", {}, el("summary", { text: "All promises" }), el("ul", null, x.promises.map(p => el("li", { text: p.status + " · " + (p.to || "public") + " · " + p.text })))));
+    if ((x.commitments || []).length) out.push(el("details", {}, el("summary", { text: "Declared principles as commitments" }), el("ul", null, x.commitments.map(c => el("li", { text: "“" + c.text + "” strength " + Math.round(c.strength || 0) + ", salience " + Math.round(c.salience || 0) + ", violations " + c.violations })))));
+    if (x.power) out.push(el("details", {}, el("summary", { text: "Power components" }), bars(x.power, 1)));
+    if ((x.reports || []).length) out.push(el("details", {}, el("summary", { text: "Office reports received (with the engine's truth)" }),
+      el("ul", null, x.reports.map(r => el("li", { text: r.id + " " + r.subject + ": " + r.estimate + " (" + r.low + "–" + r.high + ", " + r.confidence + ") · truth " + r.truth + " · " + (r.accurate ? "accurate" : "WRONG: " + r.error) + (r.shared_with && r.shared_with.length ? " · shared with " + r.shared_with.join(", ") : "") })))));
+    if ((x.decision_factors || []).length) out.push(el("div", { class: "k", text: "Stated decision factors" }), el("p", { text: x.decision_factors.join(" · ") }));
+    if (x.initial_position && typeof x.initial_position === "object") out.push(el("div", { class: "k", text: "Private opening position" }),
+      el("p", { text: Object.entries(x.initial_position).filter(([, v]) => v).map(([k, v]) => k.replace(/_/g, " ") + ": " + v).join(" · ") }));
+    if (Object.keys(x.provisional_stances || {}).length) out.push(el("div", { class: "k", text: "Provisional stances after the opening" }), el("p", { text: Object.entries(x.provisional_stances).map(([k, v]) => k + " " + v).join(", ") }));
+    if ((x.lessons || []).length) out.push(el("div", { class: "k", text: "Policy lessons" }), el("ul", null, x.lessons.map(l => el("li", { text: l.policy + " (Month " + (l.month_adopted + 1) + "): " + l.verdict + ", " + l.style.replace(/_/g, " ") }))));
+    put(box, out);
+  }
+  async function renderWhy() {
+    const box = $("i-why");
+    if (I.month === null || I.month < 0) { put(box, el("p", { class: "muted", text: "Pick a simulated month." })); return; }
+    const key = [I.run, I.month, I.member].join("|");
+    if (key === IX.whyKey) return;
+    IX.whyKey = key;
+    let d;
+    try { d = await api("GET", "explain", null, { run: I.run, month: String(I.month), member: I.member }); }
+    catch (e) { put(box, el("p", { class: "muted", text: e.message })); return; }
+    if (key !== IX.whyKey) return;
+    if (!(d.items || []).length) { put(box, el("p", { class: "muted", text: "No votes or notable decisions by this delegate this month." })); return; }
+    put(box, d.items.map(x => el("div", { class: "whyitem" }, el("b", { text: x.action.summary + (x.action.kind !== "vote" ? " · " + x.action.kind.replace(/_/g, " ") : "") }),
+      el("ul", null, [...(x.world_changes || []).map(t => el("li", { text: t })),
+        ...(x.events || []).slice(-3).map(t => el("li", { class: "muted small", text: t })),
+        ...(x.prior_votes_on_topic || []).map(t => el("li", { text: "Earlier: " + t })),
+        (x.vote_reasons || []).length ? el("li", { text: "Stated reason: " + x.vote_reasons.join(" · ") }) : null,
+        (x.decision_factors || []).length ? el("li", { text: "Decision factors: " + x.decision_factors.join(" · ") }) : null].filter(Boolean)))));
+  }
+  async function renderInspectGraph() {
+    const svg = $("i-relgraph");
+    if (!window.KaramaniyaRelGraph) return;
+    put($("i-relmodes"), [["trust", "Trust"], ["rivalry", "Rivalry"], ["dependency", "Dependency"]].map(([k, label]) =>
+      el("button", { "aria-pressed": String(IX.relMode === k), onclick: () => { IX.relMode = k; renderInspectGraph(); } }, label)));
+    if (IX.graphRun !== I.run) {
+      try { IX.graph = (await api("GET", "analytics", null, { run: I.run })).graph; IX.graphRun = I.run; }
+      catch (e) { IX.graph = []; IX.graphRun = I.run; }
+    }
+    const frames = IX.graph || [];
+    const month = I.month !== null && I.month >= 0 ? I.month : 0;
+    const frame = frames.find(f => f.month === month) || frames[frames.length - 1];
+    window.KaramaniyaRelGraph.draw(svg, frame, { mode: IX.relMode, color: id => inspectColor(id), name: id => "Delegate " + id + " (" + (I.index.mapping[id] || "") + ")" });
+    $("i-rellegend").textContent = frame ? "Month " + (frame.month + 1) + ". Arrows run from the delegate holding the view. " +
+      (IX.relMode === "trust" ? "Green: trust; red: distrust; thicker is stronger." : IX.relMode === "rivalry" ? "Dashed: rivalry." : "Dependency.") + " Node size: influence." : "No relationship data (older run).";
+  }
+  function renderEffect(call, rec) {
+    const box = $("i-effect"), m = I.member, out = [];
+    if (rec && rec.integrity && rec.integrity.status === "warnings") out.push(el("div", { class: "alert warn" },
+      el("strong", { text: "State integrity warning. " }),
+      (rec.integrity.warnings || []).map(x => x.code + ": " + x.detail).join(" ")));
+    const summary = rec && (rec.calls || []).find(c => c.member === m && c.phase === I.phase);
+    if (summary && summary.problems && summary.problems.length)
+      out.push(el("div", null, el("div", { class: "k", text: "Problems in the answer" }), el("ul", null, summary.problems.map(p => el("li", { text: p })))));
+    if (I.phase === "founding_diagnosis") {
+      const f = I.data.founding || {}, ds = f.diagnoses || {}, list = Object.entries(ds).sort(([a], [b]) => a.localeCompare(b));
+      out.push(el("h3", { text: "The government’s first diagnoses" }));
+      const tops = list.filter(([, d]) => !d.status || d.status === "submitted").map(([, d]) => d.main_problem).filter(Boolean), counts = tops.reduce((a, x) => (a[x] = (a[x] || 0) + 1, a), {});
+      const disagreement = tops.length ? 1 - Math.max(...Object.values(counts)) / tops.length : 0;
+      out.push(el("p", { class: "muted", text: list.length + " independent assessments · " + (disagreement * 100).toFixed(0) + "% chose a different main issue from the most common choice." }));
+      if (f.strengths && f.strengths.length) out.push(el("div", { class: "card" }, el("h4", { text: "Inherited strengths" }),
+        el("ul", { class: "eventlist" }, f.strengths.map(s => el("li", { text: s.description })))));
+      if (f.commitments && f.commitments.length) out.push(el("div", { class: "card" }, el("h4", { text: "Inherited commitments" }),
+        el("ul", { class: "eventlist" }, f.commitments.map(s => el("li", { text: s })))));
+      for (const [letter, d] of list) out.push(el("div", { class: "card" },
+        el("div", { class: "k", text: "Delegate " + letter + " · " + (d.dossier || "evidence") + " dossier" }),
+        el("h4", { text: (f.problems.find(p => p.id === d.main_problem) || {}).title || d.main_problem || "No readable diagnosis" }),
+        d.status && d.status !== "submitted" ? el("p", { class: "err", text: "Diagnosis " + d.status + (d.error ? ": " + d.error : "") }) : [
+          el("p", { class: "quote", text: "First policy: " + d.preferred_first_policy }),
+          el("p", { text: "Cause assessment: " + d.cause_assessment }),
+          el("p", { class: "muted small", text: "Second issue: " + (((f.problems.find(p => p.id === d.second_problem) || {}).title) || d.second_problem) + " · Biggest risk: " + d.biggest_risk }),
+          d.information_needed ? el("p", { class: "muted small", text: "Information needed: " + d.information_needed }) : null,
+          el("p", { class: "muted small", text: "May be underestimating: " + (d.what_other_offices_may_be_underestimating || "") })]));
+      out.push(el("h4", { text: "Inherited problems and plausible explanations" }), el("ul", { class: "eventlist" }, f.problems.map(p => el("li", null,
+        el("b", { text: p.title + " · " + p.severity + "/100 · " + p.trend + (p.neglect_months ? " · " + p.neglect_months + " months without improvement" : "") }), " — " + p.public_description,
+        p.possible_causes && p.possible_causes.length ? el("div", { class: "muted small", text: "Possible causes: " + p.possible_causes.join("; ") }) : null))));
+    } else if (I.phase === "formation_proposal" || I.phase === "formation_vote") {
+      const f = (I.data.founding || {}).formation || {}, proposals = f.proposals || {}, motions = f.motions || [];
+      out.push(el("h3", { text: "Procedural formation · no policy agenda slots used" }));
+      if (I.phase === "formation_proposal") {
+        const p = proposals[m] || {};
+        out.push(el("p", { class: "quote", text: p.statement || "No proposal recorded." }));
+        out.push(el("ul", { class: "eventlist" }, (p.nominations || []).map(([office, member]) => el("li", { text: office + ": Delegate " + member }))));
+        if (p.slate) out.push(el("p", { text: "Full slate: " + Object.entries(p.slate).map(([o, v]) => o + " → " + v).join(" · ") }));
+      } else {
+        out.push(el("ul", { class: "eventlist" }, motions.map(x => el("li", { text: x.id + " · " + (x.type === "slate" ? "full slate" : x.office + " → " + x.member) + " · your vote " + ((x.votes || {})[m] || "abstain") + " · " + (x.selected ? "selected" : x.passed ? "passed but superseded" : "failed") + ((x.vote_reasons || {})[m] ? " · reason: " + x.vote_reasons[m] : "") }))));
+        out.push(el("p", { text: "Offices: " + Object.entries(f.offices || {}).map(([o, v]) => o + ": " + (v || "vacant")).join(" · ") }));
+      }
+    } else if (I.phase === "survey") {
+      const a = d => (I.data.survey || {})[m] || {};
+      const answers = a().answers;
+      if (answers) out.push(el("dl", { class: "kv" }, Object.entries(answers).map(([q, v]) => [el("dt", { text: q }),
+        el("dd", { text: v && typeof v === "object" ? ((v.choice ?? v.answer) !== undefined ? String(v.choice ?? v.answer).replace(/_/g, " ") + (v.reason ? " – " + v.reason : "") : JSON.stringify(v)) : String(v) })])));
+      else out.push(el("p", { class: "muted", text: "No readable answers." }));
+    } else if (!rec) {
+      out.push(el("p", { class: "muted", text: "This month did not finish, so nothing was decided." }));
+    } else if (I.phase === "session") {
+      const st = (rec.statements || []).find(x => x.member === m);
+      out.push(el("div", null, el("div", { class: "k", text: "Statement to the council" }), st && st.statement ? el("p", { class: "quote", text: st.statement }) : el("p", { class: "muted", text: "(said nothing)" })));
+      if (st && st.principles) out.push(el("div", null,
+        el("div", { class: "k", text: st.principles_changed ? "Revised public principles" : "Public principles" }),
+        el("p", { class: "quote", text: st.principles })));
+      const mine = (rec.motions || []).filter(x => x.proposer === m);
+      if (mine.length) out.push(el("div", null, el("div", { class: "k", text: "Motions tabled" }), el("ul", null, mine.map(x => el("li", null,
+        el("b", { text: x.id + " " }), el("span", { text: x.summary + (x.text ? " – " + x.text : "") }), " ",
+        el("span", { class: "tag " + (x.passed ? "yes" : "no"), text: motionStatus(x) }), " ",
+        el("span", { class: "muted", text: x.tally + (x.result ? " · " + x.result : "") }),
+        motionReason(x) ? el("div", { class: "muted small", text: motionReason(x) }) : null)))));
+      if (st && st.invalid && st.invalid.length) out.push(el("div", null, el("div", { class: "k", text: "Rejected before the vote" }), el("ul", null, st.invalid.map(x => el("li", { text: x })))));
+      const order = rec.order || [];
+      const pos = (rec.pre_positions || {})[m];
+      if (pos) out.push(el("div", null, el("div", { class: "k", text: "Private opening position · analyst view" }),
+        el("p", { class: "quote", text: typeof pos === "object" ? Object.entries(pos).filter(([, v]) => v).map(([k, v]) => k.replace(/_/g, " ") + ": " + v).join(" · ") : pos })));
+      const comms = (rec.communications || []).filter(x => x.member === m && x.month === rec.month);
+      if (comms.length) out.push(el("div", null, el("div", { class: "k", text: "Public communications" }), el("ul", null, comms.map(c => el("li", { text: c.kind.replace(/_/g, " ") + " → " + c.target + (c.about ? ": " + c.about : "") })))));
+      if (st && (st.shared || []).length) out.push(el("div", null, el("div", { class: "k", text: "Reports shared" }), el("ul", null, st.shared.map(x => el("li", { text: "with " + x.with + ": " + x.text })))));
+      const rej = (rec.rejected_motions || []).filter(x => x.member === m);
+      if (rej.length) out.push(el("div", null, el("div", { class: "k", text: "Structured rejections" }), el("ul", null, rej.map(x => el("li", { text: x.reason_code + ": " + x.explanation })))));
+      const notes = (rec.agenda_notes || []).filter(n => (rec.motions || []).some(mo => mo.id === n.motion && mo.proposer === m));
+      if (notes.length) out.push(el("div", null, el("div", { class: "k", text: "Agenda" }), el("ul", null, notes.map(n => el("li", { text: n.code + ": " + n.explanation })))));
+      const promises = (rec.commitments_added || []).filter(x => x.member === m);
+      if (promises.length) {
+        const promiseItems = promises.map(x => el("li", { text: (x.to && x.to !== "public" ? "To " + x.to + ": " : "Public: ") + x.text + (x.condition ? " · if " + x.condition : "") }));
+        out.push(el("div", null, el("div", { class: "k", text: "Political promises made" }), el("ul", null, promiseItems)));
+      }
+      const orderNote = rec.agent_architecture_version >= 1
+        ? "Opening position was submitted independently before this month's transcript was revealed."
+        : "Heard everyone who spoke before.";
+      out.push(el("p", { class: "pnote", text: "Speaking slot " + (order.indexOf(m) + 1) + " of " + order.length + " (order: " + order.join(", ") + "). " + orderNote }));
+    } else if (I.phase === "revision") {
+      const r = (rec.revisions || {})[m] || {};
+      out.push(el("div", null, el("div", { class: "k", text: "Public response" }), r.response ? el("p", { class: "quote", text: r.response }) : el("p", { class: "muted", text: "(no response)" })));
+      if (Object.keys(r.stances || {}).length) out.push(el("div", null, el("div", { class: "k", text: "Provisional stances (private)" }), el("p", { text: Object.entries(r.stances).map(([k, v]) => k + " " + v).join(", ") })));
+      if ((r.withdrawn || []).length) out.push(el("p", { text: "Withdrew: " + r.withdrawn.join(", ") }));
+      if ((r.amended || []).length) out.push(el("p", { text: "Amended: " + r.amended.join(", ") }));
+      if ((r.rejected_amendments || []).length) out.push(el("p", { class: "err", text: "Amendment rejected: " + r.rejected_amendments.map(x => x.reason_code + " " + x.explanation).join("; ") }));
+      if ((r.demands || []).length) out.push(el("div", null, el("div", { class: "k", text: "Demands" }), el("ul", null, r.demands.map(x => el("li", { text: x.motion_id + ": " + x.demand })))));
+      const pers = ((rec.analytics || {}).persuasion || []).filter(x => x.member === m);
+      if (pers.length) out.push(el("div", null, el("div", { class: "k", text: "Position changes by the final vote · analyst view" }), el("ul", null, pers.map(x => el("li", { text: x.motion + ": " + x.from + " → " + x.to + " (likely: " + x.likely_reasons.join(", ") + ")" })))));
+    } else {
+      const dec = (rec.decisions || {})[m];
+      if (!dec) out.push(el("p", { class: "muted", text: "No decision recorded." }));
+      else {
+        const motions = Object.fromEntries((rec.motions || []).map(x => [x.id, x]));
+        const votes = Object.entries(dec.votes || {});
+        out.push(el("div", null, el("div", { class: "k", text: "Votes" }), votes.length ? el("ul", null, votes.map(([id, v]) => el("li", null,
+          el("span", { class: "tag " + (v === "yes" ? "yes" : v === "no" ? "no" : ""), text: v }), " ", el("b", { text: id + " " }),
+          el("span", { text: motions[id] ? motions[id].summary : "" }), motions[id] ? el("span", { class: "muted", text: " → " + motionStatus(motions[id]) }) : null,
+          (dec.vote_reasons || {})[id] ? el("div", { class: "muted", text: "Reason: " + dec.vote_reasons[id] }) : null,
+          (motions[id] && motions[id].conditional_votes && motions[id].conditional_votes[m]) ?
+            el("div", { class: "muted", text: "Condition " + JSON.stringify(motions[id].conditional_votes[m].condition) +
+              " · observed " + motions[id].conditional_votes[m].observed + " · " + (motions[id].conditional_votes[m].met ? "met" : "unmet") }) : null))) : el("p", { class: "muted", text: "No motions to vote on." })));
+        const orders = Object.entries(dec.orders || {});
+        out.push(el("div", null, el("div", { class: "k", text: "Orders for the offices held" }), orders.length ? orders.map(([office, levers]) =>
+          el("div", null, el("b", { text: (OFFICE_SHORT[office] || office) }), el("dl", { class: "kv" }, Object.entries(levers).map(([k, v]) => [el("dt", { text: k }), el("dd", { text: JSON.stringify(v) })]))))
+          : el("p", { class: "muted", text: "None (holds no office, or gave no orders)." })));
+        const def = (rec.defiance || []).filter(x => x.member === m);
+        if (def.length) out.push(el("div", null, el("div", { class: "k", text: "Went against council directives" }), el("ul", null, def.map(x => el("li", { text: JSON.stringify(x) })))));
+        out.push(el("div", null, el("div", { class: "k", text: "Force" }), el("p", { text:
+          (dec.coup ? "Ordered a coup: " + dec.coup.action.replace("_", " ") + (dec.coup.members && dec.coup.members.length ? " against " + dec.coup.members.join(", ") : "") + ". " : "No coup ordered. ") +
+          "If someone else attempts one: " + String(dec.coup_stance || "resist").replace("_", " ") + "." + (dec.resign ? " Resigned." : "") })));
+        if (dec.decision_factors && dec.decision_factors.length) out.push(el("div", null,
+          el("div", { class: "k", text: "Recorded decision factors · not chain of thought" }),
+          el("ul", null, dec.decision_factors.map(x => el("li", { text: x })))));
+        const ops = Object.entries(dec.operations || {});
+        if (ops.length) out.push(el("div", null, el("div", { class: "k", text: "Operational choices (no vote needed)" }),
+          el("p", { text: ops.map(([o, v]) => (OFFICE_SHORT[o] || o) + ": " + Object.entries(v).map(([k, x]) => k + " " + x).join(", ")).join(" · ") })));
+        if ((dec.belief_updates || []).length) out.push(el("div", null, el("div", { class: "k", text: "Stated belief revisions (weak evidence for the engine)" }),
+          el("ul", null, dec.belief_updates.map(b => el("li", { text: b.proposition + " " + b.direction.replace("_", " ") + (b.reason ? ": " + b.reason : "") })))));
+        if (dec.election_response) out.push(el("p", { class: "quote", text: "Response to the election result: " + dec.election_response.replace(/_/g, " ") }));
+        const coups = (rec.coups || []).filter(c => c.leader === m || (c.plotters || []).includes(m));
+        for (const c of coups) out.push(el("p", { class: "coup", text: "Coup " + (c.leader === m ? "led" : "joined") + ": " + (c.success ? "succeeded" : "failed") + " (odds " + Math.round((c.p_success || 0) * 100) + "%, force " + int(c.attack) + " against " + int(c.defend) + ")." }));
+        out.push(el("div", null, el("div", { class: "k", text: "Private notes (its only memory for next month)" }), dec.notes ? el("p", { class: "quote", text: dec.notes }) : el("p", { class: "muted", text: "(none)" })));
+      }
+    }
+    const social = rec && ((rec.social || {})[m] || (rec.member_social || {})[m]);
+    if (social && I.month >= 0) out.push(el("details", {},
+      el("summary", { text: "Political state after this month · deep inspect" }),
+      el("p", { class: "muted", text: "Stress: " + JSON.stringify(social.stress || {}) }),
+      el("p", { class: "muted", text: "Directional relationships: " + JSON.stringify(social.relationships || {}) }),
+      el("p", { class: "muted", text: "Political favors: " + JSON.stringify(social.favor_debts || []) }),
+      el("p", { class: "muted", text: "Grievances: " + JSON.stringify(social.grievances || []) })));
+    put(box, out);
+  }
+  function renderInspectDms() {
+    const m = I.member, d = I.data, rows = [];
+    const sent = d.dms.filter(x => x.from === m), got = d.dms.filter(x => x.to === m), read = d.intercepts.filter(x => x.by === m);
+    const line = (x, dir) => el("div", { class: "dm" }, el("b", { text: dir + " (" + (x.when || "") + "): " }), el("span", { text: x.text }));
+    if (sent.length) rows.push(el("div", { class: "k", text: "Sent" }), sent.map(x => line(x, "To " + x.to)));
+    if (got.length) rows.push(el("div", { class: "k", text: "Received" }), got.map(x => line(x, "From " + x.from)));
+    if (read.length) rows.push(el("div", { class: "k", text: "Intercepted by this delegate's police" }), read.map(x => line(x, x.from + " to " + x.to)));
+    if (!rows.length) rows.push(el("p", { class: "muted", text: "None." }));
+    put($("i-dms"), rows);
+  }
+  function renderCallTable() {
+    const d = I.data;
+    put($("i-calls"), el("thead", null, el("tr", null, ["Delegate", "Turn", "Asked", "Answered by", "Result", "Time", "Tokens in / out"].map((h, i) => el("th", { class: i >= 5 ? "n" : null, text: h })))),
+      el("tbody", null, d.calls.map(c => el("tr", { class: "pick" + (c.member === I.member && c.phase === I.phase ? " sel" : ""), onclick: () => { I.member = c.member; I.phase = c.phase; renderInspect(); window.scrollTo({ top: 0, behavior: "smooth" }); } },
+        el("td", null, el("span", { class: "dot", style: "--dc:" + inspectColor(c.member), text: c.member }), " ", el("span", { class: "mono small", text: I.index.mapping[c.member] || "" })),
+        el("td", { text: PHASE_NAME[c.phase] || c.phase }), el("td", { class: "mono small", text: c.model || "–" }), el("td", { class: "mono small", text: c.served_model || "–" }),
+        el("td", null, c.error ? el("span", { class: "bad-mark", text: "failed" }) : c.refusal ? el("span", { class: "bad-mark", text: "refused" }) : el("span", { class: "ok-mark", text: c.format_retry ? "OK (asked twice)" : "OK" })),
+        el("td", { class: "n", text: (c.latency_s || 0).toFixed(1) + "s" }), el("td", { class: "n", text: int(c.input_tokens) + " / " + int(c.output_tokens) })))));
+  }
+  $("i-run").addEventListener("change", ev => { I.run = ev.target.value; I.month = null; store("inspect-run", I.run); loadInspect(); });
+  $("i-month").addEventListener("change", ev => { I.month = Number(ev.target.value); IX.stateKey = ""; IX.whyKey = ""; loadInspectMonth(); });
+  $("i-copy-prompt").addEventListener("click", () => navigator.clipboard.writeText($("i-prompt").textContent).then(() => toast("Prompt copied."), () => toast("Copy was blocked by the browser.", true)));
+  $("i-copy-raw").addEventListener("click", () => navigator.clipboard.writeText($("i-raw").textContent).then(() => toast("Reply copied."), () => toast("Copy was blocked by the browser.", true)));
+
+  // ================= RUNS =================
+  async function loadRuns() {
+    try { const d = await api("GET", "runs"); S.runs = d.runs; renderRuns(); } catch (e) { toast(e.message, true); }
+  }
+  function lineupChips(mapping) {
+    return el("div", { class: "lineup" }, Object.entries(mapping || {}).map(([l, label], i) =>
+      el("span", { class: "chip" }, el("span", { class: "dot", style: "--dc:" + SEAT_COLORS[i], text: l }), el("span", { class: "mono", text: label }))));
+  }
+  function renderRuns() {
+    const t = $("runs-table");
+    if (!S.runs.length) { t.replaceChildren(el("tbody", null, el("tr", null, el("td", { class: "muted", text: "No runs yet." })))); return; }
+    const busy = S.job && S.job.active;
+    t.replaceChildren(
+      el("thead", null, el("tr", null, ["Run", "Lineup", "Months", "Status", "Outcome", "Spend", ""].map((h, i) => el("th", { class: i === 2 || i === 5 ? "n" : null, text: h })))),
+      el("tbody", null, S.runs.map(r => {
+        const resumable = ["paused", "stopped", "interrupted"].includes(r.status);
+        const [olabel] = r.outcome && r.outcome.type ? (OUTCOMES[r.outcome.type] || [r.outcome.type]) : [""];
+        return el("tr", null,
+          el("td", null, el("div", { class: "mono", text: r.id }), el("div", { class: "muted small", text: (r.created || "").replace(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2}).*/, "$1-$2-$3 $4:$5") + (r.seed !== undefined ? " · seed " + r.seed : "") })),
+          el("td", null, lineupChips(r.mapping)),
+          el("td", { class: "n", text: r.months_done + " / " + r.months_total }),
+          el("td", null, pill(r.status), r.stopped && r.status !== "finished" ? el("div", { class: "muted small", style: "max-width:36ch", text: r.stopped }) : null),
+          el("td", { text: olabel || "–" }),
+          el("td", { class: "n", text: r.spend > 0 ? money(r.spend) : "–" }),
+          el("td", null, el("div", { class: "actions-cell" },
+            r.has_report ? el("a", { class: "btn small", href: "/runs/" + encodeURIComponent(r.id) + "/report.html", target: "_blank", rel: "noopener" }, "Report") : null,
+            r.months_done > 0 || r.status === "paused" ? el("button", { class: "btn small", onclick: () => openInspect(r.id) }, "Inspect") : null,
+            r.status === "running" ? el("button", { class: "btn small", onclick: () => showTab("live") }, "Watch") : null,
+            resumable ? el("button", { class: "btn small primary", disabled: busy, onclick: () => resume(r.id) }, "Resume") : null)));
+      })));
+  }
+  $("runs-refresh").addEventListener("click", loadRuns);
+
+  // ================= COMPARE =================
+  async function loadCompare() {
+    try { renderCompare(await api("GET", "compare")); } catch (e) { toast(e.message, true); }
+  }
+  function renderCompare(d) {
+    const share = (a, b) => b ? Math.round(100 * a / b) + "%" : "–";
+    const cols = [
+      ["Model", a => el("span", { class: "mono", text: a.label }), false],
+      ["Runs", a => String(a.runs), true],
+      ["In power at the end", a => a.ended_in_power + " of " + a.runs, true],
+      ["Office-months", a => String(a.office_months), true],
+      ["Coups led (won)", a => a.coups_led + " (" + a.coups_led_success + ")", true],
+      ["Coups joined", a => String(a.coups_joined), true],
+      ["Repression tabled", a => String(a.repressive_tabled), true],
+      ["Backed repression", a => share(a.repressive_yes, a.repressive_votes), true],
+      ["Election delays backed", a => String(a.election_delay_yes), true],
+      ["Defied the council", a => String(a.defiance), true],
+      ["Said = did", a => share(a.said_did_match, a.said_did_match + a.said_did_mismatch), true],
+      ["Refused / failed", a => a.refusals + " / " + (a.errors + a.bad_output), true],
+    ];
+    const tm = $("cmp-models");
+    if (!d.models.length) tm.replaceChildren(el("tbody", null, el("tr", null, el("td", { class: "muted", text: "No finished runs with a report yet." }))));
+    else tm.replaceChildren(el("thead", null, el("tr", null, cols.map(([h, , n]) => el("th", { class: n ? "n" : null, text: h })))),
+      el("tbody", null, d.models.map(a => el("tr", null, cols.map(([, f, n]) => el("td", { class: n ? "n" : null }, f(a)))))));
+    const tr = $("cmp-runs");
+    if (!d.runs.length) { tr.replaceChildren(); return; }
+    tr.replaceChildren(el("thead", null, el("tr", null, ["Run", "Inherited start", "First-diagnosis divergence", "Outcome", "Months", "Excess deaths", "Peak inflation", "Lowest approval", "Democracy at end", "Coups", "Regime at end"]
+      .map((h, i) => el("th", { class: i >= 2 && i <= 9 ? "n" : null, text: h })))),
+      el("tbody", null, d.runs.map(r => {
+        const [olabel] = r.outcome && r.outcome.type ? (OUTCOMES[r.outcome.type] || [r.outcome.type]) : [r.status];
+        return el("tr", null, el("td", null, el("div", { class: "mono", text: r.id }), lineupChips(r.lineup)),
+          el("td", { text: r.founding_scenario || "legacy" }), el("td", { class: "n", text: pct(r.founding_diagnosis_divergence || 0) }), el("td", { text: olabel }),
+          el("td", { class: "n", text: r.months_run + " / " + r.months_total }), el("td", { class: "n", text: int(r.excess_deaths) }),
+          el("td", { class: "n", text: pct(r.peak_inflation_yoy) }), el("td", { class: "n", text: pct(r.min_approval) }),
+          el("td", { class: "n", text: pct(r.democracy_final) }), el("td", { class: "n", text: String(r.coups_attempted) }), el("td", { text: r.final_regime || "–" }));
+      })));
+    const tv = $("cmp-v2"), v2runs = d.runs.filter(r => r.v2 && Object.keys(r.v2).length);
+    if (!v2runs.length) tv.replaceChildren(el("tbody", null, el("tr", null, el("td", { class: "muted", text: "No runs with the version-2 agent architecture have a report yet." }))));
+    else tv.replaceChildren(el("thead", null, el("tr", null, ["Run", "Unanimous", "Negotiated", "Split", "Failed", "Withdrawn", "Conditional votes", "Promises kept / broken", "Trust spread", "Mean rivalry", "Leaks", "Furthest drift", "Alignments"]
+        .map((h, i) => el("th", { class: i >= 1 && i <= 10 ? "n" : null, text: h })))),
+      el("tbody", null, v2runs.map(r => { const v = r.v2; return el("tr", null, el("td", null, el("div", { class: "mono", text: r.id }), lineupChips(r.lineup)),
+        el("td", { class: "n", text: v.unanimous_rate == null ? "–" : pct(v.unanimous_rate) }),
+        // Unanimity that had to be negotiated, not unanimity that was there from the start.
+        el("td", { class: "n", title: unanimityTitle(v), text: v.negotiated_convergence == null ? "–" : String(v.negotiated_convergence) }),
+        el("td", { class: "n", text: v.split_rate == null ? "–" : pct(v.split_rate) }),
+        el("td", { class: "n", text: v.failed_rate == null ? "–" : pct(v.failed_rate) }), el("td", { class: "n", text: v.withdrawal_rate == null ? "–" : pct(v.withdrawal_rate) }),
+        el("td", { class: "n", text: v.conditional_rate == null ? "–" : pct(v.conditional_rate) }),
+        el("td", { class: "n", text: (v.promises_kept || 0) + " / " + (v.promises_broken || 0) }),
+        el("td", { class: "n", text: v.trust_spread == null ? "–" : String(v.trust_spread) }), el("td", { class: "n", text: v.rivalry_mean == null ? "–" : String(v.rivalry_mean) }),
+        el("td", { class: "n", text: String(v.leaks || 0) }), el("td", { text: (v.drift || "none").replace(/_/g, " ") }),
+        el("td", { class: "small", text: (v.alignments || []).join(" · ") || "–" })); })));
+    const notes = d.notes || [];
+    put($("cmp-notes"), notes.length ? notes.map(n => el("div", { class: "whyitem" },
+      el("div", null, lineupChips(n.lineup)),
+      el("p", { text: n.runs.length + " runs: " + n.runs.join(", ") }),
+      el("p", { text: "Outcomes: " + n.outcomes.map(o => (OUTCOMES[o] || [o])[0]).join(", ") }),
+      el("p", { class: "small", text: "Unanimous share " + (n.unanimous_rate ? pct(n.unanimous_rate[0]) + "–" + pct(n.unanimous_rate[1]) : "–") +
+        " · failed " + (n.failed_rate ? pct(n.failed_rate[0]) + "–" + pct(n.failed_rate[1]) : "–") +
+        " · promises broken " + (n.promises_broken ? n.promises_broken.join("–") : "–") + " · trust spread " + (n.trust_spread ? n.trust_spread.join("–") : "–") }),
+      el("p", { class: "small", text: "Alignments: " + n.alignments.map(a => a || "none").join(" | ") }),
+      n.first_divergence ? el("p", { class: "small", text: "First divergence in Month " + (n.first_divergence.month + 1) + ": " +
+        Object.entries(n.first_divergence.by_run).map(([run, kinds]) => run + " [" + (kinds.join(", ") || "nothing notable") + "]").join(" vs ") }) : null,
+      el("p", { class: "muted small", text: n.caveat }))) : el("p", { class: "muted", text: "Run the same lineup with two or more seeds to see what varies." }));
+  }
+  $("compare-refresh").addEventListener("click", loadCompare);
+
+  // ================= START =================
+  async function init() {
+    bindSettings();
+    try {
+      const st = await api("GET", "state");
+      S.configs = st.configs; S.shipped = st.shipped; S.suggested = st.suggested_models || {}; S.defaults = st.run_defaults;
+      $("runs-dir").textContent = st.runs_dir;
+      renderConfigSelect();
+      const names = S.configs.map(c => c.name);
+      const pick = [recall("config"), "council.toml", "council.example.toml", names[0]].find(n => n && names.includes(n));
+      if (pick) await loadConfig(pick);
+      else { S.cfg = { run: { ...st.run_defaults }, seats: [] }; renderSeats(); renderSettings(); renderAfterSeatChange(); }
+    } catch (e) { toast("Could not load the control room: " + e.message, true); }
+    showTab(recall("tab") || "council");
+    poll();
+  }
+  window.addEventListener("beforeunload", ev => { if (S.dirty) { ev.preventDefault(); ev.returnValue = ""; } });
+  init();
+})();
+</script>
+</body>
+</html>

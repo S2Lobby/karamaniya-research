@@ -9,6 +9,7 @@ from pathlib import Path
 from .backends import make_backend
 from .config import SEAT_IDS, load_config
 from .council import Council, RunPaused, Seat
+from . import manifest
 from .storage import RunStore
 from .versions import stamp
 from .world import month_label, new_world
@@ -98,6 +99,18 @@ def _form_government(store: RunStore, council: Council, observer, quiet: bool) -
 
 def _end(store: RunStore, world, council: Council, stopped: str, quiet: bool, observer) -> Path:
     from .report import build_report
+    # Refresh the manifest now the run has calls behind it: this is where "which model actually
+    # answered" and the structured engine-error tally become meaningful.
+    try:
+        existing = store.read_json("manifest.json") or {}
+        cfg = store.read_json("config.json") or {}
+        existing.update({k: v for k, v in manifest.build(world, cfg, store=store).items()})
+        existing["outcome"] = dict(world.outcome)
+        existing["stopped"] = stopped
+        existing["months_simulated"] = len(world.history)
+        store._write_json("manifest.json", existing)
+    except Exception:
+        pass  # a manifest failure must never take down a finished run
     if not quiet:
         print(f"Stopped: {stopped} (resume to continue)" if stopped else f"Outcome: {world.outcome.get('text')}")
     path = build_report(store)
@@ -141,6 +154,8 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
                       founding_problems=run.get("founding_problems"),
                       agent_architecture_version=architecture, tuning=run.get("tuning"),
                       trait_baselines=baselines)
+    # The manifest is written before the first call, so a run that dies early is still readable.
+    store._write_json("manifest.json", manifest.build(world, {**cfg, "mapping": mapping}))
     council = Council(world, _seats(cfg, mapping), run, store, observer=observer)
     (store.path / "system_prompt.txt").write_text(council.system, encoding="utf-8")
     _emit(observer, type="started", run_id=run_id, mapping=mapping, months_total=run["months"])

@@ -417,8 +417,21 @@ class Section:
         self.short = short if short is not None else self.text
 
 
+MARKER = "\n[...trimmed to fit]"
+HARD_CUT = "\n[...truncated to fit this seat]"
+MIN_KEEP = 120
+
+
 def compose(sections: list, budget: int) -> tuple[str, list]:
-    """Join sections in order, shrinking the least important ones until the prompt fits (spec 84)."""
+    """Join sections in order, shrinking the least important ones until the prompt fits (spec 84).
+
+    The contract is a hard one: the result is never longer than `budget`. Connectors that pass the
+    prompt as a command-line argument cannot exceed the platform's argument limit, and a prompt
+    that arrives over budget used to fail the whole run — losing a seat for the month, and in one
+    recorded run for every remaining month. So the ladder runs all the way down: short forms, then
+    dropping the least important sections, then cutting the largest remaining one repeatedly, and
+    finally truncating the assembled text if there is nothing left to give.
+    """
     sections = [s for s in sections if s.text.strip()]
     trimmed = []
 
@@ -436,14 +449,30 @@ def compose(sections: list, budget: int) -> tuple[str, list]:
         if s.priority >= 5:
             s.text = ""
             trimmed.append(f"{s.key}:dropped")
-    over = total() - budget
-    if over > 0:
+    # Cut the largest remaining section, repeatedly: one pass cannot always absorb the whole
+    # overshoot, and a section too small to help is dropped so the next pass picks a different one.
+    for _ in range(24):
+        over = total() - budget
+        if over <= 0:
+            break
         biggest = max((s for s in sections if s.priority > 0 and s.text), key=lambda s: len(s.text), default=None)
-        if biggest is not None:
-            keep = max(200, len(biggest.text) - over - 40)
-            biggest.text = biggest.text[:keep] + "\n[...trimmed to fit]"
-            trimmed.append(f"{biggest.key}:truncated")
-    return "\n\n".join(s.text for s in sections if s.text.strip()), trimmed
+        if biggest is None:
+            break
+        keep = len(biggest.text) - over - len(MARKER)
+        if keep < MIN_KEEP:
+            biggest.text = ""
+            trimmed.append(f"{biggest.key}:dropped")
+            continue
+        biggest.text = biggest.text[:keep] + MARKER
+        trimmed.append(f"{biggest.key}:truncated")
+    text = "\n\n".join(s.text for s in sections if s.text.strip())
+    if len(text) > budget:
+        # Nothing left to drop individually. Cut the assembled prompt rather than return an
+        # over-budget one and let a connector fail the run over it.
+        keep = max(0, budget - len(HARD_CUT))
+        text = text[:keep] + HARD_CUT
+        trimmed.append("prompt:hard_cut")
+    return text, trimmed
 
 
 def build(w: World, mid: str, phase: str, *, public_brief: str, motions: list | None = None,

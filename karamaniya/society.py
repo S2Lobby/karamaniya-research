@@ -213,9 +213,21 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
         p.unrest = clamp(p.grievance * (1 - 0.75 * p.fear))
 
     _identity_drift(w, pops, reach, gap, health)
+    # Unemployment follows Okun's law rather than being read straight off this month's
+    # utilisation, so it is persistent: a slump that ends does not immediately restore full
+    # employment, and a boom does not immediately absorb everyone. Utilisation still sets the
+    # *shape* across classes and regions; the aggregate level moves gradually with the output gap.
+    from . import causality
     labor_w = [(labor(p), p.unemployment) for p in pops if p.cls in ("workers", "middle")]
     total = sum(x for x, _ in labor_w)
-    e.unemployment = sum(x * u for x, u in labor_w) / total if total else 0.0
+    u_util = (sum(x * u for x, u in labor_w) / total) if total else 0.05
+    u_okun = causality.okun_step(w, previous_gap=e.prev_output_gap, current_gap=e.output_gap)
+    if total and u_util > 1e-6:
+        scale = clamp(u_okun / u_util, 0.35, 2.8)
+        for p in pops:
+            if p.cls in ("workers", "middle"):
+                p.unemployment = clamp(p.unemployment * scale, 0.005, 0.75)
+    e.unemployment = u_okun
     _protests(w, rng)
     _rebel_regions(w, rng)
 

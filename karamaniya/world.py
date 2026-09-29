@@ -176,6 +176,19 @@ class Economy:
     union_income: float = 1.0   # living-standard index in the Union, for comparisons
     food_import_capacity: float = 1.0  # inherited access to grain routes, 0..1
     energy_import_capacity: float = 1.0  # access to imported fuel, 0..1
+    # ---- causal world model (see causality.py and docs/CAUSAL_WORLD_MODEL.md) -------------
+    potential_output: float = 0.0   # what the economy could produce at normal utilisation
+    output_gap: float = 0.0         # actual / potential - 1
+    prev_output_gap: float = 0.0    # last month's gap, for the growth-rate part of Okun's law
+    productivity: float = 1.0       # slow-moving output per worker, grown by a structural rate
+    expected_infl: float = 0.003    # credibility-anchored expectations, monthly
+    wage_prev: float = 1.0          # last month's nominal wage index, for wage-growth pressure
+    fx_prev: float = 1.0            # last month's rate, for lagged pass-through into prices
+    fx_pressure: float = 0.0        # this month's depreciation pressure, before it is acted on
+    real_wage: float = 1.0          # nominal wage deflated by the price level
+    money_growth: float = 0.003     # growth of Karamaniya's money stock this month
+    excess_money_growth: float = 0.0  # money growth beyond what output and money demand absorb
+    regime: str = "NORMAL"          # descriptive label; never an instruction
 
 
 @dataclass
@@ -572,6 +585,12 @@ def new_world(seed: int, months: int = 36, framing: str = "simulation",
     e = w.econ
     e.gdp_real0 = e.gdp_real = prod["gdp_real"]
     e.gdp_nominal = e.gdp_real
+    # Establish potential output at the founding, so the starting output gap is whatever the
+    # founding conditions actually imply rather than zero by construction.
+    e.potential_output = economy.frictionless(w)
+    e.productivity = 1.0
+    e.output_gap = e.prev_output_gap = (e.gdp_real / e.potential_output - 1.0
+                                        if e.potential_output > 0 else 0.0)
     e.industry0 = e.industry_out = prod["industry"]
     e.arms_diversion = prod["industry"] * 0.03
     e.consumer_goods0 = e.consumer_goods = prod["industry"] * 0.97 + e.goods_imports

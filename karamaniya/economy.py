@@ -44,6 +44,51 @@ def expected_annual(w: World) -> float:
     return annualize(w.zone_of("karamaniya").exp_infl)
 
 
+# ---- potential output and the output gap ------------------------------------------------
+def frictionless(w: World) -> float:
+    """What the labour force could produce with nothing in the way.
+
+    Not "full employment" in the textbook sense: this is the same production function the economy
+    actually runs, evaluated with normal weather, no strikes, no war damage, intact logistics, full
+    energy and no credit or confidence constraint. The difference between this and what is actually
+    produced is the output gap, and it is that difference — not output itself — that carries the
+    demand pressure.
+
+    Conscription, internment and emigration lower this, because they remove labour. That is the
+    channel by which a war effort costs the economy output it never gets back.
+    """
+    food = industry = services = 0.0
+    for r in w.k_regions():
+        pops = [p for p in w.pops if p.region == r.id]
+        farm = sum(labor(p) for p in pops if p.cls == "farmers")
+        workers = sum(labor(p) for p in pops if p.cls == "workers")
+        middle = sum(labor(p) for p in pops if p.cls == "middle")
+        food += farm * r.land * K_FOOD
+        industry += workers * 0.94 * r.industry * K_IND
+        services += middle * 0.95 * r.services * K_SERV
+    return food * FOOD_VALUE + industry + services
+
+
+def update_potential(w: World, prod: dict) -> None:
+    """Move potential output slowly, then read the gap off it.
+
+    Potential is a *stock* that grows: it must not jump because this month's harvest was good.
+    It grows with the world's structural productivity rate, less whatever permanent damage the
+    war and the unrest have done. `e.productivity` is normalised at the founding so that the
+    starting gap is the one the founding conditions actually imply, not zero by assumption.
+    """
+    from . import causality
+    e = w.econ
+    structural = causality.param(w, "productivity_growth")
+    damage = sum(r.damage for r in w.k_regions()) / max(1, len(w.k_regions()))
+    war_drag = 0.004 if w.dip.war else 0.0
+    unrest_drag = 0.0015 * max(0.0, w.avg("unrest") - 0.15)
+    e.productivity *= (1.0 + structural - 0.02 * damage - war_drag - unrest_drag)
+    e.potential_output = frictionless(w) * e.productivity
+    e.prev_output_gap = e.output_gap
+    e.output_gap = (prod["gdp_real"] / e.potential_output - 1.0) if e.potential_output > 0 else 0.0
+
+
 # ---- production ------------------------------------------------------------------------
 def produce(w: World) -> dict:
     e, pol, dip = w.econ, w.policy, w.dip
@@ -91,16 +136,24 @@ def produce(w: World) -> dict:
         middle = sum(labor(p) for p in pops if p.cls == "middle")
         util_serv = (credit * uncertainty * taxdrag * admin * capctl
                      * (1 - 0.45 * dip.blockade_eff if r.coast else 1.0))
-        food += farm * r.land * K_FOOD * e.weather * e.farm_incentive * d_farm * r.logistics
-        industry += workers * 0.94 * r.industry * K_IND * util_ind * d * r.logistics
-        services += middle * 0.95 * r.services * K_SERV * util_serv * d * r.logistics
+        # Productivity multiplies what the same labour can produce. It is applied to actual
+        # output as well as to potential, so that the output gap measures frictions and demand
+        # rather than being contaminated by the trend: without this, potential grows every month
+        # and actual does not, and the gap drifts permanently negative for no economic reason.
+        food += farm * r.land * K_FOOD * e.weather * e.farm_incentive * d_farm * r.logistics * e.productivity
+        industry += workers * 0.94 * r.industry * K_IND * util_ind * d * r.logistics * e.productivity
+        services += middle * 0.95 * r.services * K_SERV * util_serv * d * r.logistics * e.productivity
         util[r.id] = {
             "workers": clamp(1 - 0.94 * util_ind * (1 - 0.5 * r.damage), 0.03, 0.85),
             "middle": clamp(1 - 0.95 * util_serv * (1 - 0.5 * r.damage), 0.03, 0.85),
         }
-    return {"food": food, "industry": industry, "services": services,
-            "gdp_real": food * FOOD_VALUE + industry + services, "energy": energy,
-            "unemployment": util, "credit": credit, "uncertainty": uncertainty}
+    out = {"food": food, "industry": industry, "services": services,
+           "gdp_real": food * FOOD_VALUE + industry + services, "energy": energy,
+           "unemployment": util, "credit": credit, "uncertainty": uncertainty}
+    # Once potential output has been established at the founding, keep it moving with it.
+    if e.potential_output > 0:
+        update_potential(w, out)
+    return out
 
 
 # ---- trade and food --------------------------------------------------------------------
@@ -370,18 +423,55 @@ def money_and_prices(w: World, prod: dict) -> None:
     e.goods_rel = 0.5 * e.goods_rel + 0.5 * goods_target
     food_official = min(e.food_rel, 1.25) if pol.price_controls in ("food", "all") else e.food_rel
     goods_official = min(e.goods_rel, 1.2) if pol.price_controls == "all" else e.goods_rel
+
+    # Depreciation reaches consumer prices gradually, and how much of it arrives at all is a
+    # structural property of the economy rather than a constant. A single month's move does not
+    # land in full; the remainder is carried by `e.fx_prev` and arrives over the following months.
+    from . import causality
+    fx_change = (e.fx / e.fx_prev - 1.0) if e.fx_prev > 0 else 0.0
+    passthrough = causality.pass_through(w) if e.currency == "karam" else 0.0
+    lagged_fx = clamp(fx_change * passthrough * (1.0 - causality.param(w, "price_rigidity")), -0.15, 0.15)
+
     new_cpi = z.price * (0.40 * e.food_rel * (0.8 + 0.2 * imp)
-                         + 0.35 * e.goods_rel * (0.75 + 0.25 * imp) + 0.25)
+                         + 0.35 * e.goods_rel * (0.75 + 0.25 * imp) + 0.25) * (1.0 + lagged_fx)
     e.cpi_official = z.price * (0.40 * food_official * (0.8 + 0.2 * imp)
-                                + 0.35 * goods_official * (0.75 + 0.25 * imp) + 0.25)
+                                + 0.35 * goods_official * (0.75 + 0.25 * imp) + 0.25) * (1.0 + lagged_fx)
     e.infl = new_cpi / e.cpi - 1
     e.cpi = new_cpi
     e.infl_history = (e.infl_history + [e.infl])[-12:]
     e.gdp_trend = (e.gdp_trend + [prod["gdp_real"]])[-6:]
 
+    # Expectations: partly anchored on credibility, partly on lived inflation, partly on the
+    # currency and the budget. Recorded beside the zone's adaptive expectation, which continues to
+    # drive the shared crown price level.
+    e.expected_infl = causality.expected_inflation(w)
+
     productivity = prod["gdp_real"] / e.gdp_real0 if e.gdp_real0 else 1.0
     wage_target = (0.6 * z.price + 0.4 * e.cpi) * (0.85 + 0.15 * productivity)
     e.wage += 0.25 * (1 - e.unemployment) * (wage_target - e.wage)
+    # Nominal wage growth is not real wage growth. A raise that trails inflation is a cut, and
+    # this is the number that reaches soldiers, civil servants and workers.
+    e.wage_prev = e.wage_prev if e.wage_prev > 0 else e.wage
+    wage_growth = e.wage / e.wage_prev - 1.0 if e.wage_prev > 0 else 0.0
+    e.wage_prev = e.wage
+    e.real_wage = e.wage / e.cpi if e.cpi > 0 else 1.0
+    e.fx_prev = e.fx
+
+    # Why prices moved, with each channel named. Kept for research and debugging; agents never
+    # see it, because a delegate who could read the decomposition would be reading the answer key.
+    excess_wage = wage_growth - e.infl
+    contributions = {
+        "zone_price_level": z.infl * 0.75,
+        "food_relative_price": (e.food_rel - 1.0) * 0.04,
+        "goods_relative_price": (e.goods_rel - 1.0) * 0.03,
+        "exchange_rate_passthrough": lagged_fx,
+        "expectations": (e.expected_infl - z.exp_infl) * 0.10,
+        "excess_wage_growth": clamp(excess_wage, -0.05, 0.05) * 0.15,
+        "demand_pressure": clamp(e.output_gap, -0.15, 0.15) * 0.05,
+        "import_shortage": (e.import_scale - 1.0) * -0.03,
+    }
+    causality.trace(w, "inflation", e.infl, contributions)
+    e.regime = causality.regime(w)
     e.gdp_real = prod["gdp_real"]
     e.food_out, e.industry_out, e.services_out = prod["food"], prod["industry"], prod["services"]
     e.energy = prod["energy"]

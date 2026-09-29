@@ -33,7 +33,9 @@ class ClineCLIBackend(Backend):
         the standing instructions as arguments; leave room for the flags and the model id."""
         fixed = sum(len(a) + 3 for a in self.cmd) + len(self.workdir) + len(self.model) + 260
         own = int(self.cfg.get("max_prompt_chars") or 10**9)
-        return max(4000, min(own, MAX_ARGS - system_chars - fixed))
+        # Report the room that actually exists. A floor here would advertise space the command
+        # line does not have, and the council would trim to a budget the connector then refuses.
+        return max(0, min(own, MAX_ARGS - system_chars - fixed))
 
     def call(self, system: str, user: str, schema: dict, context: dict) -> CallResult:
         cmd = self.cmd + ["--json", "--auto-approve", "false", "-c", self.workdir, "-s", system,
@@ -44,8 +46,17 @@ class ClineCLIBackend(Backend):
             cmd += ["-m", self.model]
         if self.effort:
             cmd += ["--thinking", self.effort]
-        if sum(len(a) + 3 for a in cmd) + len(user) > MAX_ARGS:
-            raise FatalError("Cline CLI: this prompt is too long for a Windows command line")
+        # The council trims prompts to the budget this backend advertises, which is derived from
+        # the same limit. A prompt can still arrive over it, and failing here used to abort the
+        # whole run: one recorded run lost two seats at Month 1 and never recovered. Sending a cut
+        # prompt costs this seat part of its context for one month; refusing costs the run.
+        marker = "\n[...trimmed by the connector to fit the command line]"
+        room = MAX_ARGS - sum(len(a) + 3 for a in cmd) - len(marker) - 3
+        if room < 500:
+            raise FatalError("Cline CLI: no command-line room left for a prompt after its flags")
+        if len(user) > room:
+            user = user[:room] + marker
+            context["connector_trimmed"] = True
         cmd.append(user)
         progress = context.get("on_progress")
         draft = cli_common.StreamPreview(progress) if callable(progress) else None

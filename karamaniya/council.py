@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import (actions, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors,
                freshness, director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations,
-               politics, prompts, psychology, standing, tuning)
+               politics, prompts, provenance, psychology, standing, tuning)
 from .backends import CallResult
 from .world import OFFICES, World, month_label, rng_for
 
@@ -982,6 +982,12 @@ class Council:
         said = {st["member"]: st.get("statement", "").lower() for st in statements}
         for leak in leaks:
             sender = leak.get("from")
+            # Lay the leak down with its layers before anything reads it. The press may reframe
+            # what was written; the raw text is stored here and nothing downstream rewrites it.
+            pid = provenance.record(w, leak.get("text", ""), subject=leak["kind"],
+                                    source="leaked communication", speaker=sender or "",
+                                    origin="leak")["id"]
+            leak["provenance_id"] = pid
             contradiction = False
             if leak["kind"] in ("dm", "intercept") and sender in said:
                 text = leak.get("text", "").lower()
@@ -1007,7 +1013,14 @@ class Council:
                 if interior:
                     standing.reputation_effect(w, interior.id, "repression", .4)
             plot_words = ("coup", "remove them", "take over", "seize", "use the army", "by force", "arrest the council")
-            if sender and leak["kind"] in ("dm", "intercept") and any(word in leak.get("text", "").lower() for word in plot_words):
+            # Whether this was a plot is read from the RAW source, never from how it was reported,
+            # and it requires an assertion of intent rather than the mere presence of the word
+            # "coup". "Our fiscal fragility may cause a coup" is a warning about risk; a substring
+            # match used to treat it as a coup plot and brand the speaker for it.
+            raw_lower = provenance.raw_text(w, pid).lower()
+            asserts_intent = provenance.layer(w, pid, provenance.CANONICAL_FACT)["asserts_intent"]
+            if sender and leak["kind"] in ("dm", "intercept") and asserts_intent \
+                    and any(word in raw_lower for word in plot_words):
                 w.event("plot_exposed", f"The press reports that {w.member(sender).name} privately discussed using force "
                         "against the government.", importance=3, member=sender)
                 for other in w.active_members():

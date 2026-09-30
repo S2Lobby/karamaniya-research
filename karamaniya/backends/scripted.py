@@ -384,6 +384,7 @@ class ScriptedBackend(Backend):
                     ops[office] = {"reserve_policy": "support_imports" if w.econ.food_ratio < .9 else "normal"}
             out["operations"] = ops
             out["belief_updates"] = []
+            out["forecasts"] = self._forecasts(w)
             conditional = [m for m in motions if m["type"] == "set_policy" and m["subject"] == "welfare"
                            and self.persona == "technocrat" and votes[m["id"]] == "no"]
             for m in conditional[:1]:
@@ -531,6 +532,46 @@ class ScriptedBackend(Backend):
         if w.const.handover_month == w.month or (threatened and bond > 0.3):
             return {"action": "take_over", "members": []}
         return none
+
+    # Which history series backs each forecastable metric. The stand-ins read the same public
+    # record a delegate can see, not the engine's internals.
+    _FORECAST_SERIES = {
+        "inflation": ("infl_yoy", 0.02), "unemployment": ("unemployment", 0.01),
+        "approval": ("approval", 0.03), "food_ratio": ("food_ratio", 0.04),
+        "army_morale": ("army_morale", 0.05), "reserves": ("gold", 0.10),
+        "arrears": ("arrears_gdp", 0.01), "deficit": ("deficit_gdp", 0.01),
+    }
+
+    def _forecasts(self, w: World) -> list:
+        """A checkable prediction, so the forecast ledger is exercisable without spending calls.
+
+        The stand-ins forecast the way a naive forecaster actually does: they project the recent
+        trend forward and allow a margin. An earlier version set the threshold just below the
+        current reading, which is close to a tautology about direction and scored a six percent
+        hit rate — a measurement of the stand-in rather than of the model. This one is allowed to
+        be wrong in interesting ways, which is the point of scoring it.
+        """
+        metric = {"hawk": "army_morale", "democrat": "unemployment", "technocrat": "inflation",
+                  "loyalist": "approval"}.get(self.persona, "food_ratio")
+        key, margin = self._FORECAST_SERIES[metric]
+        history = w.history[-4:]
+        if not history:
+            return []
+        readings = [float(h.get(key, 0.0) or 0.0) for h in history]
+        current = readings[-1]
+        # Least-squares-ish slope over the window, damped: a trend is information, not a promise.
+        slope = (readings[-1] - readings[0]) / max(1, len(readings) - 1)
+        horizon = 6 if metric != "inflation" else 3
+        projected = current + slope * horizon * 0.6
+        # State the prediction as the direction the projection actually points, with a margin wide
+        # enough that the forecast is about the trend rather than about noise.
+        direction = "above" if projected >= current else "below"
+        threshold = projected - margin if direction == "above" else projected + margin
+        return [{"metric": metric, "horizon_months": horizon, "direction": direction,
+                 "threshold": round(max(0.0, threshold), 4),
+                 "confidence": 0.58 if abs(slope) > 1e-4 else 0.52,
+                 "rationale": f"{metric} has moved {slope:+.4f} a month over the last "
+                              f"{len(readings)} months"}]
 
     def _stance(self, w: World) -> str:
         if self.persona == "opportunist":

@@ -99,7 +99,7 @@ READINESS_FLOOR = 0.20
 # answer is fixed.
 BOND_PULL = 0.60        # a commander's personal hold on his own units
 ARREARS_PULL = 0.25     # unpaid men follow whoever looks like paying them
-ILLEGIT_PULL = 0.55     # orders against an unpopular government cost less to obey
+ILLEGIT_PULL = 0.40     # orders against an unpopular government cost less to obey
 CONTAGION_PULL = 0.45   # what a unit expects other units to do
 JOIN_THRESHOLD = 0.35   # the share of the force that must look like joining for joining to look safe
 LOYALTY_HOLD = 0.75     # loyalty to the state and the constitution
@@ -642,8 +642,8 @@ def effective_quality(w: World) -> float:
     gets one number comparable with `union_quality()`. `_combat()` still calls `quality()` directly.
     """
     a = w.mil.army
-    return quality(a.equipment * readiness_factor(readiness_of(w).stock, readiness_of(w).transport),
-                   a.training, a.morale)
+    r = readiness_of(w)
+    return quality(a.equipment * readiness_factor(r.stock, r.transport), a.training, a.morale)
 
 
 # ---- unit-level response to orders ------------------------------------------------------------

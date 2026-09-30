@@ -32,7 +32,14 @@ FOOD_VALUE = 30.0       # crowns per food unit (one person's food for a month) a
 
 # Production constants, calibrated so the starting economy produces about 544M crowns a
 # month: 3.48M food units (74% of need), 180M of industry and 260M of services.
-K_FOOD = 5.32
+#
+# K_FOOD carries the post-harvest loss adjustment. The documented starting condition is that
+# *available* domestic food covers about 74% of need, and the economy now loses a share of every
+# harvest to handling, storage and transport (economy.FOOD_LOSS_BASE, about 7.5% at intact
+# logistics). Growing 1/0.925 of the original figure means the food that actually reaches people
+# matches the documented starting position, and the loss mechanism bites where it should: when
+# logistics degrade.
+K_FOOD = 5.75
 K_IND = 241.0
 K_SERV = 393.0
 
@@ -214,6 +221,8 @@ class Economy:
     rollover_need: float = 0.0      # domestic debt that must be refinanced this month
     procurement_premium: float = 1.0  # contractors charge more when the government owes them
     reserve_months: float = 0.0     # foreign reserves measured in months of imports
+    food_loss: float = 0.0          # share of the harvest lost before it can be eaten
+    food_short_regions: list = field(default_factory=list)  # regions the roads did not reach
 
 
 @dataclass

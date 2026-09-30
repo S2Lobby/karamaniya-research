@@ -215,8 +215,15 @@ def trade_and_food(w: World, prod: dict) -> dict:
     # Food market.
     pops = w.k_pops()
     req_share = REQUISITION[pol.requisition]
-    farm_food = prod["food"] * (1 - req_share)
-    e.state_grain += prod["food"] * req_share
+    # Post-harvest losses, before anything is eaten or stored. The empirically supported figure for
+    # cereals in weak-infrastructure economies is roughly 10-20% from harvest to market, and it is
+    # concentrated in field drying, farm storage and market storage rather than in bulk transport.
+    # The 30-40% figures sometimes quoted for grain are not supported and are not used here.
+    loss = food_loss_rate(w)
+    e.food_loss = loss
+    harvest = prod["food"] * (1 - loss)
+    farm_food = harvest * (1 - req_share)
+    e.state_grain += harvest * req_share
     farmers = [p for p in pops if p.cls == "farmers"]
     others = [p for p in pops if p.cls != "farmers"]
     farmers_need = sum(p.size for p in farmers)
@@ -242,25 +249,48 @@ def trade_and_food(w: World, prod: dict) -> dict:
     farmer_pc = farmer_eat / farmers_need if farmers_need else 1.0
     for p in farmers:
         p.hunger = clamp(1 - farmer_pc * 1.02, 0.0, 1.0)
-    if pol.rationing:
-        ration = min(1.0, supply * 0.96 / need_nf) if need_nf else 1.0
-        for p in others:
-            p.hunger = clamp(1 - ration, 0.0, 1.0)
-    else:
-        welfare_boost = 1 + 10 * max(0.0, pol.welfare * e.paid_share - 0.02)
-        controls = 0.8 if pol.price_controls in ("food", "all") else 1.0
-        weights = {}
-        for i, p in enumerate(others):
-            wt = FOOD_WEIGHT[p.cls] * (1 - 0.5 * p.unemployment)
-            if p.cls == "workers":
-                wt *= welfare_boost * controls
-            elif p.cls == "middle":
-                wt *= (0.5 + 0.5 * welfare_boost) * controls
-            weights[i] = wt
-        alloc = _water_fill([p.size for p in others], weights, supply)
-        for i, p in enumerate(others):
-            p.hunger = clamp(1 - alloc[i] / p.size, 0.0, 1.0) if p.size else 0.0
+    # Food reaches people region by region, and a region can only be supplied as fast as its
+    # transport can move. This is why a country with a national surplus can still have a hungry
+    # province: the surplus exists, and it is on the wrong side of a broken road. The literature
+    # on spatial market integration puts it as an arbitrage band -- trade flows only when the price
+    # gap exceeds the cost of moving the goods -- which is what `delivery_capacity` encodes.
+    region_rows = []
+    for r in w.k_regions():
+        grp = [p for p in others if p.region == r.id]
+        need_r = sum(p.size for p in grp)
+        if need_r > 0:
+            region_rows.append((r, grp, need_r))
+    delivered = _deliver_to_regions(region_rows, supply)
 
+    welfare_boost = 1 + 10 * max(0.0, pol.welfare * e.paid_share - 0.02)
+    controls = 0.8 if pol.price_controls in ("food", "all") else 1.0
+    if pol.rationing:
+        # Rationing shares what actually arrived, so it equalises within a region but cannot
+        # conjure food into one the roads did not reach.
+        for r, grp, need_r in region_rows:
+            ration = min(1.0, delivered.get(r.id, 0.0) * 0.96 / need_r) if need_r else 1.0
+            for p in grp:
+                p.hunger = clamp(1 - ration, 0.0, 1.0)
+    else:
+        for r, grp, need_r in region_rows:
+            weights = {}
+            for i, p in enumerate(grp):
+                wt = FOOD_WEIGHT[p.cls] * (1 - 0.5 * p.unemployment)
+                if p.cls == "workers":
+                    wt *= welfare_boost * controls
+                elif p.cls == "middle":
+                    wt *= (0.5 + 0.5 * welfare_boost) * controls
+                weights[i] = wt
+            alloc = _water_fill([p.size for p in grp], weights, delivered.get(r.id, 0.0))
+            for i, p in enumerate(grp):
+                p.hunger = clamp(1 - alloc[i] / p.size, 0.0, 1.0) if p.size else 0.0
+
+    # A region is short when less reached it than its people need. Recorded explicitly so the
+    # national ratio and the regional reality can be read side by side -- the whole point is that
+    # "food availability is 103%" and "Kessel is hungry" can both be true.
+    e.food_short_regions = sorted(
+        r.id for r, _grp, need_r in region_rows
+        if need_r > 0 and delivered.get(r.id, 0.0) < need_r * 0.95)
     need = farmers_need + need_nf
     e.food_ratio = (supply + farmer_eat) / need if need else 1.0
     target_rel = clamp((need_nf / max(supply, 1.0)) ** 1.8, 0.6, 12.0)
@@ -268,6 +298,66 @@ def trade_and_food(w: World, prod: dict) -> dict:
     e.imports_food = imports
     return {"food_dors": food_dors, "food_over": food_over, "exports": exports,
             "loans": loans, "capital_flight": flight, "released": release}
+
+
+# Post-harvest losses. A baseline for handling, drying and farm storage, plus a transport and
+# market-storage component that scales with how bad the region's logistics are. Calibrated to the
+# APHLIS / World Bank range of roughly 10-20% of grain lost from harvest to market in
+# weak-infrastructure economies, with bulk transport a small part of it.
+FOOD_LOSS_BASE = 0.075
+FOOD_LOSS_TRANSPORT = 0.10
+
+
+def food_loss_rate(w: World) -> float:
+    """Share of the harvest lost before it can be eaten, from storage and from moving it."""
+    regions = w.k_regions()
+    if not regions:
+        return FOOD_LOSS_BASE
+    logistics = sum(r.logistics for r in regions) / len(regions)
+    return clamp(FOOD_LOSS_BASE + FOOD_LOSS_TRANSPORT * (1.0 - logistics), 0.02, 0.30)
+
+
+def delivery_capacity(region) -> float:
+    """Multiple of a region's need that its transport can actually move to it.
+
+    At intact logistics this is above one, so nothing is constrained. As logistics degrade the
+    ceiling falls, and a region can be short of food that exists elsewhere in the country.
+    """
+    return 0.55 + 0.45 * clamp(region.logistics, 0.0, 1.2)
+
+
+def _deliver_to_regions(rows: list, supply: float) -> dict:
+    """Move national supply out to the regions, subject to how much each can receive.
+
+    Water-fills by need, then re-offers whatever the constrained regions could not absorb to the
+    ones with headroom left under their ceiling. Iterated a few times so a single broken corridor
+    does not strand the surplus; bounded, because each pass can only move food toward capacity.
+    """
+    delivered = {r.id: 0.0 for r, _grp, _need in rows}
+    if not rows or supply <= 0:
+        return delivered
+    heads = {r.id: need * delivery_capacity(r) for r, _grp, need in rows}
+    remaining = supply
+    for _ in range(6):
+        if remaining <= 1e-6:
+            break
+        open_rows = [(r, need) for r, _grp, need in rows if delivered[r.id] < heads[r.id] - 1e-6]
+        if not open_rows:
+            break
+        # Share the remainder by each region's remaining need, never above its delivery ceiling.
+        wants = {r.id: max(0.0, need - delivered[r.id]) for r, need in open_rows}
+        total_want = sum(wants.values())
+        if total_want <= 1e-6:
+            break
+        moved = 0.0
+        for r, _need in open_rows:
+            give = min(remaining * (wants[r.id] / total_want), heads[r.id] - delivered[r.id])
+            delivered[r.id] += give
+            moved += give
+        if moved <= 1e-9:
+            break
+        remaining -= moved
+    return delivered
 
 
 def _water_fill(sizes: list, weights: dict, supply: float) -> list:

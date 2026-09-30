@@ -333,9 +333,11 @@ that message arrives.
 
 Karamaniya, Veleria and Dorsania are fictional. Their map is geographically consistent within the
 scenario, but is not a real satellite or administrative map. At the start Karamaniya has about 4.70M
-people, 6.53B **base-price crowns** of annual output, a 28,000-person army and domestic food production
-equal to roughly 74% of monthly need. Veleria begins with 8M people and 13.44B annual output; Dorsania
-with 5M and 6.60B. These are simulation assumptions, not historical observations or US dollars.
+people, 6.63B **base-price crowns** of annual output, a 28,000-person army and domestic food
+production equal to roughly 74% of monthly need *after* post-harvest losses — the harvest itself is
+larger, and the gap is what spoils in handling, storage and transport. Veleria begins with 8M people
+and 13.44B annual output; Dorsania with 5M and 6.60B. These are simulation assumptions, not
+historical observations or US dollars.
 
 The Map now shows monthly country totals from the same saved world as its regional values. Annual output
 is monthly real production multiplied by 12; output per person divides it by that month's population.

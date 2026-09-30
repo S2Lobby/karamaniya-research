@@ -58,7 +58,14 @@ def _formation_read(mid: str, data, ids: list) -> dict:
     # for the repair prompt and the audit log, but never as a `slate`: an invalid one must not
     # reach the vote, and a partial one must not be read as if it were complete.
     fitted = verdict["valid"] and not verdict["no_slate"]
-    return {"statement": actions.words(raw_statement, 120), "raw_statement": raw_statement,
+    # "Answered nothing at all" is not the same as "declined to propose a slate", and the two must
+    # not be filed together. A reply that parses to an empty object — a schema failure, a truncated
+    # answer, a weak local model — carries no statement, no nominations and no slate, and would
+    # otherwise be recorded as a deliberate abstention and never repaired, which is exactly the
+    # blur between a failed answer and a political choice this whole path exists to remove.
+    answered = bool(raw_statement.strip()) or bool(nominations) or not verdict["no_slate"]
+    return {"answered": answered,
+            "statement": actions.words(raw_statement, 120), "raw_statement": raw_statement,
             "nominations": nominations[:len(OFFICES)],
             "slate": dict(received) if fitted else None,
             "slate_received": None if verdict["no_slate"] else dict(received),
@@ -84,6 +91,8 @@ def _formation_repair_prompt(base_prompt: str, record: dict, proposal_schema: di
              "THE SLATE YOU SENT: " + json.dumps(record.get("slate_received") or {}, ensure_ascii=False),
              "",
              "WHAT IS WRONG:"]
+    if not record.get("answered", True):
+        lines += ["  - you sent no proposal at all: no statement, no nominations and no slate"]
     lines += ["  - " + problem for problem in record["errors"]]
     lines += ["  - " + clash for clash in record["mismatches"]]
     lines += ["",
@@ -393,7 +402,7 @@ class Council:
                 record["status"] = "refused" if res.refusal else "unreadable"
                 record["error"] = res.error[:300]
                 return mid, record
-            if record["errors"] or record["mismatches"]:
+            if record["errors"] or record["mismatches"] or not record["answered"]:
                 # One repair, from the delegate who wrote it. The engine does not rewrite the slate
                 # and does not choose between two channels that disagree — it reports what is wrong
                 # and asks. A second failure takes the proposal out of the vote entirely rather than

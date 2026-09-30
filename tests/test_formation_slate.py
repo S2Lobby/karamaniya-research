@@ -175,6 +175,48 @@ class TheEngineUsesIt(unittest.TestCase):
         self.assertEqual(kept["slate"], None, "an invalid slate was published as if it were a slate")
         self.assertTrue(kept["slate_received"], "what the delegate actually sent was discarded")
 
+    def test_a_reply_with_nothing_in_it_is_a_failed_answer_not_an_abstention(self):
+        """An empty object carries no statement, no nominations and no slate. Recording that as a
+        deliberate abstention lets a schema failure pass for a political choice, and it never gets
+        the repair every other malformed answer gets."""
+        class Backend:
+            def __init__(self):
+                self.asked = 0
+
+            def complete(self, system, user, schema, context):
+                if context["phase"] == "formation_proposal":
+                    self.asked += 1
+                    if context.get("repair"):
+                        return CallResult(data={"statement": "My apologies — a full slate.",
+                                                "nominations": [], "slate": FULL}, raw="(repair)")
+                    return CallResult(data={}, raw="")
+                return CallResult(data={"votes": {m["id"]: "yes" for m in context["formation_motions"]},
+                                        "reasons": {m["id"]: "ok" for m in context["formation_motions"]}})
+
+        backend = Backend()
+        formation, store, _ = self._run(lambda mid: backend)
+        self.assertEqual(backend.asked, 10, "an empty answer was never sent back for repair")
+        self.assertEqual(formation["offices"], FULL)
+
+    def test_declining_a_slate_on_purpose_is_still_an_abstention(self):
+        """The documented way to decline: a statement and an explicitly empty slate."""
+        class Backend:
+            def __init__(self):
+                self.asked = 0
+
+            def complete(self, system, user, schema, context):
+                if context["phase"] == "formation_proposal":
+                    self.asked += 1
+                    return CallResult(data={"statement": "I propose no slate; I will support others.",
+                                            "nominations": [], "slate": EMPTY}, raw="{}")
+                return CallResult(data={"votes": {m["id"]: "yes" for m in context["formation_motions"]},
+                                        "reasons": {m["id"]: "ok" for m in context["formation_motions"]}})
+
+        backend = Backend()
+        formation, _, _ = self._run(lambda mid: backend)
+        self.assertEqual(backend.asked, 5, "a delegate who declined on purpose was sent back to repair")
+        self.assertEqual(formation["proposals"]["A"]["status"], "empty")
+
     def test_a_valid_proposal_is_not_sent_back_for_repair(self):
         class Backend:
             def __init__(self):

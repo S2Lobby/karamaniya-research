@@ -391,18 +391,28 @@ def price_pressures(w: World) -> dict:
 EXPECTATION_WEIGHTS = {"anchor": 0.25, "adaptive": 0.45, "currency": 0.15, "fiscal": 0.15}
 
 
+NEUTRAL_RATE = 0.06
+
+
 def credit_anchor(w: World) -> float:
     """How much an anchor is believed, 0..1, from the record rather than from a claim.
 
     Credibility is earned the only way it can be: by inflation having been low, by the central
-    bank not having monetised the deficit, and by there being money in the reserve account.
+    bank not having monetised the deficit, by there being money in the reserve account, and by a
+    policy rate that shows the authorities are willing to pay a price to defend the currency.
+
+    That last term exists because without it the policy rate had no route to expectations at all:
+    a central bank could triple its rate under 20% inflation and expected inflation would not
+    move, which is not how credibility works. It is centred on the neutral rate, so an ordinary
+    world is unchanged and only a genuine tightening or a real capitulation moves it.
     """
     e = w.econ
     z = w.zone_of("karamaniya")
     low_inflation = clamp(1 - max(0.0, annualize(z.exp_infl)) / 0.25)
     no_monetisation = clamp(1 - e.printed / max(1.0, e.spending) * 3.0)
     reserves = clamp(e.gold / max(1.0, e.gold0 * 0.5))
-    return clamp(0.45 * low_inflation + 0.35 * no_monetisation + 0.20 * reserves)
+    resolve = clamp(0.5 + (w.policy.rate - NEUTRAL_RATE) / 0.20, 0.0, 1.0)
+    return clamp(0.38 * low_inflation + 0.30 * no_monetisation + 0.17 * reserves + 0.15 * resolve)
 
 
 def expected_inflation(w: World) -> float:

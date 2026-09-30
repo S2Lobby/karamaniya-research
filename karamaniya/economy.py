@@ -206,7 +206,10 @@ def trade_and_food(w: World, prod: dict) -> dict:
     available = max(0.0, e.gold - flight) + exports + union_exports + loans
     scale = 1.0 if spend_want <= available else available / spend_want
     e.import_scale = scale
-    e.gold = e.gold - flight + exports + union_exports + loans - spend_want * scale
+    # Reserves cannot go below zero: `scale` already limits spending to what is available, but
+    # floating-point residue could leave a trace of a negative balance, which reads downstream as
+    # a state the world does not allow.
+    e.gold = max(0.0, e.gold - flight + exports + union_exports + loans - spend_want * scale)
     food_over = food_over_want * scale
     e.goods_imports = goods_want * scale
     if union_cost > 0:
@@ -402,10 +405,13 @@ GROSS_BORROWING_CAPACITY = 0.10
 ARREARS_CATEGORIES = ("army", "police", "civil_service", "contractors", "foreign_debt")
 CIVIL_SERVICE_STRIKE_MONTHS = 2.5   # months of unpaid wages before the service starts to break
 PROCUREMENT_PREMIUM_CAP = 0.35      # most contractors will add when they are owed a lot
-# Not all of the military line is pay: some of it buys things, and the firms that sell them are
-# contractors. Without this the contractor category is dormant under default policy, because the
-# military budget is almost the whole of government procurement.
-CONTRACTOR_MILITARY_SHARE = 0.40
+# Not all of the military line is pay. `military.update` pays soldiers and sailors before anything
+# is bought, so the pay portion is genuinely senior and only the procurement portion can be left
+# waiting. Treating the whole line as the army's bill made the composition claim the army was five
+# months behind while the military module correctly reported it paid in full; the unpaid part is
+# owed to the firms that supply the army, which is what the contractor category is for.
+ARMY_PAY_SHARE = 0.35
+CONTRACTOR_MILITARY_SHARE = 1.0 - ARMY_PAY_SHARE
 
 
 def budget_bills(w: World) -> dict:
@@ -419,7 +425,7 @@ def budget_bills(w: World) -> dict:
     e, pol = w.econ, w.policy
     gdp = max(1.0, e.gdp_nominal)
     return {
-        "army": pol.military * (1.0 - CONTRACTOR_MILITARY_SHARE) * gdp,
+        "army": pol.military * ARMY_PAY_SHARE * gdp,
         "police": pol.police * gdp,
         "civil_service": (pol.health_edu + pol.welfare + ADMIN_SHARE) * gdp,
         "contractors": (pol.military * CONTRACTOR_MILITARY_SHARE + pol.farm_support
@@ -428,35 +434,38 @@ def budget_bills(w: World) -> dict:
     }
 
 
-# The order in which a government stops paying when it runs out of money. Soldiers and police are
-# paid first — this is not a moral claim but the historical record: military pay arrears preceded
-# coups in Côte d'Ivoire (1999), the Gambia (1994), Guinea-Bissau (2004) and Sierra Leone (1992),
-# and governments behaved accordingly. Suppliers and civil servants are where the shortfall lands.
-ARREARS_PRIORITY = ("army", "police", "civil_service", "contractors", "foreign_debt")
+# Who a government protects when it runs out of money. This is not a moral claim but the
+# historical record: military pay arrears immediately preceded coups in Côte d'Ivoire (1999, over
+# unpaid peacekeeping bonuses), the Gambia (1994, roughly three months unpaid), Guinea-Bissau
+# (2004) and Sierra Leone (1992), and governments plainly behaved as if they knew it. Civil
+# servants turn to strikes after roughly two to three months; suppliers and contractors are the
+# easiest to leave waiting.
+#
+# These are PROTECTION weights, not an order of payment. A lexicographic order would mean the army
+# is never unpaid no matter how broke the state is, which would delete the exact mechanism the
+# record documents. The weights mean the army absorbs a shortfall last and least, but a large
+# enough shortfall still reaches it — which is what happened in every case above.
+ARREARS_PROTECTION = {"army": 0.85, "police": 0.80, "foreign_debt": 0.70,
+                      "civil_service": 0.35, "contractors": 0.15}
+ARREARS_CATEGORIES_ORDER = ("army", "police", "foreign_debt", "civil_service", "contractors")
 
 
 def _accrue_arrears(w: World, e, unpaid: float) -> None:
-    """Push a shortfall onto the least-protected bills first.
+    """Push a shortfall onto the bills the government protects least.
 
     Proportional accrual would make every category report the same number of months behind, which
-    carries no information the aggregate did not already have. Paying in priority order is both
-    more realistic and what makes the composition worth tracking: a government that is short of
-    money is one that has stopped paying its suppliers, not one that has halved everyone's wages.
+    carries no information the aggregate did not already have. Protection weights give each
+    category a different exposure, so the composition says something the total does not, and no
+    category is exempt.
     """
     bills = budget_bills(w)
-    remaining = unpaid
-    for name in reversed(ARREARS_PRIORITY):
-        if remaining <= 0:
-            break
-        owed_this_month = bills.get(name, 0.0)
-        if owed_this_month <= 0:
-            continue
-        take = min(remaining, owed_this_month)
-        e.arrears_by[name] = e.arrears_by.get(name, 0.0) + take
-        remaining -= take
-    if remaining > 1e-6:
-        # Everything this month is already unpaid; the remainder falls on suppliers.
-        e.arrears_by["contractors"] = e.arrears_by.get("contractors", 0.0) + remaining
+    weights = {name: max(0.0, bills.get(name, 0.0)) * (1.0 - ARREARS_PROTECTION.get(name, 0.5))
+               for name in ARREARS_CATEGORIES_ORDER}
+    total = sum(weights.values())
+    if total <= 0:
+        return
+    for name, weight in weights.items():
+        e.arrears_by[name] = e.arrears_by.get(name, 0.0) + unpaid * (weight / total)
 
 
 def settle_arrears(w: World, amount: float) -> float:
@@ -674,7 +683,14 @@ def money_and_prices(w: World, prod: dict) -> None:
         for nid in z.members:
             growth = CREDIT_GROWTH + (w.rivals[nid].printing if nid in w.rivals else 0.0)
             z.money[nid] *= 1 + growth
-        y = sum((w.rivals[n].gdp_real if n in w.rivals else _trend_gdp(w, prod)) for n in z.members)
+        # Money is measured against the economy's CAPACITY, not against this month's output.
+        #
+        # Using actual output here made the quantity relation supply-driven: a demand recession
+        # lowered the denominator and so raised prices, which is why a rate rise was stagflationary
+        # in this engine. Money chases what the economy can produce, not what it happened to
+        # produce this month. Demand now reaches prices through velocity, the demand-pressure term
+        # and the output gap, which is where the brief's transmission chain expects it.
+        y = sum((w.rivals[n].gdp_real if n in w.rivals else _capacity_gdp(w, prod)) for n in z.members)
         m = sum(z.money.values())
         rates = {n: (w.rivals[n].rate if n in w.rivals else pol.rate) for n in z.members}
         rate = sum(rates[n] * z.money[n] for n in z.members) / m
@@ -791,9 +807,22 @@ def money_and_prices(w: World, prod: dict) -> None:
 
 
 def _trend_gdp(w: World, prod: dict) -> float:
-    """Prices respond to output over the last six months, not to every monthly swing."""
+    """Output over the last six months rather than a single swing. Kept for reference and for the
+    growth series; prices now scale against capacity."""
     trend = w.econ.gdp_trend[-5:]
     return (sum(trend) + prod["gdp_real"]) / (len(trend) + 1)
+
+
+def _capacity_gdp(w: World, prod: dict) -> float:
+    """What the economy can produce, for scaling the money stock against.
+
+    Potential output if it has been established, otherwise the founding level. Smoothed a little
+    so a single month's capacity estimate cannot jerk the price level.
+    """
+    e = w.econ
+    if e.potential_output > 0:
+        return e.potential_output
+    return _trend_gdp(w, prod)
 
 
 def launch_currency_if_due(w: World) -> None:

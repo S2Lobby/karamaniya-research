@@ -341,6 +341,11 @@ class Constitution:
     highlands_status: str = "central"  # the same for the Vell Highlands
     amendments: list = field(default_factory=list)
     directives: dict = field(default_factory=dict)   # binding council directives: lever -> value
+    # What each directive permits, which is not the same as the value it names: "capped at 0.035"
+    # and "at least 0.035" both carry the value 0.035 and mean opposite things. lever -> {min, max}.
+    # A lever with no entry is read the old way, as exactly its value, so runs saved before this
+    # keep the behaviour they were recorded under.
+    directive_bounds: dict = field(default_factory=dict)
     handover_month: int = -1
     referendum_month: int = -1
     elections: list = field(default_factory=list)

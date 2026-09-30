@@ -394,6 +394,198 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
     return None
 
 
+# ---- directive bounds ---------------------------------------------------------------------
+# A directive names a value, and the prose around it can widen that value into an interval: "at
+# least 0.035" and "capped at 0.035" name the same number and mean opposite things. The engine kept
+# only the number, so every directive was read as exactly that figure. That read happened to be safe
+# here, but by accident rather than by rule, and it left the engine unable to say what a directive
+# permitted or to notice when a motion's prose and the demands attached to it disagreed.
+#
+# The bound is the INTERSECTION of everything the proposal states, because an agreement is the set
+# of values all of its parts allow. That resolves the case this was written for without a special
+# rule: "hold military spending at 3.5% as a floor ... this is the current level, not an increase,
+# and I will not press above it" states both >= 0.035 (the word "floor") and = 0.035 (hold, no
+# increase), and their intersection is exactly 0.035. The floor word does not survive, which is the
+# point: what the council agreed is narrower than what one word of it loosely suggests.
+FIXED, FLOOR, CEILING, RANGE = "FIXED", "FLOOR", "CEILING", "RANGE"
+
+_BOUND_FLOOR = re.compile(r"\b(?:floor|at\s+least|no\s+less\s+than|not\s+below|no\s+lower\s+than|"
+                          r"minimum|not\s+fall\s+below|not\s+drop\s+below)\b", re.I)
+# A ceiling has to be stated as a bound. The bare nouns are not enough: "raise farm support to the
+# 0.05 cap" names the lever's own maximum, and reading that as "0.05 or below" would let the office
+# set 0.01 without defiance — the same mistake as taking "floor" for leave to raise, pointing the
+# other way. Both real occurrences of the bare noun in the corpus are instructions to REACH the
+# figure, so the ceiling vocabulary is restricted to constructions that actually constrain.
+_BOUND_CEILING = re.compile(r"\b(?:at\s+most|no\s+more\s+than|not\s+exceed\w*|not\s+above|"
+                            r"no\s+higher\s+than|not\s+rise\s+above|not\s+go\s+above|"
+                            r"ceiling\s+(?:of|at)|capped?\s+(?:at|of)|maximum\s+of)\b", re.I)
+# Hold language has to be anchored to the value ("held at", "kept at", "no increase"), because the
+# bare verbs are everywhere in political prose and reading one of them as a bound would narrow a
+# legitimate floor and manufacture defiance for an order that was inside it.
+_BOUND_HOLD = re.compile(r"(?:\b(?:hold|held|keep|kept|maintain\w*|stay|stays|remain\w*)\b"
+                         r"[^.;]{0,40}?\bat\b|\bno\s+increase\b|\bnot\s+increase\b|\bnot\s+raise\b|"
+                         r"\bnot\s+press\s+above\b|\bwithout\s+increase\b|\bat\s+the\s+current\s+level\b|"
+                         r"\bcurrent\s+level\b|\bunchanged\b|\bno\s+change\b|\bfrozen?\b)", re.I)
+_RANGE_BETWEEN = re.compile(r"\bbetween\s+([0-9][0-9.,]*%?)\s+and\s+([0-9][0-9.,]*%?)", re.I)
+_DIRECTIVE_KINDS = {FIXED: "held at exactly", FLOOR: "at or above", CEILING: "at or below",
+                    RANGE: "between"}
+
+
+_NUMBER = re.compile(r"(?<![\w.])(\d+(?:[.,]\d+)?)\s*%?")
+_UNIT_AFTER = re.compile(r"\s*(?:months?|weeks?|days?|years?|quarters?|m|bn|billion|million|thousand|"
+                         r"troops?|soldiers?|people|persons?|gold|crowns?|karams?)\b", re.I)
+
+
+def _numeric_lever(lever: str) -> bool:
+    """Whether a lever takes a value an interval can be asked about."""
+    return lever in SHARES or lever == "army_target" or lever.startswith("deploy_")
+
+
+def _named_value(text: str, match, lever: str, default):
+    """The figure a bound phrase names, where it names one of its own.
+
+    A demand reading "raise it to at least 0.045" is stating a floor of 0.045, not of the value the
+    motion happens to carry, and reading it against the motion's own figure would have made every
+    demand agree with the motion it was attached to — the one comparison that matters. Only levers
+    that are numbers are read this way; a figure next to "at least" in an enum is a coincidence.
+    """
+    if lever not in SHARES:
+        return default
+    window = text[max(0, match.start() - 20):match.start() + 48]
+    found = _NUMBER.search(window)
+    if not found:
+        return default
+    # A figure with a unit on it is a figure about something else: "sustained for at least 6 months"
+    # is a duration, and 6 became a floor of 6% on military spending because 0.06 is a share this
+    # lever can hold. The clamp rule below catches amounts too large to be a share; this catches the
+    # ones that are the right size by coincidence.
+    if _UNIT_AFTER.match(window[found.end():found.end() + 14]):
+        return default
+    low, high = SHARES[lever]
+    written = found.group(0).strip()
+    try:
+        figure = float(found.group(1).replace(",", "."))
+    except ValueError:
+        return default
+    if written.endswith("%") or figure > 1.0:
+        figure /= 100.0
+    if not low - 1e-9 <= figure <= high + 1e-9:
+        # A figure this lever cannot hold was a figure about something else. Reading it anyway is how
+        # "army size stays at 28,000 and defensive posture unchanged" came back as a bound of 0.2 on
+        # military spending, and "preserve a safe reserve floor above 60M" as a floor of 0.05 on farm
+        # support — both narrowing a directive the council had actually voted at a different figure.
+        return default
+    return figure
+
+
+def _intervals(text: str, value, lever: str = "") -> list:
+    """Every interval one piece of prose states. Saying nothing means exactly `value`."""
+    if not text:
+        return [(value, value)]
+    spans = _RANGE_BETWEEN.search(text)
+    if spans:
+        lo, hi = (parse_share(spans.group(i), 0.0, 1e9) for i in (1, 2))
+        if lo is not None and hi is not None:
+            return [(min(lo, hi), max(lo, hi))]
+    out = []
+    found = _BOUND_FLOOR.search(text)
+    if found:
+        out.append((_named_value(text, found, lever, value), None))
+    if found := _BOUND_CEILING.search(text):
+        out.append((None, _named_value(text, found, lever, value)))
+    if found := _BOUND_HOLD.search(text):
+        out.append((_named_value(text, found, lever, value),) * 2)
+    return out or [(value, value)]
+
+
+def intersect_bounds(intervals: list):
+    """The values every interval allows, or None when they allow none between them."""
+    lo = hi = None
+    for low, high in intervals:
+        if low is not None:
+            lo = low if lo is None else max(lo, low)
+        if high is not None:
+            hi = high if hi is None else min(hi, high)
+    if lo is not None and hi is not None and lo > hi + 1e-9:
+        return None
+    return {"min": lo, "max": hi}
+
+
+def bound_kind(bound: dict) -> str:
+    low, high = bound["min"], bound["max"]
+    if low is None and high is None:
+        return FIXED                       # nothing was stated either way; the vote fixed the value
+    for side in (low, high):
+        # An enum or a flag is one permitted value and no interval. Checked only on the sides that
+        # are present: an absent side is a genuine open end, not a non-numeric one.
+        if side is not None and (isinstance(side, bool) or not isinstance(side, (int, float))):
+            return FIXED
+    if low is None:
+        return CEILING
+    if high is None:
+        return FLOOR
+    return FIXED if abs(low - high) < 1e-9 else RANGE
+
+
+def _bound_for(w: World, lever: str) -> dict:
+    """The bound a directive permits. A lever recorded before bounds existed is read as exactly its
+    value, which is how it was enforced at the time."""
+    recorded = (w.const.directive_bounds or {}).get(lever)
+    if isinstance(recorded, dict) and ("min" in recorded or "max" in recorded):
+        return recorded
+    value = w.const.directives.get(lever)
+    return {"min": value, "max": value}
+
+
+def bound_allows(bound: dict | None, value) -> bool:
+    """Whether `value` sits inside a directive's bound. No recorded bound means the old reading:
+    the value the council voted for, exactly."""
+    if not bound or value is None:
+        return False
+    low, high = bound.get("min"), bound.get("max")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        # An enum or a flag is one value, not a position on a line: "protest_response = lethal" is
+        # allowed only where the council named lethal. Asking whether it sits between two others is
+        # not a question, and the arithmetic would raise rather than answer.
+        return _same(low, value) and _same(high, value)
+    if low is not None and value < low - 1e-9:
+        return False
+    if high is not None and value > high + 1e-9:
+        return False
+    return True
+
+
+def directive_bounds(w: World, mo: dict):
+    """(the bound the proposal actually agrees on, the parts of it that disagree).
+
+    Each source is read on its own and then intersected, so a demand that contradicts the motion it
+    is attached to shows up as an empty intersection rather than as a silent win for whichever
+    source the engine happened to read last.
+    """
+    lever = str(mo.get("subject", ""))
+    # An interval only means something for a lever that is a number. "posture = defensive" is one
+    # value, not a range, and asking whether it sits between two others is not a question. Found by
+    # reading every set_policy motion in the corpus, where the enum levers crashed it.
+    if not _numeric_lever(lever):
+        return None, []
+    value = parse_lever(lever, mo.get("value"))
+    if value is None:
+        return None, []
+    sources = [("the motion", str(mo.get("text") or ""))]
+    for demand in mo.get("demands") or []:
+        if isinstance(demand, dict) and demand.get("demand"):
+            sources.append((f"{demand.get('member', 'a delegate')}'s demand", str(demand["demand"])))
+    readings = [(name, _intervals(text, value, lever)) for name, text in sources]
+    bound = intersect_bounds([iv for _, ivs in readings for iv in ivs])
+    if bound is not None:
+        return bound, []
+    return ({"min": value, "max": value},
+            [{"code": "DIRECTIVE_BOUND_MISMATCH", "lever": mo.get("subject"),
+              "value": value, "sources": [{"source": name, "allows": ivs} for name, ivs in readings],
+              "resolution": "the value the council voted on is kept exactly; a conflict never widens "
+                            "what an office may do"}])
+
+
 def validate_motion(w: World, mo: dict) -> str | None:
     """Return an error message, or None if the motion is well formed."""
     detail = validate_motion_detail(w, mo)
@@ -414,7 +606,20 @@ def apply_motion(w: World, mo: dict) -> str:
         return f"{OFFICE_TITLES[subj]} left vacant"
     if t == "set_policy":
         value = parse_lever(subj, val)
+        bound, clashes = directive_bounds(w, mo)
         c.directives[subj] = value
+        if bound is not None:
+            c.directive_bounds[subj] = bound
+        for clash in clashes:
+            # The parts of the proposal do not agree about what it permits. The value the council
+            # voted on is kept exactly — a disagreement never widens what an office may do — and the
+            # conflict is a fact about the month rather than a silent win for one reading.
+            w.event("directive_bound_mismatch",
+                    f"the motion on {subj} disagrees with itself about its bounds: "
+                    f"{'; '.join((' or '.join(f'{lo} to {hi}' for lo, hi in s['allows']))
+                                 for s in clash['sources'])}. "
+                    f"It is read as exactly {fmt_value(value)}.", importance=2, **{
+                        k: v for k, v in clash.items() if k != "code"})
         set_lever(w, subj, value)
         return f"council directive: {subj} = {fmt_value(value)}"
     if t == "settle_arrears":
@@ -643,7 +848,12 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                 continue
             fiscal_authority = (office == "treasury" and w.agent_architecture_version >= 2
                                 and "fiscal_authority" in (w.institutions.get("emergency_measures") or {}))
-            if lever in directives and not _same(directives[lever], value) and not fiscal_authority:
+            # Against the bound, not against the number. Reading only the number treated every
+            # directive as fixed, which is safe but blind: it cannot tell a ceiling from a floor and
+            # would have called an order inside a genuine floor a defiance. Reading the bound is what
+            # stops "floor 0.035" being taken as leave to raise spending when the same proposal also
+            # says no increase — that intersection is 0.035 exactly, and 0.04 is outside it.
+            if lever in directives and not bound_allows(_bound_for(w, lever), value) and not fiscal_authority:
                 defiance.append({"member": mid, "office": office, "lever": lever,
                                  "directive": directives[lever], "value": value})
             set_lever(w, lever, value)

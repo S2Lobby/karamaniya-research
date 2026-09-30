@@ -1041,6 +1041,7 @@ class Council:
                     target = next(m for m in tabled if m["id"] == warning["cosponsor_of"])
                     if mid not in target.setdefault("cosponsors", []):
                         target["cosponsors"].append(mid)
+                    deliberation.attach_sponsor_conditions(target, mid, candidate)
                     continue
                 entry = {**mo, "id": f"M{len(tabled) + 1}", "proposer": mid, "summary": actions.motion_summary(w, mo)}
                 if warning:
@@ -1620,7 +1621,24 @@ class Council:
                 entry["vote_status"] = "PASSED"
                 snapshot = w.to_dict()
                 entry["world_state_before"] = _audit_state(snapshot)
-                entry["conditions"] = motion_actions.motion_conditions(mo)
+                carried_conditions = motion_actions.motion_conditions(mo)
+                # What the motion carries is what its proposer filed. What the council agreed can be more:
+                # a floor the votes that carried it asked for (a demand in the response round, a
+                # co-sponsor's safeguard). It is bound here, before the gate and before execution, so
+                # the vote and the execution describe the same motion.
+                accepted = motion_actions.accepted_conditions(w, mo, counted)
+                entry["conditions"] = motion_actions.bind_conditions(carried_conditions, accepted)
+                if accepted:
+                    entry["accepted_conditions"] = accepted
+                    if mo.get("sponsor_conditions"):
+                        entry["sponsor_conditions"] = mo["sponsor_conditions"]
+                    mismatch = motion_actions.condition_execution_mismatch(w, mo, accepted, carried_conditions)
+                    if mismatch:
+                        entry["condition_execution_mismatch"] = mismatch
+                        errors.record(w, "CONDITION_EXECUTION_MISMATCH", mismatch["detail"], member=mo["proposer"],
+                                      motion=mo["id"], would_violate=mismatch["would_violate"],
+                                      accepted=[{k: c[k] for k in ("metric", "operator", "value", "accepted_by")}
+                                                for c in mismatch["missing"]])
                 if motion_actions.condition_mismatch(w, {**mo, "conditions": entry["conditions"]}):
                     # Belt and braces: the gate below re-checks this, but recording the
                     # final-conditions triple on the entry keeps vote vs execution auditable
@@ -1668,11 +1686,20 @@ class Council:
                     entry["execution_status"] = "EXECUTED"
                     entry["world_state_after"] = None
                     entry["result"] = politics.apply_motion(w, {**mo, "proposer": mo["proposer"], "votes": dict(counted),
-                                                                "final_executable_action": action})
+                                                                "final_executable_action": action,
+                                                                "conditions": entry["conditions"]})
                     entry["execution_result"] = entry["result"]
                     entry["world_state_after"] = _audit_state(w.to_dict())
                     entry["execution_month"] = w.month
                     executed[motion_actions.execution_key(w, mo)] = mo["id"]
+                    breach = (motion_actions.condition_execution_violation(w, entry["conditions"])
+                              if mo["type"] == "settle_arrears" else [])
+                    if breach:
+                        entry["condition_violations"] = breach
+                        errors.record(w, "CONDITION_EXECUTION_MISMATCH",
+                                      f"{mo['id']} ran and left reserves under a floor it carried",
+                                      member=mo["proposer"], motion=mo["id"], violated=True,
+                                      floors=[b["value"] for b in breach], observed=breach[0]["observed"])
                     if mo["type"] in ("constitution", "expel", "amend", "diplomacy", "referendum", "launch_currency",
                                       "assign_office", "vacate_office", "emergency_measure", "investigation"):
                         w.event("council", f"The council decided: {entry['result']}.", importance=2, public=True)

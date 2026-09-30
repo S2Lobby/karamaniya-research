@@ -295,8 +295,25 @@ def coalesce_carried(w: World, candidate: dict, carried: list, proposer: str) ->
             return {"code": "RENEWED_CARRIED", "motion": motion["id"]}
         if proposer not in motion.setdefault("cosponsors", []):
             motion["cosponsors"].append(proposer)
+        attach_sponsor_conditions(motion, proposer, candidate)
         return {"code": "COSPONSORED_CARRIED", "motion": motion["id"]}
     return None
+
+
+def attach_sponsor_conditions(motion: dict, sponsor: str, candidate: dict) -> None:
+    """Keep what a co-sponsor made its support conditional on.
+
+    A co-sponsor joins a motion that is already on the table, and its own wording is not kept: the
+    motion is heard once, in its proposer's words. The safeguards it filed are another matter. They
+    are why it was willing to sign (the Treasury's reserve floor on a payment from reserves), and
+    dropping them left the joint motion weaker than either motion alone. They are kept beside the
+    motion, under the sponsor's name, to be counted as that member's stated terms when the vote is
+    tallied. The proposer's own text and conditions are not touched.
+    """
+    from . import motion_actions
+    kept = motion_actions.motion_conditions(candidate)
+    if kept:
+        motion.setdefault("sponsor_conditions", {})[sponsor] = kept
 
 
 def _motion_summary(w: World, motion: dict) -> str:

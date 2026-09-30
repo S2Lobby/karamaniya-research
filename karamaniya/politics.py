@@ -845,7 +845,12 @@ def apply_motion(w: World, mo: dict) -> str:
         scope, categories, _ = _arrears_scope(mo, val)
         owed = (sum(max(0.0, e.arrears_by.get(c, 0.0)) for c in categories) if categories else e.arrears)
         intended = owed * (scope if scope is not None else 1.0)
-        paid = min(intended, _arrears_funding_capacity(w, subj))
+        # A reserve floor the motion carries limits the payment: what is paid is what reserves can
+        # cover above the floor, never more than was asked. The same figure the execution gate reports.
+        floor = payment_floor(mo) if subj == "reserves" else 0.0
+        capacity = _arrears_funding_capacity(w, subj, floor)
+        unfloored = _arrears_funding_capacity(w, subj) if floor else capacity
+        paid = min(intended, capacity)
         if subj == "reserves":
             rate = w.zone_of("karamaniya").price / (e.fx_conf if e.currency == "karam" else 1.0)
             e.gold = max(0.0, e.gold - paid / max(rate, .01))
@@ -863,10 +868,15 @@ def apply_motion(w: World, mo: dict) -> str:
         scope_text = f" to {', '.join(categories)}" if categories else ""
         result = f"paid {paid / 1e6:.1f}M crowns in inherited bills{scope_text} using {subj.replace('_', ' ')}"
         if paid + 1 < intended:
-            result += f"; {intended / 1e6:.1f}M was requested but funding was limited"
+            if floor and unfloored > capacity + 1:
+                result += (f"; {intended / 1e6:.1f}M was requested but the payment was limited to keep reserves "
+                           f"at the reserve floor of {floor / 1e6:.1f}M")
+            else:
+                result += f"; {intended / 1e6:.1f}M was requested but funding was limited"
         w.event("arrears_settlement", result, importance=2, categories=list(categories),
                 requested=round(intended, 2), executed=round(paid, 2),
-                remaining=round(max(0.0, intended - paid), 2))
+                remaining=round(max(0.0, intended - paid), 2),
+                **({"reserve_floor": round(floor, 2)} if floor else {}))
         return result
     if t == "constitution":
         return _constitution(w, subj, str(val).strip(), mo.get("proposer", ""))
@@ -1082,8 +1092,22 @@ def _num(val) -> bool:
         return False
 
 
-def settle_arrears_cost(w, motion: dict) -> float:
-    """Gold the engine would actually spend on this arrears motion (reserves only)."""
+def payment_floor(mo: dict) -> float:
+    """The strictest reserve floor a motion executes under, in the gold reserves are held in (0 if none).
+
+    Read through `motion_conditions`, as the execution gate reads it, so the gate and the payment
+    cannot disagree about what the floor is or what units it is in."""
+    from . import motion_actions
+    floors = [float(c["value"]) for c in motion_actions.motion_conditions(mo)
+              if c.get("metric") == "reserves_after_payment" and c.get("operator") == ">="]
+    return max(floors) if floors else 0.0
+
+
+def settle_arrears_cost(w, motion: dict, floor: float | None = None) -> float:
+    """Gold the engine would actually spend on this arrears motion (reserves only).
+
+    `floor` is the reserve floor the payment is sized to: None reads it from the motion, 0.0 asks what
+    the payment would cost with none."""
     e = w.econ
     if str(motion.get("type", "")) != "settle_arrears" or str(motion.get("subject", "")) != "reserves":
         return 0.0
@@ -1094,7 +1118,9 @@ def settle_arrears_cost(w, motion: dict) -> float:
     if scope is None:
         scope = {"quarter": .25, "half": .5, "all": 1.0}.get(str(motion.get("value", "")).strip().lower(), .25)
     intended = owed * scope
-    paid = min(intended, _arrears_funding_capacity(w, "reserves"))
+    if floor is None:
+        floor = payment_floor(motion)
+    paid = min(intended, _arrears_funding_capacity(w, "reserves", floor))
     rate = w.zone_of("karamaniya").price / (e.fx_conf if e.currency == "karam" else 1.0)
     return paid / max(rate, .01)
 
@@ -1234,11 +1260,12 @@ def _categorical(word: str) -> bool:
                                            "police", "army", "food", "civil"))
 
 
-def _arrears_funding_capacity(w: World, source: str) -> float:
+def _arrears_funding_capacity(w: World, source: str, floor: float = 0.0) -> float:
+    """Crowns a source can fund. From reserves, that is what they hold above `floor` (gold), in crowns."""
     e = w.econ
     if source == "reserves":
         rate = w.zone_of("karamaniya").price / (e.fx_conf if e.currency == "karam" else 1.0)
-        return max(0.0, e.gold * rate)
+        return max(0.0, (e.gold - floor) * rate)
     if source == "domestic_bonds":
         issued = w.institutions.get("arrears_bonds") or {}
         already = issued.get("amount", 0.0) if issued.get("month") == w.month else 0.0

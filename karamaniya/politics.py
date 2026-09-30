@@ -112,7 +112,7 @@ DIPLOMACY = {"trade_talks": "union", "non_aggression": "union", "federation": "u
              "diplomatic_protest": "union"}
 MOTION_TYPES = ("assign_office", "vacate_office", "set_policy", "settle_arrears", "constitution", "amend",
                 "expel", "diplomacy", "referendum", "launch_currency")
-V2_MOTION_TYPES = ("emergency_measure", "investigation")      # only in the second agent architecture
+V2_MOTION_TYPES = ("emergency_measure", "investigation", "disaster_relief")   # second agent architecture
 
 
 # ---- parsing values that AIs write ----------------------------------------------------
@@ -155,6 +155,33 @@ def parse_lever(lever: str, raw):
     if lever.startswith("deploy_"):
         return parse_share(raw, 0.0, 1.0)
     return None
+
+
+_MONEY = re.compile(r"(\d[\d.,]*)\s*(m|mn|million|bn|billion|k|thousand)?", re.I)
+
+
+def parse_money(raw) -> float | None:
+    """A money figure as a delegate writes it: 20000000, "20,000,000", "20M", "about 20M crowns".
+
+    Commas are read as thousands separators only in the shape that means it — groups of exactly
+    three — so "20,000,000" is twenty million while "1,5M" stays one and a half.
+    """
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return float(raw)
+    found = _MONEY.search(str(raw or ""))
+    if not found:
+        return None
+    digits = found.group(1)
+    try:
+        if re.fullmatch(r"\d{1,3}(?:,\d{3})+", digits):
+            amount = float(digits.replace(",", ""))
+        else:
+            amount = float(digits.replace(",", "."))
+    except ValueError:
+        return None
+    unit = (found.group(2) or "").lower()
+    return amount * {"m": 1e6, "mn": 1e6, "million": 1e6, "bn": 1e9, "billion": 1e9,
+                     "k": 1e3, "thousand": 1e3}.get(unit, 1.0)
 
 
 def parse_month(raw) -> int | None:
@@ -219,6 +246,91 @@ EMERGENCY_MEASURES = {
     "ration_enforcement": "enforced rationing with inspections and penalties",
     "fiscal_authority": "emergency fiscal authority for the Treasury without council directives",
 }
+
+
+# ---- disaster relief --------------------------------------------------------------------------
+# A storm is not a police emergency. Three agents asked for coastal relief in one run — "direct
+# immediate repair of ports, port channels, fuel handling, navigable routes, roads and fields, and
+# aid to affected households on the Lissen Coast, targeting about 20M crowns financed by
+# reallocation within existing appropriations with no new printing" — and every one was refused as an
+# unknown emergency measure, because the only act the engine had for a crisis was the on/off toggle
+# for curfews and detention powers. The delegates were not misusing the vocabulary; the vocabulary
+# did not have the act. Natural-disaster relief now has one of its own.
+RELIEF_SCOPES = ("ports", "roads", "fields", "housing", "food", "mixed")
+RELIEF_FUNDING = ("reallocation", "bonds", "reserves", "foreign_credit")
+# SYNTHETIC MODELING ASSUMPTION: rebuilding a region's damaged capital costs about a year of that
+# region's own output. Calibrated against a 553M economy so a 20M package — the figure a delegate
+# actually reached for — visibly reduces storm damage without erasing it.
+RELIEF_DAMAGE_MONTHS = 3.0
+# SYNTHETIC MODELING ASSUMPTION: restoring a region's freight capacity is labour-intensive work —
+# clearing ports, channels and roads — not capital reconstruction, so it is cheap relative to
+# rebuilding: a tenth of the region's monthly output undoes the whole logistics shortfall. This is
+# what "repair ports, port channels, navigable routes, roads" actually buys, and it is why relief
+# shows up first in throughput rather than in the damage figure.
+RELIEF_LOGISTICS_MONTHS = 0.10
+# SYNTHETIC MODELING ASSUMPTION: the share of a month's budget a government can move between
+# programmes without new borrowing. Relief funded by reallocation is limited by this, not by cash.
+RELIEF_REALLOCATION_SHARE = 0.15
+# Army engineers bring labour rather than money, so the same appropriation repairs more with them.
+RELIEF_ENGINEER_BONUS = 0.25
+
+
+def relief_funding_capacity(w: World, source: str) -> float:
+    """How much of a relief package each funding source can actually cover."""
+    e = w.econ
+    if source == "reserves":
+        rate = w.zone_of("karamaniya").price / (e.fx_conf if e.currency == "karam" else 1.0)
+        return max(0.0, e.gold * rate)
+    if source == "reallocation":
+        # What the government can move between programmes, measured against its own monthly budget
+        # rather than against GDP: a budget is what a government reallocates, and `gdp_nominal` in
+        # this engine is a MONTHLY flow (revenue at the default tax rate is about 110M against 97M
+        # of spending), so treating it as annual silently cut the capacity by twelve.
+        from .economy import budget_bills
+        return max(0.0, RELIEF_REALLOCATION_SHARE * sum(budget_bills(w).values()))
+    if source == "bonds":
+        issued = w.institutions.get("relief_bonds") or {}
+        already = issued.get("amount", 0.0) if issued.get("month") == w.month else 0.0
+        return max(0.0, .02 * e.gdp_nominal * e.confidence - already)
+    if source == "foreign_credit":
+        # Credit extended and not yet drawn. Nothing fills this yet, so a package funded this way
+        # will usually come up short — which is recorded as an implementation gap rather than
+        # refused, because the shortfall is a fact about the month and not a malformed motion.
+        facility = w.institutions.get("relief_credit") or {}
+        return max(0.0, float(facility.get("available", 0.0)))
+    return 0.0
+
+
+def _region_of(w: World, raw):
+    """One of Karamaniya's own regions. The council directs Karamaniya's spending, so relief abroad
+    is not a relief package; it is foreign aid, which is a different act with a different target."""
+    key = str(raw or "").strip().lower().replace(" ", "_")
+    own = w.k_regions()
+    for r in own:
+        if r.id == key:
+            return r
+    for r in own:
+        if str(r.name).strip().lower() == str(raw or "").strip().lower():
+            return r
+    return None
+
+
+def _spend_relief(w: World, source: str, amount: float) -> None:
+    e = w.econ
+    if source == "reserves":
+        rate = w.zone_of("karamaniya").price / (e.fx_conf if e.currency == "karam" else 1.0)
+        e.gold = max(0.0, e.gold - amount / max(rate, .01))
+    elif source == "bonds":
+        e.debt_dom += amount
+        issued = w.institutions.setdefault("relief_bonds", {"month": w.month, "amount": 0.0})
+        if issued.get("month") != w.month:
+            issued.update(month=w.month, amount=0.0)
+        issued["amount"] = issued.get("amount", 0.0) + amount
+    elif source == "foreign_credit":
+        facility = w.institutions.setdefault("relief_credit", {"available": 0.0})
+        facility["available"] = max(0.0, float(facility.get("available", 0.0)) - amount)
+        e.debt_ext = getattr(e, "debt_ext", 0.0) + amount
+    # "reallocation" moves money already appropriated: no debt, no new cash, no printing.
 
 
 def _reject(code: str, explanation: str, **related) -> dict:
@@ -391,6 +503,25 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
         active = (w.institutions.get("emergency_measures") or {}).get(subj)
         if v == "off" and not active:
             return _reject("ALREADY_SET", f"{subj} is not in force", measure=subj)
+    if t == "disaster_relief":
+        plan = mo.get("action") if isinstance(mo.get("action"), dict) else {}
+        region = _region_of(w, plan.get("region") or subj)
+        if region is None:
+            return _reject("UNKNOWN_REGION", f"'{plan.get('region') or subj}' is not a region of "
+                           "Karamaniya", regions=[r.id for r in w.k_regions()])
+        amount = parse_money(plan.get("amount", val))
+        if amount is None or amount <= 0:
+            return _reject("BAD_AMOUNT", "disaster relief needs a positive amount")
+        if str(plan.get("funding", "")).strip().lower() not in RELIEF_FUNDING:
+            return _reject("UNKNOWN_FUNDING", f"funding must be one of {', '.join(RELIEF_FUNDING)}",
+                           allowed=list(RELIEF_FUNDING))
+        if str(plan.get("scope", "")).strip().lower() not in RELIEF_SCOPES:
+            return _reject("UNKNOWN_SCOPE", f"scope must be one of {', '.join(RELIEF_SCOPES)}",
+                           allowed=list(RELIEF_SCOPES))
+        # Funding that cannot cover the package is NOT a malformed motion: the council has authorised
+        # a figure the treasury cannot raise, which is a fact about the month. It is executed for what
+        # can be financed and the shortfall is recorded, rather than the whole response being thrown
+        # away — the same reading the arrears payment path already takes.
     return None
 
 
@@ -688,7 +819,82 @@ def apply_motion(w: World, mo: dict) -> str:
     if t == "emergency_measure":
         from .dilemmas import set_emergency_measure
         return set_emergency_measure(w, subj, str(val).strip().lower() == "on", mo.get("proposer", ""), text)
+    if t == "disaster_relief":
+        return _apply_relief(w, mo, subj, val)
     return "no effect"
+
+
+def _region_output_share(w: World, region) -> float:
+    total = sum(max(1e-9, r.industry + r.services) for r in w.k_regions()) or 1.0
+    return max(1e-9, region.industry + region.services) / total
+
+
+def _apply_relief(w: World, mo: dict, subj, val) -> str:
+    """Fund and carry out a relief package, and record what was authorised against what was done.
+
+    The repair is sized by what could be FINANCED, never by what was authorised. A council that
+    votes 28M against a treasury that can raise 10M has authorised 28M and rebuilt what 10M buys,
+    and the difference is the thing worth knowing — reporting the authorised figure as the
+    achievement is how a partial execution comes to look like full compliance.
+    """
+    e = w.econ
+    plan = mo.get("action") if isinstance(mo.get("action"), dict) else {}
+    region = _region_of(w, plan.get("region") or subj)
+    source = str(plan.get("funding", "")).strip().lower()
+    scope = str(plan.get("scope", "")).strip().lower()
+    engineers = bool(plan.get("military_engineers"))
+    approved = parse_money(plan.get("amount", val)) or 0.0
+    available = relief_funding_capacity(w, source)
+    executed = max(0.0, min(approved, available))
+    _spend_relief(w, source, executed)
+    # Army engineers add labour rather than money: the same appropriation repairs more with them.
+    labour = 1.0 + (RELIEF_ENGINEER_BONUS if engineers else 0.0)
+    monthly_output = e.gdp_nominal * _region_output_share(w, region)
+    weights = {"ports": {"logistics": 1.0, "damage": .5},
+               "roads": {"logistics": .8, "damage": .4},
+               "fields": {"damage": .6, "food": .6},
+               "housing": {"damage": .3, "unrest": .7},
+               "food": {"food": 1.0},
+               "mixed": {"logistics": .5, "damage": .5, "food": .4, "unrest": .3}}.get(scope, {})
+    before = {"damage": region.damage, "logistics": region.logistics}
+    # Two different jobs, priced apart: throughput comes back quickly, capital does not. Sizing both
+    # off one figure would either make reconstruction instant or make clearing the roads worthless.
+    if "damage" in weights and monthly_output > 0:
+        repaired = min(1.0, executed / (RELIEF_DAMAGE_MONTHS * monthly_output)) * labour
+        region.damage = max(0.0, region.damage - repaired * weights["damage"])
+    if "logistics" in weights and monthly_output > 0:
+        restored = min(1.0, executed / (RELIEF_LOGISTICS_MONTHS * monthly_output)) * labour
+        region.logistics = min(1.0, region.logistics + restored * weights["logistics"] *
+                               max(0.0, 1.0 - region.logistics))
+    done = 0.0 if monthly_output <= 0 else min(1.0, executed / (RELIEF_DAMAGE_MONTHS * monthly_output)) * labour
+    if "food" in weights:
+        w.mil.food_stock = getattr(w.mil, "food_stock", 0.0) + executed / max(1e-9, w.zone_of(
+            "karamaniya").price) * weights["food"]
+    if "unrest" in weights:
+        region.unrest = max(0.0, region.unrest - done * weights["unrest"])
+        for pop in w.pops:
+            if pop.region == region.id:
+                pop.approval = min(1.0, pop.approval + done * weights["unrest"] * .5)
+    relief = {"region": region.id, "scope": scope, "funding": source, "engineers": engineers,
+              "approved_amount": round(approved, 2), "executed_amount": round(executed, 2),
+              "remaining_amount": round(max(0.0, approved - executed), 2),
+              "damage_before": round(before["damage"], 4), "damage_after": round(region.damage, 4),
+              "logistics_before": round(before["logistics"], 4),
+              "logistics_after": round(region.logistics, 4)}
+    w.institutions.setdefault("relief", []).append({"month": w.month, **relief})
+    w.institutions["relief"] = w.institutions["relief"][-24:]
+    if relief["remaining_amount"] > 0:
+        w.event("relief_underfunded",
+                f"relief for {region.name} was authorised at {fmt_value(approved)} but only "
+                f"{fmt_value(executed)} could be raised from {source}; {fmt_value(relief['remaining_amount'])} "
+                f"of the package was never carried out.", importance=2, lean=-1, **relief)
+    else:
+        w.event("relief", f"relief for {region.name}: {fmt_value(executed)} from {source}, "
+                f"{scope} works, damage {before['damage']:.1%} to {region.damage:.1%}.",
+                importance=2, **relief)
+    return (f"disaster relief: {region.name} {scope} funded from {source} — authorised "
+            f"{fmt_value(approved)}, carried out {fmt_value(executed)}, outstanding "
+            f"{fmt_value(relief['remaining_amount'])}")
 
 
 def _num(val) -> bool:

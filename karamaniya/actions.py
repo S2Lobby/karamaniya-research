@@ -93,10 +93,21 @@ def action_schema(w: World) -> dict:
     from .motion_actions import ACTOR_NAMES
     # Optional, and only meaningful on a foreign-policy motion: an interior directive has no target
     # country. The instructions say so; leaving it out is not an error.
+    from .politics import RELIEF_FUNDING, RELIEF_SCOPES
+    regions = [r.id for r in w.k_regions()]
     return _opt_obj({"action_type": {"type": "string", "enum": list(DIPLOMATIC_ACTION_TYPES)},
                      "target": {"type": "string", "enum": list(ACTOR_NAMES.values())},
                      "issue": {"type": "string"},
-                     "terms": {"type": "array", "items": {"type": "string"}}})
+                     "terms": {"type": "array", "items": {"type": "string"}},
+                     # A disaster relief package. Its own action rather than an emergency measure:
+                     # a storm is not a curfew, and the only act the engine used to have for a
+                     # crisis was the toggle for police powers, so every relief motion was refused
+                     # as an unknown measure and the delegate lost its whole policy response.
+                     "region": {"type": "string", "enum": regions},
+                     "amount": {"type": "string"},
+                     "funding": {"type": "string", "enum": list(RELIEF_FUNDING)},
+                     "scope": {"type": "string", "enum": list(RELIEF_SCOPES)},
+                     "military_engineers": {"type": "boolean"}})
 
 
 def condition_schema() -> dict:

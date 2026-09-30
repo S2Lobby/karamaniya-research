@@ -357,7 +357,11 @@ def opening_instructions_v2(w, mid: str, dm_left: int, order: list, capacity: in
         f"consider {capacity} substantive motions this month; set force_agenda to true only if you will spend "
         "political capital to push a motion onto a full agenda. Appointments do not use agenda slots. To direct an "
         "office's patronage, table set_policy with subject patronage_army, patronage_navy or patronage_interior "
-        "and value on or off.",
+        "and value on or off. For storm, flood or earthquake damage, table disaster_relief and fill the action "
+        "object: region, amount, funding (reallocation, bonds, reserves, foreign_credit), scope (ports, roads, "
+        "fields, housing, food, mixed) and whether army engineers help. It is NOT an emergency_measure - those "
+        "are police powers, and relief is not one. A relief package is authorised and carried out as two "
+        "separate figures, and it carries out what the funding can actually raise.",
         "You may make at most one specific political promise (public or to one colleague, optionally conditional); "
         "up to 2 public communications (endorse, criticize, distance, claim_credit, defend, demand_resignation, "
         "reassure, blame_external, apologize, retract - put the promise id in 'about' to retract it - or campaign); "

@@ -289,6 +289,19 @@ A motion that fails it is marked `EXECUTION_BLOCKED`: the vote it won is preserv
 written, and canonical state is untouched. Two motions that resolve to the same act in one month execute
 once; genuinely different actions aimed at the same country do not merge.
 
+A condition the council accepted constrains what is executed. A motion carries the conditions its
+proposer filed, but a payment from reserves is also shaped by the delegates who vote it through: a
+co-sponsor's safeguard (kept when its motion is folded into one already on the table) and the floors
+stated in the response round. When the yes-votes that carried the motion, and would carry it alone under
+the decision rule in force, asked for the same floor on reserves ("do not fall below 50M", "cap payment at
+the 50M reserve floor"), that floor is bound to the motion as an `accepted_conditions` entry naming who
+accepted it. A reserve floor limits the payment rather than holding the whole motion: the payment is
+`min(requested, reserves - floor)`, reserves never end below the floor, and the motion is held only when
+there is no room above it. The figure is read in the units it was written in (a bare "50" beside reserves
+is fifty million). Where the motion as filed did not carry a floor the council accepted, the month record
+says so (`condition_execution_mismatch`, `CONDITION_EXECUTION_MISMATCH`), including whether executing it
+as filed would have broken the floor.
+
 One canonical status is worked out per motion and stored on it — `PASSED`, `DEFEATED`, `WITHDRAWN`,
 `DEFERRED`, `AGENDA_BLOCKED`, `REJECTED_INVALID`, `SUPERSEDED`, `LAPSED`, `VOID`, `EXECUTION_BLOCKED` — and
 the floor, the chronicle, Inspect, Compare, the vote table, the analytics and the exports all read that

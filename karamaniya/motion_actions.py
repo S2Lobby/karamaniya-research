@@ -210,6 +210,21 @@ def parse_conditions(text: str, motion_type: str = "", subject: str = "") -> lis
     return out
 
 
+#: Money is written in whatever unit the briefing spoke in: "reserves about 97M" makes a delegate write
+#: 50 for fifty million. The prose parser has always read a bare "55" beside reserves as 55M; the
+#: structured path did not, so an explicit floor of 50 was a floor of fifty crowns, met by any reserves
+#: there have ever been. (Conditional *votes* are a different instrument, tested at vote time, and are
+#: not touched.)
+MONEY_METRICS = ("reserves", "reserves_after_payment", "arrears")
+
+
+def _money_units(metric: str, value: float) -> float:
+    """A bare figure under 100,000 beside a money metric is a number of millions."""
+    if metric in MONEY_METRICS and 0 < value < 1e5:
+        return value * 1e6
+    return value
+
+
 def motion_conditions(motion: dict) -> list:
     """The binding conditions for one motion: explicit beats derived, never invented."""
     explicit = motion.get("conditions") or motion.get("execution_conditions") or []
@@ -224,7 +239,8 @@ def motion_conditions(motion: dict) -> list:
                 value = float(c.get("value"))
             except (TypeError, ValueError):
                 continue
-            clean.append({"metric": c["metric"], "operator": c["operator"], "value": value,
+            clean.append({"metric": c["metric"], "operator": c["operator"],
+                          "value": _money_units(c["metric"], value),
                           "source": str(c.get("source", "explicit"))[:220]})
         if clean:
             return clean
@@ -261,18 +277,50 @@ def condition_values(w) -> dict:
             "league_credit_received": credit, "audited_register": audited}
 
 
+def _reserve_floor_result(w, cond: dict, motion: dict, values: dict) -> dict:
+    """A floor on reserves after a payment, tested the way it will be enforced: by sizing the payment.
+
+    "Reserves stay at or above 50M" on a payment from reserves means pay what leaves them there. So the
+    floor is met whenever some payment can be made above it, and the payment is limited to
+    min(requested, reserves - floor); it fails only when there is no room at all (reserves already at
+    or under the floor), and then nothing is paid. Reserves are gold and payments are crowns, so room
+    and cost are both in gold here, the unit reserves are held in.
+    """
+    from .politics import settle_arrears_cost
+    try:
+        floor = float(cond.get("value"))
+        reserves = float(values.get("reserves", 0))
+        full = float(settle_arrears_cost(w, motion, floor=0.0))
+    except (TypeError, ValueError):
+        return {**cond, "met": False, "observed": None, "reason": "no canonical reading for reserves_after_payment"}
+    allowed = min(full, max(0.0, reserves - floor))
+    after = reserves - allowed
+    no_room = full > 0 and allowed <= 0
+    met = after >= floor and not no_room
+    row = {**cond, "met": bool(met), "observed": after, "requested_cost": full, "allowed_cost": allowed,
+           "capped": bool(met and full > 0 and allowed + 1e-6 < full)}
+    if not met:
+        row["reason"] = (f"reserves {reserves:,.0f} are already below the reserve floor of {floor:,.0f}"
+                         if reserves < floor else
+                         f"reserves {reserves:,.0f} leave no room for a payment above the reserve floor of {floor:,.0f}")
+    return row
+
+
 def evaluate_conditions(w, conditions: list, motion: dict | None = None) -> list:
     """Test every binding condition against current canonical state. Pure: no mutation."""
     values = condition_values(w)
     results = []
     for cond in conditions or []:
         metric = cond.get("metric")
+        if metric == "reserves_after_payment" and motion is not None and cond.get("operator") == ">=":
+            results.append(_reserve_floor_result(w, cond, motion, values))
+            continue
         observed = values.get(metric)
         detail = ""
         if metric == "reserves_after_payment" and motion is not None:
             from .politics import settle_arrears_cost
             try:
-                cost = float(settle_arrears_cost(w, motion))
+                cost = float(settle_arrears_cost(w, motion, floor=0.0))
                 observed = float(values.get("reserves", 0)) - cost
                 detail = (f"reserves_after_payment would fall to {observed:,.0f} "
                           f"(floor {cond.get('value'):,.0f})")
@@ -319,6 +367,204 @@ def condition_mismatch(w, motion: dict) -> dict | None:
                        f"({'; '.join(c['metric'] + ' ' + c['operator'] + ' ' + str(c['value']) for c in missing)}) "
                        "which the stored executable conditions omit; it would run too early"),
             "final_conditions": text_conds, "stored_conditions": stored}
+
+
+# ---- what the council accepted ----------------------------------------------------------------------
+# A condition is binding when it is among the motion's executable conditions, and those come from its
+# proposer: the structured `conditions` it filed, or a safeguard its own words state. But a motion is
+# also shaped after it is tabled, by the delegates who vote it through: a co-sponsor who attached a
+# safeguard of its own, and the demands the response round exists to collect ("cap the payment at the
+# 50M reserve floor"). When the votes that carried a motion are votes that asked for the same floor,
+# that floor is what the council agreed, and it has to reach execution whoever happened to table it.
+#
+# One kind of term is read back from free text: a floor on reserves, for a payment made from reserves.
+# It is the one the record showed being lost, it is what such a vote is about (a payment the treasury
+# cannot afford), and the constructions that state it are few. A demand that does not plainly state a
+# floor states none; under-reading is the safe direction, because an unread demand leaves the engine
+# exactly as it was.
+_FIGURE = (r"(?P<num>\d[\d,]*(?:\.\d+)?)(?:\s*(?P<unit>bn|billion|mn|million|thousand|m|k)\b)?"
+           r"(?!\s*(?:%|(?:percent|months?|weeks?|days?|years?|quarters?|troops?|soldiers?|men|people|persons?|"
+           r"workers?|tonnes?|tons?|ships?|vessels?|units?|points?|hectares?)\b))")
+_AROUND = r"(?:about\s+|roughly\s+|around\s+)?"
+_UNIT_SCALE = {"bn": 1e9, "billion": 1e9, "mn": 1e6, "million": 1e6, "m": 1e6, "thousand": 1e3, "k": 1e3}
+_RESERVE_WORD = re.compile(r"\b(?:reserves?|gold|treasury)\b", re.I)
+_FLOOR_PATTERNS = tuple(re.compile(p, re.I) for p in (
+    # "do not let reserves fall below 60M", "reserves never fall below 50,000,000", "should not drop under 1.5bn",
+    # "no payment that reduces reserves below 55M", "must not push reserves below roughly 50M"
+    r"\b(?:not|never|n't|no|without|avoid\w*|prevent\w*|prohibit\w*|forbid\w*)\b[^.;]{0,40}?"
+    r"\b(?:fall\w*|fell|drop\w*|dip\w*|sink\w*|slip\w*|go(?:es|ing)?|declin\w*|reduc\w*|push\w*|pull\w*|tak\w*|"
+    r"bring\w*|draw\w*|drain\w*|deplet\w*)\b[^.;]{0,15}?"
+    r"\b(?:below|under|beneath)\s+" + _AROUND + _FIGURE,
+    # "reserves remain at or above 50M", "hold reserves at least 55 million", "stay >= 50M"
+    r"\b(?:stay|stays|staying|remain|remains|remaining|keep|keeps|keeping|kept|hold|holds|holding|held|"
+    r"maintain\w*|preserv\w*|retain\w*|leave|leaves|leaving|be)\b[^.;]{0,50}?"
+    r"(?:>=|≥|\bat\s+or\s+above\b|\bat\s+least\b|\bno\s+(?:less|lower)\s+than\b|\bnot\s+below\b|\babove\b|"
+    r"\bover\b|\bminimum\s+of\b)\s*" + _AROUND + _FIGURE,
+    # "the 50M reserve floor", "a 45M reserve floor", "50M minimum"
+    _FIGURE + r"\s*(?:gold\s+|crowns?\s+)?(?:(?:reserve|reserves)\s+)?(?:floor|minimum|buffer|threshold)\b",
+    # "reserve floor of 50M", "a floor at 50M"
+    r"\b(?:floor|minimum|buffer|threshold)\s+(?:of|at|to)\s+" + _AROUND + _FIGURE,
+    # "at least 50M in reserves", ">= 50M of gold"
+    r"(?:>=|≥|\bat\s+least\b|\bno\s+less\s+than\b)\s*" + _FIGURE +
+    r"\s*(?:gold\s+|crowns?\s+)?(?:in|of)\s+(?:the\s+)?(?:foreign\s+)?(?:reserves?|gold)\b",
+))
+
+
+_MONEY_TAIL = re.compile(r"\s*(?:gold|crowns?|karams?)\b|\s*(?:gold\s+|crowns?\s+)?(?:reserves?\s+)?"
+                         r"(?:floor|minimum|buffer|threshold)\b", re.I)
+
+
+def _figure_value(match, clause: str) -> float | None:
+    """The amount a figure names, in the units reserves are held in, or None if it is not money.
+
+    "50M", "50 million" and "1.5bn" say what they are. A bare figure is money only when it is already
+    a full amount (50,000,000) or is written as one ("50 gold", "a 50 reserve floor"): "28,000" in the
+    same sentence as "reserves" is a troop count."""
+    try:
+        number = float(match.group("num").replace(",", ""))
+    except ValueError:
+        return None
+    unit = (match.group("unit") or "").lower()
+    if unit:
+        return number * _UNIT_SCALE[unit]
+    if number >= 1e5:
+        return number
+    return _money_units("reserves_after_payment", number) if _MONEY_TAIL.match(clause, match.end("num")) else None
+
+
+def floor_from_demand(text: str) -> float | None:
+    """The reserve floor a piece of response-round prose states, or None.
+
+    "Ensure reserves do not fall below 50M gold" and "cap payment at the 50M reserve floor" state one.
+    "Reserves are above 97M", "pay 47M now" and "cap payment at 47M" state a fact or an amount, not a
+    floor, and a figure that is not next to floor wording is never read as one. Where one demand states
+    several, the highest is taken: a delegate who asks for 60M and for not going under 50M has asked
+    for 60M.
+    """
+    found = []
+    for clause in re.split(r";|(?<=[A-Za-z0-9)])\.(?=\s)", str(text or "")):
+        for pattern in _FLOOR_PATTERNS:
+            for match in pattern.finditer(clause):
+                # The floor has to be about reserves: the word is in the phrase, just before it, or
+                # straight after the figure ("55M gold").
+                if not _RESERVE_WORD.search(clause[max(0, match.start() - 60):match.end() + 12]):
+                    continue
+                value = _figure_value(match, clause)
+                if value and value > 0:
+                    found.append(value)
+    return max(found) if found else None
+
+
+def _is_reserve_floor(cond) -> bool:
+    return isinstance(cond, dict) and cond.get("metric") == "reserves_after_payment" and cond.get("operator") == ">="
+
+
+def _says_at_least(have: dict, want: dict) -> bool:
+    """Whether a condition the motion already carries says everything `want` says."""
+    if have.get("metric") != want.get("metric") or have.get("operator") != want.get("operator"):
+        return False
+    try:
+        held, asked = float(have["value"]), float(want["value"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    op = want["operator"]
+    return held >= asked if op == ">=" else (held <= asked if op == "<=" else held == asked)
+
+
+def accepted_conditions(w, motion: dict, votes: dict) -> list:
+    """The reserve floor the coalition that carried an arrears payment from reserves asked for.
+
+    Each yes-voter's stated floor is the highest one it put on the table: a demand in the response
+    round, or a safeguard it attached as a co-sponsor. The floor the council accepted is the highest
+    F for which the yes-voters who asked for at least F would, alone, carry the motion under the
+    decision rule in force: a floor one delegate wants is that delegate's, and a floor a winning
+    coalition wants is the council's. Nothing is invented: no stated floor, or none with a winning
+    coalition behind it, yields [].
+    """
+    if str(motion.get("type", "")) != "settle_arrears" or str(motion.get("subject", "")) != "reserves":
+        return []
+    from .politics import passes
+    asked: dict = {}
+    for demand in motion.get("demands") or []:
+        if isinstance(demand, dict) and demand.get("member"):
+            floor = floor_from_demand(str(demand.get("demand", "")))
+            if floor:
+                asked[demand["member"]] = max(asked.get(demand["member"], 0.0), floor)
+    for member, conds in (motion.get("sponsor_conditions") or {}).items():
+        for cond in conds or []:
+            if _is_reserve_floor(cond):
+                try:
+                    asked[member] = max(asked.get(member, 0.0), float(cond["value"]))
+                except (KeyError, TypeError, ValueError):
+                    continue
+    yes = {member for member, vote in votes.items() if vote == "yes"}
+    for floor in sorted({f for member, f in asked.items() if member in yes}, reverse=True):
+        backers = sorted(member for member, f in asked.items() if member in yes and f >= floor)
+        if passes(w, {member: ("yes" if member in backers else "abstain") for member in votes}):
+            return [{"metric": "reserves_after_payment", "operator": ">=", "value": floor,
+                     "source": f"accepted by {', '.join(backers)}: a reserve floor stated in the response "
+                               f"round or as a co-sponsor's safeguard",
+                     "accepted_by": backers}]
+    return []
+
+
+def bind_conditions(stored: list, accepted: list) -> list:
+    """The conditions a motion executes under: what it carries, plus what the council accepted that it
+    does not already carry. A stricter condition already carried is kept as it is."""
+    bound = [c for c in (stored or [])]
+    for want in accepted or []:
+        if not any(_says_at_least(have, want) for have in bound):
+            bound.append(dict(want))
+    return bound
+
+
+def condition_execution_mismatch(w, motion: dict, accepted: list, stored: list) -> dict | None:
+    """An accepted condition the motion did not carry, and whether executing it as recorded breaks it.
+
+    None when everything the council accepted was already among the motion's own conditions. The cost
+    is what the motion would have spent under the conditions it DID carry (none, for the motion that
+    was lost on run 20260930-173547-seed1), so `would_violate` is an honest answer to "what would the
+    engine have done before this was attached".
+    """
+    stored = [c for c in (stored or []) if isinstance(c, dict)]
+    missing = [c for c in (accepted or []) if not any(_says_at_least(have, c) for have in stored)]
+    if not missing:
+        return None
+    from .politics import settle_arrears_cost
+    carried_floor = max((float(c["value"]) for c in stored if _is_reserve_floor(c)), default=0.0)
+    reserves = float(w.econ.gold)
+    cost = float(settle_arrears_cost(w, motion, floor=carried_floor))
+    after = reserves - cost
+    violations = [{"metric": c["metric"], "operator": c["operator"], "value": c["value"],
+                   "reserves_before": reserves, "requested_cost": cost, "reserves_after_unconstrained": after,
+                   "short_by": float(c["value"]) - after}
+                  for c in missing if _is_reserve_floor(c) and after < float(c["value"]) - 1e-6]
+    asked = "; ".join(f"{c['metric']} {c['operator']} {c['value']:,.0f} (accepted by {', '.join(c.get('accepted_by', []))})"
+                      for c in missing)
+    return {"code": "CONDITION_EXECUTION_MISMATCH",
+            "detail": (f"the council accepted {asked}, but the motion it voted on did not carry it; executed as "
+                       + (f"recorded it would have left reserves at {after:,.0f}" if violations else
+                          "recorded it would still have respected it")),
+            "accepted_conditions": list(accepted), "stored_conditions": stored, "missing": missing,
+            "would_violate": bool(violations), "violations": violations}
+
+
+def condition_execution_violation(w, conditions: list) -> list:
+    """Reserve floors the state is under once a payment has run. Empty when every floor held.
+
+    Execution sizes the payment to the floor, so this should always be empty; it is here so a path
+    that does not (a payment made some other way) is recorded instead of trusted."""
+    reserves = float(w.econ.gold)
+    out = []
+    for cond in conditions or []:
+        if _is_reserve_floor(cond):
+            try:
+                floor = float(cond["value"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if reserves < floor - 1e-3:
+                out.append({**cond, "observed": reserves})
+    return out
 
 
 def _canonical_actor(w, raw: str) -> str | None:

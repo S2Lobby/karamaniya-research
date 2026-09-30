@@ -91,6 +91,7 @@ def update_potential(w: World, prod: dict) -> None:
 
 # ---- production ------------------------------------------------------------------------
 def produce(w: World) -> dict:
+    from . import causality
     e, pol, dip = w.econ, w.policy, w.dip
     kessel = w.region("kessel")
     kessel_ok = 1.0 if kessel.controller == "karamaniya" else 0.0
@@ -108,7 +109,10 @@ def produce(w: World) -> dict:
 
     exp_annual = expected_annual(w)
     real_rate = pol.rate - exp_annual
-    credit = clamp(1 - 0.35 * max(0.0, real_rate - 0.04), 0.80, 1.0)
+    # Credit availability is a stock that moves toward what the rate implies, not a function of it.
+    # This is what makes a rate rise take months to bite: the target moves at once, the quantity of
+    # credit follows. Without the lag, monetary policy acted with a speed no bank has.
+    credit = causality.credit_step(w, causality.rate_target(w, real_rate))
     unrest = w.avg("unrest")
     war = 1.0 if dip.war else 0.0
     uncertainty = clamp(1 - 0.12 * max(0.0, unrest - 0.1) - 0.06 * war - 0.05 * dip.blockade_eff
@@ -119,7 +123,6 @@ def produce(w: World) -> dict:
     # Demand support from past spending changes, scaled by the state-dependent multiplier: the
     # same crown does more work when there is idle capacity to absorb it. Bounded, so this is a
     # nudge on utilisation rather than a lever that can make the economy produce anything.
-    from . import causality
     demand_support = clamp(1.0 + 0.8 * e.fiscal_impulse * causality.fiscal_multiplier(w), 0.85, 1.15)
     util_ind = min(energy ** 0.6, credit * uncertainty) * taxdrag * capctl * demand_support
 
@@ -443,17 +446,31 @@ def money_and_prices(w: World, prod: dict) -> None:
     food_official = min(e.food_rel, 1.25) if pol.price_controls in ("food", "all") else e.food_rel
     goods_official = min(e.goods_rel, 1.2) if pol.price_controls == "all" else e.goods_rel
 
+    # Import prices in domestic currency: how the rate moved and how world prices moved. A currency
+    # crisis becomes a cost-of-living crisis through this index, not directly through the exchange
+    # rate, because what households pay depends on the landed cost of what is bought abroad.
+    causality.import_price_step(w)
     # Depreciation reaches consumer prices gradually, and how much of it arrives at all is a
     # structural property of the economy rather than a constant. A single month's move does not
     # land in full; the remainder is carried by `e.fx_prev` and arrives over the following months.
     fx_change = (e.fx / e.fx_prev - 1.0) if e.fx_prev > 0 else 0.0
     passthrough = causality.pass_through(w) if e.currency == "karam" else 0.0
     lagged_fx = clamp(fx_change * passthrough * (1.0 - causality.param(w, "price_rigidity")), -0.15, 0.15)
+    # Imported input costs reach the consumer basket at the economy's import share, independent of
+    # whether the currency itself is the country's own.
+    import_cost = clamp(causality.param(w, "import_dependency") * e.import_price_infl, -0.10, 0.12)
+
+    # Persistent demand and money pressure. Small weights: the output gap and the money stock
+    # already reach prices through the money-market relation, so these carry only the extra pull
+    # from pressure that has been *sustained* rather than a second full Phillips curve.
+    urgency = causality.price_pressures(w)
+    extra = clamp(1.0 + lagged_fx + import_cost + urgency["demand_pressure"]
+                  + urgency["money_pressure"], 0.5, 3.0)
 
     new_cpi = z.price * (0.40 * e.food_rel * (0.8 + 0.2 * imp)
-                         + 0.35 * e.goods_rel * (0.75 + 0.25 * imp) + 0.25) * (1.0 + lagged_fx)
+                         + 0.35 * e.goods_rel * (0.75 + 0.25 * imp) + 0.25) * extra
     e.cpi_official = z.price * (0.40 * food_official * (0.8 + 0.2 * imp)
-                                + 0.35 * goods_official * (0.75 + 0.25 * imp) + 0.25) * (1.0 + lagged_fx)
+                                + 0.35 * goods_official * (0.75 + 0.25 * imp) + 0.25) * extra
     e.infl = new_cpi / e.cpi - 1
     e.cpi = new_cpi
     e.infl_history = (e.infl_history + [e.infl])[-12:]
@@ -483,12 +500,22 @@ def money_and_prices(w: World, prod: dict) -> None:
         "food_relative_price": (e.food_rel - 1.0) * 0.04,
         "goods_relative_price": (e.goods_rel - 1.0) * 0.03,
         "exchange_rate_passthrough": lagged_fx,
+        "import_cost": import_cost,
         "expectations": (e.expected_infl - z.exp_infl) * 0.10,
         "excess_wage_growth": clamp(excess_wage, -0.05, 0.05) * 0.15,
-        "demand_pressure": clamp(e.output_gap, -0.15, 0.15) * 0.05,
+        "demand_pressure": urgency["demand_pressure"],
+        "money_pressure": urgency["money_pressure"],
         "import_shortage": (e.import_scale - 1.0) * -0.03,
     }
     causality.trace(w, "inflation", e.infl, contributions)
+    # Output growth feeds real money demand, so it is measured before prices are set next month.
+    e.output_growth = (prod["gdp_real"] / e.gdp_prev - 1.0) if e.gdp_prev > 0 else 0.0
+    e.gdp_prev = prod["gdp_real"]
+    money_growth = (z.money["karamaniya"] / max(1.0, e.money_stock_prev) - 1.0) if e.money_stock_prev > 0 else 0.0
+    e.money_stock_prev = z.money["karamaniya"]
+    e.money_growth = money_growth
+    causality.demand_step(w, e.output_gap)
+    causality.money_step(w, money_growth, e.output_growth)
     e.regime = causality.regime(w)
     e.gdp_real = prod["gdp_real"]
     e.food_out, e.industry_out, e.services_out = prod["food"], prod["industry"], prod["services"]

@@ -253,6 +253,110 @@ def regime(w: World) -> str:
 
 
 # ---------------------------------------------------------------------------------------------
+# Transmission: rate -> credit -> demand, and money -> prices
+# ---------------------------------------------------------------------------------------------
+# Each of these is a *stock* that moves toward a target rather than jumping to it. That is the
+# whole content of a transmission channel: a central bank changes its rate today and the economy
+# answers over the following months, because lending relationships, investment plans and price
+# lists are not re-decided instantly.
+#
+# The speeds are calibrated so a rate change is most of the way through the system in roughly a
+# quarter to two quarters, which is the common finding in the monetary transmission literature.
+CREDIT_PERSISTENCE = 0.72        # share of last month's credit conditions carried forward
+DEMAND_PERSISTENCE = 0.62        # how long a gap in demand keeps pressuring prices
+MONEY_PERSISTENCE = 0.55         # how long excess money growth keeps pressuring prices
+# Weight on persistent demand pressure in the price equation. Small: the output gap already enters
+# through the money-market relation via output, so this is the *additional* pull from demand that
+# has been sustained rather than a second full Phillips curve.
+DEMAND_PRICE_WEIGHT = 0.055
+MONEY_PRICE_WEIGHT = 0.035
+
+
+def credit_step(w: World, target: float) -> float:
+    """Move credit conditions toward their target. The lag is the point of the channel.
+
+    A tighter policy rate does not withdraw credit in the month it is announced. Banks reprice
+    existing facilities at rollover, borrowers delay projects, and only then does the quantity of
+    credit actually fall. That delay is what the persistence term delivers.
+
+    Note what `financial_depth` scales: the *sensitivity of the target to the rate*, not the level
+    of credit. Scaling the level would mean every world with a deep financial system simply had
+    more credit than one with a shallow system, which is not what depth means and would let
+    utilisation rise above the ceiling the rest of the model assumes.
+    """
+    e = w.econ
+    target = clamp(target, 0.35, 1.0)
+    e.credit_target = target
+    e.credit_conditions = clamp(
+        CREDIT_PERSISTENCE * e.credit_conditions + (1 - CREDIT_PERSISTENCE) * target, 0.30, 1.0)
+    return e.credit_conditions
+
+
+def rate_target(w: World, real_rate: float) -> float:
+    """What the real policy rate implies for credit availability, at this world's transmission
+    strength. In a shallow financial system most activity is not intermediated, so the same rate
+    change reaches less of it; a deeper system transmits more."""
+    depth = 0.55 + 1.1 * param(w, "financial_depth")
+    return clamp(1 - 0.35 * depth * max(0.0, real_rate - 0.04), 0.80, 1.0)
+
+
+def demand_step(w: World, gap: float) -> float:
+    """Sustained demand pressure. A one-month blip should not move prices much; a slump that
+    persists should keep doing so. This is the persistent component the price equation reads."""
+    e = w.econ
+    e.demand_pressure = clamp(
+        DEMAND_PERSISTENCE * e.demand_pressure + (1 - DEMAND_PERSISTENCE) * gap, -0.25, 0.25)
+    return e.demand_pressure
+
+
+def money_step(w: World, money_growth: float, output_growth: float) -> float:
+    """Excess money growth: what is created beyond what the economy needs to transact at stable
+    prices.
+
+    The required growth rate is real output growth plus the inflation people already expect, because
+    the demand for *nominal* balances rises with both. Money growth that merely matches those two
+    is accommodating, not inflationary — which is why this is the requirement rather than a
+    one-for-one mapping from money to prices.
+
+        required = output_growth + expected_inflation
+        excess   = money_growth - required
+
+    Deliberately NOT included here: the Cagan effect by which higher expected inflation reduces the
+    real balances people choose to hold. That effect already lives in the money-market velocity term
+    in `economy.money_and_prices`, and adding it again would double-count the same behaviour.
+    """
+    e = w.econ
+    required = output_growth + max(0.0, e.expected_infl)
+    excess = money_growth - required
+    e.excess_money_growth = clamp(excess, -0.20, 0.40)
+    e.money_pressure = clamp(
+        MONEY_PERSISTENCE * e.money_pressure + (1 - MONEY_PERSISTENCE) * e.excess_money_growth,
+        -0.15, 0.30)
+    return e.money_pressure
+
+
+def import_price_step(w: World) -> float:
+    """Inflation in the price of what Karamaniya buys abroad, in domestic currency.
+
+    Two inputs: how the currency moved, and how world prices moved. Depreciation raises the local
+    cost of imports even when world prices are flat, which is the channel by which a currency
+    crisis becomes a cost-of-living crisis.
+    """
+    e = w.econ
+    fx_change = (e.fx / e.fx_prev - 1.0) if e.fx_prev > 0 else 0.0
+    world = getattr(e, "world_price_infl", 0.0)
+    e.import_price_infl = clamp(fx_change * 0.85 + world, -0.25, 0.40)
+    return e.import_price_infl
+
+
+def price_pressures(w: World) -> dict:
+    """The persistent demand and money pressure terms that reach consumer prices."""
+    e = w.econ
+    return {"demand_pressure": DEMAND_PRICE_WEIGHT * e.demand_pressure,
+            "money_pressure": MONEY_PRICE_WEIGHT * e.money_pressure}
+
+
+# ---------------------------------------------------------------------------------------------
 # Expectations
 # ---------------------------------------------------------------------------------------------
 # Weights on the three things people look at: a stated anchor, what has actually happened, and

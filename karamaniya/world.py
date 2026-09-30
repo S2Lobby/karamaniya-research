@@ -191,6 +191,16 @@ class Economy:
     regime: str = "NORMAL"          # descriptive label; never an instruction
     spending_prev: float = 0.0      # last month's total spending, for the fiscal impulse
     fiscal_impulse: float = 0.0     # demand support arriving now from past spending changes
+    # ---- transmission stocks (each lags its target; see causality.py) --------------------
+    credit_conditions: float = 1.0  # credit availability, moving toward its target over months
+    credit_target: float = 1.0      # what the policy rate and confidence imply right now
+    demand_pressure: float = 0.0    # persistent output gap that keeps pulling on prices
+    money_pressure: float = 0.0     # persistent excess money growth
+    import_price_infl: float = 0.0  # inflation in the local-currency cost of imports
+    world_price_infl: float = 0.0   # movement in world prices of what the country buys
+    gdp_prev: float = 0.0           # last month's real output, for the growth rate
+    output_growth: float = 0.0      # this month's real output growth
+    money_stock_prev: float = 0.0   # last month's money stock, for the growth rate
 
 
 @dataclass

@@ -294,6 +294,67 @@ def _motion_summary(w: World, motion: dict) -> str:
     return motion_summary(w, motion)
 
 
+def resolve_mutual_withdrawals(motions: list) -> list:
+    """Stop a mutual consolidation from taking the whole agreement off the agenda.
+
+    Withdrawals are applied one delegate at a time, so two delegates can each withdraw their own
+    motion in order to fall in behind the other's, and both stand withdrawn before either can be
+    seen beside the other. E withdraws M1 to support M4; A withdraws M4 to support M1; the council
+    is left with neither, and the agreement both of them were acting on is nowhere to be voted on.
+    Neither withdrawal is wrong on its own, which is why only a pass over the finished set can see
+    it — the cycle exists in the links, not in any single delegate's answer.
+
+    One motion is restored, chosen by the consolidation itself: the target that the most of the
+    cycle's delegates fell in behind, then the one with the most co-sponsors, then the one tabled
+    earliest. That is the motion the withdrawals were converging on, read back out of them. Nothing
+    is invented and no proposal is rewritten — the survivor is one a delegate already tabled.
+
+    Returns one record per collision for the audit trail.
+    """
+    from .convergence import families, _is_duplicate
+
+    by_id = {m["id"]: m for m in motions if m.get("id")}
+    withdrawn = {mid for mid, m in by_id.items() if m.get("withdrawn")}
+    order = {m["id"]: i for i, m in enumerate(motions) if m.get("id")}
+    fam = families(motions)
+    seen, collisions = set(), []
+    for start in sorted(withdrawn, key=lambda mid: order.get(mid, 0)):
+        chain, cur = [], start
+        while isinstance(cur, str) and cur in withdrawn and cur not in chain:
+            chain.append(cur)
+            cur = by_id[cur].get("replaced_by")
+        if not (isinstance(cur, str) and cur in chain):
+            continue                          # the chain ran out, or left the withdrawn set
+        cycle = chain[chain.index(cur):]
+        key = frozenset(cycle)
+        if len(cycle) < 2 or key in seen:
+            continue
+        seen.add(key)
+        members = [by_id[mid] for mid in cycle]
+        # How many of the cycle's own delegates named this motion as the one they fell in behind.
+        consensus = {m["id"]: sum(1 for other in members if other.get("replaced_by") == m["id"])
+                     for m in members}
+        kept = max(members, key=lambda m: (consensus[m["id"]], len(m.get("cosponsors") or []),
+                                           -order.get(m["id"], 0)))
+        kept["withdrawn"] = False
+        kept["restored_from_collision"] = {
+            "with": [m["id"] for m in members if m["id"] != kept["id"]],
+            "why": "each proposer withdrew in favour of another in the same group, so all of them "
+                   "would have left the agenda together"}
+        collisions.append({
+            "code": "MUTUAL_WITHDRAWAL_COLLISION",
+            "motions": sorted(cycle, key=lambda mid: order.get(mid, 0)),
+            "proposers": {m["id"]: m.get("proposer") for m in members},
+            "kept": kept["id"], "dropped": [m["id"] for m in members if m["id"] != kept["id"]],
+            "fell_in_behind": consensus,
+            "same_family": len({fam.get(m["id"]) for m in members}) == 1,
+            "duplicates": all(_is_duplicate(members[0], m) for m in members[1:]),
+            "note": "one motion was restored: the rest of the cycle stays withdrawn, so the "
+                    "consolidation still reduces the agenda to a single motion",
+        })
+    return collisions
+
+
 # ---- the revision round (spec 33) ---------------------------------------------------------------
 def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_all: list) -> dict:
     """Withdrawals and amendments of a delegate's own motions after hearing the council."""

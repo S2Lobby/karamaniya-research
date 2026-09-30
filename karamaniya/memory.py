@@ -9,7 +9,10 @@ table now. Memory can be simplified; the canonical state block remains the autho
 """
 from __future__ import annotations
 
+import re
+
 from . import tuning
+from .politics import LEVER_OFFICE
 from .world import World
 
 SALIENCE = {
@@ -73,6 +76,72 @@ def add(w: World, mid: str, kind: str, text: str, tags=(), actors=(), salience: 
     if len(items) > 80:
         items.sort(key=lambda x: (x["protected"], x["salience"], x["month"]))
         del items[:len(items) - 80]
+
+
+# A memory that says a measure was agreed, carried or is now in force. Only the phrasings that
+# assert it: "we should agree to raise farm support" and "if this passes" are positions and
+# conditions, not claims about what happened, and reading one of those as a false memory would put
+# a delegate's own accurate record in doubt.
+_PASSED_CLAIM = re.compile(
+    r"\b(?:passed|carried|approved|adopted|enacted|agreed\s+(?:to|on|that)|"
+    r"went\s+through|is\s+now\s+(?:law|policy|in\s+force)|took\s+effect|"
+    r"we\s+decided\s+to)\b", re.I)
+_CLAIM_NEGATED = ("not ", "n't", "never", "no ", "fail", "reject", "oppose", "block", "voted down",
+                  "if ", "unless", "should ", "would ", "could ", "might ", "propose", "proposal to")
+
+
+def validate_notes(w: World, mid: str, notes: str, record: dict) -> list:
+    """Claims in a delegate's own notes that the month's record does not bear out.
+
+    The notes are written in the same answer as the vote and before the count, so a delegate can
+    write up a measure as agreed and watch it fail an hour later. Nothing corrects that: the notes
+    are handed back next month as what the delegate remembers, so a wrong expectation hardens into a
+    fact it will reason from. This finds the ones that contradict the record.
+
+    It reports and does not rewrite. The notes stay the delegate's own, mistakes included, and the
+    canonical record is placed beside them so they are read against the truth — which is the part
+    that prevents the false belief, without editing a delegate's memory to say what the engine
+    prefers. Only the closed lever vocabulary is matched, so a claim is tied to a measure the record
+    can actually be checked against rather than to a turn of phrase.
+    """
+    if not notes or not isinstance(notes, str):
+        return []
+
+    def outcome(mo: dict) -> str:
+        if mo.get("withdrawn"):
+            return f"{mo.get('id')} was withdrawn by its proposer and never voted on"
+        if mo.get("deferred") or mo.get("carried_over"):
+            return f"{mo.get('id')} was deferred and not voted on"
+        return f"{mo.get('id')} failed"
+
+    # One finding per claim, not per motion. Two motions on the same setting are one subject the
+    # delegate was wrong about, and reporting the same sentence twice reads as two faults.
+    by_subject = {}
+    for mo in record.get("motions", []):
+        if mo.get("passed") or mo.get("type") != "set_policy":
+            continue
+        subject = str(mo.get("subject") or "")
+        if subject in LEVER_OFFICE:
+            by_subject.setdefault(subject, []).append(mo)
+    out = []
+    for sentence in re.split(r"(?<=[.;!?])\s+|\n", notes):
+        low = sentence.lower()
+        claim = _PASSED_CLAIM.search(sentence)
+        if not claim:
+            continue
+        lead = low[:claim.start()]
+        if any(token in lead for token in _CLAIM_NEGATED):
+            continue
+        for subject, motions in sorted(by_subject.items()):
+            if not any(form in low for form in (subject, subject.replace("_", " "), subject.replace("_", "-"))):
+                continue
+            out.append({"code": "MEMORY_FINAL_STATE_MISMATCH", "member": mid, "subject": subject,
+                        "motions": [mo.get("id") for mo in motions],
+                        "claim": sentence.strip()[:200],
+                        "actual": "; ".join(outcome(mo) for mo in motions),
+                        "note": "the delegate's own notes are kept as written; the canonical record is "
+                                "shown beside them and they are never rewritten"})
+    return out
 
 
 def record_month(w: World, record: dict) -> None:

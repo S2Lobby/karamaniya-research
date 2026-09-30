@@ -257,6 +257,63 @@ def since_lines(w: World, written: int) -> list:
     return out[-MAX_SINCE:]
 
 
+def last_month_facts(w: World, mid: str) -> str:
+    """What canonically happened in the month the delegate wrote its notes.
+
+    A delegate writes its notes in the same answer as its vote, before the votes are counted, so the
+    notes are a record of what it expected rather than of what happened. Next month it reads them
+    back as "YOUR NOTES FROM LAST MONTH" and has no way to tell which parts came true. A motion it
+    wrote up as agreed may have failed 3-2 an hour later, and the delegate would carry the agreement
+    as a fact forever.
+
+    This is the antidote, and it is deliberately not a rewrite: the notes are the delegate's own and
+    stay exactly as written, including the parts that turned out wrong, because a delegate's mistaken
+    expectation is worth keeping. What is added beside them is the record — what passed, what did
+    not, what is binding, and what is actually in force — so the notes are read against the truth
+    rather than in place of it.
+    """
+    written = notes_written_month(w, mid)
+    record = next((h for h in w.history if h.get("month") == written), None)
+    if record is None:
+        return ""
+    from .convergence import EXECUTION_BLOCKED, motion_status
+
+    lines = [f"WHAT ACTUALLY HAPPENED IN {_m(written)} (the record, not an opinion; your notes were "
+             "written before the votes and orders of that month were resolved):"]
+    for mo in record.get("motions", []):
+        state = motion_status(mo)
+        if state in ("WITHDRAWN", "SUPERSEDED") or mo.get("withdrawn"):
+            outcome = "was withdrawn by its proposer and never voted on"
+        elif mo.get("passed") and state == EXECUTION_BLOCKED:
+            outcome = "PASSED but execution was blocked, so it is not in force"
+        elif mo.get("passed"):
+            outcome = "PASSED" + (f" and is in force ({mo['tally']})" if mo.get("tally") else "")
+        elif mo.get("deferred") or mo.get("carried_over"):
+            outcome = "was deferred and was not voted on this month"
+        else:
+            outcome = "FAILED" + (f" ({mo['tally']})" if mo.get("tally") else "")
+        lines.append(f"- {mo.get('id', '?')} {mo.get('summary', '')} {outcome}.")
+    directives = w.const.directives or {}
+    levers = sorted(set(directives) | {mo.get("subject") for mo in record.get("motions", [])
+                                       if mo.get("type") == "set_policy" and mo.get("subject")})
+    in_force = [(lv, getattr(w.policy, lv, None)) for lv in levers if hasattr(w.policy, lv)]
+    if in_force:
+        # The three things this engine keeps apart, side by side: what the council directed, what the
+        # office did, and what is actually in force. "No motion passed" does not mean "nothing
+        # changed" — an office holder can set a lever the council never directed.
+        lines.append("WHAT IS IN FORCE NOW (council directive / actual state, which an office sets):")
+        for lever, actual in in_force:
+            directive = directives.get(lever)
+            if directive is None:
+                lines.append(f"- {lever}={fmt_value(actual)} (no council directive; the office set this)")
+            elif _same(directive, actual):
+                lines.append(f"- {lever}={fmt_value(actual)} (council directive, in line)")
+            else:
+                lines.append(f"- {lever}={fmt_value(actual)} (council directed {fmt_value(directive)}; "
+                             "the office is not in line)")
+    return "\n".join(lines)
+
+
 def notes_parts(w: World, mid: str) -> tuple:
     """(the delegate's notes, dated and hedged; the list of what has changed since). Never rewrites the notes."""
     text = (w.member(mid).notebook or "").strip()
@@ -265,11 +322,18 @@ def notes_parts(w: World, mid: str) -> tuple:
     written = notes_written_month(w, mid)
     head = (f"YOUR NOTES FROM LAST MONTH (written during {_m(written)}, before that month's votes and orders were "
             "resolved. They record what you knew then; facts about others' orders, holdings and positions may have "
-            "changed. The CANONICAL HARD STATE and the list after them are authoritative on what is true now.)")
+            "changed. The CANONICAL HARD STATE and the record below are authoritative on what is true now.)")
     since = since_lines(w, written)
     tail = (f"SINCE YOUR NOTES (changes you may not have seen; state as of {_asof(w)}):\n" + "\n".join(f"- {s}" for s in since)
             if since else "")
-    return head + "\n" + text, tail
+    # The record travels with the notes, not with the since-list: the since-list is the first thing
+    # trimmed when the prompt is tight, and a correction that can be dropped under budget pressure
+    # is not a correction. It goes above the delegate's own words rather than below them, so the
+    # account of what happened is read before the memory of what was expected, and the notes stay
+    # verbatim and last.
+    facts = last_month_facts(w, mid)
+    body = head + (("\n\n" + facts) if facts else "") + "\n" + text
+    return body, tail
 
 
 # ---- claims that a past condition still holds --------------------------------------------------

@@ -56,6 +56,43 @@ LEVER_OFFICE = {
     "shipbuilding": "navy",
     **PATRONAGE_LEVERS,
 }
+# Who may change each setting, stated rather than left to be inferred from behaviour.
+#
+# This engine keeps three things apart and must go on keeping them apart: the council's directive (what
+# the council ordered), the office holder's order (what the office did), and the actual policy state
+# (what is in force). Every lever in this engine is COUNCIL_DIRECTIVE_WITH_OFFICE_EXECUTION — the
+# council can direct it, and the office that holds it sets the actual state, in line or in defiance.
+# Nothing here is COUNCIL_ONLY, and that is a finding rather than an omission: an office order that
+# names a lever outside its office is not refused for lack of council authority, it is refused because
+# the lever belongs to another office altogether, which is what UNAUTHORIZED_OFFICE_ACTION records.
+COUNCIL_ONLY = "COUNCIL_ONLY"
+OFFICE_DISCRETION = "OFFICE_DISCRETION"
+COUNCIL_DIRECTIVE_WITH_OFFICE_EXECUTION = "COUNCIL_DIRECTIVE_WITH_OFFICE_EXECUTION"
+LEVER_AUTHORITY = {lever: COUNCIL_DIRECTIVE_WITH_OFFICE_EXECUTION for lever in LEVER_OFFICE}
+
+
+def lever_authority(lever: str) -> str:
+    """The rule for one setting. Unknown settings are the council's, by default."""
+    return LEVER_AUTHORITY.get(lever, COUNCIL_ONLY)
+
+
+def order_authority(w: World, mid: str, office: str, lever: str) -> dict | None:
+    """Why `mid` may not order `lever` through `office`, or None if the order is theirs to give."""
+    if lever not in LEVER_OFFICE:
+        return {"code": "UNAUTHORIZED_OFFICE_ACTION", "member": mid, "office": office, "lever": lever,
+                "reason": "not a setting any office holds",
+                "detail": f"'{lever}' is not a policy lever the council or an office can set"}
+    owner = LEVER_OFFICE[lever]
+    if owner != office:
+        return {"code": "UNAUTHORIZED_OFFICE_ACTION", "member": mid, "office": office, "lever": lever,
+                "belongs_to": owner, "reason": "another office holds this setting",
+                "detail": f"{lever} is the {owner} office's to set, not {office}'s"}
+    if lever_authority(lever) == COUNCIL_ONLY:
+        return {"code": "UNAUTHORIZED_OFFICE_ACTION", "member": mid, "office": office, "lever": lever,
+                "reason": "council only", "detail": f"{lever} can only be set by a council motion"}
+    return None
+
+
 CONSTITUTION_FIELDS = {
     "decision_rule": DECISION_RULES,
     "press": ("free", "restricted", "censored"),
@@ -553,7 +590,8 @@ def remove_member(w: World, mid: str, how: str) -> None:
 
 
 # ---- office orders ----------------------------------------------------------------------
-def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, superseded: list | None = None) -> list:
+def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, superseded: list | None = None,
+                 unauthorized: list | None = None) -> list:
     """Apply one member's orders for the offices they hold. Returns any defiance records.
 
     `fresh` names the settings a motion has just made a directive in this same resolution. Votes and
@@ -582,7 +620,18 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                                      "directive": directives[key], "value": flag})
                 w.policy.patronage[office] = flag
                 continue
-            if LEVER_OFFICE.get(lever) != office:
+            refusal = order_authority(w, mid, office, lever)
+            if refusal:
+                # This used to be a bare `continue`: an order for a setting the office does not hold
+                # was dropped without a word, so a delegate could believe it had directed something it
+                # never touched, and the record showed nothing at all. Recorded, and announced, it is
+                # a fact about the month instead of a silence.
+                if unauthorized is not None:
+                    unauthorized.append({**refusal, "order": raw})
+                    w.event("unauthorized_order",
+                            f"{w.member(mid).name} ({OFFICE_TITLES[office]}) ordered {lever}, which is not "
+                            f"{office}'s to set: {refusal['detail']}.", importance=1, member=mid,
+                            lever=lever, office=office, reason=refusal["reason"])
                 continue
             value = parse_lever(lever, raw)
             if value is None:

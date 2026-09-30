@@ -940,8 +940,15 @@ class Council:
                            demands=[d["demand"] for d in out["demands"]],
                            dms=[{"to": dm["to"], "text": dm["text"], "kind": dm.get("kind")} for dm in sent],
                            refusal=res.refusal, error=res.error[:200])
+            # Two delegates can each withdraw in order to fall in behind the other, and the pass
+            # over the finished set is the only place the cycle is visible. It runs before the
+            # agenda is frozen, so a restored motion is voted on like any other.
+            collisions = deliberation.resolve_mutual_withdrawals(scheduled)
+            for collision in collisions:
+                self.store.log({"type": "mutual_withdrawal_collision", "month": w.month, **collision})
+                self._emit(type="mutual_withdrawal_collision", month=w.month, **collision)
             for m in scheduled:
-                if m.get("amended"):
+                if m.get("amended") or m.get("restored_from_collision"):
                     m["summary"] = actions.motion_summary(w, m)
             self._deliver(revision_dms, inbox, intercepted, rng)
 
@@ -1418,10 +1425,21 @@ class Council:
         fresh = {mo["subject"] for mo in record["motions"]
                  if mo.get("type") == "set_policy" and mo.get("passed") and mo.get("execution_status") == "EXECUTED"}
         record["superseded_orders"] = []
+        record["unauthorized_orders"] = []
+        record["memory_mismatches"] = []
         for mid, d in decisions.items():
             if w.member(mid).status == "active":
-                record["defiance"] += politics.apply_orders(w, mid, d["orders"], fresh, record["superseded_orders"])
+                record["defiance"] += politics.apply_orders(w, mid, d["orders"], fresh,
+                                                           record["superseded_orders"],
+                                                           record["unauthorized_orders"])
                 operations.set_orders(w, mid, d.get("operations", {}))
+            # Notes are written in the same answer as the vote and before the count, so they can
+            # say a measure was agreed that the record shows did not carry. They are kept exactly as
+            # written — a delegate's mistaken expectation is worth keeping — and the contradiction
+            # is recorded against the month, with the canonical record shown beside them next month.
+            for clash in memory.validate_notes(w, mid, d["notes"], record):
+                record["memory_mismatches"].append(clash)
+                self.store.log({"type": "memory_final_state_mismatch", "month": w.month, **clash})
             w.member(mid).notebook = d["notes"]
             if w.member(mid).agent_state:
                 w.member(mid).agent_state["notes_month"] = w.month     # when they were written, to date them later

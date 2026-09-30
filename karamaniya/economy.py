@@ -395,53 +395,116 @@ def _water_fill(sizes: list, weights: dict, supply: float) -> list:
 # Gambia (1994), Guinea-Bissau (2004) and Sierra Leone (1992); civil-service arrears turning into
 # strikes after roughly two to three months; and contractors who have been left unpaid bidding
 # higher or declining to bid at all.
+# The share of monthly output the debt market will absorb in gross issuance. Calibrated so that
+# at the founding the rollover calendar consumes most of it and net new borrowing is the 2% of
+# monthly output the model used before the rollover channel existed.
+GROSS_BORROWING_CAPACITY = 0.10
 ARREARS_CATEGORIES = ("army", "police", "civil_service", "contractors", "foreign_debt")
 CIVIL_SERVICE_STRIKE_MONTHS = 2.5   # months of unpaid wages before the service starts to break
 PROCUREMENT_PREMIUM_CAP = 0.35      # most contractors will add when they are owed a lot
+# Not all of the military line is pay: some of it buys things, and the firms that sell them are
+# contractors. Without this the contractor category is dormant under default policy, because the
+# military budget is almost the whole of government procurement.
+CONTRACTOR_MILITARY_SHARE = 0.40
 
 
-def _accrue_arrears(w: World, e, unpaid: float, pol, gdp_nom: float, regional_spend: float) -> None:
-    """Split an unpaid shortfall across the bills it goes unpaid on."""
-    bills = {
-        "army": pol.military * gdp_nom,
-        "police": pol.police * gdp_nom,
-        "civil_service": (pol.health_edu + pol.welfare + ADMIN_SHARE) * gdp_nom,
-        "contractors": (pol.farm_support + regional_spend) * gdp_nom,
-        "foreign_debt": e.interest_for,
+def budget_bills(w: World) -> dict:
+    """The monthly bill owed to each category, in domestic currency.
+
+    ONE source of truth. Accrual and `arrears_months` both read this, because when they were
+    computed separately they disagreed: the accrual used a full monthly bill while the month
+    converter divided that same bill by twelve, so a single month of unpaid wages reported as a
+    full year owed. Every differentiated consequence downstream fired twelve times too early.
+    """
+    e, pol = w.econ, w.policy
+    gdp = max(1.0, e.gdp_nominal)
+    return {
+        "army": pol.military * (1.0 - CONTRACTOR_MILITARY_SHARE) * gdp,
+        "police": pol.police * gdp,
+        "civil_service": (pol.health_edu + pol.welfare + ADMIN_SHARE) * gdp,
+        "contractors": (pol.military * CONTRACTOR_MILITARY_SHARE + pol.farm_support
+                        + regional.spending(w)) * gdp,
+        "foreign_debt": max(1.0, e.interest_for),
     }
+
+
+# The order in which a government stops paying when it runs out of money. Soldiers and police are
+# paid first — this is not a moral claim but the historical record: military pay arrears preceded
+# coups in Côte d'Ivoire (1999), the Gambia (1994), Guinea-Bissau (2004) and Sierra Leone (1992),
+# and governments behaved accordingly. Suppliers and civil servants are where the shortfall lands.
+ARREARS_PRIORITY = ("army", "police", "civil_service", "contractors", "foreign_debt")
+
+
+def _accrue_arrears(w: World, e, unpaid: float) -> None:
+    """Push a shortfall onto the least-protected bills first.
+
+    Proportional accrual would make every category report the same number of months behind, which
+    carries no information the aggregate did not already have. Paying in priority order is both
+    more realistic and what makes the composition worth tracking: a government that is short of
+    money is one that has stopped paying its suppliers, not one that has halved everyone's wages.
+    """
+    bills = budget_bills(w)
+    remaining = unpaid
+    for name in reversed(ARREARS_PRIORITY):
+        if remaining <= 0:
+            break
+        owed_this_month = bills.get(name, 0.0)
+        if owed_this_month <= 0:
+            continue
+        take = min(remaining, owed_this_month)
+        e.arrears_by[name] = e.arrears_by.get(name, 0.0) + take
+        remaining -= take
+    if remaining > 1e-6:
+        # Everything this month is already unpaid; the remainder falls on suppliers.
+        e.arrears_by["contractors"] = e.arrears_by.get("contractors", 0.0) + remaining
+
+
+def settle_arrears(w: World, amount: float) -> float:
+    """Pay down arrears, keeping the composition in step with the total.
+
+    Every path that reduces `e.arrears` must come through here. Three of them used to write the
+    total directly — a council motion funded from reserves or bonds, and the seeded inherited
+    liabilities — which left the composition describing debts that had already been paid: settling
+    everything in full still left the administration destroyed and suppliers still repricing.
+    """
+    e = w.econ
+    owed = sum(max(0.0, e.arrears_by.get(name, 0.0)) for name in ARREARS_CATEGORIES)
+    paid = max(0.0, min(amount, max(e.arrears, owed)))
+    if paid <= 0:
+        return 0.0
+    if owed > 0:
+        scale = min(1.0, paid / owed)
+        for name in ARREARS_CATEGORIES:
+            e.arrears_by[name] = max(0.0, e.arrears_by.get(name, 0.0) * (1.0 - scale))
+    e.arrears = max(0.0, e.arrears - paid)
+    return paid
+
+
+def seed_arrears(w: World, amount: float) -> None:
+    """Record inherited unpaid bills with a composition, not just a total."""
+    if amount <= 0:
+        return
+    e = w.econ
+    bills = budget_bills(w)
     total = sum(bills.values())
     if total <= 0:
-        e.arrears_by["civil_service"] = e.arrears_by.get("civil_service", 0.0) + unpaid
-        return
-    for name, amount in bills.items():
-        e.arrears_by[name] = e.arrears_by.get(name, 0.0) + unpaid * (amount / total)
-
-
-def _settle_arrears(e, repaid: float) -> None:
-    """Clear arrears oldest-first across categories, in proportion to what each is owed."""
-    owed = sum(max(0.0, e.arrears_by.get(name, 0.0)) for name in ARREARS_CATEGORIES)
-    if owed <= 0:
-        e.arrears = max(0.0, e.arrears - repaid)
-        return
-    scale = min(1.0, repaid / owed)
-    for name in ARREARS_CATEGORIES:
-        e.arrears_by[name] = max(0.0, e.arrears_by.get(name, 0.0) * (1.0 - scale))
-    e.arrears = max(0.0, e.arrears - repaid)
+        e.arrears_by["civil_service"] = e.arrears_by.get("civil_service", 0.0) + amount
+    else:
+        for name, bill in bills.items():
+            e.arrears_by[name] = e.arrears_by.get(name, 0.0) + amount * (bill / total)
+    e.arrears += amount
 
 
 def arrears_months(w: World) -> dict:
     """How many months of pay or payment each category is owed.
 
     A stock in crowns says little on its own; the number of months behind says everything, and it
-    is what the historical triggers are actually stated in.
+    is what the historical triggers are actually stated in. The bills come from `budget_bills`,
+    the same function the accrual uses, so the two cannot drift apart again.
     """
-    e, pol = w.econ, w.policy
-    gdp = max(1.0, e.gdp_nominal)
-    monthly = {"army": pol.military * gdp / 12, "police": pol.police * gdp / 12,
-               "civil_service": (pol.health_edu + pol.welfare + ADMIN_SHARE) * gdp / 12,
-               "contractors": max(1.0, (pol.farm_support + 0.02) * gdp / 12),
-               "foreign_debt": max(1.0, e.interest_for)}
-    return {name: (e.arrears_by.get(name, 0.0) / monthly[name] if monthly[name] > 0 else 0.0)
+    e = w.econ
+    bills = budget_bills(w)
+    return {name: (e.arrears_by.get(name, 0.0) / bills[name] if bills[name] > 0 else 0.0)
             for name in ARREARS_CATEGORIES}
 
 
@@ -523,19 +586,28 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
         arrears_bonds = issued.get("amount", 0.0) if issued.get("month") == w.month else 0.0
         # Rolling over maturing debt consumes the same market capacity as fresh borrowing, so a
         # heavy rollover calendar crowds out new issuance rather than sitting outside the budget.
-        capacity = max(0.0, 0.02 * gdp_nom * e.confidence - arrears_bonds)
+        # The market absorbs a certain amount of GROSS issuance each month, and maturing debt is
+        # served from it before anything new is lent. Modelling this as a net-capacity figure
+        # minus the rollover calendar double-counts: the earlier constant of 2% of monthly output
+        # was calibrated as *new* borrowing, and subtracting a fully-grown rollover need from it
+        # made the figure negative, so the default government could borrow nothing and drifted
+        # into permanent arrears.
+        #
+        # Gross capacity is set so that at the founding — 40% of annual output in debt, 20% of it
+        # inside a year — gross minus rollover reproduces the original 2% of monthly output. The
+        # rollover calendar now genuinely crowds out new issuance without changing the baseline.
+        gross = GROSS_BORROWING_CAPACITY * gdp_nom * e.confidence
+        capacity = max(0.0, gross - e.rollover_need - arrears_bonds)
         borrowed = min(need, capacity)
         unpaid = need - borrowed
     else:
         surplus = -need
-        repay = min(e.arrears, surplus)
-        if repay > 0:
-            _settle_arrears(e, repay)
+        repay = settle_arrears(w, min(e.arrears, surplus))
         e.debt_dom = max(0.0, e.debt_dom - (surplus - repay))
     e.debt_dom += borrowed
-    e.arrears += unpaid
     if unpaid > 0:
-        _accrue_arrears(w, e, unpaid, pol, gdp_nom, regional.spending(w))
+        e.arrears += unpaid
+        _accrue_arrears(w, e, unpaid)
     base = programs + patronage + interest
     e.paid_share = clamp(1 - unpaid / base, 0.0, 1.0) if base > 0 else 1.0
     e.admin_capacity += 0.15 * ((1 - 1.5 * (1 - e.paid_share)) - e.admin_capacity)
@@ -646,7 +718,8 @@ def money_and_prices(w: World, prod: dict) -> None:
     # Depreciation reaches consumer prices gradually, and how much of it arrives at all is a
     # structural property of the economy rather than a constant. A single month's move does not
     # land in full; the remainder is carried by `e.fx_prev` and arrives over the following months.
-    fx_change = (e.fx / e.fx_prev - 1.0) if e.fx_prev > 0 else 0.0
+    # `e.fx` is crowns per karam, so a FALLING rate is a depreciation and must raise prices.
+    fx_change = causality.depreciation(w)
     passthrough = causality.pass_through(w) if e.currency == "karam" else 0.0
     lagged_fx = clamp(fx_change * passthrough * (1.0 - causality.param(w, "price_rigidity")), -0.15, 0.15)
     # Imported input costs reach the consumer basket at the economy's import share, independent of
@@ -688,13 +761,15 @@ def money_and_prices(w: World, prod: dict) -> None:
     # Why prices moved, with each channel named. Kept for research and debugging; agents never
     # see it, because a delegate who could read the decomposition would be reading the answer key.
     excess_wage = wage_growth - e.infl
+    # Note there is no separate `expectations` line. Expectations reach prices through the
+    # money-market velocity of the zone, so they are already inside `zone_price_level`; listing
+    # them again would report a contributor that did not independently move anything.
     contributions = {
         "zone_price_level": z.infl * 0.75,
         "food_relative_price": (e.food_rel - 1.0) * 0.04,
         "goods_relative_price": (e.goods_rel - 1.0) * 0.03,
         "exchange_rate_passthrough": lagged_fx,
         "import_cost": import_cost,
-        "expectations": (e.expected_infl - z.exp_infl) * 0.10,
         "excess_wage_growth": clamp(excess_wage, -0.05, 0.05) * 0.15,
         "demand_pressure": urgency["demand_pressure"],
         "money_pressure": urgency["money_pressure"],

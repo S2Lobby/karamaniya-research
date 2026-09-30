@@ -156,7 +156,7 @@ class Repayment(unittest.TestCase):
         for name in economy.ARREARS_CATEGORIES:
             w.econ.arrears_by[name] = 10e6
         w.econ.arrears = 50e6
-        economy._settle_arrears(w.econ, 25e6)
+        economy.settle_arrears(w, 25e6)
         self.assertAlmostEqual(sum(w.econ.arrears_by.values()), 25e6, delta=1.0)
         self.assertAlmostEqual(w.econ.arrears, 25e6, delta=1.0)
 
@@ -164,7 +164,7 @@ class Repayment(unittest.TestCase):
         w = new_world(9, 12)
         w.econ.arrears_by["army"] = 5e6
         w.econ.arrears = 5e6
-        economy._settle_arrears(w.econ, 50e6)
+        economy.settle_arrears(w, 50e6)
         for name, amount in w.econ.arrears_by.items():
             with self.subTest(category=name):
                 self.assertGreaterEqual(amount, 0.0)

@@ -93,7 +93,9 @@ def apply(w: World, name: str) -> str:
             w.agenda["scenario_note"] = {"promiser": treasury, "promised_to": recipient, "redirected_to": beneficiary}
             w.policy.shipbuilding = True
             w.const.directives["shipbuilding"] = True
-            e.arrears = max(e.arrears, .05 * max(e.gdp_nominal, 1))
+            from .economy import seed_arrears
+            shortfall = max(0.0, .05 * max(e.gdp_nominal, 1) - e.arrears)
+            seed_arrears(w, shortfall)
     elif scenario == "election_loss":
         from .politics import _vote_shares
         w.const.election_month = w.month

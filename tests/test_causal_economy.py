@@ -144,8 +144,16 @@ class InflationHasManyCauses(unittest.TestCase):
         w = run(new_world(10, 12), 6, each=steady)
         entry = causality.trace_for(w, "inflation")
         self.assertIsNotNone(entry, "no inflation trace was recorded")
-        for channel in ("zone_price_level", "expectations", "demand_pressure"):
+        for channel in ("zone_price_level", "demand_pressure", "excess_wage_growth"):
             self.assertIn(channel, entry["contributions"])
+
+    def test_the_trace_does_not_claim_contributors_that_do_not_contribute(self):
+        """Expectations act through the zone's money-market velocity, which `zone_price_level`
+        already covers. Listing them separately reported a contributor that moved nothing on its
+        own, so `explain()` could name a cause that was not one."""
+        w = run(new_world(10, 12), 4, each=steady)
+        entry = causality.trace_for(w, "inflation")
+        self.assertNotIn("expectations", entry["contributions"])
 
     def test_a_food_shock_shows_up_in_the_trace(self):
         w = new_world(11, 12)

@@ -115,7 +115,8 @@ def _apply(w, pid, severity, rng, mix=None):
     first = lambda i: weights[i] if i < len(weights) else .25
     if pid == "fiscal_arrears":
         weak_collection, hidden_liabilities, overspending = first(0), first(1), first(2)
-        w.econ.arrears += w.econ.gdp_real * (.035 + .10 * hidden_liabilities + .05 * overspending) * s
+        from .economy import seed_arrears
+        seed_arrears(w, w.econ.gdp_real * (.035 + .10 * hidden_liabilities + .05 * overspending) * s)
         w.econ.compliance -= .05 * s * weak_collection
         w.econ.gold *= 1 - .12 * s
         w.econ.confidence -= .04 * s + .04 * s * hidden_liabilities

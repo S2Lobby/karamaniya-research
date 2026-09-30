@@ -210,17 +210,19 @@ class MoneyPressure(unittest.TestCase):
 
 class ImportPrices(unittest.TestCase):
     def test_depreciation_raises_import_prices(self):
+        """`e.fx` is CROWNS PER KARAM, so a fall is a depreciation. Getting this backwards makes
+        a currency collapse cheapen imports and turn deflationary."""
         w = new_world(8, 12)
         w.econ.fx_prev = 1.0
         w.econ.fx = 1.0
         self.assertAlmostEqual(cz.import_price_step(w), 0.0, places=6)
-        w.econ.fx = 1.2                       # the karam buys less abroad
+        w.econ.fx = 0.8                       # the karam buys fewer crowns: a depreciation
         self.assertGreater(cz.import_price_step(w), 0.0)
 
     def test_appreciation_lowers_import_prices(self):
         w = new_world(8, 12)
-        w.econ.fx_prev = 1.0
-        w.econ.fx = 0.8
+        w.econ.fx_prev = 0.8
+        w.econ.fx = 1.0                       # the karam buys more crowns: an appreciation
         self.assertLess(cz.import_price_step(w), 0.0)
 
     def test_world_prices_move_import_costs_even_without_a_currency_move(self):
@@ -231,9 +233,22 @@ class ImportPrices(unittest.TestCase):
 
     def test_import_price_inflation_is_bounded(self):
         w = new_world(8, 12)
-        w.econ.fx_prev = 1.0
-        w.econ.fx = 50.0
+        w.econ.fx_prev = 50.0                 # a catastrophic collapse
+        w.econ.fx = 0.05
         self.assertLessEqual(cz.import_price_step(w), 0.40)
+        w.econ.fx_prev = 0.05                 # and the reverse
+        w.econ.fx = 50.0
+        self.assertGreaterEqual(cz.import_price_step(w), -0.25)
+
+    def test_a_currency_collapse_is_inflationary_not_deflationary(self):
+        """The finding that prompted this: a 69pc karam depreciation was producing NEGATIVE
+        import-price inflation, so a currency crisis was deflationary."""
+        w = new_world(8, 12)
+        w.econ.currency = "karam"
+        w.econ.fx_prev = 1.0
+        w.econ.fx = 0.31                      # the karam lost about 69pc of its crown value
+        self.assertGreater(cz.depreciation(w), 0.5)
+        self.assertGreater(cz.import_price_step(w), 0.0)
 
 
 class TheChainReachesPrices(unittest.TestCase):
@@ -249,8 +264,8 @@ class TheChainReachesPrices(unittest.TestCase):
     def test_money_and_import_channels_reach_the_trace(self):
         w = new_world(10, 12)
         w.econ.currency = "karam"
-        w.econ.fx_prev = 1.0
-        w.econ.fx = 1.25                     # a depreciation, so import costs are non-zero
+        w.econ.fx_prev = 1.25
+        w.econ.fx = 1.0                      # a depreciation, so import costs are non-zero
         w.econ.world_price_infl = 0.03
         w.econ.money_pressure = 0.02
         run(w, 2, each=steady)

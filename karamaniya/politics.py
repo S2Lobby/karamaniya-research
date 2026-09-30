@@ -369,7 +369,11 @@ def apply_motion(w: World, mo: dict) -> str:
             if issued["month"] != w.month:
                 issued.update(month=w.month, amount=0.0)
             issued["amount"] += paid
-        e.arrears = max(0.0, e.arrears - paid)
+        # Route through the composition, or the categories keep describing debts that have been
+        # paid off: settling everything in full used to leave suppliers still repricing and the
+        # administration still destroyed.
+        from .economy import settle_arrears as _settle
+        _settle(w, paid)
         result = f"paid {paid / 1e6:.1f}M crowns in inherited bills using {subj.replace('_', ' ')}"
         if paid + 1 < intended:
             result += f"; {intended / 1e6:.1f}M was requested but funding was limited"

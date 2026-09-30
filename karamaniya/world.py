@@ -208,6 +208,7 @@ class Economy:
     gdp_prev: float = 0.0           # last month's real output, for the growth rate
     output_growth: float = 0.0      # this month's real output growth
     money_stock_prev: float = 0.0   # last month's money stock, for the growth rate
+    lagged_effects: dict = field(default_factory=dict)  # matured non-fiscal lag channels
     # ---- fiscal structure (see docs/CAUSAL_WORLD_MODEL.md) -------------------------------
     # Who is owed the money the government has not paid. The aggregate stock is far less
     # informative than its composition: unpaid soldiers and unpaid road contractors do not

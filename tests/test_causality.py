@@ -307,24 +307,37 @@ class FiscalImpulseIsLagged(unittest.TestCase):
         result = self._spend(w, 100e6, 120e6)
         self.assertIsNotNone(result)
         self.assertEqual(result["scheduled"], list(cz.CHANNEL_LAGS["fiscal"]))
-        self.assertEqual(len(cz.pending(w)), 3)
+        # The immediate share is applied now; the remaining two are queued.
+        self.assertEqual(len(cz.pending(w)), 2)
 
-    def test_nothing_arrives_in_the_first_month_except_the_first_share(self):
+    def test_the_immediate_share_lands_in_the_month_the_decision_is_taken(self):
+        """Regression: `apply_lags` has already run when the budget resolves, so a share queued
+        at zero months waited a full month and the declared 0/3/9 profile was really 1/4/10."""
         w = new_world(1, 12)
+        before = w.econ.fiscal_impulse
         self._spend(w, 100e6, 120e6)
-        arrived = cz.apply_lags(w)
-        self.assertAlmostEqual(arrived["fiscal"], 0.04 * 0.50, places=6)
-        self.assertGreater(arrived["impulse"], 0)
+        self.assertGreater(w.econ.fiscal_impulse, before, "the immediate share did not land")
+        self.assertAlmostEqual(w.econ.fiscal_impulse - before, 0.04 * 0.50, places=6)
+        self.assertEqual(cz.apply_lags(w)["fiscal"], 0.0,
+                         "something matured in the month it was scheduled")
 
     def test_the_later_instalments_arrive_in_their_own_months(self):
         w = new_world(1, 12)
         self._spend(w, 100e6, 120e6)
-        first = cz.apply_lags(w)["fiscal"]
         w.month = 3
         second = cz.due(w)
         self.assertEqual(len(second), 1, "the three-month instalment did not arrive on time")
         self.assertAlmostEqual(second[0]["magnitude"], 0.04 * 0.30, places=6)
-        self.assertAlmostEqual(first, 0.04 * 0.50, places=6)
+        w.month = 9
+        third = cz.due(w)
+        self.assertEqual(len(third), 1, "the nine-month instalment did not arrive on time")
+        self.assertAlmostEqual(third[0]["magnitude"], 0.04 * 0.20, places=6)
+
+    def test_the_three_shares_sum_to_the_whole_change(self):
+        w = new_world(1, 12)
+        self._spend(w, 100e6, 120e6)
+        queued = sum(e["magnitude"] for e in cz.pending(w))
+        self.assertAlmostEqual(w.econ.fiscal_impulse + queued, 0.04, places=6)
 
     def test_a_small_change_is_ignored(self):
         w = new_world(1, 12)
@@ -363,12 +376,13 @@ class FiscalImpulseIsLagged(unittest.TestCase):
         self._spend(up, 100e6, 120e6)
         down = new_world(1, 12)
         self._spend(down, 120e6, 100e6)
-        self.assertGreater(cz.apply_lags(up)["fiscal"], 0)
-        self.assertLess(cz.apply_lags(down)["fiscal"], 0)
+        self.assertGreater(up.econ.fiscal_impulse, 0)
+        self.assertLess(down.econ.fiscal_impulse, 0)
 
-    def test_an_effect_never_arrives_twice(self):
+    def test_a_queued_effect_never_arrives_twice(self):
         w = new_world(1, 12)
         self._spend(w, 100e6, 120e6)
+        w.month = 3
         first = cz.apply_lags(w)["fiscal"]
         self.assertGreater(first, 0)
         self.assertEqual(cz.apply_lags(w)["fiscal"], 0.0, "an effect arrived a second time")

@@ -183,20 +183,35 @@ def schedule_fiscal_impulse(w: World) -> dict | None:
         return None
     total = clamp(change, -0.10, 0.10)
     offsets = CHANNEL_LAGS["fiscal"]
-    for share, offset in zip(FISCAL_IMPULSE_SHARES, offsets):
+    # The immediate instalment is applied here rather than queued. `apply_lags` has already run by
+    # the time the budget resolves, so an effect scheduled with zero months to wait would sit in
+    # the queue for a full month and the declared 0/3/9 profile would really be 1/4/10.
+    immediate = total * FISCAL_IMPULSE_SHARES[0]
+    e.fiscal_impulse = clamp(e.fiscal_impulse + immediate, -FISCAL_IMPULSE_CAP, FISCAL_IMPULSE_CAP)
+    for share, offset in zip(FISCAL_IMPULSE_SHARES[1:], offsets[1:]):
         schedule(w, "fiscal", offset, total * share, source="spending change",
                  note=f"spending moved {change:+.2%} of output")
-    return {"change": round(change, 6), "scheduled": list(offsets)}
+    return {"change": round(change, 6), "scheduled": list(offsets),
+            "immediate": round(immediate, 6)}
 
 
 def apply_lags(w: World) -> dict:
-    """Release this month's matured effects. Returns what arrived, for the trace."""
+    """Release this month's matured effects. Returns what arrived, for the trace.
+
+    Only the fiscal channel is wired to a consumer. Other channels are collected into
+    `e.lagged_effects` rather than written over live fields: an earlier version assigned the money
+    channel to `e.money_growth`, which `money_and_prices` overwrites later in the same month, so
+    the effect vanished and the assignment read as though it worked.
+    """
     arrived = due(w)
     fiscal = sum(e["magnitude"] for e in arrived if e["channel"] == "fiscal")
     e = w.econ
     e.fiscal_impulse = clamp(e.fiscal_impulse * FISCAL_IMPULSE_DECAY + fiscal,
                              -FISCAL_IMPULSE_CAP, FISCAL_IMPULSE_CAP)
-    e.money_growth = sum(e_["magnitude"] for e_ in arrived if e_["channel"] == "money")
+    for entry in arrived:
+        if entry["channel"] != "fiscal":
+            e.lagged_effects[entry["channel"]] = (e.lagged_effects.get(entry["channel"], 0.0)
+                                                  + entry["magnitude"])
     if arrived:
         trace(w, "lagged_effects", fiscal,
               {f"arrived_{e_['channel']}": e_["magnitude"] for e_ in arrived},
@@ -335,6 +350,18 @@ def money_step(w: World, money_growth: float, output_growth: float) -> float:
     return e.money_pressure
 
 
+def depreciation(w: World) -> float:
+    """How much the karam lost against the crown, as a positive number.
+
+    `e.fx` is quoted in **crowns per karam**, so a FALLING rate is a depreciation. Getting this
+    backwards is easy and expensive: it makes a currency collapse cheapen imports and turn
+    deflationary, which is the opposite of what happens to a country that buys its fuel abroad.
+    """
+    if e_fx := w.econ.fx:
+        return (w.econ.fx_prev / e_fx - 1.0) if w.econ.fx_prev > 0 else 0.0
+    return 0.0
+
+
 def import_price_step(w: World) -> float:
     """Inflation in the price of what Karamaniya buys abroad, in domestic currency.
 
@@ -343,7 +370,7 @@ def import_price_step(w: World) -> float:
     crisis becomes a cost-of-living crisis.
     """
     e = w.econ
-    fx_change = (e.fx / e.fx_prev - 1.0) if e.fx_prev > 0 else 0.0
+    fx_change = depreciation(w)
     world = getattr(e, "world_price_infl", 0.0)
     e.import_price_infl = clamp(fx_change * 0.85 + world, -0.25, 0.40)
     return e.import_price_infl

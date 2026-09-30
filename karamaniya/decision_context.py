@@ -428,6 +428,11 @@ def _forecast_record(w: World, mid: str) -> str:
     return forecasts.context_for(w, mid)
 
 
+def _causal_reading(w: World, mid: str) -> str:
+    from . import causal_beliefs
+    return causal_beliefs.context(w, mid)
+
+
 def compose(sections: list, budget: int) -> tuple[str, list]:
     """Join sections in order, shrinking the least important ones until the prompt fits (spec 84).
 
@@ -522,6 +527,7 @@ def build(w: World, mid: str, phase: str, *, public_brief: str, motions: list | 
         # A delegate's own forecast record. Its own only: another delegate's calibration is
         # private reasoning and showing it would leak what that delegate was thinking.
         Section("forecast_record", 4, _forecast_record(w, mid)),
+        Section("causal_reading", 4, _causal_reading(w, mid)),
         Section("memory", 6, mem, "\n".join(mem.splitlines()[:5])),
         Section("notes", 5, notes, notes[:500]),
         Section("fresh", 1, since_notes),

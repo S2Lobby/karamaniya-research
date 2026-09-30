@@ -18,7 +18,7 @@ simulation, not merely defined.
 | 3 | Food: post-harvest losses, regional distribution | integrated |
 | 4 | Foreign: red lines, leadership confidence, constituency pressure | integrated |
 | 5 | Forecasts: ledger, scoring, calibration | integrated |
-| 6 | Military: mobilization, unit-level response, supply chain | integrated (unit response now wired into coups) |
+| 6 | Military: mobilization, unit-level response, supply chain | integrated (unit response wired into coups; mobilization reachable as an Army lever) |
 
 Delivered ahead of the brief's own priority floor, which was macro → fiscal → regional/food →
 foreign; the forecast ledger and military realism were listed as "if runtime permits" and both are
@@ -102,8 +102,9 @@ These alter simulation output. Runs are not comparable across this boundary.
 4. **Food is lost between harvest and plate**, and does not reach a region whose roads have failed.
 5. **A coup no longer carries the whole army**; a garrison can decline to pick a side.
 6. **Forecasts are recorded and scored**, and a delegate sees its own calibration.
-7. **Crossing a foreign red line** moves that actor's hostility and threat perception.
-8. The calm baseline tightened: year-on-year inflation from a −1.0%/+3.9% band to −1.2%/+2.2%.
+7. **The Army can call up the reserve**, at a cost in money, labour and time.
+8. **Crossing a foreign red line** moves that actor's hostility and threat perception.
+9. The calm baseline tightened: year-on-year inflation from a −1.0%/+3.9% band to −1.2%/+2.2%.
 
 ## 6. Migration notes
 
@@ -184,9 +185,10 @@ in each case was to make one function the source of truth and have every consume
    world, not per regime, so the model does not become more nonlinear in a crisis.
 3. **Only the fiscal lag channel is wired.** The registry is general; the other five profiles are
    declared but those channels reach prices through existing partial adjustment.
-4. **Mobilization has no policy lever.** `call_up` and `reserve_cost` are implemented, tested and now
-   persistent, but nothing in the council's action vocabulary calls them. Adding one needs `Policy`,
-   `actions.py` and `prompts.py` together.
+4. *(resolved)* **Mobilization now has a policy lever.** The Army office can order
+   `mobilization` (none | partial | general): reservists are embodied over about three months,
+   cost money to keep embodied, and are drawn one-for-one out of the labour force while they
+   serve.
 5. **Corruption's economic channels are thin** — tracked and fed into implementation, but
    procurement cost inflation and quality loss are not modelled.
 6. **No sectoral input-output structure.**
@@ -199,7 +201,7 @@ in each case was to make one function the source of truth and have every consume
 
 - **Agent causal learning** (brief §13). Agents hold beliefs and now make scored forecasts, but the
   step from *scoring a forecast* to *updating a belief about how the economy works* is not built.
-  The forecast ledger is the natural substrate for it.
+  The forecast ledger is the natural substrate for it, and is the single highest-value item left.
 - **Regime-dependent coefficients** (§23), which would close limitation 2.
 - **The mobilization lever**, which would make the military system reachable by a council.
 - **Reserve-adequacy as a decision input** rather than a reported metric.

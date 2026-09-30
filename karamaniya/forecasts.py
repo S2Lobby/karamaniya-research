@@ -108,6 +108,11 @@ def resolve_due(w: World) -> list:
         # confidence that the event would occur. 0 is a perfect certain call, 1 a certain miss,
         # and 0.25 is what always answering "50%" scores.
         entry["brier"] = round((entry["confidence"] - happened) ** 2, 4)
+        # A wrong forecast is the delegate's only honest teacher about how the world works. The
+        # revision is attributed to the mechanisms bearing on the subject, not to the true cause,
+        # which the delegate cannot see.
+        from . import causal_beliefs
+        entry["revised"] = causal_beliefs.learn_from_forecast(w, entry)
         resolved.append(entry)
     return resolved
 

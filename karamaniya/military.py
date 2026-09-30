@@ -7,6 +7,9 @@ of the government.
 """
 from __future__ import annotations
 
+import math
+from dataclasses import dataclass
+
 from . import audits
 from .economy import front_region, labor
 from .world import FRONT_CHAINS, World, clamp, rng_for
@@ -44,6 +47,71 @@ TRAINING_INTENSITY = {
     "standard": {"target": .80, "rate": .020, "bill": 1.0, "morale": 0.0},
     "intense": {"target": 1.00, "rate": .030, "bill": 1.10, "morale": -.03},
 }
+# ---- the trained reserve and mobilization -----------------------------------------------------
+# `size` is the active force. Behind it sits a trained pool that can be called up, and calling it up
+# is a process, not a number. Comparative active:reserve ratios: United States 1.66:1, United
+# Kingdom 2.1:1, Poland 3:1, Israel ~170k active with ~465k reserve, Finland ~24k active behind a
+# ~280k wartime establishment and ~900k trained. Karamaniya has no conscription below "partial", so
+# 1-4x the active force is the defensible band; each run's own establishment varies inside it from
+# the seed rather than being settled by hand.
+RESERVE_RATIO = {"none": 1.0, "volunteer": 1.7, "partial": 3.0, "general": 4.0}
+RESERVE_BAND = (1.0, 4.0)
+RESERVE_SPREAD = 0.12            # how far a run's own establishment sits from its policy's ratio
+# Called-up reservists do not become effective at once. US reserve units took 4-8 weeks to reach
+# 70-75% strength (20-34 weeks at the bottom of the establishment); the National Guard brigades of
+# Desert Storm needed 28-40 days of post-mobilization training; Ukraine's call-up is about 30 days
+# of basic plus 2-4 weeks of specialty. So individual fillers are usable almost at once, formed
+# units arrive over two to four months, and everyone is only partly effective while training.
+MOBILIZATION_TAU = 1.09          # months; ~72% effective at six weeks, ~95% at three months
+MOBILIZATION_READY_SHARE = 0.15  # individual fillers, usable on the day they report
+MOBILIZATION_TRANSPORT_FLOOR = 0.4   # the slowest a bad transport state can make arrival
+# Reserves are not free: the pool costs upkeep every month, an embodied reservist costs a wage, and
+# calling one up costs the kit, transport and medical intake to put him back in the field.
+RESERVE_UPKEEP_SHARE = 0.08      # of a soldier's monthly cost, per reservist, for drills and kit
+RESERVE_KIT_SHARE = 0.15         # of a soldier's equipment cost, to bring stored kit back to standard
+RESERVE_ACTIVATION_SHARE = 0.05  # of a soldier's equipment cost, for transport and intake
+# ---- supply and readiness as a chain ----------------------------------------------------------
+# Operation STRANGLE (RAND R-851) is the finding this models: cutting a force's supply rarely
+# collapses it — German ammunition and fuel stocks in Italy actually ROSE during the interdiction,
+# because consumption fell faster than deliveries — but denying transport and mobility degraded it
+# decisively. Readiness is therefore two links: a stockpile that is forgiving, and movement that is
+# not. `effective_quality()` is where the chain reaches the existing `quality()`.
+INTERDICTION_TRANSPORT = 0.65    # the mobility lost at the front under total interdiction
+TRANSPORT_REACH = 0.35           # share of the gap to that level closed in a month (~3 months)
+STOCK_CAP = 1.4                  # a month of fighting is 1.0; stores can be built up past it
+DELIVERY_RATE = 0.10             # a month of undisturbed deliveries, in months of fighting
+CONSUMPTION_RATE = 0.10          # a month of consumption at full movement and full fighting
+IDLE_CONSUMPTION = 0.40          # the share of consumption that survives any collapse of movement
+CUT_DELIVERIES = 0.70            # the share of deliveries lost under total interdiction
+MOVEMENT_USAGE = 1.5             # consumption falls faster than movement: curtailed operations
+TRANSPORT_WEIGHT = 0.70          # movement dominates readiness; the stockpile only cushions
+STOCK_WEIGHT = 0.30
+READINESS_FLOOR = 0.20
+# ---- unit-level response to orders ------------------------------------------------------------
+# The army is not one mind. Turkey, July 2016: 8,651 personnel took part — 1.5% of the armed forces
+# — and the attempt failed for want of senior-command and other-service support. Venezuela, 2019:
+# 0.1-1% defections and no general-level break. South Korea, December 2024: about 280 troops
+# deployed, the capital-defence units did not join, martial law lasted about six hours. The USSR,
+# August 1991: elite units and division commanders refused. A coup by one commander is therefore
+# almost always a small fraction of the force deciding whether to move at all. Singh (Seizing Power,
+# 2014) supplies the second half: a unit joins only if it expects enough others to join, so a coup
+# that looks like it will fail collapses further. Nothing here is a die roll — given the state, the
+# answer is fixed.
+BOND_PULL = 0.60        # a commander's personal hold on his own units
+ARREARS_PULL = 0.25     # unpaid men follow whoever looks like paying them
+ILLEGIT_PULL = 0.55     # orders against an unpopular government cost less to obey
+CONTAGION_PULL = 0.45   # what a unit expects other units to do
+JOIN_THRESHOLD = 0.35   # the share of the force that must look like joining for joining to look safe
+LOYALTY_HOLD = 0.75     # loyalty to the state and the constitution
+COUNTER_HOLD = 0.35     # a credible counterweight force in being
+COUNTER_SCALE = 2.0     # loyal other-service power at parity with the ordered force counts as 1.0
+UNIT_DISPERSION = 0.15  # how differently units read the same situation
+ENGAGE_FLOOR = 0.20     # units that do something even when nobody much cares
+ENGAGE_CEILING = 0.85   # the ceiling: part of any force stands outside any order, including this one
+ENGAGE_BAR = 0.30       # how strong a reason a unit needs before it moves at all
+ENGAGE_SPAN = 0.50
+FRACTURE_MAX = 0.35     # the most of the force that fractures or hedges when the sides are even
+PRIOR_JOIN = 0.25       # what a unit believes about others before it has seen anything
 
 
 def officer_pay(w: World) -> dict:
@@ -163,6 +231,7 @@ def update(w: World, fiscal: dict) -> None:
         w.count("purge_months", 1)
 
     _naval(w, rng)
+    update_readiness(w)
     _combat(w, rng)
 
 
@@ -352,3 +421,339 @@ def _merge(target, source, n: float) -> None:
     for attr in ("approval", "indep", "unrest", "grievance", "fear", "hunger", "income", "savings"):
         setattr(target, attr, (getattr(target, attr) * target.size + getattr(source, attr) * n) / total)
     target.size = total
+
+
+# ---- the trained reserve and mobilization -----------------------------------------------------
+# The reserve state lives on the force rather than in a new engine field, so checkpoints written
+# before this feature load unchanged: `Military` is a plain dataclass, an attribute it does not
+# declare is ignored by `asdict()` and restored by `mobilization_of()`/`readiness_of()` on demand.
+# The cost of that choice is honest and worth stating: an in-progress call-up does not survive a
+# save/load cycle, because nothing serialises it yet.
+@dataclass
+class Mobilization:
+    """Reservists currently embodied: who is out of the labour force, and for how long."""
+    called_up: float = 0.0   # reservists embodied now
+    served: float = 0.0      # person-months the embodied cohort has served
+    released: float = 0.0    # cumulative reservists sent home again
+    month: int = -1          # last month person-months were accrued
+
+
+@dataclass
+class Readiness:
+    """The two links of the supply chain: what is in store, and what can actually move."""
+    stock: float = 1.0        # ammunition, fuel and spares, in months of fighting (1.0 = full)
+    transport: float = 1.0    # freight and mobility: what reaches and can move the units
+    interdiction: float = 0.0  # the pressure that got through last month, 0..1
+    month: int = -1           # last month stepped
+
+
+def mobilization_of(w: World) -> Mobilization:
+    mob = getattr(w.mil, "mobilization", None)
+    if mob is None:
+        mob = Mobilization()
+        w.mil.mobilization = mob
+    return mob
+
+
+def readiness_of(w: World) -> Readiness:
+    r = getattr(w.mil, "readiness", None)
+    if r is None:
+        r = Readiness()
+        w.mil.readiness = r
+    return r
+
+
+def reserve_pool(w: World) -> float:
+    """The trained reservists the country could call up: bounded at 1-4x the active force.
+
+    The band comes from the recruitment setting and the run's own establishment inside it from the
+    seed, so the same run always has the same pool and a bigger active force supports a bigger one.
+    """
+    active = max(1.0, w.mil.army.size)
+    base = RESERVE_RATIO.get(w.policy.recruitment, RESERVE_RATIO["none"])
+    rng = rng_for(w.seed, 0, "reserve_pool")
+    ratio = base * (1.0 + RESERVE_SPREAD * (2 * rng.random() - 1))
+    return float(round(active * clamp(ratio, RESERVE_BAND[0], RESERVE_BAND[1])))
+
+
+def call_up(w: World, n: float) -> Mobilization:
+    """Embodies n reservists out of the trained pool, starting this month.
+
+    Records the call-up and its cost in time and money; it does not touch the population groups.
+    The labour side of a call-up is whoever marks people out of the labour force — `_recruit()` and
+    `_release()` below add to and take from `p.conscripted`, which `economy.labor()` already
+    subtracts — and `mobilization_person_months()` reports the draw for those books.
+    """
+    mob = mobilization_of(w)
+    mobilization_person_months(w)                    # flush the accrual before the numbers change
+    room = max(0.0, reserve_pool(w) - mob.called_up)
+    n = max(0.0, min(float(n), room))
+    if n <= 0:
+        return mob
+    mob.called_up += n
+    if mob.month < 0:
+        mob.month = w.month
+    return mob
+
+
+def release_reservists(w: World, n: float) -> Mobilization:
+    """Sends embodied reservists home again, pro rata, so the cohort's average service holds."""
+    mob = mobilization_of(w)
+    mobilization_person_months(w)
+    n = max(0.0, min(float(n), mob.called_up))
+    if n <= 0:
+        return mob
+    keep = (mob.called_up - n) / mob.called_up
+    mob.served *= keep
+    mob.called_up -= n
+    mob.released += n
+    if mob.called_up <= 0.5:
+        mob.called_up = 0.0
+        mob.served = 0.0
+        mob.month = -1
+    return mob
+
+
+def mobilization_person_months(w: World) -> float:
+    """Person-months drawn out of the labour force by the current call-up, cumulative.
+
+    Accrues to the current month on demand, so a run that skips or resumes months still reports
+    the right total. This is the figure the economy needs: each person-month is one reservist
+    removed from `labor(p)` for one month, on top of the conscripts already recorded there.
+    """
+    mob = mobilization_of(w)
+    if mob.called_up > 0 and mob.month >= 0 and w.month > mob.month:
+        mob.served += mob.called_up * (w.month - mob.month)
+        mob.month = w.month
+    return mob.served
+
+
+def mobilization_draw(w: World) -> float:
+    """Person-months the call-up draws this month: the reservists currently out of the labour force."""
+    return mobilization_of(w).called_up
+
+
+def mobilization_months(w: World) -> float:
+    """How long the embodied cohort has been in service on average, in months."""
+    mob = mobilization_of(w)
+    mobilization_person_months(w)
+    return mob.served / mob.called_up if mob.called_up > 0 else 0.0
+
+
+def mobilized_fraction(months: float) -> float:
+    """The share of a called-up cohort that is effective after `months` in service.
+
+    Nothing is instant: individual fillers report ready (MOBILIZATION_READY_SHARE), formed units
+    arrive over two to four months, and everyone in between is only partly effective.
+    """
+    if months < 0:
+        return 0.0
+    return clamp(MOBILIZATION_READY_SHARE
+                 + (1.0 - MOBILIZATION_READY_SHARE) * (1.0 - math.exp(-months / MOBILIZATION_TAU)))
+
+
+def effective_reservists(called_up: float, months: float, transport: float = 1.0) -> float:
+    """How many of a called-up cohort actually count as effective strength now.
+
+    Transport is the limiter on how fast they arrive, which is the same finding the readiness chain
+    rests on: men who cannot be moved to their units are not yet soldiers.
+    """
+    if called_up <= 0:
+        return 0.0
+    pace = MOBILIZATION_TRANSPORT_FLOOR + (1 - MOBILIZATION_TRANSPORT_FLOOR) * clamp(transport)
+    return called_up * mobilized_fraction(max(0.0, months) * pace)
+
+
+def mobilized_strength(w: World) -> float:
+    """Effective reservists on hand for the home army, from its own call-up state and transport."""
+    mob = mobilization_of(w)
+    if mob.called_up <= 0:
+        return 0.0
+    return effective_reservists(mob.called_up, mobilization_months(w), readiness_of(w).transport)
+
+
+def reserve_cost(w: World, pooled: float | None = None, embodied: float | None = None) -> dict:
+    """What the reserve establishment costs, and what calling it up costs on top.
+
+    `pool_monthly` is the standing bill for keeping the trained pool trained (drills, refresher
+    courses, kit maintenance); `embodied_monthly` is pay for the reservists currently serving, who
+    are paid as soldiers; `activation_one_off` is the kit, transport and medical intake of putting
+    them back in the field. All at current prices.
+    """
+    cpi = w.econ.cpi
+    pooled = reserve_pool(w) if pooled is None else max(0.0, pooled)
+    embodied = mobilization_of(w).called_up if embodied is None else max(0.0, embodied)
+    pool_monthly = pooled * ARMY_COST * RESERVE_UPKEEP_SHARE * cpi
+    embodied_monthly = embodied * ARMY_COST * cpi
+    activation = embodied * ARMS_COST * (RESERVE_KIT_SHARE + RESERVE_ACTIVATION_SHARE) * cpi
+    return {"pool_monthly": pool_monthly, "embodied_monthly": embodied_monthly,
+            "activation_one_off": activation,
+            "monthly_total": pool_monthly + embodied_monthly}
+
+
+# ---- supply and readiness as a chain ----------------------------------------------------------
+def readiness_factor(stock: float, transport: float) -> float:
+    """How much of its nominal capability a force can actually bring to bear, 0.2..1.0.
+
+    Movement carries most of the weight and the stockpile only cushions, which is the STRANGLE
+    result: forces cut off from supply keep their stores and lose their mobility, and the mobility
+    is what decides whether they can still fight as a force.
+    """
+    return clamp(TRANSPORT_WEIGHT * min(1.0, max(0.0, transport))
+                 + STOCK_WEIGHT * min(1.0, max(0.0, stock)), READINESS_FLOOR, 1.0)
+
+
+def update_readiness(w: World, month: int | None = None) -> Readiness:
+    """Steps the supply chain one month: interdiction cuts deliveries and takes mobility away.
+
+    Stores move slowly because consumption falls with movement — under heavy interdiction the
+    stock can hold or even rise, as the German stocks in Italy did — while transport falls to
+    whatever the interdiction allows. Called once a month from `update()`; callable directly.
+    """
+    r = readiness_of(w)
+    month = w.month if month is None else month
+    if r.month == month:
+        return r
+    dip = w.dip
+    fighting = dip.union_intensity if (dip.war and not dip.ceasefire) else 0.0
+    k_regions = [x for x in w.regions if x.nation == "karamaniya"]
+    occupied = sum(1 for x in k_regions if x.controller != "karamaniya") / max(1, len(k_regions))
+    interdiction = clamp(0.85 * fighting + 0.25 * dip.blockade_eff + 0.5 * occupied, 0.0, 1.0)
+    r.interdiction = interdiction
+    if r.month < 0:
+        r.month = month              # the first month is the starting position, not a month of war
+        return r
+    for _ in range(min(24, max(1, month - r.month))):
+        target = 1.0 - INTERDICTION_TRANSPORT * interdiction
+        r.transport = clamp(r.transport + TRANSPORT_REACH * (target - r.transport), 0.2, 1.0)
+        usage = (CONSUMPTION_RATE * (IDLE_CONSUMPTION + (1 - IDLE_CONSUMPTION) * fighting)
+                 * r.transport ** MOVEMENT_USAGE)
+        r.stock = clamp(r.stock + DELIVERY_RATE * (1 - CUT_DELIVERIES * interdiction) - usage,
+                        0.0, STOCK_CAP)
+    r.month = month
+    return r
+
+
+def effective_quality(w: World) -> float:
+    """`quality()` for the home army as transport can actually deliver it.
+
+    The same three inputs the rest of the engine already uses, with equipment discounted by what
+    the supply chain can move, so a caller that needs "how good is a Karamanian soldier right now"
+    gets one number comparable with `union_quality()`. `_combat()` still calls `quality()` directly.
+    """
+    a = w.mil.army
+    return quality(a.equipment * readiness_factor(readiness_of(w).stock, readiness_of(w).transport),
+                   a.training, a.morale)
+
+
+# ---- unit-level response to orders ------------------------------------------------------------
+def _logistic(x: float) -> float:
+    if x >= 0:
+        return 1.0 / (1.0 + math.exp(-x))
+    z = math.exp(x)
+    return z / (1.0 + z)
+
+
+def _ordered_force(w: World, office: str):
+    return {"army": w.mil.army, "navy": w.mil.navy, "interior": w.mil.police}.get(office, w.mil.army)
+
+
+def _force_power(force, office: str) -> float:
+    """The same weighting politics.py puts on each armed force, kept local to avoid the import."""
+    if office == "army":
+        return force.size * (0.4 + 0.6 * min(1.0, force.equipment)) * force.morale
+    if office == "navy":
+        return force.size * 900 * force.equipment * force.morale
+    return force.size * 0.35 * force.equipment * force.morale
+
+
+def government_legitimacy(w: World) -> float:
+    """How legitimate the government looks to a unit weighing an order against the constitution."""
+    legit = 0.5 * w.avg("approval") + (0.15 if w.const.elected else 0.0)
+    if w.const.coup_month >= 0 and w.month - w.const.coup_month < 12:
+        legit -= 0.2
+    return clamp(legit, 0.0, 1.0)
+
+
+def force_counterweight(w: World, office: str = "army") -> float:
+    """Armed power outside the ordered force that could be put against it, 0..1.
+
+    Only the loyal part of the other services counts: an unmoved navy or interior ministry is a
+    counterweight, a sympathetic one is not.
+    """
+    own = _force_power(_ordered_force(w, office), office)
+    others = 0.0
+    for other in ("army", "navy", "interior"):
+        if other == office:
+            continue
+        f = _ordered_force(w, other)
+        others += _force_power(f, other) * f.loyalty
+    return clamp(others / max(1.0, own) * COUNTER_SCALE, 0.0, 1.0)
+
+
+def unit_response(w: World, order="coup", believed_join: float | None = None) -> dict:
+    """How the force would divide over an order, as a distribution over unit responses.
+
+    `order` is a string or a dict that may name the `office` being ordered ("army", "navy",
+    "interior") and the commander who gave the order; the force's own `bond`, `loyalty` and
+    `arrears` supply the rest. `believed_join` is the share of the force the units expect to follow
+    the order — at least `JOIN_THRESHOLD` for joining to look safe, so a coup nobody expects to
+    succeed is joined by almost nobody. The result sums to 1 over:
+
+      obey_commander   units that execute the order
+      obey_government  units that refuse it and stay under the government's command
+      neutral          units that do nothing: in barracks, awaiting orders, awaiting the outcome
+      split            units that fracture internally, hedge, or move only a part of themselves
+
+    Deterministic given the state. The ceiling on `obey_commander` is ENGAGE_CEILING, so "the whole
+    army followed him" is not an outcome this model can produce.
+    """
+    if isinstance(order, str):
+        order = {"kind": order}
+    office = order.get("office", "army")
+    force = _ordered_force(w, office)
+    believed = PRIOR_JOIN if believed_join is None else clamp(float(believed_join))
+    arrears = min(1.0, max(0.0, force.arrears) / 2)
+    pull = (BOND_PULL * force.bond + ARREARS_PULL * arrears
+            + ILLEGIT_PULL * (1 - government_legitimacy(w))
+            + CONTAGION_PULL * (believed - JOIN_THRESHOLD))
+    hold = LOYALTY_HOLD * force.loyalty + COUNTER_HOLD * force_counterweight(w, office)
+    stance = _logistic((pull - hold) / UNIT_DISPERSION)
+    engaged = ENGAGE_FLOOR + (ENGAGE_CEILING - ENGAGE_FLOOR) * clamp(
+        (max(pull, hold) - ENGAGE_BAR) / ENGAGE_SPAN)
+    fracture = FRACTURE_MAX * (1 - abs(2 * stance - 1))
+    shares = {"obey_commander": engaged * stance * (1 - fracture),
+              "obey_government": engaged * (1 - stance) * (1 - fracture),
+              "split": engaged * fracture,
+              "neutral": 1 - engaged}
+    total = sum(shares.values())
+    return {k: v / total for k, v in shares.items()}
+
+
+def anticipated_response(w: World, order="coup") -> dict:
+    """`unit_response()` at the participation level the units themselves would expect to see.
+
+    Singh's coordination problem has more than one self-consistent answer, so this walks the
+    expected participation up from zero and reports the first one it meets: the pessimistic answer
+    unless the state really does put a majority of the force behind the order. A coup that looks
+    like it will fail therefore collapses further rather than holding at its first estimate.
+    """
+    def gap(believed: float) -> float:
+        return unit_response(w, order, believed_join=believed)["obey_commander"] - believed
+
+    lo, hi = 0.0, 1.0
+    step = 0.02
+    previous = 0.0
+    for i in range(1, 51):
+        point = step * i
+        if gap(point) <= 0:
+            lo, hi = previous, point
+            break
+        previous = point
+    for _ in range(30):
+        mid = (lo + hi) / 2
+        if gap(mid) > 0:
+            lo = mid
+        else:
+            hi = mid
+    return unit_response(w, order, believed_join=(lo + hi) / 2)

@@ -328,11 +328,15 @@ qualitative properties the brief specifies are each a test:
 
 ## Known limitations
 
+*This list describes the model after the first hardening shift. The second shift's additions,
+below, resolve items 2, 7 and part of 1, and the superseded entries are marked.*
+
 1. **Output is supply-determined.** Demand support moves utilisation, not capacity, so there is no
    explicit demand block and no `output = min(supply, demand)` closure. The multiplier is live
    through utilisation (§5), which is why this is a simplification rather than a gap — but it is
    still the largest one.
-2. **`fx_step()` is still not called by the engine.** The depreciation *pressure* now drives
+2. *(partly resolved — depreciation pressure now drives the rate; the helper below remains unused)*
+   **`fx_step()` is still not called by the engine.** The depreciation *pressure* now drives
    `e.fx_conf` and therefore the rate (§4), but the separate `fx_step()` helper — which would move
    the rate by the raw pressure with market noise — remains unused. It is tested but not wired;
    the smoother path through confidence was used instead because it preserves the tested
@@ -345,8 +349,247 @@ qualitative properties the brief specifies are each a test:
    which produces a visible step in output.
 6. **No sectoral input-output structure.** Agriculture, industry and services exist but do not
    purchase from one another.
-7. **Agent forecasts (§37 of the brief) are not implemented.** The structured-claim machinery
-   exists in spirit but the prompt surface was not changed.
+7. *(resolved — see section 16)* **Agent forecasts.** The structured-claim machinery exists
+   in spirit but the prompt surface was not changed.
+
+---
+
+# Second shift additions
+
+Everything above describes the model as it stood after the first hardening shift. The sections
+below are what the realism shift added, and they supersede the corresponding limitations listed at
+the end of that part.
+
+## 10. Transmission: rate → credit → demand, and money → prices
+
+Each channel is a **stock that lags its target**. That lag is the entire content of a transmission
+channel: a central bank changes a rate today and the economy answers over following months, because
+lending relationships, investment plans and price lists are not re-decided instantly.
+
+```
+target_credit   = 1 - 0.35 · depth · max(0, real_rate - 0.04)      depth = 0.55 + 1.1·financial_depth
+credit_conditions ← 0.72 · credit_conditions + 0.28 · target_credit
+demand_pressure   ← 0.62 · demand_pressure   + 0.38 · output_gap
+required_money    = output_growth + expected_inflation
+money_pressure    ← 0.55 · money_pressure    + 0.45 · (money_growth - required_money)
+```
+
+**Verified behaviour.** After a hike from 6% to 25%, the target moves at once (1.000 → 0.939) while
+actual credit takes about nine months to converge (1.000 → 0.942). Calibrated so a rate change is
+mostly through the system in one to two quarters, which is the common finding in the monetary
+transmission literature.
+
+**Two mistakes corrected here, both worth recording.**
+
+`financial_depth` originally scaled the *level* of credit rather than the strength of transmission.
+Every deep-financial-system world simply had more credit, credit could exceed the ceiling the rest
+of the model assumes, and a drought produced a **positive** output gap. Depth now scales the
+target's sensitivity to the rate.
+
+Excess money growth originally double-subtracted output growth, so money growth of exactly expected
+inflation read as strongly deflationary. The Cagan real-balance effect is deliberately **not**
+modelled here because it already lives in the money-market velocity term; including it in both
+places would double-count one behaviour.
+
+## 11. Money is measured against capacity, not output
+
+This is the most consequential correction of the shift.
+
+```
+target_price = scale · money · velocity / capacity          [was: / actual output]
+```
+
+Dividing by *actual* output made the quantity relation supply-driven: a demand recession lowered
+the denominator and mechanically raised prices. The supply channel swamped the demand channel, and
+the consequence was that **a rate rise was stagflationary** — tightening under inflation *raised*
+expected inflation, which is the opposite of the brief's required chain.
+
+`capacity` is potential output where it has been established (see section 1), so money chases what
+the economy can produce rather than what it happened to produce this month. Demand reaches prices
+through velocity, the demand-pressure term and the output gap.
+
+As a side effect the calm baseline tightened: year-on-year inflation fell from a −1.0%/+3.9% band
+to −1.2%/+2.2%.
+
+## 12. Expectations now see the policy rate
+
+Credibility had been built only from realised inflation, monetisation and reserves, which meant a
+central bank could triple its rate under 20% inflation and expected inflation would not move.
+
+```
+resolve  = clamp(0.5 + (policy_rate - 0.06) / 0.20, 0, 1)
+credibility = 0.38·low_inflation + 0.30·no_monetisation + 0.17·reserves + 0.15·resolve
+```
+
+Centred on the neutral rate, so an ordinary world is unchanged and only a genuine tightening or a
+real capitulation moves the anchor. **Modelling assumption**, not an estimated relationship: the
+weight is chosen so that resolve is a tie-breaker rather than the dominant term.
+
+## 13. Fiscal structure: who the government owes
+
+An aggregate arrears figure cannot express the thing that matters. The historical record is
+specific, and the consequences are differentiated accordingly.
+
+```
+bills = { army:          military · 0.35 · gdp        (the pay portion; see below)
+          police:        police · gdp
+          civil_service: (health_edu + welfare + admin) · gdp
+          contractors:   military · 0.65 + farm_support + regional · gdp
+          foreign_debt:  interest_for }
+
+shortfall_i = unpaid · (1 - protection_i) · bill_i / Σ (1 - protection_j) · bill_j
+protection  = army 0.85, police 0.80, foreign_debt 0.70, civil_service 0.35, contractors 0.15
+```
+
+**Why these weights, and why not an order of payment.** The record: military pay arrears
+immediately preceded coups in Cote d'Ivoire (1999, over unpaid peacekeeping bonuses, about 230
+soldiers), the Gambia (1994, roughly three months unpaid), Guinea-Bissau (2004, 600 troops over
+unpaid UN mission payments) and Sierra Leone (1992, explicitly over unpaid salaries); civil servants
+turn to strikes after roughly **two to three months** (Gimpelson and Treisman on Russian arrears as
+fiscal bargaining, where public employees were described as a reserve of hostages); and contractors
+who are owed money bid higher or stop bidding (the 2012 Spanish accelerated-payment episode: firms
+holding unpaid public bills were about 22% less likely to take new public work).
+
+A **lexicographic** order — soldiers always first — was tried first and deleted the mechanism, since
+the army could then never go unpaid no matter how broke the state was. Protection is therefore
+**relative**: the army absorbs a shortfall last and least, but a large enough one still reaches it,
+which is what happened in every case above.
+
+The army's bill is its **pay**, not the whole military line, because `military.update` genuinely
+pays soldiers before anything is bought. Treating the whole line as the army's bill made the
+composition claim the army was five months behind while the military module correctly reported it
+paid in full; the unpaid part was owed to the firms supplying the army.
+
+**Consequences, in order of how well grounded they are:** contractor arrears raise a procurement
+premium (grounded, capped at +35%, because eventually suppliers stop bidding); civil-service arrears
+beyond 2.5 months damage administrative capacity (grounded in direction, threshold from the
+qualitative pattern); army arrears drive morale, loyalty and desertion through the existing
+`Force.arrears`.
+
+**Rollover.** The market absorbs a certain amount of **gross** issuance each month and maturing debt
+is served from it first:
+
+```
+borrowed      = min(need, max(0, 0.10 · gdp_nom · confidence - rollover_need - arrears_bonds))
+rollover_need = debt_short_share · debt_dom / 12
+```
+
+Gross capacity is calibrated so that at the founding — 40% of annual output in debt, 20% of it
+inside a year — gross minus rollover reproduces the 2% of monthly output the model used before the
+rollover channel existed. Modelling it as *net* capacity minus rollover made the figure negative and
+the default government borrowed nothing.
+
+**Reserve adequacy** is reported in months of imports (`e.reserve_months`). The conventional floor is
+three months, though the IMF notes the rule has no firm theoretical basis.
+
+**Note on an existing mechanism, verified not rebuilt:** spending reserves on a *domestic* obligation
+already required an explicit conversion — `settle_arrears` with funding source `reserves` converts
+at the exchange rate. That satisfies the brief's requirement, and it was verified rather than
+reimplemented.
+
+## 14. Food: losses and regional access
+
+**Post-harvest losses.** Nothing was previously lost between harvest and plate.
+
+```
+loss = 0.075 + 0.10 · (1 - mean_logistics)        bounded to [0.02, 0.30]
+```
+
+**Empirical grounding.** APHLIS and World Bank work puts cereal losses from harvest to market at
+roughly **10-20%** in weak-infrastructure economies, concentrated in field drying, farm storage and
+market storage (farm storage 2-5%, transport to market 1-2%, market storage 2-4%) rather than in
+bulk transport. The widely quoted 30-40% figures are **not supported for cereals** and are
+deliberately not used. The baseline is a **synthetic** assumption placed at the low end of the
+supported range, with the transport component scaling to the top of it.
+
+**Regional distribution.** National supply moves out to regions subject to each one's delivery
+ceiling, which falls as logistics degrade:
+
+```
+delivery_ceiling(region) = need · (0.55 + 0.45 · logistics)
+```
+
+This encodes the arbitrage-band result from the spatial market-integration literature — goods move
+only when the gap justifies the cost (Baulch et al. on Vietnamese rice markets; Bangladesh 1974,
+where inter-district movement restrictions depressed prices in surplus districts and raised them in
+deficit districts). Whatever a constrained region cannot absorb is re-offered to regions with
+headroom, so one broken corridor does not strand the surplus.
+
+**Demonstrated.** With Kessel Valley's rail at logistics 0.33 and a national food ratio of 0.98,
+every other region has **zero** hunger and Kessel has 27%. Under a genuine national surplus (ratio
+1.07) Kessel still has 28%. The engine names the regions the roads did not reach
+(`econ.food_short_regions`) rather than leaving it implicit in the hunger numbers.
+
+The brief's requirement — that a national surplus must not imply uniform regional access — is
+tested directly.
+
+**Calibration note.** The production constants were set before losses existed, so adding them moved
+the founding food balance from about 1.02 to 0.99 and introduced chronic hunger in an ordinary year.
+`K_FOOD` now carries the loss adjustment, so the documented starting condition still holds and the
+loss mechanism bites where it should: when logistics fail.
+
+## 15. Foreign actors: red lines and leadership
+
+Foreign actors already had dispositions, beliefs with confidence, directional relations, military
+and economic state, strategic goals and memory. Added:
+
+- **Red lines**: three per actor, each a condition the engine can genuinely evaluate — League
+  alignment, League escorts, a bilateral trade split, blockade of the shipping lanes, Karamaniyan
+  aggression, default on League debt. No condition was invented that no world state backs. Crossing
+  one moves hostility, threat perception and the offensive-intent belief by severity times a
+  disposition-chosen response.
+- **Leadership confidence**, falling under domestic stress and visibly failed strategy.
+- **Constituency preferences**, generating political pressure when a group's preference is ignored.
+
+**Do not script hostility, verified:** crossing a red line moves Veleria's hostility 0.46 to 0.61
+and its threat perception, and does **not** trigger war, attack, blockade or ultimatum. A test
+asserts this.
+
+## 16. Forecasts
+
+Delegates may make checkable predictions — metric, direction, threshold, horizon, confidence — and
+the engine scores them months later against a state their author could not see.
+
+**Scoring, and the conventions that matter:**
+
+```
+Brier (binomial, 0-1)   BS = mean((confidence - outcome)^2)
+Murphy decomposition    BS = REL - RES + UNC          (reconciles exactly)
+No-skill baseline       max(event_rate, 1 - event_rate)
+```
+
+The **Brier scale is stated on every score**, because two conventions circulate differing by a
+factor of two and the Good Judgment Project's widely quoted 0.25/0.37 figures are on the 0-2 scale
+while being routinely misreported as if they were 0-1. On the 0-1 scale those are 0.125/0.185, and
+always answering 50% scores 0.25.
+
+Directional accuracy is reported beside a no-skill baseline that is **not 50%** — it is the
+frequency of always predicting whichever direction turned out to be more common, which is the
+Pesaran-Timmermann point.
+
+A delegate sees its own record, because a forecaster told it is overconfident can correct. It does
+not see anyone else's, and a test asserts the boundary.
+
+**Bug found while building it:** `correct` was defined as "the event happened" rather than "the
+forecast was right", so a forecast of "probably not" that did not occur scored as a miss.
+
+## 17. Corrections found by adversarial review
+
+An independent reviewer, instructed to prove every finding with a reproduction, ran against this
+shift's own commits and found four HIGH-severity defects in code that had been written, tested and
+committed. All are fixed and carry regressions in `tests/test_review_regressions.py`.
+
+| Defect | Consequence before the fix |
+|---|---|
+| `arrears_months` divided a monthly bill by twelve | One month unpaid reported as twelve; every differentiated consequence fired 12× too early, and a 1.75%-of-output shortfall destroyed administrative capacity in five months |
+| The contractor bill and its divisor were different quantities | The premium feedback loop was dormant under default policy, or reported eight months owed after one |
+| Three writers reduced arrears without touching the composition | Paying every bill in full still left the administration destroyed and suppliers repricing |
+| `e.fx` is crowns per karam, but two terms read a fall as an appreciation | A 69% currency collapse was **deflationary**, contributing about −1.3% a month to the CPI |
+
+Also corrected: the declared 0/3/9 lag profile was really 1/4/10 (`apply_lags` runs before the
+budget resolves, so a share queued at zero months waited a full month); `rollover_need` was
+computed and never used; and the inflation trace listed an `expectations` contributor that never
+independently moved prices, so `explain()` could name a cause that was not one.
 
 ## Sources
 
@@ -363,3 +606,21 @@ Cited for the *shape and range* of relationships, not as measurements of Karaman
 - Cagan, P. (1956), on money demand under expected inflation — the basis of the existing price
   relation.
 - World Bank / FAO material on island food-import vulnerability, referenced in the README.
+
+Added by the second shift:
+
+- APHLIS / JRC and World Bank, *Missing Food* — cereal post-harvest loss by stage, 10-20% for
+  weak-infrastructure economies, with the 30-40% figures shown to be unsupported for grain.
+- FAO, *Strategic Grain Reserves* (Bulletin 126), and the FAO safe stock-to-use norm of 17-18%,
+  about two months of consumption; the conventional three-month import-cover floor, which the IMF
+  itself notes has no firm theoretical basis.
+- Baulch et al. (2008), on spatial market integration and the arbitrage band; Sen (1981) and the
+  Bangladesh 1974 famine literature on entitlement failure and inter-district movement restrictions.
+- Manasse, Roubini and Schimmelpennig (IMF WP/05/42 and JIE 2009) — crisis danger zones: external
+  debt/GDP above 50%, short-term debt to reserves above 130%, public debt to revenues above 215%.
+- Rodrik and Velasco (NBER WP 7364) on short-term debt and capital-flow reversal.
+- Gimpelson and Treisman on Russian public-sector arrears; the 2012 Spanish accelerated-payment
+  natural experiment on suppliers holding unpaid public bills.
+- The coup and mutiny case literature: Cote d'Ivoire 1999, the Gambia 1994, Guinea-Bissau 2004,
+  Sierra Leone 1992, Georgia 2001; Singh, *Seizing Power* (2014) on coups as coordination games.
+- Operation STRANGLE (RAND R-851) — supply denial rarely collapses a force, transport denial does.

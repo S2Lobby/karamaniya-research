@@ -448,3 +448,114 @@ class TheCoupIsNotOneMind(unittest.TestCase):
         self.assertIn("anticipated_response", source)
         self.assertNotIn("0.25 + 0.55 * force.bond", source,
                          "the old scalar follow formula is still in the coup path")
+
+
+class TheMobilizationLever(unittest.TestCase):
+    """Mobilization was built, tested and made persistent before anything could call it. The
+    council's Army office now has a lever for it, which is what makes the system reachable."""
+
+    def _mobilized(self, mode, months=12, recruitment="volunteer"):
+        from karamaniya import director, engine
+        w = new_world(1, 18)
+
+        def each(x):
+            x.const.elected = True
+            x.const.election_month = 99
+            x.policy.recruitment = recruitment
+            x.policy.mobilization = mode
+        original = director.act
+        director.act = lambda world, *_a, **_k: setattr(world.dip, "inbox", [])
+        try:
+            for _ in range(months):
+                engine.begin_month(w)
+                each(w)
+                engine.step(w)
+        finally:
+            director.act = original
+        return w
+
+    def test_the_lever_is_registered_with_the_army_office(self):
+        from karamaniya import politics
+        self.assertEqual(politics.LEVER_OFFICE["mobilization"], "army")
+        for mode in politics.ENUMS["mobilization"]:
+            with self.subTest(mode=mode):
+                self.assertIn(mode, military.MOBILIZATION_SHARE)
+
+    def test_the_settings_call_up_different_numbers(self):
+        none = military.mobilization_of(self._mobilized("none")).called_up
+        partial = military.mobilization_of(self._mobilized("partial")).called_up
+        general = military.mobilization_of(self._mobilized("general")).called_up
+        self.assertEqual(none, 0.0)
+        self.assertGreater(partial, 0.0)
+        self.assertGreater(general, partial)
+
+    def test_mobilizing_takes_people_out_of_the_labour_force(self):
+        from karamaniya import economy
+        quiet = self._mobilized("none")
+        called = self._mobilized("general")
+        labour_quiet = sum(economy.labor(p) for p in quiet.k_pops())
+        labour_called = sum(economy.labor(p) for p in called.k_pops())
+        self.assertLess(labour_called, labour_quiet,
+                        "calling up reservists cost the economy no labour at all")
+
+    def test_the_labour_drawn_matches_the_number_embodied(self):
+        from karamaniya import economy
+        w = self._mobilized("general")
+        embodied = military.mobilization_of(w).called_up
+        self.assertGreater(embodied, 0.0)
+        # Every embodied reservist is one person out of the labour force, plus the standing
+        # conscription the run already had.
+        drawn = military.mobilization_draw(w)
+        self.assertAlmostEqual(drawn, embodied, delta=max(2.0, embodied * 0.05))
+
+    def test_mobilizing_costs_money(self):
+        quiet = military.reserve_cost(self._mobilized("none"))["monthly_total"]
+        called = military.reserve_cost(self._mobilized("general"))["monthly_total"]
+        self.assertGreater(called, quiet)
+
+    def test_standing_down_releases_the_reservists(self):
+        from karamaniya import director, engine
+        w = self._mobilized("general")
+        self.assertGreater(military.mobilization_of(w).called_up, 0.0)
+
+        def stand_down(x):
+            x.const.elected = True
+            x.const.election_month = 99
+            x.policy.mobilization = "none"
+        original = director.act
+        director.act = lambda world, *_a, **_k: setattr(world.dip, "inbox", [])
+        try:
+            for _ in range(6):
+                engine.begin_month(w)
+                stand_down(w)
+                engine.step(w)
+        finally:
+            director.act = original
+        self.assertLess(military.mobilization_of(w).called_up, 1.0,
+                        "reservists were not released when the order was cancelled")
+
+    def test_effectiveness_arrives_gradually_not_at_once(self):
+        """US reserve units needed 4-8 weeks to reach 70-75pc; Ukraine about six weeks."""
+        from karamaniya import director, engine
+        w = new_world(1, 18)
+        w.policy.recruitment = "volunteer"
+        w.policy.mobilization = "general"
+        w.const.elected = True
+        w.const.election_month = 99
+        original = director.act
+        director.act = lambda world, *_a, **_k: setattr(world.dip, "inbox", [])
+        try:
+            engine.begin_month(w)
+            engine.step(w)
+        finally:
+            director.act = original
+        mob = military.mobilization_of(w)
+        self.assertGreater(mob.called_up, 0.0, "nothing was called up")
+        share = military.mobilized_strength(w) / mob.called_up
+        self.assertLess(share, 0.85, "the whole call-up was effective in its first month")
+        self.assertGreater(share, 0.3, "almost nobody had arrived after a month")
+
+    def test_the_prompt_tells_the_army_office_the_lever_exists(self):
+        import inspect
+        from karamaniya import prompts
+        self.assertIn("mobilization", inspect.getsource(prompts))

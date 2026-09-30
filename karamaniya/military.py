@@ -182,6 +182,7 @@ def update(w: World, fiscal: dict) -> None:
     m.police.arrears = max(0.0, m.police.arrears + (1 - police_paid) - (0.5 if police_paid >= 1 else 0))
 
     _recruit(w)
+    _mobilize(w)
 
     # Desertion when unpaid or demoralised.
     desert = m.army.size * (0.015 * min(3.0, m.army.arrears) + 0.03 * max(0.0, 0.3 - m.army.morale)) * pay["desert"]
@@ -234,6 +235,44 @@ def update(w: World, fiscal: dict) -> None:
     update_readiness(w)
     sync_state(w)
     _combat(w, rng)
+
+
+# How much of the trained reserve the Army office calls up. This is separate from `recruitment`:
+# conscription takes people who are not yet soldiers, mobilization embodies people who already are.
+MOBILIZATION_SHARE = {"none": 0.0, "partial": 0.25, "general": 0.75}
+
+
+def _mobilize(w: World) -> None:
+    """Call reservists up or send them home, and take them out of the labour force meanwhile.
+
+    Unlike conscription this is fast to start and fast to undo, which is exactly what makes it a
+    crisis instrument rather than a standing policy: the people are trained already, but they are
+    also already working, and calling them up costs the economy their labour for as long as they
+    serve.
+    """
+    m, pol = w.mil, w.policy
+    pool = reserve_pool(w)
+    target = pool * MOBILIZATION_SHARE.get(getattr(pol, "mobilization", "none"), 0.0)
+    mob = mobilization_of(w)
+    if target > mob.called_up:
+        call_up(w, target - mob.called_up)
+    elif target < mob.called_up:
+        release_reservists(w, mob.called_up - target)
+    # Reservists who are serving are not available to their employers. Booked exactly as
+    # conscription is, so economy.labor() subtracts them through the same path.
+    drawn = mobilization_draw(w)
+    if drawn <= 0:
+        return
+    pops = [p for p in w.k_pops() if p.cls in DRAFT_WEIGHT]
+    weights = [DRAFT_WEIGHT[p.cls] * labor(p) for p in pops]
+    total = sum(weights)
+    if total <= 0:
+        return
+    # Distribute over the same groups conscription uses, proportional to who is available.
+    for p, wt in zip(pops, weights):
+        p.conscripted = max(0.0, p.conscripted - getattr(p, "_mobilized_share", 0.0))
+        p._mobilized_share = drawn * wt / total
+        p.conscripted += p._mobilized_share
 
 
 def _recruit(w: World) -> None:

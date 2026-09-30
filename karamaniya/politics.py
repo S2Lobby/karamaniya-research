@@ -33,6 +33,7 @@ ENUMS = {
     "navy_mission": ("patrol", "escort", "break_blockade"),
     "officer_pay": ("freeze", "standard", "raised", "premium"),
     "training_intensity": ("neglect", "standard", "intense"),
+    "mobilization": ("none", "partial", "general"),
     "regional_fund": ("none", "kessel", "highlands", "both"),
 }
 SHARES = {"tax": (0.05, 0.60), "military": (0.005, 0.20), "police": (0.002, 0.06),
@@ -49,7 +50,8 @@ LEVER_OFFICE = {
     **{k: "interior" for k in ("protest_response", "surveillance", "arrests", "emigration",
                                 "election_conduct")},
     **{k: "army" for k in ("recruitment", "army_target", "posture", "purge", "deploy_north",
-                            "deploy_east", "deploy_capital", "officer_pay", "training_intensity")},
+                            "deploy_east", "deploy_capital", "officer_pay", "training_intensity",
+                            "mobilization")},
     "navy_mission": "navy",
     "shipbuilding": "navy",
     **PATRONAGE_LEVERS,

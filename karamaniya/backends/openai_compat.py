@@ -103,8 +103,9 @@ class OpenAICompatBackend(Backend):
         """One request. Returns (result, whether the token limit cut the answer off)."""
         for _ in range(4):
             try:
+                # No `break` here: control has to fall through to the in-body error check below,
+                # which is where a provider that reports its failure inside a 200 reply is handled.
                 out = self._post(self._body(system, user, schema, context.get("temperature")))
-                break
             except _Http4xx as exc:
                 text = exc.detail.lower()
                 if "response_format" in text or "json_schema" in text or "json_object" in text:
@@ -121,16 +122,38 @@ class OpenAICompatBackend(Backend):
                     self.reasoning_effort = ""
                     continue
                 raise FatalError(f"HTTP {exc.code}: {exc.detail}") from exc
+            except TransientError as exc:
+                # A provider can reject the structured-output request by failing INSIDE the stream
+                # rather than answering with a 4xx. OpenRouter replies to a JSON schema its upstream
+                # model cannot honour with "JSON error injected into SSE stream (code 502)" — a 5xx,
+                # so it is retried, and retrying an identical request the provider structurally
+                # cannot serve just fails five times and gives up. Treat it as a format rejection
+                # and step the mode down, which is what a 4xx would have done immediately.
+                text = str(exc).lower()
+                if self.json_mode in DOWNGRADE and any(
+                        token in text for token in ("json", "schema", "response_format", "sse")):
+                    self.json_mode = DOWNGRADE[self.json_mode]
+                    continue
+                raise
+            if isinstance(out.get("error"), dict):
+                # OpenRouter reports an upstream failure inside a 200 reply rather than as an HTTP
+                # status. It is worth naming, and trying again: the provider behind a model can fail
+                # for a moment and then recover. But when the failure names the response format, it
+                # is not momentary — the provider cannot serve the schema at all, and the retry that
+                # follows would fail identically. Step the mode down here instead.
+                code = out["error"].get("code")
+                note = f"{out['error'].get('message', 'error')} (code {code})"
+                message = str(out["error"].get("message", "")).lower()
+                if self.json_mode in DOWNGRADE and any(
+                        token in message for token in ("json", "schema", "response_format", "sse")):
+                    self.json_mode = DOWNGRADE[self.json_mode]
+                    continue
+                if isinstance(code, int) and 400 <= code < 500 and code not in (408, 409, 429):
+                    raise FatalError(f"provider error: {note}")
+                raise TransientError(f"provider error: {note}")
+            break
         else:
             raise FatalError("request format rejected after downgrades")
-        if isinstance(out.get("error"), dict):
-            # OpenRouter reports an upstream failure inside a 200 reply. It is worth naming, and
-            # trying again: the provider behind a model can fail for a moment and then recover.
-            code = out["error"].get("code")
-            note = f"{out['error'].get('message', 'error')} (code {code})"
-            if isinstance(code, int) and 400 <= code < 500 and code not in (408, 409, 429):
-                raise FatalError(f"provider error: {note}")
-            raise TransientError(f"provider error: {note}")
         choice = (out.get("choices") or [{}])[0]
         msg = choice.get("message") or {}
         usage = out.get("usage") or {}

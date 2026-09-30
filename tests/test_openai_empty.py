@@ -143,3 +143,69 @@ class EmptyAndCutOffReplies(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AProviderThatCannotServeTheSchemaInTheBody(unittest.TestCase):
+    """OpenRouter reports an upstream failure inside a 200 reply rather than as a status code. When
+    that failure names the response format, the provider cannot serve the schema at all, so the
+    ordinary retry would fail identically — the mode has to step down instead.
+
+    Recorded shape, from a real seat: "JSON error injected into SSE stream (code 502)" for a large
+    nested schema, while the same seat answered a smaller schema every time."""
+
+    def setUp(self):
+        self.servers = []
+        patcher = mock.patch("karamaniya.backends.base.time.sleep", lambda s: None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        for s in self.servers:
+            s.close()
+
+    def seat(self, replies, **extra):
+        server = ScriptedServer(replies)
+        self.servers.append(server)
+        backend = make_backend({"provider": "openai_compat", "model": "vendor/model",
+                                "base_url": server.url, "retries": 3,
+                                "json_mode": "json_schema", **extra})
+        return backend, server
+
+    def test_an_in_body_format_failure_steps_the_mode_down_instead_of_retrying_identically(self):
+        backend, server = self.seat([
+            (200, {"error": {"code": 502, "message": "JSON error injected into SSE stream"}}),
+            completion(GOOD, 40),
+        ])
+        self.assertEqual(backend.json_mode, "json_schema")
+        res = backend.complete("SYS", "USER", SCHEMA)
+        self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
+        self.assertEqual(backend.json_mode, "json_object",
+                         "the mode did not step down, so the retry was identical")
+        self.assertEqual(len(server.bodies), 2, "the failed request was not retried")
+
+    def test_the_weaker_mode_still_asks_for_json(self):
+        backend, server = self.seat([
+            (200, {"error": {"code": 502, "message": "JSON error injected into SSE stream"}}),
+            completion(GOOD, 40),
+        ])
+        backend.complete("SYS", "USER", SCHEMA)
+        self.assertIn("json_object", json.dumps(server.bodies[1].get("response_format") or {}))
+        self.assertNotIn("json_schema", json.dumps(server.bodies[1].get("response_format") or {}))
+
+    def test_an_in_body_failure_that_is_not_about_the_format_is_still_a_transient_retry(self):
+        backend, server = self.seat([
+            (200, {"error": {"code": 503, "message": "upstream provider overloaded"}}),
+            completion(GOOD, 40),
+        ])
+        res = backend.complete("SYS", "USER", SCHEMA)
+        self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
+        self.assertEqual(backend.json_mode, "json_schema",
+                         "an unrelated outage weakened the request format for the whole seat")
+
+    def test_a_client_error_in_the_body_is_still_fatal(self):
+        backend, server = self.seat([
+            (200, {"error": {"code": 404, "message": "no such model"}}),
+        ])
+        res = backend.complete("SYS", "USER", SCHEMA)
+        self.assertIsNone(res.data)
+        self.assertIn("404", res.error)

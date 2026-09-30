@@ -215,6 +215,11 @@ def _answer_proposals(w: World) -> None:
             _union_reply(w, kind)
         elif pr["party"] == "dorsania":
             foreign.dorsania_reply(w, kind, pr.get("amount", 0.0), pr.get("text", ""))
+        elif pr["party"] == "veleria":
+            # Veleria is a member of the Solvaran Union, so an approach addressed to Veleria alone
+            # is answered by the Union — but it is recorded as Veleria's, because the motion was
+            # addressed to Veleria and a record that files it under the Union loses that.
+            _union_reply(w, kind)
         else:
             _league_reply(w, kind, pr.get("amount", 0.0))
         if w.ended():

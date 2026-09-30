@@ -112,7 +112,7 @@ DIPLOMACY = {"trade_talks": "union", "non_aggression": "union", "federation": "u
              "diplomatic_protest": "union"}
 MOTION_TYPES = ("assign_office", "vacate_office", "set_policy", "settle_arrears", "constitution", "amend",
                 "expel", "diplomacy", "referendum", "launch_currency")
-V2_MOTION_TYPES = ("emergency_measure", "investigation", "disaster_relief")   # second agent architecture
+V2_MOTION_TYPES = ("emergency_measure", "investigation", "disaster_relief", "defer_motion")  # agent architecture 2
 
 
 # ---- parsing values that AIs write ----------------------------------------------------
@@ -447,9 +447,26 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
         if subj not in ("reserves", "domestic_bonds"):
             return _reject("UNKNOWN_FUNDING", "settle_arrears requires reserves or domestic_bonds",
                            allowed=["reserves", "domestic_bonds"])
-        if str(val).strip().lower() not in ("quarter", "half", "all"):
-            return _reject("BAD_VALUE", "settle_arrears requires quarter, half or all",
-                           allowed=["quarter", "half", "all"])
+        fraction, categories, unknown = _arrears_scope(mo, val)
+        if fraction is None and not unknown:
+            return _reject("BAD_VALUE", "settle_arrears takes a quarter, a half, all, or a named "
+                           "group of bills (civil service payroll, storm-related suppliers, rail, "
+                           "storage, logistics, food importers, military pay, police)",
+                           allowed=["quarter", "half", "all", "civil_service_payroll",
+                                    "storm_related_suppliers", "rail", "storage", "logistics",
+                                    "food_import_suppliers", "military_pay", "police_pay"])
+        if unknown:
+            from .economy import ARREARS_CATEGORY_ALIASES as _aliases
+            return _reject("UNKNOWN_ARREARS_CATEGORY",
+                           f"unknown bill category: {', '.join(sorted(unknown))}",
+                           allowed=sorted(set(_aliases)))
+        # A named group with nothing outstanding in it is not a malformed motion, it is a motion
+        # with nothing to pay — worth saying so rather than executing silently against nothing.
+        if categories:
+            owed = sum(max(0.0, w.econ.arrears_by.get(c, 0.0)) for c in categories)
+            if owed <= 0:
+                return _reject("NO_ARREARS_IN_CATEGORY",
+                               f"nothing is owed to {', '.join(categories)}", categories=categories)
         if w.econ.arrears <= 0:
             return _reject("NO_ARREARS", "there are no unpaid state bills to settle")
         if _arrears_funding_capacity(w, subj) <= 0:
@@ -478,6 +495,10 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
             return _reject("NAME_IN_USE", "regime name is already in use", regime_name=w.const.regime_name)
     if t == "diplomacy" and subj not in DIPLOMACY:
         return _reject("UNKNOWN_DIPLOMACY", f"unknown diplomatic proposal '{subj}'", allowed=list(DIPLOMACY))
+    if t == "diplomacy":
+        problem = _deal_problem(w, mo, subj, str(mo.get("text", "")))
+        if problem:
+            return problem
     if t == "launch_currency" and (w.econ.currency != "crown" or w.econ.currency_launch >= 0):
         when = w.econ.currency_launch + 1 if w.econ.currency_launch >= 0 else None
         return _reject("ALREADY_SCHEDULED", "the karam is already launched or scheduled"
@@ -522,6 +543,19 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
         # a figure the treasury cannot raise, which is a fact about the month. It is executed for what
         # can be financed and the shortfall is recorded, rather than the whole response being thrown
         # away — the same reading the arrears payment path already takes.
+    if t == "defer_motion":
+        # Postponing a question is a procedural act, not a setting. A delegate that writes
+        # "highlands_status = deferred" is saying "not now", and the engine used to read the word
+        # "deferred" as an illegal value for a policy lever and throw the motion away — so the one
+        # thing the delegate was trying to do, take the question off this month's agenda, was the
+        # one thing it could not do.
+        target = str(subj or mo.get("defer_motion_id") or "").strip()
+        if not target and not str(val or "").strip():
+            return _reject("NO_DEFERRAL_TARGET", "say which motion or question is being deferred")
+        month = parse_month(val) if str(val or "").strip() else None
+        if month is not None and month >= 0 and month <= w.month:
+            return _reject("DEFERRAL_MONTH_PAST", "a deferral is to a future month",
+                           current_month=w.month + 1)
     return None
 
 
@@ -724,6 +758,10 @@ def validate_motion(w: World, mo: dict) -> str | None:
 
 
 def apply_motion(w: World, mo: dict) -> str:
+    # Only motions that carried reach here, so this is where a figure that moved during debate is
+    # written down with both ends of it. A concession is the evidence that anyone moved, and it is
+    # lost if only the final number is kept.
+    _note_revision(w, mo)
     c, e, dip = w.const, w.econ, w.dip
     t, subj, val, text = mo["type"], str(mo.get("subject", "")).strip(), mo.get("value", ""), mo.get("text", "")
     if t == "assign_office":
@@ -754,8 +792,9 @@ def apply_motion(w: World, mo: dict) -> str:
         set_lever(w, subj, value)
         return f"council directive: {subj} = {fmt_value(value)}"
     if t == "settle_arrears":
-        fraction = {"quarter": .25, "half": .5, "all": 1.0}[str(val).strip().lower()]
-        intended = e.arrears * fraction
+        scope, categories, _ = _arrears_scope(mo, val)
+        owed = (sum(max(0.0, e.arrears_by.get(c, 0.0)) for c in categories) if categories else e.arrears)
+        intended = owed * (scope if scope is not None else 1.0)
         paid = min(intended, _arrears_funding_capacity(w, subj))
         if subj == "reserves":
             rate = w.zone_of("karamaniya").price / (e.fx_conf if e.currency == "karam" else 1.0)
@@ -770,11 +809,14 @@ def apply_motion(w: World, mo: dict) -> str:
         # paid off: settling everything in full used to leave suppliers still repricing and the
         # administration still destroyed.
         from .economy import settle_arrears as _settle
-        _settle(w, paid)
-        result = f"paid {paid / 1e6:.1f}M crowns in inherited bills using {subj.replace('_', ' ')}"
+        _settle(w, paid, categories)
+        scope_text = f" to {', '.join(categories)}" if categories else ""
+        result = f"paid {paid / 1e6:.1f}M crowns in inherited bills{scope_text} using {subj.replace('_', ' ')}"
         if paid + 1 < intended:
             result += f"; {intended / 1e6:.1f}M was requested but funding was limited"
-        w.event("arrears_settlement", result, importance=2)
+        w.event("arrears_settlement", result, importance=2, categories=list(categories),
+                requested=round(intended, 2), executed=round(paid, 2),
+                remaining=round(max(0.0, intended - paid), 2))
         return result
     if t == "constitution":
         return _constitution(w, subj, str(val).strip(), mo.get("proposer", ""))
@@ -798,10 +840,16 @@ def apply_motion(w: World, mo: dict) -> str:
         from . import motion_actions
         action = mo.get("final_executable_action") or motion_actions.structured_action(w, mo)
         amount = float(str(val).strip().rstrip("%")) if subj == "loan" and _num(val) else 0.0
-        dip.proposals.append({"month": w.month, "kind": subj, "party": DIPLOMACY[subj],
+        # An explicit structured target governs the routing, and is recorded. The motion's own
+        # words and that target have already been checked against each other, so a motion that
+        # reaches here addressed Veleria goes to Veleria — it is not quietly answered by whoever
+        # the subject alone would have chosen.
+        party = motion_actions.party_of(action.get("target")) or DIPLOMACY[subj]
+        dip.proposals.append({"month": w.month, "kind": subj, "party": party,
                               "amount": amount, "text": text,
                               "action_type": action.get("action_type"), "target": action.get("target")})
-        who = {"union": w.names["union"], "league": w.names["league"], "dorsania": w.names["dorsania"]}[DIPLOMACY[subj]]
+        who = {"union": w.names["union"], "league": w.names["league"], "dorsania": w.names["dorsania"],
+               "veleria": w.names.get("veleria", "Veleria")}.get(party, party)
         verb = "protest delivered to" if subj == "diplomatic_protest" else "proposal sent to"
         return f"{verb} the {who}: {subj.replace('_', ' ')}"
     if t == "referendum":
@@ -821,7 +869,86 @@ def apply_motion(w: World, mo: dict) -> str:
         return set_emergency_measure(w, subj, str(val).strip().lower() == "on", mo.get("proposer", ""), text)
     if t == "disaster_relief":
         return _apply_relief(w, mo, subj, val)
+    if t == "defer_motion":
+        return _apply_deferral(w, mo, subj, val)
     return "no effect"
+
+
+def _note_revision(w: World, mo: dict) -> None:
+    """Record a negotiated change of figure on any motion whose amount moved during debate."""
+    try:
+        record_revision(w, mo)
+    except Exception:      # a record-keeping failure must never take down a resolution
+        pass
+
+
+def record_revision(w: World, motion: dict, text: str = "") -> dict | None:
+    """Keep a negotiated change of figure, and say what it was, rather than losing or flagging it.
+
+    A delegate that opens by asking for a 150M credit facility and settles for 50M after debate has
+    done the thing this simulation exists to observe. The engine kept only the final figure, so the
+    concession — the evidence that anyone moved — was nowhere in the record, and a reader comparing
+    the opening statement with the motion saw a contradiction with no explanation attached.
+
+    The opening figure comes from the motion's own amendment history, which already holds the
+    wording each amendment displaced: the version first tabled is in `revisions[0]`, and the version
+    that will be voted on is the motion itself. Nothing new has to be tracked to recover it.
+    """
+    history = [h for h in (motion.get("revisions") or []) if isinstance(h, dict)]
+    if not history:
+        return None
+    opening = parse_money(history[0].get("value"))
+    final = parse_money(motion.get("value"))
+    if opening is None or final is None or abs(opening - final) < 0.5:
+        return None
+    reason = "negotiation"
+    low = str(text or motion.get("text") or "").lower()
+    if re.search(r"\bcompromise|concess|settle[ds]?\s+for|accept\w*\b", low):
+        reason = "accepted compromise after debate"
+    elif re.search(r"\bcost|afford|fiscal|reserve|fund\b", low):
+        reason = "funding constraint"
+    elif re.search(r"\bwithdraw|support\b", low):
+        reason = "withdrew in favour of a colleague's figure"
+    entry = {"motion": motion.get("id"), "proposer": motion.get("proposer"),
+             "subject": motion.get("subject"), "month": w.month, "phase": "revision",
+             "initial_position": opening, "final_position": final,
+             "revision_reason": reason}
+    w.institutions.setdefault("negotiated_revisions", []).append(entry)
+    w.institutions["negotiated_revisions"] = w.institutions["negotiated_revisions"][-48:]
+    w.event("negotiated_revision",
+            f"{_who(w, motion.get('proposer'))} opened at {fmt_value(opening)} on "
+            f"{motion.get('subject')} and settled at {fmt_value(final)} ({reason}).",
+            importance=1, **{k: v for k, v in entry.items() if k not in ("motion", "proposer")})
+    return entry
+
+
+def _who(w: World, mid) -> str:
+    try:
+        return w.member(mid).name
+    except (KeyError, AttributeError, TypeError):
+        return "A delegate"
+
+
+def _apply_deferral(w: World, mo: dict, subj, val) -> str:
+    """Put a question back on a later agenda, and change nothing else.
+
+    A deferral is procedural: it moves WHEN a matter is heard, never WHAT the setting is. The
+    deferral is recorded here and applied when the month's agenda is written up, so the motion it
+    names goes to the deferred list with the month it is to return in. Nothing is written to
+    `w.policy`, and a delegate that defers a question has not voted on it.
+    """
+    target = str(subj or mo.get("defer_motion_id") or "").strip()
+    until = parse_month(val) if str(val or "").strip() else None
+    reason = str(mo.get("text") or "").strip()[:200]
+    w.agenda.setdefault("deferrals", []).append({
+        "month": w.month, "by": mo.get("proposer", ""), "target": target,
+        "until": until, "reason": reason})
+    w.agenda["deferrals"] = w.agenda["deferrals"][-24:]
+    when = "until Month " + str(until + 1) if until is not None and until >= 0 else "to a later month"
+    w.event("deferral", f"{w.member(mo.get('proposer', '')).name if mo.get('proposer') in {m.id for m in w.members} else 'The council'} "
+            f"deferred the question of {target or 'the motion'} {when}. No setting was changed.",
+            importance=1, target=target, until=until)
+    return f"deferred {target or 'the question'} {when}; no policy state changed"
 
 
 def _region_output_share(w: World, region) -> float:
@@ -910,11 +1037,151 @@ def settle_arrears_cost(w, motion: dict) -> float:
     e = w.econ
     if str(motion.get("type", "")) != "settle_arrears" or str(motion.get("subject", "")) != "reserves":
         return 0.0
-    fraction = {"quarter": .25, "half": .5, "all": 1.0}.get(str(motion.get("value", "")).strip().lower(), .25)
-    intended = e.arrears * fraction
+    # Same scope the motion executes with: a bare fraction applies to everything owed, while a
+    # named group applies only to what is owed in that group.
+    scope, categories, _ = _arrears_scope(motion, motion.get("value", ""))
+    owed = (sum(max(0.0, e.arrears_by.get(c, 0.0)) for c in categories) if categories else e.arrears)
+    if scope is None:
+        scope = {"quarter": .25, "half": .5, "all": 1.0}.get(str(motion.get("value", "")).strip().lower(), .25)
+    intended = owed * scope
     paid = min(intended, _arrears_funding_capacity(w, "reserves"))
     rate = w.zone_of("karamaniya").price / (e.fx_conf if e.currency == "karam" else 1.0)
     return paid / max(rate, .01)
+
+
+# What a delegate is doing to an agreement that may or may not already exist.
+DEAL_ACTIONS = ("NEW_DEAL", "EXTEND_EXISTING_DEAL", "EXPAND_VOLUME", "RENEGOTIATE_TERMS",
+                "TERMINATE_DEAL")
+_DEAL_SUBJECTS = {"grain_deal": "grain agreement", "trade_deal": "trade deal",
+                  "trade_talks": "trade arrangement", "alliance": "alliance",
+                  "loan": "credit facility", "military_aid": "aid agreement"}
+_DEAL_WORDS = {
+    "EXTEND_EXISTING_DEAL": r"\bextend\w*|\brenew\w*|\broll\s+over|\bcontinue\w*\s+(?:the\s+)?(?:deal|agreement)",
+    "EXPAND_VOLUME": r"\bexpand\w*|\bincreas\w*|\blarger|\bmore\s+(?:deliver|grain|volume|supplies)|"
+                     r"\bscale\s+up|\bhigher\s+(?:volume|deliveries)",
+    "RENEGOTIATE_TERMS": r"\brenegotiat\w*|\brevis\w*\s+(?:the\s+)?terms|\bnew\s+terms|"
+                         r"\breopen\w*\s+(?:the\s+)?(?:deal|agreement|terms)",
+    "TERMINATE_DEAL": r"\bterminat\w*|\bcancel\w*|\bend\s+(?:the\s+)?(?:deal|agreement)|\bwithdraw\s+from",
+}
+
+
+def active_deals(w: World, party: str) -> list:
+    """Agreements with this party that have not run out, as the state model records them."""
+    actor = ((w.foreign or {}).get("actors") or {}).get(party) or {}
+    out = []
+    for c in (actor.get("diplomacy") or {}).get("commitments", []):
+        if isinstance(c, dict) and c.get("partner") == "karamaniya" and c.get("until", 0) > w.month:
+            out.append(c)
+    return out
+
+
+def deal_action_for(mo: dict, text: str, existing: list) -> str | None:
+    """What the motion is doing to the agreement: named explicitly, or read from its words.
+
+    A delegate that asks for larger grain deliveries after a storm is not proposing a new
+    agreement — it is asking to change one that exists, and the engine used to file it as a fresh
+    deal every time, so the same agreement was created over and over and none of them was ever the
+    one in force. Where the words name the act unmistakably, they settle it; where they do not, the
+    engine asks rather than choosing between EXPAND and RENEGOTIATE on the delegate's behalf.
+    """
+    explicit = mo.get("action") if isinstance(mo.get("action"), dict) else {}
+    declared = str(explicit.get("deal_action") or "").strip().upper()
+    if declared in DEAL_ACTIONS:
+        return declared
+    if not existing:
+        return "TERMINATE_DEAL" if re.search(_DEAL_WORDS["TERMINATE_DEAL"], text or "", re.I) else "NEW_DEAL"
+    for action in ("TERMINATE_DEAL", "EXTEND_EXISTING_DEAL", "RENEGOTIATE_TERMS", "EXPAND_VOLUME"):
+        if re.search(_DEAL_WORDS[action], text or "", re.I):
+            return action
+    return None
+
+
+def _deal_problem(w: World, mo: dict, subj: str, text: str):
+    """None if the deal action is coherent with what is already in force, else a rejection."""
+    from .motion_actions import party_of, structured_action
+    action = structured_action(w, mo)
+    party = party_of(action.get("target")) or DIPLOMACY.get(subj)
+    if not party:
+        return None
+    existing = active_deals(w, party)
+    what = _DEAL_SUBJECTS.get(subj, subj.replace("_", " "))
+    chosen = deal_action_for(mo, text, existing)
+    if existing and chosen == "NEW_DEAL":
+        return _reject("DEAL_ALREADY_EXISTS",
+                       f"an agreement with {party} is already in force until Month "
+                       f"{int(existing[0].get('until', 0)) + 1}; say what you are doing to it — "
+                       "EXTEND_EXISTING_DEAL, EXPAND_VOLUME, RENEGOTIATE_TERMS or TERMINATE_DEAL",
+                       in_force=existing[0], allowed=list(DEAL_ACTIONS))
+    if existing and chosen is None:
+        return _reject("UNKNOWN_DEAL_INTENT",
+                       f"an agreement with {party} is already in force; state whether this extends "
+                       "it, expands its volume, renegotiates its terms or terminates it",
+                       allowed=list(DEAL_ACTIONS))
+    if not existing and chosen in ("EXTEND_EXISTING_DEAL", "EXPAND_VOLUME", "RENEGOTIATE_TERMS",
+                                   "TERMINATE_DEAL"):
+        return _reject("NO_EXISTING_DEAL", f"there is no {what} with {party} to {chosen.lower().replace('_', ' ')}",
+                       allowed=["NEW_DEAL"])
+    return None
+
+
+def _arrears_scope(mo: dict, raw) -> tuple:
+    """(fraction, the categories named, the categories not recognised) from however it was written.
+
+    A delegate writes "all_of_current_arrears_that_are_storm_related" or "half, rail and storage" or
+    just "quarter". All three say precisely which bills are to be paid, and the engine used to
+    accept only the three bare fractions and throw the rest away as a bad value — the one phrase
+    that named exactly who was owed money was the one phrase it refused.
+    """
+    from .economy import ARREARS_CATEGORIES_ORDER, ARREARS_CATEGORY_ALIASES
+    text = str(raw or "")
+    explicit = mo.get("action") if isinstance(mo.get("action"), dict) else {}
+    chosen = [str(c) for c in (explicit.get("categories") or [])] if isinstance(
+        explicit.get("categories"), list) else []
+    if explicit.get("region"):
+        chosen.append(str(explicit["region"]))
+    # A delegate writes the scope as prose glued together with underscores —
+    # "all_of_current_arrears_that_are_storm_related" — so the phrase has to be taken apart before
+    # it can be read. Every run of up to three neighbouring words is offered as a candidate, which
+    # is what lets "storm_related" and "civil_service_payroll" be found inside a sentence.
+    tokens = [t for t in re.split(r"[^a-z]+", text.lower()) if t]
+    found, consumed = set(), set()
+    for size in (3, 2, 1):
+        for i in range(len(tokens) - size + 1):
+            name = ARREARS_CATEGORY_ALIASES.get("_".join(tokens[i:i + size]))
+            if name:
+                found.add(name)
+                consumed.update(range(i, i + size))
+    for candidate in chosen:
+        name = ARREARS_CATEGORY_ALIASES.get(candidate)
+        if name:
+            found.add(name)
+    categories = [name for name in ARREARS_CATEGORIES_ORDER if name in found]
+    fraction = None
+    for word, frac in (("quarter", .25), ("half", .5), ("all", 1.0)):
+        if word in tokens or any(ARREARS_CATEGORY_ALIASES.get(c) == word for c in chosen):
+            fraction = frac
+            break
+    # A word that was part of a recognised phrase is not an unknown one: "storm" is spoken for by
+    # "storm_related", and reporting it would make the delegate's own correct wording an error.
+    # But a "_related" coinage the engine has no alias for IS the delegate naming a category it
+    # does not have: "moon_related" is not prose, it is an unknown bill category wearing the
+    # same grammar as a known one.
+    unknown = {tokens[i] for i in range(len(tokens))
+               if i not in consumed and tokens[i] not in ARREARS_CATEGORY_ALIASES
+               and _categorical(tokens[i])}
+    for i in range(len(tokens) - 1):
+        if tokens[i + 1] == "related" and i not in consumed and (i + 1) not in consumed:
+            unknown.add(tokens[i] + "_related")
+    if fraction is None and not categories and not unknown:
+        return None, [], set()
+    return (fraction if fraction is not None else 1.0), categories, unknown
+
+
+def _categorical(word: str) -> bool:
+    """Whether a stray word was plausibly meant as a category rather than as prose."""
+    return any(token in word for token in ("_", "supplier", "payroll", "pay", "service", "debt",
+                                           "rail", "storage", "logistic", "storm", "military",
+                                           "police", "army", "food", "civil"))
 
 
 def _arrears_funding_capacity(w: World, source: str) -> float:
@@ -1001,8 +1268,29 @@ def remove_member(w: World, mid: str, how: str) -> None:
 
 
 # ---- office orders ----------------------------------------------------------------------
+# What happened between a binding directive and the order an office gave. The four values are kept
+# apart because "passed" is not "in force" and "in force" is not "carried out":
+COMPLIANT = "COMPLIANT"                     # the office is where the council put it
+SUPERSEDED_ORDER = "SUPERSEDED_ORDER"       # the order contradicted a directive passed this month
+EXPLICIT_VIOLATION = "EXPLICIT_VIOLATION"   # the office moved against a directive already in force
+BLOCKED_EXECUTION = "BLOCKED_EXECUTION"     # the directive could not be carried out
+PENDING = "PENDING"                         # ordered, not yet observable
+
+
+def _compliance(w: World, office: str, lever: str, mid: str, ordered, note: str, status: str) -> dict:
+    """One lever's directive, the order given, the value actually in force, and which of them won."""
+    directive = w.const.directives.get(lever)
+    actual = getattr(w.policy, lever, None)
+    if actual is None:
+        actual = (w.policy.patronage or {}).get(office) if lever.startswith("patronage_") else None
+    return {"code": "DIRECTIVE_ORDER_MISMATCH" if status != COMPLIANT else "",
+            "member": mid, "office": office, "lever": lever,
+            "directive_value": directive, "office_order_value": ordered,
+            "actual_executed_value": actual, "compliance_status": status, "note": note}
+
+
 def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, superseded: list | None = None,
-                 unauthorized: list | None = None) -> list:
+                 unauthorized: list | None = None, compliance: list | None = None) -> list:
     """Apply one member's orders for the offices they hold. Returns any defiance records.
 
     `fresh` names the settings a motion has just made a directive in this same resolution. Votes and
@@ -1025,11 +1313,23 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                     if superseded is not None and directives.get(key) != flag:
                         superseded.append({"member": mid, "office": office, "lever": key,
                                            "order": flag, "directive": directives.get(key)})
+                    if compliance is not None and directives.get(key) != flag:
+                        compliance.append(_compliance(w, office, key, mid, flag,
+                                                      "the directive passed this month; the order was "
+                                                      "written before its vote was counted", SUPERSEDED_ORDER))
+                    elif compliance is not None:
+                        compliance.append(_compliance(w, office, key, mid, flag, "in line", COMPLIANT))
                     continue
                 if key in directives and directives[key] != flag:
                     defiance.append({"member": mid, "office": office, "lever": key,
                                      "directive": directives[key], "value": flag})
+                    if compliance is not None:
+                        compliance.append(_compliance(w, office, key, mid, flag,
+                                                      "ordered against a directive already in force",
+                                                      EXPLICIT_VIOLATION))
                 w.policy.patronage[office] = flag
+                if compliance is not None and (key not in directives or directives[key] == flag):
+                    compliance.append(_compliance(w, office, key, mid, flag, "in line", COMPLIANT))
                 continue
             refusal = order_authority(w, mid, office, lever)
             if refusal:
@@ -1051,6 +1351,13 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                 if superseded is not None and not _same(directives.get(lever), value):
                     superseded.append({"member": mid, "office": office, "lever": lever,
                                        "order": value, "directive": directives.get(lever)})
+                if compliance is not None:
+                    clash = not _same(directives.get(lever), value)
+                    compliance.append(_compliance(
+                        w, office, lever, mid, value,
+                        "the directive passed this month; the order was written before its vote was counted"
+                        if clash else "in line",
+                        SUPERSEDED_ORDER if clash else COMPLIANT))
                 continue
             fiscal_authority = (office == "treasury" and w.agent_architecture_version >= 2
                                 and "fiscal_authority" in (w.institutions.get("emergency_measures") or {}))
@@ -1059,10 +1366,21 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
             # would have called an order inside a genuine floor a defiance. Reading the bound is what
             # stops "floor 0.035" being taken as leave to raise spending when the same proposal also
             # says no increase — that intersection is 0.035 exactly, and 0.04 is outside it.
-            if lever in directives and not bound_allows(_bound_for(w, lever), value) and not fiscal_authority:
+            against = (lever in directives and not bound_allows(_bound_for(w, lever), value)
+                       and not fiscal_authority)
+            if against:
                 defiance.append({"member": mid, "office": office, "lever": lever,
                                  "directive": directives[lever], "value": value})
             set_lever(w, lever, value)
+            if compliance is not None and lever in directives:
+                # The order stands and the state moves, which is the existing behaviour: a directive
+                # binds the office, and an office that moves against one is recorded acting against
+                # it rather than prevented. What is new is that the three values are written down
+                # beside each other, so the contradiction is visible instead of implied.
+                compliance.append(_compliance(
+                    w, office, lever, mid, value,
+                    "ordered against a directive already in force" if against else "in line",
+                    EXPLICIT_VIOLATION if against else COMPLIANT))
     for d in defiance:
         w.event("defiance", f"{w.member(mid).name} ({OFFICE_TITLES[d['office']]}) acted against the "
                 f"council directive on {d['lever']}: directive {fmt_value(d['directive'])}, "

@@ -896,7 +896,12 @@ class Council:
             statement = {"member": mid, "statement": out["statement"],
                          "principles": w.member(mid).ideology if w.human_factor else "",
                          "principles_changed": principles_changed, "invalid": invalid,
-                         "carry_actions": carry_actions}
+                         "carry_actions": carry_actions,
+                         # A reference to an audit or event the record does not hold. The words are
+                         # kept exactly as the delegate wrote them; what is recorded is that the
+                         # reference cannot be traced, which is worth knowing before two delegates
+                         # argue past each other about what is known.
+                         "fact_references": memory.fact_reference_errors(w, mid, out["statement"])}
             pre_positions[mid] = out["private_position"]
             for promise in out["promises"]:
                 created = commitments.record(w, mid, promise["text"], promise["to"], promise.get("condition", ""),
@@ -936,8 +941,22 @@ class Council:
         scheduled, deferred, agenda_notes = deliberation.allocate(w, carried + tabled, head_priorities, forced, carried)
         agenda_notes = carry_notes + agenda_notes
         lapsed = [m for m in deferred if m.get("carried_over")]
-        w.agenda["deferred"] = [{**{k: v for k, v in m.items() if k not in ("carried_over", "cosponsors")},
-                                 "deferred_month": w.month} for m in deferred if not m.get("carried_over")]
+        # A deferral the council passed this month names a question to hold over. It is applied
+        # here, where the agenda for next month is written, so it changes WHEN the matter is heard
+        # and never what the setting is — the delegate that deferred it has not decided it.
+        wanted = {str(d.get("target") or ""): d for d in w.agenda.get("deferrals", [])
+                  if d.get("month") == w.month}
+        entries = []
+        for m in deferred:
+            if m.get("carried_over"):
+                continue
+            entry = {**{k: v for k, v in m.items() if k not in ("carried_over", "cosponsors")},
+                     "deferred_month": w.month}
+            asked = wanted.get(str(m.get("id"))) or wanted.get(str(m.get("subject")))
+            if asked and asked.get("until") is not None and asked["until"] >= 0:
+                entry["defer_until"] = asked["until"]
+            entries.append(entry)
+        w.agenda["deferred"] = entries
         for m in lapsed:
             agenda_notes.append({"motion": m["id"], "code": "LAPSED", "explanation": "deferred twice; it lapses"})
         intelligence.answer_requests(w, capacity, scheduled, "session")
@@ -1503,11 +1522,22 @@ class Council:
         record["superseded_orders"] = []
         record["unauthorized_orders"] = []
         record["memory_mismatches"] = []
+        record["compliance"] = []
+        seen_clashes = []
         for mid, d in decisions.items():
             if w.member(mid).status == "active":
                 record["defiance"] += politics.apply_orders(w, mid, d["orders"], fresh,
                                                            record["superseded_orders"],
-                                                           record["unauthorized_orders"])
+                                                           record["unauthorized_orders"],
+                                                           record["compliance"])
+                # The record is the point, and it is kept whether or not a run is being logged: a
+                # Council driven straight from a test has no store, and must still resolve a month.
+                store = getattr(self, "store", None)
+                if store is not None:
+                    for entry in record["compliance"]:
+                        if entry.get("code") == "DIRECTIVE_ORDER_MISMATCH" and entry not in seen_clashes:
+                            seen_clashes.append(entry)
+                            store.log({"type": "directive_order_mismatch", "month": w.month, **entry})
                 operations.set_orders(w, mid, d.get("operations", {}))
             # Notes are written in the same answer as the vote and before the count, so they can
             # say a measure was agreed that the record shows did not carry. They are kept exactly as
@@ -1515,10 +1545,12 @@ class Council:
             # is recorded against the month, with the canonical record shown beside them next month.
             findings = (memory.validate_notes(w, mid, d["notes"], record)
                         + memory.validate_note_phase(w, mid, d["notes"])
-                        + memory.unsupported_facts(w, mid, d["notes"]))
+                        + memory.unsupported_facts(w, mid, d["notes"])
+                        + memory.fact_reference_errors(w, mid, d["notes"]))
             for clash in findings:
                 record["memory_mismatches"].append(clash)
-                self.store.log({"type": "memory_finding", "month": w.month, **clash})
+                if getattr(self, "store", None) is not None:
+                    self.store.log({"type": "memory_finding", "month": w.month, **clash})
             w.member(mid).notebook = d["notes"]
             if w.member(mid).agent_state:
                 w.member(mid).agent_state["notes_month"] = w.month     # when they were written, to date them later

@@ -8,6 +8,7 @@ onto everyone who uses them. Karamaniya can leave by launching its own currency.
 from __future__ import annotations
 
 import math
+import re
 
 from . import regional
 from .world import (FOOD_VALUE, K_FOOD, K_IND, K_SERV, LABOR_SHARE, World, annualize,
@@ -468,23 +469,58 @@ def _accrue_arrears(w: World, e, unpaid: float) -> None:
         e.arrears_by[name] = e.arrears_by.get(name, 0.0) + unpaid * (weight / total)
 
 
-def settle_arrears(w: World, amount: float) -> float:
+# What a delegate calls the categories the engine keeps. A council that wants to pay storm-damaged
+# suppliers says "storm-related suppliers", not "contractors", and a vocabulary that only accepts
+# its own words turns a reasonable motion into a bad one.
+ARREARS_CATEGORY_ALIASES = {
+    "army": "army", "military_pay": "army", "military": "army", "soldiers": "army",
+    "defence": "army", "defense": "army",
+    "police": "police", "police_pay": "police", "security_forces": "police",
+    "foreign_debt": "foreign_debt", "debt_service": "foreign_debt", "external_debt": "foreign_debt",
+    "civil_service": "civil_service", "civil_service_payroll": "civil_service", "payroll": "civil_service",
+    "public_sector_pay": "civil_service", "administration": "civil_service", "wages": "civil_service",
+    "contractors": "contractors", "suppliers": "contractors", "storm_related_suppliers": "contractors",
+    "storm_related": "contractors", "rail": "contractors", "storage": "contractors",
+    "logistics": "contractors", "food_import_suppliers": "contractors", "food_suppliers": "contractors",
+    "works": "contractors", "public_works": "contractors",
+}
+
+
+def normalise_categories(names) -> list:
+    """The engine's categories for whatever a delegate called them, in a stable order."""
+    out = []
+    for raw in names or []:
+        key = re.sub(r"[\s\-]+", "_", str(raw).strip().lower())
+        engine = ARREARS_CATEGORY_ALIASES.get(key)
+        if engine and engine not in out:
+            out.append(engine)
+    return [name for name in ARREARS_CATEGORIES_ORDER if name in out]
+
+
+def settle_arrears(w: World, amount: float, categories=None) -> float:
     """Pay down arrears, keeping the composition in step with the total.
 
     Every path that reduces `e.arrears` must come through here. Three of them used to write the
     total directly — a council motion funded from reserves or bonds, and the seeded inherited
     liabilities — which left the composition describing debts that had already been paid: settling
     everything in full still left the administration destroyed and suppliers still repricing.
+
+    `categories` restricts the payment to named parts of the composition, which is what a council
+    means when it votes to pay storm-damaged suppliers and nobody else. Only the named categories
+    are credited, so the rest keep owing what they owed, and the total falls by what was actually
+    paid rather than by the whole of the debt.
     """
     e = w.econ
-    owed = sum(max(0.0, e.arrears_by.get(name, 0.0)) for name in ARREARS_CATEGORIES)
-    paid = max(0.0, min(amount, max(e.arrears, owed)))
+    names = normalise_categories(categories) or list(ARREARS_CATEGORIES)
+    owed = sum(max(0.0, e.arrears_by.get(name, 0.0)) for name in names)
+    if owed <= 0:
+        return 0.0
+    paid = max(0.0, min(amount, owed))
     if paid <= 0:
         return 0.0
-    if owed > 0:
-        scale = min(1.0, paid / owed)
-        for name in ARREARS_CATEGORIES:
-            e.arrears_by[name] = max(0.0, e.arrears_by.get(name, 0.0) * (1.0 - scale))
+    scale = min(1.0, paid / owed)
+    for name in names:
+        e.arrears_by[name] = max(0.0, e.arrears_by.get(name, 0.0) * (1.0 - scale))
     e.arrears = max(0.0, e.arrears - paid)
     return paid
 

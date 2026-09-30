@@ -208,6 +208,56 @@ def unsupported_facts(w: World, mid: str, notes: str) -> list:
     return out
 
 
+_AUDIT_MENTION = re.compile(r"\b(?:audit|inquiry|investigation)\b", re.I)
+
+
+def fact_reference_errors(w: World, mid: str, text: str) -> list:
+    """A reference to an audit or event that is not the one the record holds.
+
+    A delegate that writes "the Kessel audit" when the audit that ran was of the Army has not
+    misremembered a detail: it has attached a finding to the wrong institution, and every conclusion
+    it draws from that will be wrong in the same direction. The statement is left exactly as the
+    delegate wrote it — the record is corrected, not the delegate's words — and the mismatch is
+    reported, because a reference that cannot be traced explains why two delegates disagree about
+    what is known.
+    """
+    if not text or not isinstance(text, str):
+        return []
+    from . import audits
+    done = [r.get("office") for r in audits.state(w).get("done", []) if r.get("office")]
+    out = []
+    for sentence in re.split(r"(?<=[.;!?])\s+|\n", text):
+        if not _AUDIT_MENTION.search(sentence):
+            continue
+        low = sentence.lower()
+        named_offices = [o for o in OFFICES if o in low]
+        named_regions = [r.id for r in w.k_regions() if r.id in low]
+        if not (named_offices or named_regions):
+            continue
+        # Naming an office that no audit has examined, while some other office has one, is the
+        # shape the check is for. Anything vaguer is prose, not a false reference.
+        wrong = [o for o in named_offices if o not in done]
+        if wrong and done:
+            out.append({"code": "FACT_REFERENCE_ERROR", "member": mid,
+                        "referred_to": wrong[0], "canonical": sorted(set(done)),
+                        "claim": sentence.strip()[:200],
+                        "note": "the statement is kept as written; the record names the audit that ran"})
+        elif named_regions and not named_offices:
+            # An audit examines an office, never a province. A delegate remembering "the Kessel
+            # audit" is remembering one that could not have happened, whatever else the auditors
+            # have been doing — and that is the case this check was written for.
+            region = named_regions[0]
+            ran_here = any(region in str(r.get("text", "")).lower() or r.get("region") == region
+                           for r in audits.state(w).get("done", []))
+            if not ran_here:
+                out.append({"code": "FACT_REFERENCE_ERROR", "member": mid,
+                            "referred_to": region, "canonical": sorted(set(done)),
+                            "claim": sentence.strip()[:200],
+                            "note": "no audit of this region exists in the record; an audit examines "
+                                    "an office"})
+    return out
+
+
 def record_month(w: World, record: dict) -> None:
     """Write this month's memories for every delegate from the resolved record and events."""
     active = {m.id for m in w.members}

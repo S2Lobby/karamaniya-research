@@ -93,12 +93,19 @@ def action_schema(w: World) -> dict:
     from .motion_actions import ACTOR_NAMES
     # Optional, and only meaningful on a foreign-policy motion: an interior directive has no target
     # country. The instructions say so; leaving it out is not an error.
-    from .politics import RELIEF_FUNDING, RELIEF_SCOPES
+    from .politics import DEAL_ACTIONS, RELIEF_FUNDING, RELIEF_SCOPES
     regions = [r.id for r in w.k_regions()]
     return _opt_obj({"action_type": {"type": "string", "enum": list(DIPLOMATIC_ACTION_TYPES)},
-                     "target": {"type": "string", "enum": list(ACTOR_NAMES.values())},
+                     # Canonical ids, not display names: "Union" is not an actor and a target that
+                     # ambiguous cannot be checked against anything. The normaliser still accepts a
+                     # display name for a delegate that writes one.
+                     "target": {"type": "string", "enum": list(ACTOR_NAMES)},
                      "issue": {"type": "string"},
                      "terms": {"type": "array", "items": {"type": "string"}},
+                     # What is being done to an agreement that may already exist. Asking for larger
+                     # grain deliveries is not a new agreement, and filing it as one created the
+                     # same agreement over and over while none of them was the one in force.
+                     "deal_action": {"type": "string", "enum": list(DEAL_ACTIONS)},
                      # A disaster relief package. Its own action rather than an emergency measure:
                      # a storm is not a curfew, and the only act the engine used to have for a
                      # crisis was the toggle for police powers, so every relief motion was refused
@@ -584,7 +591,7 @@ def normalize_motion_v2(w: World, raw: dict) -> dict:
           "subject": canonical_lever(patronage_subject(raw.get("subject", ""))),
           "value": str(raw.get("value", "")).strip(),
           "text": words(raw.get("text", ""), 120),
-          "action": _explicit_action(raw.get("action"))}
+          "action": _explicit_action(w, raw.get("action"))}
     if mo["type"] == "investigation":
         # 'navy procurement' names the navy; an empty value is an order to open it.
         from . import audits
@@ -620,7 +627,7 @@ def normalize_motion_v2(w: World, raw: dict) -> dict:
     return mo
 
 
-def _explicit_action(raw) -> dict:
+def _explicit_action(w, raw) -> dict:
     """The act the delegate says the motion is, stated in its own fields rather than inferred.
 
     A diplomatic motion that names its act and its target cannot be quietly executed as a different
@@ -628,8 +635,20 @@ def _explicit_action(raw) -> dict:
     """
     if not isinstance(raw, dict):
         return {}
+    # Canonicalise at intake, so the stored spelling is already the actor it names. Display
+    # names, old lowercase keys and canonical ids all resolve to one actor via the alias
+    # table, and prose, record and routing keep agreeing with each other from here on.
+    from .motion_actions import _canonical_actor
+    target = str(raw.get("target", "")).strip()
+    if target:
+        try:
+            canonical = _canonical_actor(w, target)
+        except Exception:
+            canonical = None
+        if canonical:
+            target = canonical
     action = {"action_type": str(raw.get("action_type", "")).strip(),
-              "target": str(raw.get("target", "")).strip(),
+              "target": target,
               "issue": words(raw.get("issue", ""), 20),
               "terms": [words(x, 20) for x in (raw.get("terms") or raw.get("demands") or [])
                         if isinstance(x, str) and words(x, 20)][:4]}

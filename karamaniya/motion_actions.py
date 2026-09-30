@@ -24,21 +24,39 @@ import json
 import re
 
 # ---- the action vocabulary -------------------------------------------------------------------------
+# Canonical actor ids. These are the vocabulary a structured target is written in, because "Union"
+# is not an actor: it is a word that could mean the Solvaran Union, the Maritime League's members,
+# or a customs arrangement, and a target that ambiguous cannot be checked against anything. Display
+# names stay for prose and for the prompt; the engine keys on these.
+SOLVARAN_UNION = "SOLVARAN_UNION"
+MARITIME_LEAGUE = "MARITIME_LEAGUE"
+DORSANIA = "DORSANIA"
+VELERIA = "VELERIA"
+
+ACTORS = (SOLVARAN_UNION, MARITIME_LEAGUE, DORSANIA, VELERIA)
+ACTOR_NAMES = {SOLVARAN_UNION: "Solvaran Union", MARITIME_LEAGUE: "Maritime League",
+               DORSANIA: "Dorsania", VELERIA: "Veleria"}
+# The engine's older lowercase keys, and the party names the state model uses. A saved run, a
+# recorded motion and a display name all have to keep resolving to the same actor.
+ACTOR_ALIASES = {"union": SOLVARAN_UNION, "league": MARITIME_LEAGUE, "dorsania": DORSANIA,
+                 "veleria": VELERIA, "solvaran union": SOLVARAN_UNION,
+                 "solvaran_union": SOLVARAN_UNION, "maritime league": MARITIME_LEAGUE,
+                 "maritime_league": MARITIME_LEAGUE}
+
 #: What a motion actually does. Deliberately explicit: an overloaded "proposal" type is what let a
 #: protest be filed as a trade deal.
 DIPLOMATIC_ACTIONS = {
-    "diplomatic_protest": "union",
-    "trade_talks": "union", "non_aggression_pact": "union", "federation": "union",
-    "join_union": "union", "ceasefire": "union",
-    "alliance": "league", "loan_request": "league", "military_aid": "league", "trade_deal": "league",
-    "grain_deal": "dorsania",
+    "diplomatic_protest": SOLVARAN_UNION,
+    "trade_talks": SOLVARAN_UNION, "non_aggression_pact": SOLVARAN_UNION,
+    "federation": SOLVARAN_UNION, "join_union": SOLVARAN_UNION, "ceasefire": SOLVARAN_UNION,
+    "alliance": MARITIME_LEAGUE, "loan_request": MARITIME_LEAGUE,
+    "military_aid": MARITIME_LEAGUE, "trade_deal": MARITIME_LEAGUE,
+    "grain_deal": DORSANIA,
 }
 #: The engine's own subject vocabulary, which the diplomatic action names map onto.
 ACTION_TO_SUBJECT = {"diplomatic_protest": "diplomatic_protest", "non_aggression_pact": "non_aggression",
                      "loan_request": "loan"}
 SUBJECT_TO_ACTION = {v: k for k, v in ACTION_TO_SUBJECT.items()}
-ACTORS = ("union", "league", "dorsania")
-ACTOR_NAMES = {"union": "Solvaran Union", "league": "Maritime League", "dorsania": "Dorsania"}
 
 #: Prose that names a foreign act, strongest signal first. Each entry is (action_type, patterns).
 PROSE_ACTIONS = (
@@ -62,9 +80,11 @@ PROSE_ACTIONS = (
 def _actor_patterns(w) -> dict:
     names = getattr(w, "names", {}) or {}
     return {
-        "union": [names.get("union", "Solvaran Union"), r"\bthe\s+Union\b", r"\bUnion\b"],
-        "league": [names.get("league", "Maritime League"), r"\bthe\s+League\b", r"\bMaritime\s+League\b"],
-        "dorsania": [names.get("dorsania", "Dorsania")],
+        SOLVARAN_UNION: [names.get("union", "Solvaran Union"), r"\bthe\s+Union\b", r"\bUnion\b"],
+        MARITIME_LEAGUE: [names.get("league", "Maritime League"), r"\bthe\s+League\b",
+                          r"\bMaritime\s+League\b"],
+        DORSANIA: [names.get("dorsania", "Dorsania")],
+        VELERIA: [names.get("veleria", "Veleria")],
     }
 
 
@@ -302,13 +322,25 @@ def condition_mismatch(w, motion: dict) -> dict | None:
 
 
 def _canonical_actor(w, raw: str) -> str | None:
-    """Map a delegate's spelling of an actor onto the three the engine knows."""
+    """Map a delegate's spelling of an actor onto the canonical ids the engine knows.
+
+    Accepts the canonical id, the display name, and the older lowercase keys that recorded runs and
+    saved state still carry, so a motion written under any of them resolves to one actor.
+    """
     text = str(raw).casefold()
+    if text.strip() in ACTOR_ALIASES:
+        return ACTOR_ALIASES[text.strip()]
     for actor, patterns in _actor_patterns(w).items():
         for p in patterns:
             if re.fullmatch(p.replace(r"\b", "").strip(), text, re.I) or re.search(p, text, re.I):
                 return actor
     return None
+
+
+def party_of(actor: str | None) -> str | None:
+    """The state model's name for a canonical actor, for routing a proposal."""
+    return {SOLVARAN_UNION: "union", MARITIME_LEAGUE: "league", DORSANIA: "dorsania",
+            VELERIA: "veleria"}.get(actor)
 
 
 def prose_intent(w, text: str) -> dict:
@@ -339,7 +371,7 @@ def conflict(w, motion: dict) -> dict | None:
     reasons = []
     named = intent["actors"]
     if len(named) == 1 and action.get("target") and named[0] != action["target"]:
-        reasons.append({"code": "TARGET_MISMATCH", "prose_actor": named[0],
+        reasons.append({"code": "FOREIGN_TARGET_MISMATCH", "prose_actor": named[0],
                         "action_actor": action["target"],
                         "detail": f"the text addresses the {ACTOR_NAMES[named[0]]}, but the structured "
                                   f"action is sent to the {ACTOR_NAMES.get(action['target'], action['target'])}"})

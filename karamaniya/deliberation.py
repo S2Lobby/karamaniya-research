@@ -229,7 +229,17 @@ def carried_over(w: World) -> list:
     keep = []
     months = int(tuning.get(w, "agenda.carry_over_months"))
     for m in w.agenda.get("deferred", []):
-        if w.month - m.get("deferred_month", w.month) > months:
+        # A delegate that named the month it wants the question back holds it there until then, and
+        # the window in which a deferred motion may return runs from THAT month. Measured from the
+        # month it was set aside instead, "defer until Month 6" lapses before Month 6 and the
+        # delegate's instruction is defeated by the rule that exists to protect it.
+        named = m.get("defer_until")
+        if named is not None:
+            if w.month < named:
+                continue
+            if w.month - named > months:
+                continue
+        elif w.month - m.get("deferred_month", w.month) > months:
             continue
         if w.member(m["proposer"]).status != "active":
             continue

@@ -49,7 +49,7 @@ class ProseAgainstAction(unittest.TestCase):
         self.assertIsNotNone(clash)
         self.assertEqual(clash["code"], "MOTION_ACTION_MISMATCH")
         codes = {r["code"] for r in clash["reasons"]}
-        self.assertIn("TARGET_MISMATCH", codes)
+        self.assertIn("FOREIGN_TARGET_MISMATCH", codes)
         self.assertIn("ACTION_MISMATCH", codes)
 
     def test_the_repair_request_names_both_sides_of_the_conflict(self):
@@ -83,7 +83,7 @@ class ProseAgainstAction(unittest.TestCase):
         fixed = actions.normalize_motion_v2(world(), stated)
         self.assertEqual(fixed["subject"], "diplomatic_protest")
         self.assertEqual(fixed["declared_subject"], "trade_deal")
-        self.assertEqual(motion_actions.structured_action(world(), fixed)["target"], "union")
+        self.assertEqual(motion_actions.structured_action(world(), fixed)["target"], "SOLVARAN_UNION")
         # A stale subject that contradicts the stated act is itself reported.
         clash = motion_actions.conflict(world(), fixed)
         self.assertIsNotNone(clash)
@@ -305,7 +305,7 @@ class CouncilRoundTrip(unittest.TestCase):
         self.assertTrue(mine, "the repaired motion should have been tabled")
         for mo in mine:
             self.assertEqual(mo["subject"], "diplomatic_protest")
-            self.assertEqual(mo["final_structured_action"]["target"], "union")
+            self.assertEqual(mo["final_structured_action"]["target"], "SOLVARAN_UNION")
         # The engine sent the Union a protest and never sent the League a trade deal for it.
         sent = [p for p in w.dip.log if p.get("from") == "Maritime League"]
         for entry in sent:

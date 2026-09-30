@@ -427,7 +427,12 @@ class World:
     policy: Policy = field(default_factory=Policy)
     events: list = field(default_factory=list)      # events of the month being simulated
     last_events: list = field(default_factory=list) # events of the last completed month
-    history: list = field(default_factory=list)     # one snapshot per completed month
+    history: list = field(default_factory=list)     # one numeric snapshot per completed month
+    # What each month actually decided, kept for the month or two after it. `history` is numbers
+    # only, and the full record lives in the run log, which the engine cannot read while composing
+    # a prompt. A delegate's notes are checked and corrected against this next month, so the
+    # outcomes have to travel with the world.
+    month_outcomes: list = field(default_factory=list)
     counters: dict = field(default_factory=dict)    # cumulative tallies
     outcome: dict = field(default_factory=dict)     # set when the run ends
     integrity: dict = field(default_factory=lambda: {"status": "clean", "warnings": []})

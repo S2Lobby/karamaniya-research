@@ -273,8 +273,10 @@ def last_month_facts(w: World, mid: str) -> str:
     rather than in place of it.
     """
     written = notes_written_month(w, mid)
-    record = next((h for h in w.history if h.get("month") == written), None)
-    if record is None:
+    # `w.history` holds numbers and no motions: the decisions are kept separately, because the run
+    # log the full record lives in cannot be read back from here.
+    record = next((h for h in getattr(w, "month_outcomes", []) if h.get("month") == written), None)
+    if not record or not record.get("motions"):
         return ""
     from .convergence import EXECUTION_BLOCKED, motion_status
 
@@ -320,9 +322,16 @@ def notes_parts(w: World, mid: str) -> tuple:
     if not text:
         return "YOUR NOTES FROM LAST MONTH\n(none)", ""
     written = notes_written_month(w, mid)
+    # Say "the record below" only when one is actually below it. A month in which no motion was
+    # tabled has nothing to recite, and a heading promising a record that is not there is worse than
+    # no heading: it tells the delegate to look for a correction that was never written.
+    facts = last_month_facts(w, mid)
+    correction = ("The CANONICAL HARD STATE and the record below are authoritative on what is true now.)"
+                  if facts else
+                  "The CANONICAL HARD STATE and the list after it are authoritative on what is true now.)")
     head = (f"YOUR NOTES FROM LAST MONTH (written during {_m(written)}, before that month's votes and orders were "
             "resolved. They record what you knew then; facts about others' orders, holdings and positions may have "
-            "changed. The CANONICAL HARD STATE and the record below are authoritative on what is true now.)")
+            "changed. " + correction)
     since = since_lines(w, written)
     tail = (f"SINCE YOUR NOTES (changes you may not have seen; state as of {_asof(w)}):\n" + "\n".join(f"- {s}" for s in since)
             if since else "")
@@ -331,7 +340,6 @@ def notes_parts(w: World, mid: str) -> tuple:
     # is not a correction. It goes above the delegate's own words rather than below them, so the
     # account of what happened is read before the memory of what was expected, and the notes stay
     # verbatim and last.
-    facts = last_month_facts(w, mid)
     body = head + (("\n\n" + facts) if facts else "") + "\n" + text
     return body, tail
 

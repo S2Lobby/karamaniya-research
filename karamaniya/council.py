@@ -26,6 +26,26 @@ def _group(items: list, key: str) -> dict:
     return out
 
 
+MONTH_OUTCOMES_KEPT = 6
+
+
+def _keep_month_outcome(w, record: dict) -> None:
+    """Keep what this month decided, in the shape next month's memory check needs.
+
+    The full record goes to the run log, which the engine cannot read back while composing a prompt;
+    `history` holds numbers and no motions. Without this, a delegate's notes would be read back next
+    month with nothing to check them against.
+    """
+    compact = [{"id": mo.get("id"), "summary": mo.get("summary"), "type": mo.get("type"),
+                "subject": mo.get("subject"), "passed": bool(mo.get("passed")),
+                "withdrawn": bool(mo.get("withdrawn")), "deferred": bool(mo.get("deferred")),
+                "carried_over": bool(mo.get("carried_over")),
+                "execution_status": mo.get("execution_status"), "tally": mo.get("tally", "")}
+               for mo in record.get("motions", [])]
+    w.month_outcomes = (list(w.month_outcomes) + [{"month": record.get("month"), "motions": compact}]
+                        )[-MONTH_OUTCOMES_KEPT:]
+
+
 def _formation_read(mid: str, data, ids: list) -> dict:
     """Read one formation proposal, and say exactly what is wrong with it.
 
@@ -702,6 +722,7 @@ class Council:
         record["outcome"] = dict(w.outcome)
         self.last_record = {"motions": record["motions"], "defiance": record["defiance"],
                             "coups": record["coups"]}
+        _keep_month_outcome(w, record)
         self.store.log({"type": "month", **record})
         return record
 
@@ -1074,6 +1095,7 @@ class Council:
         record["issues"] = [{k: d.get(k) for k in ("id", "kind", "title", "month", "status")} for d in w.dilemmas.get("active", [])]
         self.last_record = {"motions": record["motions"], "defiance": record["defiance"], "coups": record["coups"],
                             "deferred": record["deferred"]}
+        _keep_month_outcome(w, record)
         self.store.log({"type": "month", **record})
         return record
 

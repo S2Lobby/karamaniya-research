@@ -127,7 +127,7 @@ class MemoriesMustMatchTheRecord(unittest.TestCase):
         member.notebook = REAL_NOTE
         member.agent_state = {"notes_month": 0}
         before = member.notebook
-        w.history = [self.record]
+        w.month_outcomes = [self.record]
         freshness.notes_parts(w, "B")
         self.assertEqual(member.notebook, before,
                          "reading the notes back rewrote the delegate's own memory")
@@ -137,7 +137,7 @@ class MemoriesMustMatchTheRecord(unittest.TestCase):
         member = w.member("B")
         member.notebook = REAL_NOTE
         member.agent_state = {"notes_month": 0}
-        w.history = [dict(self.record, label="Month 1")]
+        w.month_outcomes = [dict(self.record, label="Month 1")]
         w.policy.farm_support = 0.02
         body, _ = freshness.notes_parts(w, "B")
         self.assertIn("WHAT ACTUALLY HAPPENED", body)
@@ -149,6 +149,48 @@ class MemoriesMustMatchTheRecord(unittest.TestCase):
         self.assertLess(body.index("WHAT ACTUALLY HAPPENED"), body.index(REAL_NOTE))
         self.assertTrue(body.endswith(REAL_NOTE))
 
+    def test_a_checkpoint_from_before_this_change_still_resumes(self):
+        """Runs saved earlier have no outcomes recorded, and must degrade to no correction rather
+        than to a hollow heading with nothing under it."""
+        w = self.w
+        w.member("B").notebook = REAL_NOTE
+        w.member("B").agent_state = {"notes_month": 0}
+        w.month_outcomes = []
+        body, _ = freshness.notes_parts(w, "B")
+        self.assertNotIn("WHAT ACTUALLY HAPPENED", body)
+        self.assertIn(REAL_NOTE, body, "the delegate's own notes went missing with it")
+
+    def test_the_heading_never_promises_a_record_that_is_not_there(self):
+        """A month in which no motion was tabled has nothing to recite. A heading telling the
+        delegate to read a correction that was never written is worse than no heading."""
+        w = self.w
+        w.member("B").notebook = "Month 3: a quiet month."
+        w.member("B").agent_state = {"notes_month": 0}
+        w.month_outcomes = [{"month": 0, "motions": []}]
+        body, _ = freshness.notes_parts(w, "B")
+        self.assertIn("the list after it are authoritative", body)
+        self.assertNotIn("the record below", body)
+        # And when there is one, it says so and delivers it.
+        w.month_outcomes = [self.record]
+        body, _ = freshness.notes_parts(w, "B")
+        self.assertIn("the record below are authoritative", body)
+        self.assertIn("WHAT ACTUALLY HAPPENED", body)
+
+    def test_the_outcome_is_kept_in_the_shape_the_check_needs(self):
+        from karamaniya.council import _keep_month_outcome
+        w = self.w
+        w.month_outcomes = []
+        _keep_month_outcome(w, self.record)
+        self.assertEqual(len(w.month_outcomes), 1)
+        kept = w.month_outcomes[0]
+        self.assertEqual(kept["month"], 0)
+        self.assertEqual([mo["id"] for mo in kept["motions"]], ["M4", "M1"])
+        self.assertTrue(all(mo["withdrawn"] for mo in kept["motions"]))
+        # Bounded: a long run must not carry its whole history in every checkpoint.
+        for month in range(20):
+            _keep_month_outcome(w, {"month": month, "motions": []})
+        self.assertLessEqual(len(w.month_outcomes), 6)
+
     def test_the_three_states_stay_distinct_in_what_is_in_force(self):
         """"No motion passed" is not "nothing changed": an office can set a lever the council
         never directed, and the record has to say which of the three it is looking at."""
@@ -156,7 +198,7 @@ class MemoriesMustMatchTheRecord(unittest.TestCase):
         member = w.member("B")
         member.notebook = "As of Month 1: we discussed farm support."
         member.agent_state = {"notes_month": 0}
-        w.history = [dict(self.record, label="Month 1")]
+        w.month_outcomes = [dict(self.record, label="Month 1")]
         w.policy.farm_support = 0.03                        # an office set it; the council did not
         w.const.directives["tax"] = 0.22
         w.policy.tax = 0.19                                 # the office is not in line

@@ -201,6 +201,19 @@ class Economy:
     gdp_prev: float = 0.0           # last month's real output, for the growth rate
     output_growth: float = 0.0      # this month's real output growth
     money_stock_prev: float = 0.0   # last month's money stock, for the growth rate
+    # ---- fiscal structure (see docs/CAUSAL_WORLD_MODEL.md) -------------------------------
+    # Who is owed the money the government has not paid. The aggregate stock is far less
+    # informative than its composition: unpaid soldiers and unpaid road contractors do not
+    # behave alike, and the engine treats them differently.
+    arrears_by: dict = field(default_factory=lambda: {"army": 0.0, "police": 0.0,
+                                                      "civil_service": 0.0, "contractors": 0.0,
+                                                      "foreign_debt": 0.0})
+    interest_dom: float = 0.0       # this month's interest on domestic debt
+    interest_for: float = 0.0       # this month's interest on foreign debt, in local currency
+    debt_short_share: float = 0.20  # share of domestic debt falling due within twelve months
+    rollover_need: float = 0.0      # domestic debt that must be refinanced this month
+    procurement_premium: float = 1.0  # contractors charge more when the government owes them
+    reserve_months: float = 0.0     # foreign reserves measured in months of imports
 
 
 @dataclass

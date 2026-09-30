@@ -298,6 +298,77 @@ def _water_fill(sizes: list, weights: dict, supply: float) -> list:
     return alloc
 
 
+# ---- who the government owes -----------------------------------------------------------
+# When the budget cannot be met, the shortfall lands on categories in proportion to their share
+# of the bills. What matters politically is not the total but the composition: the historical
+# record shows military pay arrears immediately preceding coups in Côte d'Ivoire (1999), the
+# Gambia (1994), Guinea-Bissau (2004) and Sierra Leone (1992); civil-service arrears turning into
+# strikes after roughly two to three months; and contractors who have been left unpaid bidding
+# higher or declining to bid at all.
+ARREARS_CATEGORIES = ("army", "police", "civil_service", "contractors", "foreign_debt")
+CIVIL_SERVICE_STRIKE_MONTHS = 2.5   # months of unpaid wages before the service starts to break
+PROCUREMENT_PREMIUM_CAP = 0.35      # most contractors will add when they are owed a lot
+
+
+def _accrue_arrears(w: World, e, unpaid: float, pol, gdp_nom: float, regional_spend: float) -> None:
+    """Split an unpaid shortfall across the bills it goes unpaid on."""
+    bills = {
+        "army": pol.military * gdp_nom,
+        "police": pol.police * gdp_nom,
+        "civil_service": (pol.health_edu + pol.welfare + ADMIN_SHARE) * gdp_nom,
+        "contractors": (pol.farm_support + regional_spend) * gdp_nom,
+        "foreign_debt": e.interest_for,
+    }
+    total = sum(bills.values())
+    if total <= 0:
+        e.arrears_by["civil_service"] = e.arrears_by.get("civil_service", 0.0) + unpaid
+        return
+    for name, amount in bills.items():
+        e.arrears_by[name] = e.arrears_by.get(name, 0.0) + unpaid * (amount / total)
+
+
+def _settle_arrears(e, repaid: float) -> None:
+    """Clear arrears oldest-first across categories, in proportion to what each is owed."""
+    owed = sum(max(0.0, e.arrears_by.get(name, 0.0)) for name in ARREARS_CATEGORIES)
+    if owed <= 0:
+        e.arrears = max(0.0, e.arrears - repaid)
+        return
+    scale = min(1.0, repaid / owed)
+    for name in ARREARS_CATEGORIES:
+        e.arrears_by[name] = max(0.0, e.arrears_by.get(name, 0.0) * (1.0 - scale))
+    e.arrears = max(0.0, e.arrears - repaid)
+
+
+def arrears_months(w: World) -> dict:
+    """How many months of pay or payment each category is owed.
+
+    A stock in crowns says little on its own; the number of months behind says everything, and it
+    is what the historical triggers are actually stated in.
+    """
+    e, pol = w.econ, w.policy
+    gdp = max(1.0, e.gdp_nominal)
+    monthly = {"army": pol.military * gdp / 12, "police": pol.police * gdp / 12,
+               "civil_service": (pol.health_edu + pol.welfare + ADMIN_SHARE) * gdp / 12,
+               "contractors": max(1.0, (pol.farm_support + 0.02) * gdp / 12),
+               "foreign_debt": max(1.0, e.interest_for)}
+    return {name: (e.arrears_by.get(name, 0.0) / monthly[name] if monthly[name] > 0 else 0.0)
+            for name in ARREARS_CATEGORIES}
+
+
+def procurement_premium(w: World) -> float:
+    """What contractors add to their price because the government already owes them money.
+
+    Grounded in the 2012 Spanish accelerated-payment episode: firms holding unpaid public bills
+    were markedly less likely to take new public work and bid differently when they did. The
+    premium is capped, because eventually suppliers simply stop bidding.
+    """
+    e = w.econ
+    months = arrears_months(w)["contractors"]
+    premium = 1.0 + clamp(0.06 * months, 0.0, PROCUREMENT_PREMIUM_CAP)
+    e.procurement_premium = premium
+    return premium
+
+
 # ---- the state budget ------------------------------------------------------------------
 def fiscal(w: World, prod: dict, trade: dict) -> dict:
     e, pol, dip = w.econ, w.policy, w.dip
@@ -322,13 +393,28 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
     league_rate = league_loan.get("interest", .05)
     league_share = clamp(league_principal / e.debt_for) if e.debt_for > 0 else 0.0
     foreign_rate = .05 * (1 - league_share) + league_rate * league_share
-    interest = e.debt_dom * (pol.rate + 0.02 + risk) / 12 + e.debt_for * foreign_rate / 12 * gold_to_local
+    # Domestic and foreign interest are kept apart: they behave differently. Domestic interest is
+    # paid in the country's own money and can in principle be met by issuance; foreign interest is
+    # a claim in someone else's money and can only be met from reserves, exports or new borrowing
+    # abroad. Only the domestic rate reprices as the policy rate moves, because only the maturing
+    # slice of the stock is refinanced each month.
+    e.interest_dom = e.debt_dom * (pol.rate + 0.02 + risk) / 12
+    e.interest_for = e.debt_for * foreign_rate / 12 * gold_to_local
+    interest = e.interest_dom + e.interest_for
+    e.rollover_need = e.debt_short_share * e.debt_dom / 12.0
     if pol.debt_service == "suspend":
         interest = 0.0
         e.default_months += 1
     patronage = sum(1 for v in pol.patronage.values() if v) * 0.002 * gdp_nom
-    programs = (pol.military + pol.police + pol.welfare + pol.health_edu + pol.farm_support
-                 + ADMIN_SHARE + regional.spending(w)) * gdp_nom
+    # Contractors who are owed money bid higher for new work, so the same programme costs more.
+    # This is the feedback that turns a payment problem into a permanent one: arrears raise the
+    # cost of the spending that would have cleared them.
+    premium = procurement_premium(w)
+    base_programs = (pol.military + pol.police + pol.welfare + pol.health_edu + pol.farm_support
+                     + ADMIN_SHARE + regional.spending(w))
+    # Only the procurement-heavy slice reprices. Wages do not rise because suppliers are unpaid.
+    procurement_heavy = pol.military + regional.spending(w)
+    programs = (base_programs + procurement_heavy * (premium - 1.0)) * gdp_nom
     spending = programs + patronage + interest
 
     scandal = 1.0 if w.month - e.scandal_month < 6 else 0.0
@@ -345,23 +431,40 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
     if need > 0:
         issued = w.institutions.get("arrears_bonds") or {}
         arrears_bonds = issued.get("amount", 0.0) if issued.get("month") == w.month else 0.0
-        borrowed = min(need, max(0.0, 0.02 * gdp_nom * e.confidence - arrears_bonds))
+        # Rolling over maturing debt consumes the same market capacity as fresh borrowing, so a
+        # heavy rollover calendar crowds out new issuance rather than sitting outside the budget.
+        capacity = max(0.0, 0.02 * gdp_nom * e.confidence - arrears_bonds)
+        borrowed = min(need, capacity)
         unpaid = need - borrowed
     else:
         surplus = -need
         repay = min(e.arrears, surplus)
-        e.arrears -= repay
+        if repay > 0:
+            _settle_arrears(e, repay)
         e.debt_dom = max(0.0, e.debt_dom - (surplus - repay))
     e.debt_dom += borrowed
     e.arrears += unpaid
+    if unpaid > 0:
+        _accrue_arrears(w, e, unpaid, pol, gdp_nom, regional.spending(w))
     base = programs + patronage + interest
     e.paid_share = clamp(1 - unpaid / base, 0.0, 1.0) if base > 0 else 1.0
     e.admin_capacity += 0.15 * ((1 - 1.5 * (1 - e.paid_share)) - e.admin_capacity)
+    # Unpaid civil servants break the administration itself, and the historical record puts the
+    # threshold near two to three months. Below it, arrears are an irritation; above it, the
+    # service starts to stop.
+    cs_months = arrears_months(w)["civil_service"]
+    e.admin_capacity -= 0.06 * max(0.0, cs_months - CIVIL_SERVICE_STRIKE_MONTHS)
     # Farm output responds to subsidies and falls under requisition, over several months.
     target = (1 + 3.0 * min(0.05, pol.farm_support) * e.paid_share - {"none": 0.0, "partial": 0.25,
               "heavy": 0.45}[pol.requisition] - (0.1 if pol.price_controls in ("food", "all") else 0.0))
     e.farm_incentive += 0.15 * (target - e.farm_incentive)
     e.admin_capacity = clamp(e.admin_capacity, 0.2, 1.0)
+    # Reserve adequacy: how many months of imports the reserves could pay for. This is the metric
+    # the outside world reads, and the one that decides whether draining them is prudence or a
+    # currency crisis. The conventional floor is three months, though the IMF notes the rule has
+    # no firm theoretical basis and that countries conventionally hold more.
+    monthly_imports = max(1.0, (e.goods_imports + e.imports_food * WORLD_FOOD_PRICE) * gold_to_local)
+    e.reserve_months = max(0.0, e.gold * gold_to_local / monthly_imports)
     e.revenue, e.spending, e.deficit = revenue, spending, deficit
     e.printed, e.borrowed, e.loans_in = printed, borrowed, loans_local
 

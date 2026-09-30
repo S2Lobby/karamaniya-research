@@ -175,7 +175,7 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
         formation_pending = bool(paused)
     if not paused:
         _apply_scenario(world, run)
-    store.save_checkpoint(world, council.state(), {"run_id": run_id, "stopped": paused,
+    store.save_checkpoint(world, council.state(), {"run_id": run_id, "stopped": paused, "log_mark": store.mark(),
                                                    "survey_pending": bool(paused and run["survey"] and not diagnosis_pending and not formation_pending),
                                                    "founding_diagnosis_pending": diagnosis_pending,
                                                    "government_formation_pending": formation_pending})
@@ -198,6 +198,13 @@ def resume_run(run_dir, quiet=False, observer=None, stop_event=None, live_report
     elif upgraded:
         prompt_path.write_text(council.system, encoding="utf-8")
     council.load_state(council_state)
+    # If a month was interrupted by a crash rather than by a clean pause, its log lines are still
+    # there and the replay would write a second copy of them. Cut back to where the logs stood when
+    # the last month actually finished. A checkpoint written before this mark existed has none, and
+    # is left alone.
+    log_mark = (meta or {}).get("log_mark")
+    if log_mark:
+        store.rollback(log_mark)
     _emit(observer, type="started", run_id=store.path.name, mapping=cfg["mapping"],
           months_total=world.months_total, months_done=len(world.history))
     if not quiet:
@@ -275,7 +282,11 @@ def _loop(store: RunStore, world, council: Council, run: dict, quiet: bool, obse
                        "the month will be replayed.")
             paused = True
             break
-        store.save_checkpoint(world, council.state(), {"stopped": ""})
+        # Record where the logs stand now that the month is finished. A clean pause rolls the
+        # unfinished month out of the logs, but a crash cannot — nothing runs — so the partial
+        # month's lines stay and the replay appends a second copy. Storing the mark lets the next
+        # resume truncate back to the last month that actually completed.
+        store.save_checkpoint(world, council.state(), {"stopped": "", "log_mark": store.mark()})
         if live_report:
             build_report(store)
         h = world.history[-1]
@@ -294,7 +305,7 @@ def _loop(store: RunStore, world, council: Council, run: dict, quiet: bool, obse
     if paused:
         store.set_meta({"stopped": stopped})
     else:
-        store.save_checkpoint(world, council.state(), {"stopped": stopped})
+        store.save_checkpoint(world, council.state(), {"stopped": stopped, "log_mark": store.mark()})
     return _end(store, world, council, stopped, quiet, observer)
 
 

@@ -95,3 +95,64 @@ class Pipeline(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CrashRecoveryLeavesNoDuplicateLogLines(unittest.TestCase):
+    """A clean pause rolls the unfinished month out of the logs. A crash cannot — nothing runs —
+    so the interrupted month's lines stayed and the replay appended a second copy of them, which
+    double-counted calls in the audit trail. Found on a real run whose machine went down in
+    Month 2. State was never corrupted (the month record is written once), only the record."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="karamaniya-crash-")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _crashed_run(self):
+        path = new_run(CONFIG, runs_dir=self.tmp, name="crash", months=6, quiet=True)
+        store = RunStore(path)
+        # Simulate a machine going down mid-month: lines are written, then nothing runs to take
+        # them back out.
+        store.log({"type": "call", "month": 1, "member": "B", "phase": "session",
+                   "served_model": "half-finished-attempt"})
+        store.log({"type": "dm", "month": 1, "from": "B", "to": "C", "text": "partial"})
+        return path, store
+
+    def test_a_recorded_mark_lets_a_resume_cut_the_orphaned_lines(self):
+        path, store = self._crashed_run()
+        checkpoint = store.read_json("checkpoint.json")
+        mark = checkpoint["meta"].get("log_mark")
+        self.assertIsNotNone(mark, "no log mark was recorded, so a crash cannot be recovered")
+        before = store.read_log()
+        self.assertTrue(any(r.get("served_model") == "half-finished-attempt" for r in before))
+        store.rollback(mark)
+        after = store.read_log()
+        self.assertFalse(any(r.get("served_model") == "half-finished-attempt" for r in after),
+                         "the interrupted month's lines survived the truncation")
+        self.assertFalse(any(r.get("text") == "partial" for r in after))
+
+    def test_the_mark_does_not_remove_finished_months(self):
+        path, store = self._crashed_run()
+        mark = store.read_json("checkpoint.json")["meta"]["log_mark"]
+        months_before = [r for r in store.read_log("month")]
+        store.rollback(mark)
+        self.assertEqual([r for r in store.read_log("month")], months_before)
+
+    def test_resuming_a_crashed_run_actually_truncates(self):
+        """The wiring, not just the mechanism: resume must use the mark."""
+        path, store = self._crashed_run()
+        resume_run(path, quiet=True)
+        remaining = store.read_log()
+        self.assertFalse(any(r.get("served_model") == "half-finished-attempt" for r in remaining),
+                         "resume did not cut the interrupted month's lines")
+
+    def test_a_checkpoint_without_a_mark_is_left_alone(self):
+        """Runs written before the mark existed must still resume."""
+        path, store = self._crashed_run()
+        checkpoint = store.read_json("checkpoint.json")
+        checkpoint["meta"].pop("log_mark", None)
+        store._write_json("checkpoint.json", checkpoint)
+        before = len(store.read_log())
+        resume_run(path, quiet=True)
+        self.assertGreaterEqual(len(store.read_log()), before)

@@ -343,15 +343,49 @@ def party_of(actor: str | None) -> str | None:
             VELERIA: "veleria"}.get(actor)
 
 
+# An actor named as the pressure a motion answers ("against Union pressure", "despite Union threats")
+# is not the actor the motion is addressed to. Only these cues count, and only next to the name:
+# "from" is deliberately absent, because "a loan from the League" names the counterparty and
+# "protection from the Union" names the adversary, and the words alone cannot tell them apart.
+_CONTEXT_BEFORE = re.compile(
+    r"(?:against|despite|amid|versus|vs\.?|facing|about|regarding|concerning|because\s+of|countering|"
+    r"counter|deter(?:ring)?|resist(?:ing)?|pressure\s+from|threats?\s+from)\s+(?:the\s+|a\s+|an\s+)?(?:\w+\s+){0,2}$",
+    re.I)
+_CONTEXT_AFTER = re.compile(
+    r"^\W{0,2}(?:'s\s+)?(?:pressure|threats?|aggression|invasion|annexation|ultimatums?|blockade|embargo|"
+    r"sanctions|ambitions?|demands?)\b", re.I)
+
+
+def _mention_spans(w, text: str) -> dict:
+    """actor -> the (start, end) of every place the text names it."""
+    out = {}
+    for actor, patterns in _actor_patterns(w).items():
+        spans = [(m.start(), m.end()) for p in patterns for m in re.finditer(p, text, re.I)]
+        if spans:
+            out[actor] = spans
+    return out
+
+
+def _as_context(text: str, start: int, end: int) -> bool:
+    return bool(_CONTEXT_BEFORE.search(text[max(0, start - 40):start]) or _CONTEXT_AFTER.match(text[end:end + 30]))
+
+
 def prose_intent(w, text: str) -> dict:
     """What a motion's words say it does: which foreign actors it names, and which act.
 
     A high-precision read. It reports what the prose names, and nothing about what it might imply.
+    `actors` is every actor named. `addressed` is the ones the motion is aimed at: where several are
+    named, an actor that appears only as the pressure being answered ("against Union pressure") is
+    left out, so a text that names the Union as its adversary is not mistaken for one addressed to it.
+    Where only one actor is named it is the addressee whatever its context, as it always was.
     """
     body = str(text or "")
-    actors = sorted(a for a, pats in _actor_patterns(w).items() if _hits(body, pats))
+    mentions = _mention_spans(w, body)
+    actors = sorted(mentions)
     actions = [a for a, pats in PROSE_ACTIONS if _hits(body, pats)]
-    return {"actors": actors, "actions": actions,
+    addressed = actors if len(actors) <= 1 else sorted(
+        a for a, spans in mentions.items() if any(not _as_context(body, s, e) for s, e in spans))
+    return {"actors": actors, "addressed": addressed, "actions": actions,
             "negates_force": bool(re.search(r"\brenounce\s+force|no\s+recourse\s+to\s+force", body, re.I))}
 
 
@@ -360,8 +394,10 @@ def conflict(w, motion: dict) -> dict | None:
     """Where a motion's words and its executable payload disagree, or None.
 
     Only foreign actions are judged this way, and only on evidence the prose actually states: an
-    actor it names that the payload does not address, or an act it names that the payload is not.
-    A motion whose words name several actors, or none, is left alone.
+    actor it addresses that the payload does not, an act it names that the payload is not, or an act
+    that the payload's own target does not receive. A motion whose words address several actors, or
+    none, is left alone. The actor a text is aimed at is judged, not every actor it mentions: one named
+    only as the pressure being answered is context.
     """
     action = structured_action(w, motion)
     if action["kind"] != "diplomacy":
@@ -369,12 +405,28 @@ def conflict(w, motion: dict) -> dict | None:
     text = str(motion.get("text", ""))
     intent = prose_intent(w, text)
     reasons = []
-    named = intent["actors"]
+    named = intent["addressed"]
     if len(named) == 1 and action.get("target") and named[0] != action["target"]:
         reasons.append({"code": "FOREIGN_TARGET_MISMATCH", "prose_actor": named[0],
                         "action_actor": action["target"],
                         "detail": f"the text addresses the {ACTOR_NAMES[named[0]]}, but the structured "
                                   f"action is sent to the {ACTOR_NAMES.get(action['target'], action['target'])}"})
+    # The motion's value is a second place the counterparty can be named ("DORSANIA, 2.0M gold ...").
+    valued = prose_intent(w, str(motion.get("value") or ""))["actors"]
+    if len(valued) == 1 and action.get("target") and valued[0] != action["target"] \
+            and not any(r["prose_actor"] == valued[0] for r in reasons):
+        reasons.append({"code": "FOREIGN_TARGET_MISMATCH", "prose_actor": valued[0],
+                        "action_actor": action["target"], "source": "value",
+                        "detail": f"the motion's value names the {ACTOR_NAMES[valued[0]]}, but the structured "
+                                  f"action is sent to the {ACTOR_NAMES.get(action['target'], action['target'])}"})
+    # An act goes to the actor that receives it. This was checked only when the motion tried to
+    # execute, so the council voted on a trade deal "with Dorsania" that could never run.
+    expected = DIPLOMATIC_ACTIONS.get(action["action_type"])
+    if expected and action.get("target") in ACTORS and expected != action["target"]:
+        reasons.append({"code": "ACTION_NOT_VALID_FOR_TARGET", "action_type": action["action_type"],
+                        "action_actor": action["target"], "expected_actor": expected,
+                        "detail": f"a {action['action_type']} is addressed to the {ACTOR_NAMES[expected]}, "
+                                  f"not the {ACTOR_NAMES[action['target']]}"})
     declared = motion.get("declared_subject")
     if declared and motion.get("subject") and declared not in (motion.get("subject"), action["action_type"]):
         reasons.append({"code": "DECLARED_SUBJECT_CONTRADICTS_ACTION", "declared": declared,
@@ -418,6 +470,13 @@ def repair_request(w, c: dict) -> str:
                  + (f" to the {ACTOR_NAMES.get(target, target)}" if target else "")
                  + (f", policy {action['policy']} = {action['value']}" if action.get("policy") else ""))
     lines.append(f"Detected conflict: {described}.")
+    # Say what the actor can actually receive, so the one repair is not spent guessing. Only actors the
+    # conflict itself names are listed, and only from the engine's own action vocabulary.
+    for actor in dict.fromkeys(r.get(key) for r in c["reasons"] for key in ("prose_actor", "action_actor")
+                               if r.get(key) in ACTORS):
+        acts = [act for act, receiver in DIPLOMATIC_ACTIONS.items() if receiver == actor]
+        if acts:
+            lines.append(f"Acts the engine can address to the {ACTOR_NAMES[actor]}: {', '.join(acts)}.")
     lines.append("Correct either the structured action or the motion text so they describe the same motion, "
                  "then resubmit that motion only. The rest of your answer stands.")
     return "\n".join(lines)

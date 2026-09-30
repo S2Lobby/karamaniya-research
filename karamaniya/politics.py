@@ -125,7 +125,8 @@ def parse_bool(raw) -> bool | None:
     return None
 
 
-def parse_share(raw, lo: float, hi: float) -> float | None:
+def _share_value(raw) -> float | None:
+    """A share as written ('0.05', '5%', '5'), before it is held to any bound."""
     s = str(raw).strip().lower().replace(",", ".")
     pct = s.endswith("%")
     s = s.rstrip("%").strip()
@@ -135,7 +136,17 @@ def parse_share(raw, lo: float, hi: float) -> float | None:
         return None
     if pct or x > 1.0:
         x /= 100.0
-    return clamp(x, lo, hi)
+    return x
+
+
+def parse_share(raw, lo: float, hi: float) -> float | None:
+    x = _share_value(raw)
+    return None if x is None else clamp(x, lo, hi)
+
+
+#: The army's size target is held to this range. It is a bound of the lever, not a judgement about what a
+#: sensible army looks like: an order below it is applied as the floor, and is reported as adjusted.
+ARMY_TARGET_BOUNDS = (5000, 400000)
 
 
 def parse_lever(lever: str, raw):
@@ -149,11 +160,50 @@ def parse_lever(lever: str, raw):
         return parse_bool(raw)
     if lever == "army_target":
         try:
-            return clamp(float(str(raw).replace(",", "").strip()), 5000, 400000)
+            return clamp(float(str(raw).replace(",", "").strip()), *ARMY_TARGET_BOUNDS)
         except ValueError:
             return None
     if lever.startswith("deploy_"):
         return parse_share(raw, 0.0, 1.0)
+    return None
+
+
+def lever_bounds(lever: str):
+    """The (low, high) an order for this setting is held to, or None for a setting with no range."""
+    if lever == "army_target":
+        return ARMY_TARGET_BOUNDS
+    if lever in SHARES:
+        return SHARES[lever]
+    if lever.startswith("deploy_"):
+        return (0.0, 1.0)
+    return None
+
+
+def lever_adjustment(lever: str, raw, value) -> dict | None:
+    """What an order asked for when the engine applied something else, or None when it did what was asked.
+
+    `parse_lever` holds a number to its setting's bounds, and nothing said so: the month's record showed
+    the order as written (army_target 3100) while the state moved to the nearest bound (5000), and the
+    two read as one fact. The order is left exactly as the delegate wrote it; this names the gap. It is
+    not a new rule, and it does not question what was asked — it only says what was done about it.
+    """
+    if value is None:
+        return {"requested": raw, "applied": None,
+                "reason": "not a value this setting takes; the order was not applied"}
+    bounds = lever_bounds(lever)
+    if bounds is None:
+        return None
+    try:
+        asked = float(str(raw).replace(",", "").strip()) if lever == "army_target" else _share_value(raw)
+    except ValueError:
+        asked = None
+    if asked is None:
+        return None
+    lo, hi = bounds
+    if asked < lo or asked > hi:
+        return {"requested": raw, "applied": value,
+                "reason": f"outside the setting's bounds ({fmt_value(float(lo))} to {fmt_value(float(hi))}); "
+                          "the nearest bound was applied"}
     return None
 
 
@@ -1290,8 +1340,12 @@ def _compliance(w: World, office: str, lever: str, mid: str, ordered, note: str,
 
 
 def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, superseded: list | None = None,
-                 unauthorized: list | None = None, compliance: list | None = None) -> list:
+                 unauthorized: list | None = None, compliance: list | None = None,
+                 adjusted: list | None = None) -> list:
     """Apply one member's orders for the offices they hold. Returns any defiance records.
+
+    `adjusted`, when given, collects an entry for every order where what was applied is not what was
+    asked: a number outside its setting's bounds, or a value the setting does not take.
 
     `fresh` names the settings a motion has just made a directive in this same resolution. Votes and
     orders travel in one answer, so an order for such a setting was written before its vote could be
@@ -1307,6 +1361,9 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
             if lever == "patronage":
                 flag = parse_bool(raw)
                 if flag is None:
+                    if adjusted is not None:
+                        adjusted.append({"member": mid, "office": office, "lever": lever, **lever_adjustment(
+                            lever, raw, None)})
                     continue
                 key = f"patronage_{office}"          # the council's directive on this office's patronage
                 if fresh and key in fresh:
@@ -1345,6 +1402,9 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                             lever=lever, office=office, reason=refusal["reason"])
                 continue
             value = parse_lever(lever, raw)
+            gap = lever_adjustment(lever, raw, value)
+            if gap is not None and adjusted is not None:
+                adjusted.append({"member": mid, "office": office, "lever": lever, **gap})
             if value is None:
                 continue
             if fresh and lever in fresh:

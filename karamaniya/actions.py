@@ -376,7 +376,17 @@ def motion_summary(w: World, mo: dict) -> str:
     if t == "expel":
         return f"expel {w.member(s.upper()).name if s.upper() in {m.id for m in w.members} else s}"
     if t == "diplomacy":
-        who = {"union": "Union", "league": "Maritime League", "dorsania": "Dorsania"}.get(DIPLOMACY.get(s), "Maritime League")
+        # The title names where the motion is addressed. That is the structured target when the
+        # delegate stated one, and the subject's usual route only when it did not: a title derived
+        # from the subject alone said "Maritime League" for a motion addressed to Dorsania.
+        from .motion_actions import _canonical_actor, party_of
+        stated = (mo.get("action") or {}).get("target") if isinstance(mo.get("action"), dict) else None
+        try:
+            stated_party = party_of(_canonical_actor(w, stated)) if stated else None
+        except Exception:
+            stated_party = None
+        who = {"union": "Union", "league": "Maritime League", "dorsania": "Dorsania",
+               "veleria": "Veleria"}.get(stated_party or DIPLOMACY.get(s), "Maritime League")
         amt = f" ({v} million)" if s == "loan" and v else ""
         if s == "diplomatic_protest":
             return f"deliver a diplomatic protest to the {who}"

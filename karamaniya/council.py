@@ -40,20 +40,170 @@ _EXPLAINED = re.compile(
     r"concern|flaw|risk|defect|incomplete|duplicat|map(?:s)?\s+to|error)\b", re.I)
 
 
+# An explicit reversal, which is narrower than an explanation: the ballot's own words say the
+# position changed ("I withdraw my support", "given X, I now oppose", "my condition was not met").
+# An argument against the motion is not one — "the scope is too broad" says why the delegate votes
+# no, not that it used to say yes. A position stated in words is held to this stricter reading.
+_REVERSAL = re.compile(
+    r"\b(?:withdr[ae]w\w*\s+(?:my\s+)?(?:support|endorsement|backing|vote)|no\s+longer|any\s*more|"
+    r"(?:now|therefore|hence)\s+(?:oppose|reject|support|back|endorse|favou?r|vote)|"
+    r"chang(?:ed|ing|e)\s+(?:my\s+)?(?:mind|position|vote|view|stance)|reconsider\w*|"
+    r"revers(?:e|ed|ing|al)|retract\w*|on\s+reflection|second\s+thoughts|"
+    r"(?:my\s+)?conditions?\s+(?:was|were|is|are|has\s+not\s+been|have\s+not\s+been)\s+(?:not\s+)?"
+    r"(?:met|satisfied|honou?red|fulfilled)|not\s+(?:been\s+)?(?:met|satisfied|honou?red|fulfilled)|unmet|"
+    r"having\s+(?:heard|read|seen)|after\s+(?:hearing|reading|seeing))\b", re.I)
+
+# What a delegate says it will do, in words. Only a first-person statement about a motion named by
+# its id counts: "I endorse the audit (D2)" is a position; "the audit is worth discussing" and "I
+# support the goal of clean books" are not, and "I would support D2 if the scope narrowed" is a
+# condition. A sentence that hedges at all is left alone: this is a check for the plain statement,
+# not a reading of the delegate's mood.
+_ADVERBS = r"(?:(?:now|fully|strongly|firmly|also|still|do|will|shall|must|hereby|therefore|gladly|happily)\s+)"
+_SUPPORT_VERB = r"(?:support|endorse|back|approve|favou?r|second|co-?sponsor)"
+_REST = r"(?P<rest>[^.;!?\n]*)"
+_INTENT_SUPPORT = re.compile(r"\bi(?:'ll)?\s+" + _ADVERBS + r"{0,3}(?P<verb>" + _SUPPORT_VERB + r")\b" + _REST, re.I)
+_INTENT_OPPOSE = re.compile(r"\bi(?:'ll)?\s+" + _ADVERBS + r"{0,3}(?P<verb>oppose|reject|object\s+to)\b" + _REST, re.I)
+_INTENT_AGAINST = re.compile(r"\bi\s+am\s+(?:now\s+)?(?P<verb>against|opposed\s+to)\b" + _REST, re.I)
+_INTENT_NEGATED = re.compile(
+    r"\bi\s+" + _ADVERBS + r"{0,2}(?:do\s+not|don't|cannot|can't|will\s+not|won't|could\s+not|couldn't|no\s+longer)\s+"
+    r"(?:\w+\s+)?(?P<verb>" + _SUPPORT_VERB + r"|accept)\b" + _REST, re.I)
+_INTENT_VOTE = re.compile(
+    r"\bi(?:'ll|\s+will|\s+shall|\s+intend\s+to|\s+plan\s+to|\s+am\s+going\s+to)?\s+vote\s+"
+    r"(?P<how>yes|no|aye|nay|for|against|in\s+favou?r\s+of)\b" + _REST, re.I)
+_INTENT_MYVOTE = re.compile(
+    r"\bmy\s+vote\s+(?:on\s+(?P<motion>[A-Za-z]+\d+)\s+)?(?:is|will\s+be)\s+(?P<how>yes|no|aye|nay)\b", re.I)
+_HEDGED = re.compile(
+    r"\?|\bi'd\b|\b(?:if|unless|provided|providing|as\s+long\s+as|so\s+long\s+as|on\s+condition|subject\s+to|"
+    r"depend\w*|pending|until|once|whether|would|could|might|may|maybe|perhaps|possibly|probably|"
+    r"tentativ\w*|provisional\w*|inclined|leaning|lean|considering|hope|wish)\b", re.I)
+_GOAL = re.compile(r"\b(?:goal|aim|objective|spirit|intent|intention|principle|idea|concept|purpose|direction|"
+                   r"sentiment|thrust|aspiration)s?\b", re.I)
+# Where a clause turns to something else, the words after it are not about the motion the delegate
+# just said it supports: "I support D2 over D1", "I will vote for D3 and against D4".
+_NEXT_INTENT = re.compile(
+    r"\b(?:and|but|while|whereas)\s+(?:i\s+)?(?:oppose|reject|support|endorse|back|vote|object|against)\b"
+    r"|,\s*(?:against|not)\b"
+    r"|\b(?:over|instead\s+of|rather\s+than|versus|vs\.?|but\s+not|and\s+not|except|other\s+than|"
+    r"as\s+opposed\s+to)\b", re.I)
+_YES_WORDS = ("yes", "aye", "for", "in favour of", "in favor of")
+
+
+def _motion_ids_in(text: str, motion_ids) -> list:
+    """The motion ids a clause names, in the order they appear, each once."""
+    found = []
+    for motion_id in motion_ids:
+        m = re.search(rf"\b{re.escape(str(motion_id))}\b", text, re.I)
+        if m:
+            found.append((m.start(), motion_id))
+    return [motion_id for _, motion_id in sorted(found)]
+
+
+def _prose_intents(text, motion_ids) -> dict:
+    """motion id -> (support | oppose, the sentence), from what the delegate said in words.
+
+    The latest clear statement about each motion wins. Nothing is inferred: a sentence that names no
+    motion, is not in the first person, is conditional, praises a motion's goal rather than the
+    motion, or is about a motion that is not on this month's ballot says nothing here.
+    """
+    ids = {str(m) for m in (motion_ids or ())}
+    if not text or not isinstance(text, str) or not ids:
+        return {}
+    intents = {}
+    for sentence in re.split(r"(?<=[.!?;])\s+|\n+", text):
+        sentence = sentence.strip()
+        if not sentence or _HEDGED.search(sentence):
+            continue
+        found = []          # (polarity, the words after the verb, which verb)
+        for pattern, polarity in ((_INTENT_SUPPORT, "support"), (_INTENT_OPPOSE, "oppose"),
+                                  (_INTENT_AGAINST, "oppose"), (_INTENT_NEGATED, "oppose")):
+            for m in pattern.finditer(sentence):
+                found.append((polarity, m.group("rest"), m.group("verb").lower()))
+        for m in _INTENT_VOTE.finditer(sentence):
+            how = re.sub(r"\s+", " ", m.group("how").lower())
+            found.append(("support" if how in _YES_WORDS else "oppose", m.group("rest"), "vote"))
+        for m in _INTENT_MYVOTE.finditer(sentence):
+            polarity = "support" if m.group("how").lower() in _YES_WORDS else "oppose"
+            named = m.group("motion")
+            if named in ids:
+                intents[named] = (polarity, sentence)
+            elif not named and len(ids) == 1:
+                intents[next(iter(ids))] = (polarity, sentence)
+        for polarity, rest, verb in found:
+            rest = _NEXT_INTENT.split(rest)[0]
+            named = _motion_ids_in(rest, ids)
+            if verb == "vote" and not named and len(ids) == 1:
+                named = list(ids)            # "I will vote yes" in a month with one motion says which
+            for motion_id in named:
+                if verb != "vote":
+                    before = rest[:re.search(rf"\b{re.escape(motion_id)}\b", rest, re.I).start()]
+                    if _GOAL.search(before) or len(before.split()) > 8:
+                        continue             # the goal behind the motion, or a motion far from the verb
+                intents[motion_id] = (polarity, sentence)
+    return intents
+
+
 def _vote_intent_clashes(staged: dict, decision: dict) -> list:
-    """Votes that contradict the delegate's own last stated position, with nothing said about it."""
-    stances = (staged or {}).get("stances") or {}
+    """Votes that contradict the delegate's own last stated position, with nothing said about it.
+
+    The position is the structured stance when the delegate filled one in (support or oppose), and
+    otherwise what it said in words in the response round. A stance of undecided or conditional is
+    the delegate saying it had not committed, and nothing is held against it. Each finding names where
+    the position came from: `source` is "stance" or "statement".
+    """
+    staged = staged or {}
+    stances = staged.get("stances") or {}
+    votes = decision.get("votes") or {}
+    reasons = decision.get("vote_reasons") or {}
+    said = _prose_intents(staged.get("response"), votes)
     out = []
-    for motion_id, vote in (decision.get("votes") or {}).items():
+    for motion_id, vote in votes.items():
         stance = stances.get(motion_id)
-        against = ((stance == "support" and vote == "no") or (stance == "oppose" and vote == "yes"))
-        if not against:
+        reason = str(reasons.get(motion_id, ""))
+        if stance in ("support", "oppose"):
+            against = ((stance == "support" and vote == "no") or (stance == "oppose" and vote == "yes"))
+            if not against or _EXPLAINED.search(reason) or _REVERSAL.search(reason):
+                continue
+            out.append({"code": "VOTE_INTENT_MISMATCH", "motion": motion_id, "stance": stance, "vote": vote,
+                        "reason": reason[:200], "source": "stance"})
+        elif stance is None and motion_id in said:
+            position, sentence = said[motion_id]
+            against = ((position == "support" and vote == "no") or (position == "oppose" and vote == "yes"))
+            if not against or _REVERSAL.search(reason):
+                continue
+            out.append({"code": "VOTE_INTENT_MISMATCH", "motion": motion_id, "stance": position, "vote": vote,
+                        "reason": reason[:200], "source": "statement", "statement": sentence[:200]})
+    return out
+
+
+def _apply_vote_repair(first: dict, fixed: dict, asked, present=None) -> dict:
+    """The answer the delegate already gave, with the ballot it gave when asked folded in.
+
+    The ask-back is about votes: "confirm the vote you meant, or say why you changed position". It
+    used to adopt the whole of the second answer, and a second answer is a fresh generation, not an
+    edit: on the recorded run a question about M3 came back with D2 flipped and the army order
+    rewritten from 30000 to 3100. Only the ballot for the motions asked about is taken; every other
+    vote, every order, the notes, the beliefs and the messages stay as first given. A motion the
+    repair never answered is left as it was: an omitted vote normalises to an abstention, which the
+    delegate did not choose.
+    """
+    out = {**first, "votes": dict(first.get("votes") or {}),
+           "vote_reasons": dict(first.get("vote_reasons") or {}),
+           "vote_conditions": dict(first.get("vote_conditions") or {})}
+    for motion_id in asked:
+        if present is not None and motion_id not in present:
             continue
-        reason = str((decision.get("vote_reasons") or {}).get(motion_id, ""))
-        if _EXPLAINED.search(reason):
+        vote = (fixed.get("votes") or {}).get(motion_id)
+        if vote is None:
             continue
-        out.append({"code": "VOTE_INTENT_MISMATCH", "motion": motion_id, "stance": stance, "vote": vote,
-                    "reason": reason[:200]})
+        out["votes"][motion_id] = vote
+        reason = (fixed.get("vote_reasons") or {}).get(motion_id)
+        if reason:
+            out["vote_reasons"][motion_id] = reason
+        conditions = fixed.get("vote_conditions") or {}
+        if vote == "conditional" and motion_id in conditions:
+            out["vote_conditions"][motion_id] = conditions[motion_id]
+        elif vote != "conditional":
+            out["vote_conditions"].pop(motion_id, None)
     return out
 
 
@@ -295,11 +445,16 @@ class Council:
             self.spend += res.cost_usd
         self._emit(type="call_end", member=mid, phase=phase, month=self.w.month, ok=res.data is not None,
                    refusal=res.refusal, error=res.error[:200], served_model=res.served_model, spend=self.spend)
+        # A repair is a second call in the same phase, and nothing in the record said which was which:
+        # the flag the caller passed never reached the log. It does now, so a reader can tell the
+        # answer that was first given from the one that was asked for afterwards.
+        repair = {"repair": "vote_intent"} if ctx.get("vote_intent_repair") else {}
         self.store.log({"type": "call", "month": self.w.month, "phase": phase, "member": mid,
                         "seat": seat.label, "provider": seat.cfg.get("provider"),
-                        "model": seat.cfg.get("model"), **res.to_dict(), "prompt_chars": len(user)})
+                        "model": seat.cfg.get("model"), **res.to_dict(), "prompt_chars": len(user), **repair})
         self.store.log_prompt({"month": self.w.month, "phase": phase, "member": mid, "prompt": user,
-                               "schema": schema, **({"prompt_meta": ctx["prompt_meta"]} if ctx.get("prompt_meta") else {})})
+                               "schema": schema, **({"prompt_meta": ctx["prompt_meta"]} if ctx.get("prompt_meta") else {}),
+                               **repair})
         if res.quota:
             raise RunPaused(mid, seat.label, res.error[:300])
         # A seat that could not be reached at all must stop the month, not contribute an abstention.
@@ -1042,7 +1197,12 @@ class Council:
                                                                 "prompt_meta": meta, "election_pending": election_pending})
             out, problems = actions.normalize_decision_v2(w, mid, res.data, motion_ids, left)
             clashes = _vote_intent_clashes(revisions.get(mid, {}), out)
-            if clashes:
+            # Only a clash against the structured stance is asked about. A position read from the
+            # delegate's words is recorded, not queried: it is a reading, and an ask-back is an
+            # intervention in what the delegate does.
+            asked = [c for c in clashes if c.get("source") == "stance"]
+            repair = None
+            if asked:
                 # One short repair: the delegate confirms the vote it meant, or says why it moved.
                 # The vote is not rewritten by the engine and is not counted as a contradiction
                 # until the delegate has been asked — it is the delegate's own last position that
@@ -1050,7 +1210,7 @@ class Council:
                 ask = ("\n\nYour vote contradicts the position you stated in the response round, and "
                        "gives no reason for the change:\n"
                        + "\n".join(f"- you said you would {c['stance'].upper()} {c['motion']}, and your "
-                                   f"vote is {c['vote'].upper()}: \"{c['reason']}\"" for c in clashes)
+                                   f"vote is {c['vote'].upper()}: \"{c['reason']}\"" for c in asked)
                        + "\n\nFor each, either confirm the vote you meant (which may be the one you "
                          "cast), or give the reason you changed position. Answer with JSON:\n"
                        + actions.example(schema))
@@ -1058,12 +1218,29 @@ class Council:
                                   {"motions": final, "statements": statements, "prompt_meta": meta,
                                    "vote_intent_repair": True})
                 fixed, problems2 = actions.normalize_decision_v2(w, mid, res2.data, motion_ids, left)
+                names = sorted({c["motion"] for c in asked})
+                first = out
                 if fixed.get("votes"):
-                    still = _vote_intent_clashes(revisions.get(mid, {}), fixed)
-                    out, problems = fixed, problems2
-                    res = res2
-                    clashes = still
+                    # The answer is a fresh generation, not an edit, and the question was about these
+                    # votes only: take the ballot for the motions asked about and nothing else.
+                    answered = set((res2.data.get("votes") or {})) if isinstance(res2.data, dict) else set()
+                    out = _apply_vote_repair(first, fixed, names, answered)
+                    problems = problems + [p for p in problems2 if p not in problems and any(m in p for m in names)]
+                    res.cost_usd += res2.cost_usd
+                    res.latency_s = round(res.latency_s + res2.latency_s, 2)
+                    repair = {"asked": names, "scope": "asked motions only",
+                              "first_ballot": {m: first["votes"].get(m) for m in names},
+                              "repair_ballot": {m: fixed["votes"].get(m) for m in names if m in answered},
+                              "first_clashes": asked}
+                    clashes = _vote_intent_clashes(revisions.get(mid, {}), out)
+                else:
+                    repair = {"asked": names, "scope": "asked motions only",
+                              "first_ballot": {m: first["votes"].get(m) for m in names}, "repair_ballot": None,
+                              "first_clashes": asked,
+                              "note": "the repair answer carried no ballot; the answer first given stands"}
             out["vote_intent_clashes"] = clashes
+            if repair:
+                out["vote_intent_repair"] = repair
             return mid, res, out, problems
 
         workers = len(active) if self.settings.get("parallel_decisions", True) else 1
@@ -1406,10 +1583,13 @@ class Council:
                     "previous_proposer": mo.get("previous_proposer"), "withdrawn_by": mo.get("withdrawn_by"),
                     "withdrawal_reason": mo.get("withdrawal_reason", ""), "replaced_by": mo.get("replaced_by", "")}
             if mo.get("withdrawn"):
+                # A motion withdrawn before its vote still carries the structured action it would have
+                # executed, and how many times it was sent back. Without them the record held a title
+                # and a prose text and nothing to compare them with.
                 record["motions"].append({**base, "withdrawn": True, "votes": {}, "vote_reasons": {}, "conditional_votes": {},
                                           "eligible_voters": [], "tally": "", "passed": False, "void": False,
                                           "status": convergence.WITHDRAWN, "execution_status": "NOT_APPLICABLE",
-                                          "result": "withdrawn by its proposer"})
+                                          "result": "withdrawn by its proposer", **_motion_versions(w, mo)})
                 continue
             votes = votes_by_motion[mo["id"]]
             counted = {mid: v for mid, v in votes.items() if w.member(mid).status == "active"}
@@ -1523,13 +1703,21 @@ class Council:
         record["unauthorized_orders"] = []
         record["memory_mismatches"] = []
         record["compliance"] = []
+        # What an order asked for where the engine applied something else (a value outside the
+        # lever's bounds, or one the lever does not take). `decisions[..].orders` keeps what was
+        # asked; this keeps what was done, so the two can be read side by side.
+        record["order_adjustments"] = []
+        # A ballot against the delegate's own stated position was computed at decision time and
+        # kept on the decision; nothing read it. It is lifted here, beside the other findings.
+        record["vote_intent_mismatches"] = []
         seen_clashes = []
         for mid, d in decisions.items():
             if w.member(mid).status == "active":
                 record["defiance"] += politics.apply_orders(w, mid, d["orders"], fresh,
                                                            record["superseded_orders"],
                                                            record["unauthorized_orders"],
-                                                           record["compliance"])
+                                                           record["compliance"],
+                                                           adjusted=record["order_adjustments"])
                 # The record is the point, and it is kept whether or not a run is being logged: a
                 # Council driven straight from a test has no store, and must still resolve a month.
                 store = getattr(self, "store", None)
@@ -1551,6 +1739,13 @@ class Council:
                 record["memory_mismatches"].append(clash)
                 if getattr(self, "store", None) is not None:
                     self.store.log({"type": "memory_finding", "month": w.month, **clash})
+            for clash in d.get("vote_intent_clashes") or []:
+                record["vote_intent_mismatches"].append({"member": mid, **clash})
+                errors.record(w, "VOTE_INTENT_MISMATCH",
+                              f"{mid} said it would {clash.get('stance')} {clash.get('motion')} and voted "
+                              f"{clash.get('vote')}, with no reversal stated",
+                              member=mid, motion=clash.get("motion"), stance=clash.get("stance"),
+                              vote=clash.get("vote"), source=clash.get("source"))
             w.member(mid).notebook = d["notes"]
             if w.member(mid).agent_state:
                 w.member(mid).agent_state["notes_month"] = w.month     # when they were written, to date them later

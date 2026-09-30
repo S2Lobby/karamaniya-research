@@ -125,6 +125,6 @@ Both shifts share this register. Statuses as defined at the top of the file.
 | R10 | Military mobilization, unit response, supply chain | high | VERIFIED | `military.py`, `politics.py` | `test_military_realism.py` | Delegated; coup path now reads the distribution |
 | R11 | Adversarial scenario suite | high | VERIFIED | `tests/` | `test_scenarios_realism.py` | 22 qualitative checks; found three structural bugs |
 | R12 | Six defects from adversarial review | high | VERIFIED | see report | `test_review_regressions.py` | Four HIGH; all were one quantity computed in two places |
-| R13 | Mobilization policy lever | medium | DEFERRED | needs `Policy`, `actions.py`, `prompts.py` | — | Functions exist and persist; nothing calls them |
-| R14 | Agent causal learning from forecast errors | medium | DEFERRED | — | — | The ledger is the substrate; the belief update is not built |
+| R13 | Mobilization policy lever | high | VERIFIED | `world.py`, `politics.py`, `military.py`, `prompts.py` | `test_military_realism.py` | Army office calls up the reserve; costs money, labour and time |
+| R14 | Agent causal learning from forecast errors | high | VERIFIED | `causal_beliefs.py` (new) | `test_causal_beliefs.py` | Per-delegate parameter beliefs, revised from errors; truth never read |
 | R15 | Regime-dependent coefficients | low | DEFERRED | — | — | Persistence and multipliers are per-world, not per-regime |

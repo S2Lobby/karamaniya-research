@@ -591,6 +591,38 @@ budget resolves, so a share queued at zero months waited a full month); `rollove
 computed and never used; and the inflation trace listed an `expectations` contributor that never
 independently moved prices, so `explain()` could name a cause that was not one.
 
+## 18. What the agents believe, as distinct from what is true
+
+This is the distinction the brief calls mandatory, and it is now enforced by construction rather
+than by intention.
+
+    TRUE (engine)     exchange_rate_pass_through = 0.39
+    B (treasury)      0.36, confidence 0.08 after 18 observations
+    C (army)          not held; an army commander does not model the exchange rate
+
+Each delegate carries estimates of the relationships its office bears on, each with a value, a
+range and a confidence. The rules:
+
+```
+prior       ~ delegate's own seeded stream around a POPULATION midpoint, never the true value
+surprise     = max(0, brier - 0.25)   signed by where the world landed relative to the threshold
+revision     = value + 0.22·(1 - 0.5·confidence)·tanh(2·surprise)      bounded per relationship
+confidence  *= 0.90 on a miss, +0.01 on a hit
+```
+
+**Synthetic** throughout. There is no empirical literature on how a language model should revise a
+belief about an exchange-rate pass-through, and this does not pretend there is. What it is designed
+to make measurable is whether a delegate's model of the world improves as it governs.
+
+Two properties matter and are tested. Priors are drawn around a population midpoint rather than
+from the truth, so a delegate starts plausibly wrong and learning is a real task. And no function in
+the belief path reads `causality.param` — the only place the truth is ever touched is
+`compare_to_truth`, which is research-only and never reaches a prompt.
+
+**Deliberately modest.** This is a belief store with an update rule, not a learning algorithm. The
+benchmark question it exists to answer is narrow: does a model that governs this economy come to
+understand it better than one that does not, and can we tell.
+
 ## Sources
 
 Cited for the *shape and range* of relationships, not as measurements of Karamaniya:

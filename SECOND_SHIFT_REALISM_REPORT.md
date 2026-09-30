@@ -19,6 +19,7 @@ simulation, not merely defined.
 | 4 | Foreign: red lines, leadership confidence, constituency pressure | integrated |
 | 5 | Forecasts: ledger, scoring, calibration | integrated |
 | 6 | Military: mobilization, unit-level response, supply chain | integrated (unit response wired into coups; mobilization reachable as an Army lever) |
+| 7 | Agent causal learning: beliefs about the world, held apart from the truth | integrated |
 
 Delivered ahead of the brief's own priority floor, which was macro → fiscal → regional/food →
 foreign; the forecast ledger and military realism were listed as "if runtime permits" and both are
@@ -199,9 +200,10 @@ in each case was to make one function the source of truth and have every consume
 
 ## 11. Deferred work
 
-- **Agent causal learning** (brief §13). Agents hold beliefs and now make scored forecasts, but the
-  step from *scoring a forecast* to *updating a belief about how the economy works* is not built.
-  The forecast ledger is the natural substrate for it, and is the single highest-value item left.
+- **A learning algorithm rather than a belief store.** Delegates now revise estimates of causal
+  relationships from their forecast errors, but the update rule is a fixed heuristic, not
+  inference. Whether a model can do better than it is not testable while the engine supplies the
+  rule.
 - **Regime-dependent coefficients** (§23), which would close limitation 2.
 - **The mobilization lever**, which would make the military system reachable by a council.
 - **Reserve-adequacy as a decision input** rather than a reported metric.

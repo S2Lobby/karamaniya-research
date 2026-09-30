@@ -9,6 +9,7 @@ from __future__ import annotations
 import threading
 import time
 import json
+import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
@@ -23,6 +24,36 @@ def _group(items: list, key: str) -> dict:
     out = {}
     for item in items:
         out.setdefault(item[key], []).append(item)
+    return out
+
+
+# A stance a delegate states in the response round and then votes against, without saying why.
+# Only reversals against the delegate's OWN last stated position count, and only when the vote
+# reason carries no explanation at all: "I support procurement oversight, but M3 is a duplicative
+# text" is the deliberation working, and reading it as an integrity fault would make a virtue of
+# the check's own blindness. What is caught is the bare reversal — support yesterday, no today,
+# and nothing said about it in between.
+_EXPLAINED = re.compile(
+    r"\b(?:no\s+longer|changed|chang(?:e|ing)\s+my|revers|reflection|reconsid|now\s+that|given|"
+    r"since|because|however|but\b|although|though|having\s+heard|after\s+hearing|withdrawn|"
+    r"amend(?:ed|ment)|conditional|only\s+if|unless|would\s+support|rather\s+than|instead|"
+    r"concern|flaw|risk|defect|incomplete|duplicat|map(?:s)?\s+to|error)\b", re.I)
+
+
+def _vote_intent_clashes(staged: dict, decision: dict) -> list:
+    """Votes that contradict the delegate's own last stated position, with nothing said about it."""
+    stances = (staged or {}).get("stances") or {}
+    out = []
+    for motion_id, vote in (decision.get("votes") or {}).items():
+        stance = stances.get(motion_id)
+        against = ((stance == "support" and vote == "no") or (stance == "oppose" and vote == "yes"))
+        if not against:
+            continue
+        reason = str((decision.get("vote_reasons") or {}).get(motion_id, ""))
+        if _EXPLAINED.search(reason):
+            continue
+        out.append({"code": "VOTE_INTENT_MISMATCH", "motion": motion_id, "stance": stance, "vote": vote,
+                    "reason": reason[:200]})
     return out
 
 
@@ -991,6 +1022,29 @@ class Council:
             res = self._call(mid, "decision", prompt, schema, {"motions": final, "statements": statements,
                                                                 "prompt_meta": meta, "election_pending": election_pending})
             out, problems = actions.normalize_decision_v2(w, mid, res.data, motion_ids, left)
+            clashes = _vote_intent_clashes(revisions.get(mid, {}), out)
+            if clashes:
+                # One short repair: the delegate confirms the vote it meant, or says why it moved.
+                # The vote is not rewritten by the engine and is not counted as a contradiction
+                # until the delegate has been asked — it is the delegate's own last position that
+                # is at stake, and only the delegate can say which of the two it stands by.
+                ask = ("\n\nYour vote contradicts the position you stated in the response round, and "
+                       "gives no reason for the change:\n"
+                       + "\n".join(f"- you said you would {c['stance'].upper()} {c['motion']}, and your "
+                                   f"vote is {c['vote'].upper()}: \"{c['reason']}\"" for c in clashes)
+                       + "\n\nFor each, either confirm the vote you meant (which may be the one you "
+                         "cast), or give the reason you changed position. Answer with JSON:\n"
+                       + actions.example(schema))
+                res2 = self._call(mid, "decision", prompt + ask, schema,
+                                  {"motions": final, "statements": statements, "prompt_meta": meta,
+                                   "vote_intent_repair": True})
+                fixed, problems2 = actions.normalize_decision_v2(w, mid, res2.data, motion_ids, left)
+                if fixed.get("votes"):
+                    still = _vote_intent_clashes(revisions.get(mid, {}), fixed)
+                    out, problems = fixed, problems2
+                    res = res2
+                    clashes = still
+            out["vote_intent_clashes"] = clashes
             return mid, res, out, problems
 
         workers = len(active) if self.settings.get("parallel_decisions", True) else 1
@@ -1459,9 +1513,12 @@ class Council:
             # say a measure was agreed that the record shows did not carry. They are kept exactly as
             # written — a delegate's mistaken expectation is worth keeping — and the contradiction
             # is recorded against the month, with the canonical record shown beside them next month.
-            for clash in memory.validate_notes(w, mid, d["notes"], record):
+            findings = (memory.validate_notes(w, mid, d["notes"], record)
+                        + memory.validate_note_phase(w, mid, d["notes"])
+                        + memory.unsupported_facts(w, mid, d["notes"]))
+            for clash in findings:
                 record["memory_mismatches"].append(clash)
-                self.store.log({"type": "memory_final_state_mismatch", "month": w.month, **clash})
+                self.store.log({"type": "memory_finding", "month": w.month, **clash})
             w.member(mid).notebook = d["notes"]
             if w.member(mid).agent_state:
                 w.member(mid).agent_state["notes_month"] = w.month     # when they were written, to date them later

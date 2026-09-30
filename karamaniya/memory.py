@@ -13,7 +13,7 @@ import re
 
 from . import tuning
 from .politics import LEVER_OFFICE
-from .world import World
+from .world import OFFICES, World
 
 SALIENCE = {
     "coup": 95, "election": 90, "war": 90, "massacre": 88, "election_interference": 90,
@@ -141,6 +141,70 @@ def validate_notes(w: World, mid: str, notes: str, record: dict) -> list:
                         "actual": "; ".join(outcome(mo) for mo in motions),
                         "note": "the delegate's own notes are kept as written; the canonical record is "
                                 "shown beside them and they are never rewritten"})
+    return out
+
+
+# Notes are written in the decision answer, before the votes are counted, the motions execute and
+# the foreign actors answer. Writing "outcomes pending" is therefore accurate at the moment of
+# writing and wrong the moment it is filed: it is handed back next month as what the delegate
+# remembers about a month that has since been fully resolved. Only language that says the outcome is
+# not yet known is caught. "If M5 passes, I will ..." is forward planning and stays — a delegate
+# planning its next move is not misreading the month it just lived through.
+_PHASE_PENDING = re.compile(
+    r"\b(?:outcomes?\s+pending|not\s+yet\s+decided|has\s+not\s+decided|have\s+not\s+decided|"
+    r"confirm\s+whether|whether\s+it\s+(?:passed|carried|will\s+pass)|"
+    r"awaiting\s+the\s+(?:result|vote|outcome|count|tally)|result\s+is\s+pending|"
+    r"tally\s+pending|undecided\s+yet|vote\s+(?:is\s+)?pending)\b", re.I)
+
+
+def validate_note_phase(w: World, mid: str, notes: str) -> list:
+    """Notes that say the month is still unresolved, filed after it has been resolved."""
+    if not notes or not isinstance(notes, str):
+        return []
+    out = []
+    for sentence in re.split(r"(?<=[.;!?])\s+|\n", notes):
+        found = _PHASE_PENDING.search(sentence)
+        if found:
+            out.append({"code": "MEMORY_PHASE_MISMATCH", "member": mid,
+                        "phrase": found.group(0), "claim": sentence.strip()[:200],
+                        "note": "the month was fully resolved before this note was filed; the "
+                                "delegate's own words are kept and the record is shown beside them"})
+    return out
+
+
+# A remembered result the engine can check: an audit verdict, an office report, an investigation.
+# Only phrasings that assert a FINISHED result are read. "The audit will examine X" and "I want an
+# audit of Y" are demands and intentions, and a delegate is allowed to remember its own intentions.
+_RESULT_CLAIM = re.compile(
+    r"\b(?:audit|investigation|inquiry|report)\b[^.;]{0,60}?\b(?:was|were|is|are|proved|found|"
+    r"came\s+back|cleared|cleaned|confirm\w*|show\w*|vastated)\b", re.I)
+_CLEAN_WORDS = ("clean", "clear", "no findings", "nothing", "ended", "closed", "settled", "fine",
+                "sound", "healthy", "no evidence", "exonerat")
+
+
+def unsupported_facts(w: World, mid: str, notes: str) -> list:
+    """Results a delegate remembers that the engine has no record of producing.
+
+    The engine keeps what its auditors and ministries actually reported. A delegate that remembers
+    "the army audit was clean" when no army audit ever ran has not remembered the month, it has
+    invented one — and next month that invention is indistinguishable from evidence.
+    """
+    if not notes or not isinstance(notes, str):
+        return []
+    from . import audits
+    out = []
+    for sentence in re.split(r"(?<=[.;!?])\s+|\n", notes):
+        if not _RESULT_CLAIM.search(sentence):
+            continue
+        low = sentence.lower()
+        if not any(word in low for word in _CLEAN_WORDS):
+            continue
+        office = next((o for o in OFFICES if o in low), None)
+        if office is None or audits.report_for(w, office) or audits.last_done(w, office):
+            continue
+        out.append({"code": "UNSUPPORTED_MEMORY_FACT", "member": mid, "office": office,
+                    "claim": sentence.strip()[:200],
+                    "note": "no audit or report for this office exists in the record"})
     return out
 
 

@@ -8,7 +8,9 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from karamaniya.council import Council  # noqa: E402
+from karamaniya.config import load_config  # noqa: E402
+from karamaniya.council import Council, RunPaused  # noqa: E402
+from karamaniya.world import new_world  # noqa: E402
 from karamaniya.runner import _seats, new_run, resume_run  # noqa: E402
 from karamaniya.storage import RunStore  # noqa: E402
 
@@ -156,3 +158,84 @@ class CrashRecoveryLeavesNoDuplicateLogLines(unittest.TestCase):
         before = len(store.read_log())
         resume_run(path, quiet=True)
         self.assertGreaterEqual(len(store.read_log()), before)
+
+
+class ASeatThatCannotBeReachedDoesNotSilentlyAbstain(unittest.TestCase):
+    """The engine promised no member silently abstains for a whole month, but that held only for
+    usage limits. A seat whose provider returns nothing was recorded as abstaining on every motion
+    and giving no orders, and the run completed looking normal. Found on a real run where one
+    OpenRouter seat failed every `decision` call with a 502 while every other phase of the same
+    seat succeeded, because `decision` carries the longest prompt."""
+
+    def _council(self):
+        cfg = load_config(CONFIG)
+        mapping = {letter: seat["label"] for letter, seat in zip("ABCDE", cfg["seats"])}
+        cfg = {**cfg, "mapping": mapping}
+        tmp = tempfile.mkdtemp(prefix="karamaniya-reach-")
+        w = new_world(cfg["run"]["seed"], 3, member_ids=list(mapping))
+        store = RunStore(os.path.join(tmp, "r"))
+        council = Council(w, _seats(cfg, mapping), cfg["run"], store)
+        seat = council.seats["A"]
+        self.cfg, self.w, self.store, self.council, self.seat = cfg, w, store, council, seat
+        return tmp
+
+    def _answer(self, result):
+        from karamaniya.backends import CallResult
+        original = self.seat.backend
+        self.seat.backend = type("B", (), {"complete": lambda _s, *a, **k: result,
+                                           "prompt_budget": lambda _s, n: 60000})()
+        try:
+            return self.council._call("A", "decision", "prompt", {}, {})
+        finally:
+            self.seat.backend = original
+
+    def test_a_provider_failure_pauses_the_month(self):
+        from karamaniya.backends import CallResult
+        tmp = self._council()
+        try:
+            with self.assertRaises(RunPaused) as caught:
+                self._answer(CallResult(error="gave up after 5 attempts: 502 bad gateway", attempts=5))
+            self.assertIn("could not be reached", str(caught.exception))
+            self.assertNotIn("usage limit", str(caught.exception),
+                             "a provider failure was reported as a usage limit")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_a_usage_limit_still_pauses_and_says_so(self):
+        from karamaniya.backends import CallResult
+        tmp = self._council()
+        try:
+            with self.assertRaises(RunPaused) as caught:
+                self._answer(CallResult(error="429 slow down", quota=True))
+            self.assertIn("usage limit", str(caught.exception))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_a_refusal_still_counts_as_data_rather_than_pausing(self):
+        """Declining is a choice worth recording, not an infrastructure fault."""
+        from karamaniya.backends import CallResult
+        tmp = self._council()
+        try:
+            result = self._answer(CallResult(refusal=True, raw="I will not", error="refused"))
+            self.assertTrue(result.refusal)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_an_unreadable_answer_without_an_error_does_not_pause(self):
+        """A model that answered badly is a quality problem, reported as unreadable, not a fault."""
+        from karamaniya.backends import CallResult
+        tmp = self._council()
+        try:
+            result = self._answer(CallResult(raw="not json at all"))
+            self.assertIsNone(result.data)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_a_good_answer_is_returned(self):
+        from karamaniya.backends import CallResult
+        tmp = self._council()
+        try:
+            result = self._answer(CallResult(data={"ok": True}, raw="{}", served_model="test"))
+            self.assertEqual(result.data, {"ok": True})
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)

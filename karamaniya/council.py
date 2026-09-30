@@ -75,12 +75,13 @@ INTERCEPT = {"low": 0.0, "medium": 0.12, "high": 0.3}
 
 
 class RunPaused(Exception):
-    """A seat's plan or balance is used up. The month is abandoned (nothing of it is saved) and
-    replayed when the run is resumed, so no member silently abstains for a whole month."""
+    """A seat could not take its turn. The month is abandoned (nothing of it is saved) and replayed
+    when the run is resumed, so no member silently abstains for a whole month."""
 
-    def __init__(self, member: str, label: str, detail: str, role: str = "Delegate"):
-        super().__init__(f"{label} ({role} {member}) hit a usage limit: {detail}")
-        self.member, self.label, self.detail = member, label, detail
+    def __init__(self, member: str, label: str, detail: str, role: str = "Delegate",
+                 reason: str = "hit a usage limit"):
+        super().__init__(f"{label} ({role} {member}) {reason}: {detail}")
+        self.member, self.label, self.detail, self.reason = member, label, detail, reason
 
 
 class Seat:
@@ -167,6 +168,21 @@ class Council:
                                "schema": schema, **({"prompt_meta": ctx["prompt_meta"]} if ctx.get("prompt_meta") else {})})
         if res.quota:
             raise RunPaused(mid, seat.label, res.error[:300])
+        # A seat that could not be reached at all must stop the month, not contribute an abstention.
+        #
+        # The rule this enforces is the one `RunPaused` already states: no member silently abstains
+        # for a whole month. It previously held only for usage limits, so a seat whose provider
+        # returns nothing — a 502, a dropped stream, exhausted retries — was recorded as abstaining
+        # on every motion, giving no orders and casting no vote, and the run completed looking
+        # normal. Found on a real run where one OpenRouter seat failed every `decision` call while
+        # every other phase succeeded, because that phase has the longest prompt.
+        #
+        # A refusal is different and still counts as data: the model answered, and declining is a
+        # choice worth recording. So is an unreadable answer, which the caller reports as such. What
+        # pauses the month is the absence of any answer at all.
+        if res.data is None and not res.refusal and res.error:
+            raise RunPaused(mid, seat.label, res.error[:300],
+                            reason="could not be reached")
         return res
 
     def survey(self) -> dict:

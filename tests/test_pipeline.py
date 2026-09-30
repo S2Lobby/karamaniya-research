@@ -239,3 +239,91 @@ class ASeatThatCannotBeReachedDoesNotSilentlyAbstain(unittest.TestCase):
             self.assertEqual(result.data, {"ok": True})
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class ThePreMonthPhasesAreProtected(unittest.TestCase):
+    """The questionnaire, the five independent diagnoses and the government formation are about
+    twenty model calls, and the first checkpoint used to be written AFTER all of them. A machine
+    going down in that window lost the lot and left a run directory with no resume point at all.
+
+    Observed for real: seventeen completed calls lost because a server was killed during the
+    formation vote. The README promises a run keeps every finished month; that promise started
+    only once Month 1 was reached."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="karamaniya-premonth-")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _die_in(self, phase):
+        """Start a run that abandons the process partway through a pre-Month-1 phase."""
+        from karamaniya import runner
+        original = getattr(runner, phase)
+
+        def abandon(store, council, observer, quiet):
+            raise SystemExit(1)
+
+        setattr(runner, phase, abandon)
+        try:
+            new_run(CONFIG, runs_dir=self.tmp, name=f"die-{phase}", months=3, quiet=True)
+        except SystemExit:
+            pass
+        finally:
+            setattr(runner, phase, original)
+        return RunStore(os.path.join(self.tmp, f"die-{phase}"))
+
+    def test_a_death_before_the_survey_still_leaves_a_resume_point(self):
+        store = self._die_in("_survey")
+        self.assertTrue(store.exists("checkpoint.json"),
+                        "no resume point was written before the first call")
+        meta = store.read_json("checkpoint.json")["meta"]
+        self.assertTrue(meta.get("survey_pending"))
+        self.assertTrue(meta.get("log_mark"))
+
+    def test_a_death_in_formation_keeps_the_survey_and_the_diagnoses(self):
+        store = self._die_in("_form_government")
+        meta = store.read_json("checkpoint.json")["meta"]
+        self.assertFalse(meta.get("survey_pending"), "the completed questionnaire would be re-asked")
+        self.assertFalse(meta.get("founding_diagnosis_pending"),
+                         "the completed diagnoses would be re-run")
+        self.assertTrue(meta.get("government_formation_pending"))
+        self.assertTrue(store.exists("survey.json"))
+
+    def test_the_interrupted_run_actually_resumes_and_finishes(self):
+        store = self._die_in("_form_government")
+        resume_run(store.path, quiet=True)
+        world = store.load_checkpoint()[0]
+        self.assertEqual(len(world.history), 3, "the resumed run did not finish")
+        self.assertEqual(world.outcome.get("type"), "survived")
+
+    def test_resuming_does_not_pay_for_the_survey_twice(self):
+        """The whole point: work already done is not redone."""
+        store = self._die_in("_form_government")
+        calls_before = sum(1 for r in store.read_log("call"))
+        resume_run(store.path, quiet=True)
+        calls_after = [r for r in store.read_log("call")]
+        survey_calls = [r for r in calls_after[calls_before:] if r.get("phase") == "survey"]
+        self.assertEqual(survey_calls, [], "the questionnaire was asked a second time")
+        diagnosis_calls = [r for r in calls_after[calls_before:]
+                           if r.get("phase") == "founding_diagnosis"]
+        self.assertEqual(diagnosis_calls, [], "the diagnoses were run a second time")
+
+    def test_a_death_after_the_survey_keeps_it(self):
+        from karamaniya import runner
+        original = runner._diagnose
+
+        def abandon(store, council, observer, quiet):
+            raise SystemExit(1)
+
+        runner._diagnose = abandon
+        try:
+            new_run(CONFIG, runs_dir=self.tmp, name="die-diagnose", months=3, quiet=True)
+        except SystemExit:
+            pass
+        finally:
+            runner._diagnose = original
+        store = RunStore(os.path.join(self.tmp, "die-diagnose"))
+        meta = store.read_json("checkpoint.json")["meta"]
+        self.assertFalse(meta.get("survey_pending"))
+        self.assertTrue(meta.get("founding_diagnosis_pending"))

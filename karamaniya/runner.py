@@ -164,11 +164,27 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
               f"framing {run['framing']}")
         for letter, label in mapping.items():
             print(f"  Delegate {letter} = {label}")
+    # Checkpoint BEFORE the first call. The questionnaire, the five independent diagnoses and the
+    # government formation are twenty model calls that used to happen with nothing on disk: the
+    # first checkpoint came after all of them, so a machine going down mid-formation lost the lot
+    # and left a run directory with no resume point at all. Observed for real — seventeen paid calls
+    # lost because a server was killed during the formation vote.
+    def _save(**flags):
+        store.save_checkpoint(world, council.state(),
+                              {"run_id": run_id, "stopped": "", "log_mark": store.mark(), **flags})
+
+    _save(survey_pending=bool(run["survey"]), founding_diagnosis_pending=True,
+          government_formation_pending=True)
     paused = _survey(store, council, observer, quiet) if run["survey"] else ""
+    if not paused:
+        _save(survey_pending=False, founding_diagnosis_pending=True, government_formation_pending=True)
     diagnosis_pending = False
     if not paused:
         paused = _diagnose(store, council, observer, quiet)
         diagnosis_pending = bool(paused)
+        if not paused:
+            _save(survey_pending=False, founding_diagnosis_pending=False,
+                  government_formation_pending=True)
     formation_pending = False
     if not paused:
         paused = _form_government(store, council, observer, quiet)

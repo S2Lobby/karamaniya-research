@@ -244,9 +244,30 @@ def _unknown_lever(subj: str) -> str:
                    + ", ".join(sorted(LEVER_OFFICE)))
 
 
+_KEYED_VALUE = re.compile(r"^\s*[A-Za-z_][A-Za-z0-9_\- ]{0,40}\s*[:=]\s*(?=\S)")
+
+
+def _bare(raw):
+    """Drop a key a model has written back into the value: "value=0.035" -> "0.035".
+
+    Observed on a real run: delegate B tabled set_policy farm_support with value "value=0.035" and
+    the text "Increase farm support to 3.5% of output". It meant 0.035 and said so twice; the
+    motion was rejected as a bad value, so a slip of formatting became a policy failure the
+    delegate never chose. Only a leading key is dropped, and only when something follows it — no
+    lever value in this engine is spelled with a colon or an equals sign, so a value that carries
+    neither is returned untouched.
+    """
+    s = str(raw)
+    m = _KEYED_VALUE.match(s)
+    if not m:
+        return raw
+    tail = s[m.end():].strip()
+    return tail if tail else raw
+
+
 def validate_motion_detail(w: World, mo: dict) -> dict | None:
     """None if the motion is well formed; otherwise a structured rejection the model can act on."""
-    t, subj, val = mo.get("type"), str(mo.get("subject", "")).strip(), mo.get("value", "")
+    t, subj, val = mo.get("type"), str(mo.get("subject", "")).strip(), _bare(mo.get("value", ""))
     ids = {m.id for m in w.active_members()}
     types = MOTION_TYPES + (V2_MOTION_TYPES if w.agent_architecture_version >= 2 else ())
     if t not in types:

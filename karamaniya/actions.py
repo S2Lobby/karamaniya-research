@@ -394,10 +394,28 @@ def _arr(items: dict, max_items: int | None = None) -> dict:
     return out
 
 
-def _v2_dm_schema(targets: list) -> dict:
+DM_PER_PHASE = 3
+
+
+def _v2_dm_schema(targets: list, max_items: int = DM_PER_PHASE) -> dict:
     from .commitments import DM_KINDS
     return _arr(_obj({"to": {"type": "string", "enum": targets}, "text": {"type": "string"},
-                      "kind": {"type": "string", "enum": list(DM_KINDS)}}), 3)
+                      "kind": {"type": "string", "enum": list(DM_KINDS)}}), max_items)
+
+
+def _offer_dms(props: dict, targets: list, dm_left: int) -> None:
+    """Offer private messages only while the member has quota, and cap the schema at what is left.
+
+    The prompt has always carried the remaining count — a member can be told "send up to 0 private
+    messages" — but the schema advertised a flat maximum of three in every phase, so that same
+    member was shown a structured-output contract permitting three. Observed on a real run:
+    delegate B sent one message in the revision phase and one in the decision phase and both were
+    rejected as "too many private messages". The engine told it two opposite things and then
+    charged the member for the contradiction, which is a schema failure wearing the costume of a
+    political choice — exactly what the delegate should never be penalised for.
+    """
+    if dm_left > 0:
+        props["private_messages"] = _v2_dm_schema(targets, min(dm_left, DM_PER_PHASE))
 
 
 def _comm_schema(w: World, mid: str, others: list) -> dict:
@@ -417,7 +435,7 @@ def _share_schema(w: World, mid: str, others: list) -> dict | None:
                       "with": {"type": "string", "enum": ["council", *others]}}), 3)
 
 
-def session_schema_v2(w: World, mid: str) -> dict:
+def session_schema_v2(w: World, mid: str, dm_left: int = DM_PER_PHASE) -> dict:
     from .deliberation import TOPICS
     from .intelligence import REQUEST_TOPICS
     others = [m.id for m in w.active_members() if m.id != mid] or [mid]
@@ -433,8 +451,8 @@ def session_schema_v2(w: World, mid: str) -> dict:
              "communications": _comm_schema(w, mid, others),
              "information_requests": _arr(_obj({"topic": {"type": "string", "enum": list(REQUEST_TOPICS)},
                                                 "motion_id": {"type": "string"}}), 2),
-             "strategy": _obj({"goal": {"type": "string"}, "by_month": {"type": "number"}}),
-             "private_messages": _v2_dm_schema(others)}
+             "strategy": _obj({"goal": {"type": "string"}, "by_month": {"type": "number"}})}
+    _offer_dms(props, others, dm_left)
     share = _share_schema(w, mid, others)
     if share:
         props["share_reports"] = share
@@ -445,7 +463,7 @@ def session_schema_v2(w: World, mid: str) -> dict:
     return _obj(props)
 
 
-def revision_schema(w: World, mid: str, motions: list) -> dict:
+def revision_schema(w: World, mid: str, motions: list, dm_left: int = DM_PER_PHASE) -> dict:
     others = [m.id for m in w.active_members() if m.id != mid] or [mid]
     ids = [m["id"] for m in motions if not m.get("withdrawn")]
     own = [m["id"] for m in motions if m["proposer"] == mid and not m.get("withdrawn")]
@@ -465,11 +483,12 @@ def revision_schema(w: World, mid: str, motions: list) -> dict:
     share = _share_schema(w, mid, others)
     if share:
         props["share_reports"] = share
-    props["private_messages"] = _v2_dm_schema(others)
+    _offer_dms(props, others, dm_left)
     return _obj(props)
 
 
-def decision_schema_v2(w: World, mid: str, motion_ids: list, election_pending: bool = False) -> dict:
+def decision_schema_v2(w: World, mid: str, motion_ids: list, election_pending: bool = False,
+                       dm_left: int = DM_PER_PHASE) -> dict:
     from .beliefs import ids_for_schema
     from .deliberation import METRICS
     from .operations import OPERATIONS, schema as op_schema
@@ -506,7 +525,7 @@ def decision_schema_v2(w: World, mid: str, motion_ids: list, election_pending: b
                                          "direction": {"type": "string", "enum": ["more_likely", "less_likely"]},
                                          "reason": {"type": "string"}}), 3)
     props["forecasts"] = _arr(forecast_schema(), 2)
-    props["private_messages"] = _v2_dm_schema(others)
+    _offer_dms(props, others, dm_left)
     props["notes"] = {"type": "string"}
     props["decision_factors"] = _arr({"type": "string"}, 4)
     return _obj(props)

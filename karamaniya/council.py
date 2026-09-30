@@ -770,8 +770,10 @@ class Council:
 
         # Phase 2-4: independent openings, published together in the seeded order.
         def speak(mid):
-            schema = actions.session_schema_v2(w, mid)
+            # The quota is read before the schema is built: the schema has to advertise what the
+            # member actually has left, not a flat per-phase maximum it may not spend.
             left = quota - used[mid]
+            schema = actions.session_schema_v2(w, mid, left)
             prompt, meta = decision_context.build(
                 w, mid, "independent opening", public_brief=brief, motions=[],
                 messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)),
@@ -900,8 +902,8 @@ class Council:
             transcript = prompts.transcript_v2(w, statements, scheduled, agenda_notes)
 
             def revise(mid):
-                schema = actions.revision_schema(w, mid, scheduled)
                 left = quota - used[mid]
+                schema = actions.revision_schema(w, mid, scheduled, left)
                 prompt, meta = decision_context.build(
                     w, mid, "responses and revisions", public_brief=brief, motions=scheduled,
                     messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)), transcript=transcript,
@@ -950,8 +952,8 @@ class Council:
         transcript = prompts.transcript_v2(w, statements, scheduled, agenda_notes, revisions if run_revision else None)
 
         def decide(mid):
-            schema = actions.decision_schema_v2(w, mid, motion_ids, election_pending)
             left = quota - used[mid]
+            schema = actions.decision_schema_v2(w, mid, motion_ids, election_pending, left)
             prompt, meta = decision_context.build(
                 w, mid, "decision", public_brief=brief, motions=scheduled,
                 messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)), transcript=transcript,

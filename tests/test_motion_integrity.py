@@ -594,5 +594,79 @@ class Determinism(unittest.TestCase):
         self.assertEqual(audit(RunStore(a))["classification"], audit(RunStore(b))["classification"])
 
 
+class TheEngineMustNotContradictItself(unittest.TestCase):
+    """Two ways a well-formed answer was rejected on a real run, both the engine's fault.
+
+    A run filed "3 answer(s) with problems" against one delegate: a motion thrown out for a value
+    the delegate had plainly stated, and messages refused as over quota by a schema that had just
+    offered them. Neither was a bad answer. In each case the engine said two opposite things and
+    recorded the delegate's response to the wrong one.
+    """
+
+    def test_a_key_written_back_into_the_value_is_still_the_value(self):
+        """set_policy farm_support value="value=0.035", text "Increase farm support to 3.5% of
+        output". The delegate said 0.035 twice; the motion was rejected as a bad value, so a slip
+        of formatting became a policy failure it never chose."""
+        w = new_world(1, member_ids=list("ABCDE"))
+        motion = {"type": "set_policy", "subject": "farm_support", "value": "value=0.035",
+                  "text": "Increase farm support to 3.5% of output."}
+        self.assertIsNone(politics.validate_motion_detail(w, motion))
+        self.assertEqual(politics.parse_lever("farm_support", politics._bare("value=0.035")), 0.035)
+
+    def test_the_other_spellings_of_the_same_slip(self):
+        for raw, want in (("value=0.035", "0.035"), ("farm_support=0.035", "0.035"),
+                          ("value: 0.035", "0.035"), ("Farm Support = 3.5%", "3.5%"),
+                          ("value=on", "on"), ("value=quarter", "quarter")):
+            with self.subTest(raw=raw):
+                self.assertEqual(politics._bare(raw), want)
+
+    def test_a_value_that_names_no_key_is_not_touched(self):
+        for raw in ("0.035", "3.5%", "on", "off", "quarter", "half", "all", "Month 24", "none", 0.035, ""):
+            with self.subTest(raw=raw):
+                self.assertEqual(politics._bare(raw), raw)
+
+    def test_the_dm_schema_advertises_the_quota_the_prompt_states(self):
+        """The prompt carried the remaining count all along — a member can be told "send up to 0
+        private messages" — while the schema advertised a flat three in every phase. A delegate
+        that followed the schema was then refused for over-spending. Observed for real: one message
+        in the revision phase and one in the decision phase, both rejected as "too many"."""
+        w = new_world(1, member_ids=list("ABCDE"))
+        builders = {
+            "session": lambda left: actions.session_schema_v2(w, "B", left),
+            "revision": lambda left: actions.revision_schema(w, "B", [], left),
+            "decision": lambda left: actions.decision_schema_v2(w, "B", [], False, left),
+        }
+        for phase, build in builders.items():
+            for left in (3, 2, 1):
+                with self.subTest(phase=phase, left=left):
+                    field = build(left)["properties"].get("private_messages") or {}
+                    self.assertEqual(field.get("maxItems"), left,
+                                     f"{phase} offered more messages than the member has left")
+            with self.subTest(phase=phase, left=0):
+                schema = build(0)
+                self.assertNotIn("private_messages", schema["properties"],
+                                 f"{phase} still offered a field the member cannot spend")
+                self.assertNotIn("private_messages", schema["required"])
+
+    def test_the_prompt_says_something_a_member_can_act_on_at_zero(self):
+        from karamaniya import prompts
+        w = new_world(1, member_ids=list("ABCDE"))
+        for text in (prompts.opening_instructions_v2(w, "B", 0, list("ABCDE"), 3),
+                     prompts.revision_instructions(w, "B", 0),
+                     prompts.decision_instructions_v2(w, "B", [], 0, False, False)):
+            self.assertNotIn("up to 0 private", text, "the prompt offered an allowance of nothing")
+            self.assertIn("no private messages left", text)
+        self.assertIn("up to 1 private message;", prompts.opening_instructions_v2(w, "B", 1, list("ABCDE"), 3))
+
+    def test_an_over_quota_message_is_still_refused_rather_than_silently_kept(self):
+        """The fix is that the engine stops asking for more than it will accept, not that it starts
+        accepting more than it allows."""
+        w = new_world(1, member_ids=list("ABCDE"))
+        problems = []
+        kept = actions._v2_dms(w, "B", [{"to": "C", "text": "one"}, {"to": "D", "text": "two"}], 1, problems)
+        self.assertEqual(len(kept), 1)
+        self.assertIn("too many private messages", problems)
+
+
 if __name__ == "__main__":
     unittest.main()

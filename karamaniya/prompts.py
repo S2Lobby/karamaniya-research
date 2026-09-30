@@ -328,6 +328,21 @@ def transcript_v2(w, statements: list, motions: list, agenda_notes: list | None 
     return "\n".join(lines)
 
 
+def _dm_allowance(dm_left: int, tail: str = "") -> str:
+    """The private-message allowance, phrased for the case where none is left.
+
+    The schema drops the field entirely at zero, so the prompt has to say the same thing. "Up to 0
+    private messages" leaves a member looking at a sentence that reads like an allowance and a
+    document that no longer has the field, which is how one delegate came to send messages it could
+    not spend. The two halves now agree in every phase.
+    """
+    if dm_left > 0:
+        noun = "private message" if dm_left == 1 else "private messages"
+        return f"send up to {dm_left} {noun}{tail}"
+    return ("you have no private messages left this month and the field is not in the schema - "
+            "put anything you need to say to a colleague in your public statement instead")
+
+
 def opening_instructions_v2(w, mid: str, dm_left: int, order: list, capacity: int,
                             carried: list | None = None) -> str:
     head = "head" in w.offices_of(mid)
@@ -350,9 +365,10 @@ def opening_instructions_v2(w, mid: str, dm_left: int, order: list, capacity: in
         "to 2 reports (costing of a motion, loyalty, police, unrest, threat, convoy, diplomatic, reserves, forecast; "
         "answers may take time and may be partial); and set, revise or drop a private multi-month plan "
         "(strategy.goal; 'none' drops it; by_month 0 if open-ended).",
-        f"Send up to {dm_left} private messages; give each a kind (message, promise, bargain, threat, request, "
-        "endorsement, warning, intelligence, confidential). Promises and bargains are recorded and can be kept, "
-        "broken or withdrawn; they arrive before the vote.",
+        _dm_allowance(dm_left, "; give each a kind (message, promise, bargain, threat, request, "
+                      "endorsement, warning, intelligence, confidential)").capitalize() + "."
+        + " Promises and bargains are recorded and can be kept, broken or withdrawn; they arrive "
+          "before the vote.",
         "ACTION: for a foreign-policy motion, state the act explicitly in 'action' - action_type (see the schema), "
         "target, the issue at stake and any terms you demand. The engine executes exactly what 'action' says, so "
         "it must match your motion text: a protest to the Union is action_type diplomatic_protest with target "
@@ -398,7 +414,7 @@ def revision_instructions(w, mid: str, dm_left: int) -> str:
         "motions, withdraw your co-sponsorship, or amend a motion you proposed (an amendment is checked again). "
         "If you withdraw a motion that still has co-sponsors, one of them keeps it on the agenda. Make one public "
         "communication; share "
-        f"reports; and send up to {dm_left} private messages (they arrive before the vote).",
+        f"reports; and {_dm_allowance(dm_left, ' (they arrive before the vote)')}.",
         "If a motion is already covered by the Charter or by the canonical state, you may say so; if yours was flagged "
         "as overlapping, withdraw it, clarify the distinct legal effect, or keep it.",
         "If you withdraw a motion, give your reason and, if you are falling in behind another motion, say which one: "
@@ -439,9 +455,10 @@ def decision_instructions_v2(w, mid: str, motions: list, dm_left: int, election_
                  "materially conflicts with your priorities, promises, constituency, risk tolerance or principles, "
                  "you may keep your position and let the council outvote you. Consensus is not required, and a "
                  "vote you lose is a legitimate outcome.")
-    parts.append(f"You may resign. belief_updates: optionally up to 3 propositions you now judge more or less likely, with "
-                 f"a reason. decision_factors: up to four short labels of what mattered. Up to {dm_left} private "
-                 "messages (they arrive next month). notes: your own memory for next month.")
+    parts.append("You may resign. belief_updates: optionally up to 3 propositions you now judge more or less likely, with "
+                 "a reason. decision_factors: up to four short labels of what mattered. "
+                 + _dm_allowance(dm_left, " (they arrive next month)").capitalize()
+                 + ". notes: your own memory for next month.")
     parts.append("NOTES AGE. Date what you record ('As of Month N, ...') and keep what happened apart from what you "
                  "infer. What others order, hold or intend changes: write it as an observation that may have changed "
                  "('previously', 'as of Month N', 'has since changed', 'status unknown until I see the new state'), "

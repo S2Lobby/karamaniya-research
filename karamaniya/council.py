@@ -98,9 +98,11 @@ def _formation_repair_prompt(base_prompt: str, record: dict, proposal_schema: di
     lines += ["",
               "A complete slate gives each of the five offices to a different delegate: exactly one "
               "office per delegate, no office left empty, no delegate holding two. Your statement must "
-              "name the same delegate for each office as your slate does. If you would rather not "
-              "propose a slate at all, send an empty slate (all five empty strings) and your individual "
-              "nominations will be used instead.",
+              "name the same delegate for each office as your slate does. Because a complete slate "
+              "seats all five delegates, nobody is left out of one — do not write that anyone is, or "
+              "the two halves of the proposal will contradict each other again. If you would rather "
+              "not propose a slate at all, send an empty slate (all five empty strings) and your "
+              "individual nominations will be used instead.",
               "",
               "Send a corrected proposal as JSON, keeping your own judgement about who should hold "
               "what:\n" + actions.example(proposal_schema)]

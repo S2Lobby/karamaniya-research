@@ -74,6 +74,10 @@ class TheProseMustMatchTheSlate(unittest.TestCase):
                         "the contradiction was not read at all")
         self.assertIn("HEAD, TREASURY, INTERIOR, ARMY, NAVY", prompt)
         self.assertIn("exactly one office per delegate", prompt)
+        # A repair that fixes the structure while writing that someone is left out has only moved
+        # the contradiction, so the prompt says which implication of "complete" the delegate must
+        # keep its prose consistent with.
+        self.assertIn("nobody is left out of one", prompt)
         # The repair keeps the delegate's own context and swaps only the instruction.
         self.assertIn("CONTEXT", prompt)
         self.assertTrue(prompt.count("Reply with JSON:") == 0,

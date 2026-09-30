@@ -1,0 +1,5 @@
+Test inventory at HEAD e4c27f7 (counts via Select-String 'def test_' over tests/test_*.py).
+Files: 59 test files. Methods: 918 test methods. Non-test helpers: fake_cli.py, stub_servers.py.
+Latest integrity commits: e4c27f7 outstanding patch; 5880249 bounds; 26f8e7f relief; aeddd6d vote/memory; 6c9685a consensus/memory/authority; 020fa3b values/quota; dd22cc4/2e365f4/41fcccb/e107eeb formation.
+Largest files: causality 59, motion_integrity 49, military_realism 44, causal_economy 34, transmission 29, audits/convergence/forecasts/review 27 each.
+Note: counts are static def-test_ definitions, not runs; see per-file lines above for provenance.

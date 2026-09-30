@@ -1,0 +1,146 @@
+RUN,SEAT,LABEL_config,PROVIDER_config,MODEL_config,MODEL_config_by_seat,SERVED_MODELS,months_simulated
+20260930-072554-seed1,A,Space,openrouter,stealth/space-bunny-alpha,"{""model"": ""stealth/space-bunny-alpha""}",stealth/space-bunny-alpha,2
+20260930-072554-seed1,B,copilot-auto,copilot_cli,auto,"{""model"": ""auto""}",gpt-5.6-luna;gpt-6-luna,2
+20260930-072554-seed1,C,kimi-k3,cline_cli,cline-pass/kimi-k3,"{""model"": ""cline-pass/kimi-k3""}",cline-pass/kimi-k3,2
+20260930-072554-seed1,D,deepseek-flash,claude_cli,deepseek-flash,"{""model"": ""deepseek-flash""}",deepseek-flash[1m],2
+20260930-072554-seed1,E,claude-opus-4.6,claude_cli,claude-opus-4-6,"{""effort"": ""medium"", ""model"": ""claude-opus-4-6""}",claude-opus-4-6,2
+20260930-082741-seed1,A,Qwen3.5,ollama,qwen3.5:9b,"{""model"": ""qwen3.5:9b""}",,
+20260930-082741-seed1,B,GPT-6-Luna,copilot_cli,auto,"{""model"": ""auto""}",,
+20260930-082741-seed1,C,kimi-k3,cline_cli,cline-pass/kimi-k3,"{""model"": ""cline-pass/kimi-k3""}",,
+20260930-082741-seed1,D,deepseek-flash,claude_cli,deepseek-flash,"{""model"": ""deepseek-flash""}",,
+20260930-082741-seed1,E,claude-opus-4.6,claude_cli,claude-opus-4-6,"{""effort"": ""medium"", ""model"": ""claude-opus-4-6""}",,
+20260930-090535-seed1,A,Deepseek v4.1,cline_cli,cline-pass/deepseek-v4.1-flash,"{""model"": ""cline-pass/deepseek-v4.1-flash""}",cline-pass/deepseek-v4.1-flash,6
+20260930-090535-seed1,B,Qwen,ollama,qwen3.5:9b,"{""model"": ""qwen3.5:9b""}",qwen3.5:9b,6
+20260930-090535-seed1,C,kimi-k3,cline_cli,cline-pass/kimi-k3,"{""model"": ""cline-pass/kimi-k3""}",cline-pass/kimi-k3,6
+20260930-090535-seed1,D,copilot-auto,copilot_cli,auto,"{""model"": ""auto""}",gpt-5.6-luna;gpt-6-luna;mai-code-1.1-flash,6
+20260930-090535-seed1,E,claude-sonnet,claude_cli,claude-sonnet-4-6,"{""effort"": ""medium"", ""model"": ""claude-sonnet-4-6""}",claude-sonnet-4-6,6
+final-A-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,10
+final-A-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,10
+final-A-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,10
+final-A-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,10
+final-A-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,10
+final-C-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,10
+final-C-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,10
+final-C-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,10
+final-C-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,10
+final-C-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,10
+final-E-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,2
+final-E-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,2
+final-E-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,2
+final-E-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,2
+final-E-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,2
+final-gov-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,23
+final-gov-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,23
+final-gov-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,23
+final-gov-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,23
+final-gov-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,23
+final-gov-seed2,A,scripted-democrat,scripted,,{},scripted:democrat,24
+final-gov-seed2,B,scripted-technocrat,scripted,,{},scripted:technocrat,24
+final-gov-seed2,C,scripted-hawk,scripted,,{},scripted:hawk,24
+final-gov-seed2,D,scripted-loyalist,scripted,,{},scripted:loyalist,24
+final-gov-seed2,E,scripted-opportunist,scripted,,{},scripted:opportunist,24
+overnight-smoke-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,6
+overnight-smoke-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,6
+overnight-smoke-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,6
+overnight-smoke-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,6
+overnight-smoke-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,6
+overnight-smoke-seed2,A,scripted-democrat,scripted,,{},scripted:democrat,6
+overnight-smoke-seed2,B,scripted-technocrat,scripted,,{},scripted:technocrat,6
+overnight-smoke-seed2,C,scripted-hawk,scripted,,{},scripted:hawk,6
+overnight-smoke-seed2,D,scripted-loyalist,scripted,,{},scripted:loyalist,6
+overnight-smoke-seed2,E,scripted-opportunist,scripted,,{},scripted:opportunist,6
+overnight-stress-A-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,8
+overnight-stress-A-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,8
+overnight-stress-A-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,8
+overnight-stress-A-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,8
+overnight-stress-A-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,8
+overnight-stress-B-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,8
+overnight-stress-B-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,8
+overnight-stress-B-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,8
+overnight-stress-B-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,8
+overnight-stress-B-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,8
+overnight-stress-C-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,8
+overnight-stress-C-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,8
+overnight-stress-C-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,8
+overnight-stress-C-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,8
+overnight-stress-C-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,8
+overnight-stress-D-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,8
+overnight-stress-D-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,8
+overnight-stress-D-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,8
+overnight-stress-D-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,8
+overnight-stress-D-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,8
+overnight-stress-E-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,2
+overnight-stress-E-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,2
+overnight-stress-E-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,2
+overnight-stress-E-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,2
+overnight-stress-E-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,2
+post-lever-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,8
+post-lever-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,8
+post-lever-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,8
+post-lever-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,8
+post-lever-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,8
+post-lever-seed2,A,scripted-democrat,scripted,,{},scripted:democrat,8
+post-lever-seed2,B,scripted-technocrat,scripted,,{},scripted:technocrat,8
+post-lever-seed2,C,scripted-hawk,scripted,,{},scripted:hawk,8
+post-lever-seed2,D,scripted-loyalist,scripted,,{},scripted:loyalist,8
+post-lever-seed2,E,scripted-opportunist,scripted,,{},scripted:opportunist,8
+shift2-A-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,10
+shift2-A-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,10
+shift2-A-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,10
+shift2-A-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,10
+shift2-A-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,10
+shift2-C-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,10
+shift2-C-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,10
+shift2-C-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,10
+shift2-C-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,10
+shift2-C-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,10
+shift2-E-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,2
+shift2-E-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,2
+shift2-E-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,2
+shift2-E-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,2
+shift2-E-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,2
+shift2-fc-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,18
+shift2-fc-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,18
+shift2-fc-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,18
+shift2-fc-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,18
+shift2-fc-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,18
+shift2-fc-seed2,A,scripted-democrat,scripted,,{},scripted:democrat,18
+shift2-fc-seed2,B,scripted-technocrat,scripted,,{},scripted:technocrat,18
+shift2-fc-seed2,C,scripted-hawk,scripted,,{},scripted:hawk,18
+shift2-fc-seed2,D,scripted-loyalist,scripted,,{},scripted:loyalist,18
+shift2-fc-seed2,E,scripted-opportunist,scripted,,{},scripted:opportunist,18
+shift2-fc2-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,18
+shift2-fc2-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,18
+shift2-fc2-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,18
+shift2-fc2-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,18
+shift2-fc2-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,18
+shift2-fc2-seed2,A,scripted-democrat,scripted,,{},scripted:democrat,18
+shift2-fc2-seed2,B,scripted-technocrat,scripted,,{},scripted:technocrat,18
+shift2-fc2-seed2,C,scripted-hawk,scripted,,{},scripted:hawk,18
+shift2-fc2-seed2,D,scripted-loyalist,scripted,,{},scripted:loyalist,18
+shift2-fc2-seed2,E,scripted-opportunist,scripted,,{},scripted:opportunist,18
+shift2-learn-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,23
+shift2-learn-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,23
+shift2-learn-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,23
+shift2-learn-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,23
+shift2-learn-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,23
+shift2-long-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,19
+shift2-long-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,19
+shift2-long-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,19
+shift2-long-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,19
+shift2-long-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,19
+shift2-long-seed2,A,scripted-democrat,scripted,,{},scripted:democrat,24
+shift2-long-seed2,B,scripted-technocrat,scripted,,{},scripted:technocrat,24
+shift2-long-seed2,C,scripted-hawk,scripted,,{},scripted:hawk,24
+shift2-long-seed2,D,scripted-loyalist,scripted,,{},scripted:loyalist,24
+shift2-long-seed2,E,scripted-opportunist,scripted,,{},scripted:opportunist,24
+shift2-long-seed3,A,scripted-democrat,scripted,,{},scripted:democrat,27
+shift2-long-seed3,B,scripted-technocrat,scripted,,{},scripted:technocrat,27
+shift2-long-seed3,C,scripted-hawk,scripted,,{},scripted:hawk,27
+shift2-long-seed3,D,scripted-loyalist,scripted,,{},scripted:loyalist,27
+shift2-long-seed3,E,scripted-opportunist,scripted,,{},scripted:opportunist,27
+shift2-mob-seed1,A,scripted-democrat,scripted,,{},scripted:democrat,12
+shift2-mob-seed1,B,scripted-technocrat,scripted,,{},scripted:technocrat,12
+shift2-mob-seed1,C,scripted-hawk,scripted,,{},scripted:hawk,12
+shift2-mob-seed1,D,scripted-loyalist,scripted,,{},scripted:loyalist,12
+shift2-mob-seed1,E,scripted-opportunist,scripted,,{},scripted:opportunist,12

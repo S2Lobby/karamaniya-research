@@ -12,7 +12,7 @@ import json
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (actions, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors,
+from . import (actions, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors, forecasts,
                freshness, director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations,
                politics, prompts, provenance, psychology, standing, tuning)
 from .backends import CallResult
@@ -878,6 +878,15 @@ class Council:
         w.intel["self_reports"] = {mid: beliefs.self_report_evidence(w, mid, d.get("belief_updates", []))
                                    for mid, d in decisions.items()}
         w.intel["self_reports_month"] = w.month
+        # Record this month's forecasts. They are not judged yet: a prediction about six months
+        # from now is scored in six months, against a state its author could not see.
+        for mid, d in decisions.items():
+            for item in d.get("forecasts") or []:
+                if len(forecasts.open_for(w, mid)) >= forecasts.MAX_OPEN:
+                    break
+                forecasts.record(w, mid, str(item.get("metric", "")), item.get("horizon_months", 0),
+                                 str(item.get("direction", "")), item.get("threshold", 0.0),
+                                 item.get("confidence", 0.5), str(item.get("rationale", "")))
         compact = [{k: mo.get(k) for k in ("id", "type", "subject", "value", "proposer", "passed", "summary", "votes")}
                    for mo in record["motions"]]
         w.agenda["this_month"] = {"pre_resolution": pre_resolution, "motions": compact}

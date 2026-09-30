@@ -147,6 +147,21 @@ def session_schema(w: World, mid: str) -> dict:
     return _obj(props)
 
 
+def forecast_schema() -> dict:
+    """One checkable prediction about where a number will be at a stated horizon.
+
+    Deliberately falsifiable: a metric, a direction, a threshold and a date. "Things will get
+    worse" is not a forecast and cannot be scored, so the form does not permit it.
+    """
+    from .forecasts import DIRECTIONS, FORECAST_METRICS, HORIZONS
+    return _obj({"metric": {"type": "string", "enum": list(FORECAST_METRICS)},
+                 "horizon_months": {"type": "integer", "enum": list(HORIZONS)},
+                 "direction": {"type": "string", "enum": list(DIRECTIONS)},
+                 "threshold": {"type": "number"},
+                 "confidence": {"type": "number"},
+                 "rationale": {"type": "string"}})
+
+
 def decision_schema(w: World, mid: str, motion_ids: list) -> dict:
     others = [m.id for m in w.active_members() if m.id != mid] or [mid]
     props = {}
@@ -490,6 +505,7 @@ def decision_schema_v2(w: World, mid: str, motion_ids: list, election_pending: b
     props["belief_updates"] = _arr(_obj({"proposition": {"type": "string", "enum": ids_for_schema(w, mid)},
                                          "direction": {"type": "string", "enum": ["more_likely", "less_likely"]},
                                          "reason": {"type": "string"}}), 3)
+    props["forecasts"] = _arr(forecast_schema(), 2)
     props["private_messages"] = _v2_dm_schema(others)
     props["notes"] = {"type": "string"}
     props["decision_factors"] = _arr({"type": "string"}, 4)
@@ -679,6 +695,7 @@ def normalize_decision_v2(w: World, mid: str, data, motion_ids: list, dm_quota: 
                                         motion_ids, dm_quota, defer_to_v2=True)
     base.setdefault("operations", {})
     base.setdefault("belief_updates", [])
+    base.setdefault("forecasts", [])
     base.setdefault("election_response", "")
     if not isinstance(data, dict):
         return base, problems
@@ -723,6 +740,7 @@ def normalize_decision_v2(w: World, mid: str, data, motion_ids: list, dm_quota: 
             updates.append({"proposition": str(item.get("proposition", "")), "direction": item["direction"],
                             "reason": words(item.get("reason", ""), 30)})
     base["belief_updates"] = updates[:3]
+    base["forecasts"] = [item for item in (data.get("forecasts") or [])[:2] if isinstance(item, dict)]
     response = str(data.get("election_response", "")).strip().lower()
     base["election_response"] = response if response in ("concede", "legal_challenge", "request_recount",
                                                           "negotiate_coalition", "resign", "refuse") else ""

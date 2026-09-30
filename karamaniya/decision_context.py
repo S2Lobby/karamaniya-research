@@ -423,6 +423,11 @@ HARD_CUT = "\n[...truncated to fit this seat]"
 MIN_KEEP = 120
 
 
+def _forecast_record(w: World, mid: str) -> str:
+    from . import forecasts
+    return forecasts.context_for(w, mid)
+
+
 def compose(sections: list, budget: int) -> tuple[str, list]:
     """Join sections in order, shrinking the least important ones until the prompt fits (spec 84).
 
@@ -514,6 +519,9 @@ def build(w: World, mid: str, phase: str, *, public_brief: str, motions: list | 
         Section("relationships", 4, rel, "\n".join(rel.splitlines()[:6])),
         Section("beliefs", 4, bel, "\n".join(bel.splitlines()[:5])),
         Section("standing", 5, stand, "\n".join(stand.splitlines()[:2])),
+        # A delegate's own forecast record. Its own only: another delegate's calibration is
+        # private reasoning and showing it would leak what that delegate was thinking.
+        Section("forecast_record", 4, _forecast_record(w, mid)),
         Section("memory", 6, mem, "\n".join(mem.splitlines()[:5])),
         Section("notes", 5, notes, notes[:500]),
         Section("fresh", 1, since_notes),

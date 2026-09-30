@@ -39,6 +39,9 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         trade = economy.trade_and_food(w, prod)
         fiscal = economy.fiscal(w, prod, trade)
         economy.money_and_prices(w, prod)
+        # Score any forecast whose horizon has now elapsed, against the state just produced.
+        from . import forecasts
+        forecasts.resolve_due(w)
         military.update(w, fiscal)
         society.update(w, prod, fiscal)
         politics.monthly_checks(w)

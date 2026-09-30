@@ -11,6 +11,184 @@ import math
 from .world import clamp, rng_for
 
 
+# ---- red lines, leadership confidence and domestic constituencies -------------------------------
+# Three things the actors lacked: conditions they will not accept, a leadership whose standing
+# depends on results, and domestic groups with a view on how Karamaniya should be handled. All
+# three are engine-side model state. None of it is written into a Karamaniyan prompt: the council
+# only ever sees the behaviour that follows.
+
+# What each constituency wants from its own government's policy toward Karamaniya, on one axis:
+# +1 maximum firmness, -1 maximum accommodation, 0 for a group with no posture of its own.
+# `weight` is the group's weight in that argument, and the weighted groups of an actor sum to 1;
+# a group with no preference carries no weight and never generates posture pressure. `support` is
+# the group's standing with its government, rewritten every month by _domestic() from the same
+# formulas as before this feature existed.
+CONSTITUENCIES = {
+    "veleria": {
+        "industrial_elites": {"preference": -.45, "weight": .36, "support": .62},
+        "workers": {"preference": 0.0, "weight": 0.0, "support": .66},
+        "army": {"preference": 0.0, "weight": 0.0, "support": .68},
+        "nationalists": {"preference": .85, "weight": .38, "support": .77},
+        "commercial_sector": {"preference": -.65, "weight": .26, "support": .65},
+        "bureaucracy": {"preference": 0.0, "weight": 0.0, "support": .64},
+    },
+    "dorsania": {
+        "farmers": {"preference": 0.0, "weight": 0.0, "support": .70},
+        "grain_exporters": {"preference": -.80, "weight": .40, "support": .74},
+        "army": {"preference": .45, "weight": .26, "support": .61},
+        "regional_elites": {"preference": 0.0, "weight": 0.0, "support": .61},
+        "merchants": {"preference": -.60, "weight": .34, "support": .65},
+        "union_supporters": {"preference": 0.0, "weight": 0.0, "support": .61},
+        "union_skeptics": {"preference": 0.0, "weight": 0.0, "support": .43},
+    },
+}
+
+# Cabinet actions that count as visible economic pressure on Karamaniya.
+COERCIVE_ACTIONS = ("partial_embargo", "grain_embargo", "ultimatum")
+
+
+def _bilateral_trade_open(w) -> bool:
+    """Karamaniya and Dorsania are inside the grain agreement the economy already counts."""
+    return bool(w.counters.get("dorsania_trade", 0)) and w.month <= w.counters.get("dorsania_trade_until", -1)
+
+
+def _measure_league_alignment(w) -> float:
+    """Karamaniya has taken the League's military weight: a formal alliance or equipment deliveries."""
+    if w.dip.league_alliance:
+        return 1.0
+    return .6 if w.dip.league_aid > 0 else 0.0
+
+
+def _measure_league_escorts(w) -> float:
+    """League warships are escorting convoys in waters the actor treats as its own."""
+    return 1.0 if w.dip.league_escort else 0.0
+
+
+def _measure_bilateral_trade(w) -> float:
+    """Karamaniya has settled grain trade bilaterally with Dorsania, outside the Union's policy."""
+    return 1.0 if _bilateral_trade_open(w) else 0.0
+
+
+def _measure_blockade(w) -> float:
+    """The sea lanes are closed: a blockade is running, weighted by how much of the trade it stops."""
+    if not w.dip.blockade:
+        return 0.0
+    return clamp(.6 + .4 * clamp(w.dip.blockade_eff))
+
+
+def _measure_karamaniyan_attack(w) -> float:
+    """Karamaniya is the aggressor in an open war."""
+    return 1.0 if (w.dip.war and w.dip.aggressor == "karamaniya") else 0.0
+
+
+def _measure_league_default(w) -> float:
+    """Karamaniya has suspended service on League credit that is still outstanding."""
+    loan = w.foreign.get("league", {}).get("loan", {})
+    return 1.0 if (w.policy.debt_service == "suspend" and loan.get("principal", 0.0) > 0) else 0.0
+
+
+# Each condition is a measurement of state the engine already tracks, on a 0..1 scale, so a red
+# line is a claim about something Karamaniya actually did rather than about a label. A line is
+# crossed when its condition reaches the line's threshold.
+RED_LINE_CONDITIONS = {
+    "karamaniya_league_alignment": _measure_league_alignment,
+    "league_escorts_in_solvaran_waters": _measure_league_escorts,
+    "bilateral_trade_split": _measure_bilateral_trade,
+    "blockade_of_shipping": _measure_blockade,
+    "karamaniyan_offensive_war": _measure_karamaniyan_attack,
+    "default_on_league_debt": _measure_league_default,
+}
+
+# Seeded per actor, never drawn at random per month. Severity scales the consequence of a crossing.
+RED_LINES = {
+    "veleria": (
+        {"id": "league_military_ties", "condition": "karamaniya_league_alignment",
+         "threshold": .55, "severity": .85},
+        {"id": "league_escorts_admitted", "condition": "league_escorts_in_solvaran_waters",
+         "threshold": .5, "severity": .55},
+        {"id": "bilateral_split_of_the_union", "condition": "bilateral_trade_split",
+         "threshold": .5, "severity": .60},
+    ),
+    "dorsania": (
+        {"id": "sea_lanes_closed", "condition": "blockade_of_shipping",
+         "threshold": .6, "severity": .70},
+        {"id": "karamaniyan_attack_across_the_border", "condition": "karamaniyan_offensive_war",
+         "threshold": .5, "severity": .80},
+        {"id": "default_on_league_debt", "condition": "default_on_league_debt",
+         "threshold": .5, "severity": .45},
+    ),
+}
+
+# How an actor answers a crossed line, by disposition: (hostility, threat, offensive-intent belief).
+# Bounded and deterministic, and no response is a war or an attack: they move perceptions only.
+RED_LINE_RESPONSES = {
+    "protest": (.05, .05, .05),
+    "bluster": (.07, .06, .04),
+    "mobilize": (.10, .08, .08),
+    "escalate": (.18, .14, .12),
+}
+
+
+def _red_lines(actor_id: str) -> list:
+    return [{"id": line["id"], "condition": line["condition"], "threshold": line["threshold"],
+             "severity": line["severity"], "crossed_month": -1, "response": ""}
+            for line in RED_LINES.get(actor_id, ())]
+
+
+def _leadership_state(actor_id: str, seed: int) -> dict:
+    """A leadership starts with a standing and a tenure it had before the run began."""
+    rng = rng_for(seed, 0, "foreign-leadership:" + actor_id)
+    return {"confidence": round(rng.uniform(.62, .78), 3), "domestic_pressure": 0.0,
+            "months_in_office": 6 + rng.randrange(24)}
+
+
+def _tenure_opening(actor_id: str, seed: int) -> int:
+    """Months the leadership had already served when the run opened, from the same seeded draw."""
+    return int(_leadership_state(actor_id, seed)["months_in_office"])
+
+
+def _support(group, default: float = .6) -> float:
+    """One constituency's standing with its government. Tolerates entries saved before this feature."""
+    value = group.get("support", default) if isinstance(group, dict) else group
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else default
+
+
+def _set_support(groups: dict, support: dict) -> None:
+    """Record this month's standing for each group, creating an entry for a checkpoint that lacks one."""
+    for name, value in support.items():
+        group = groups.get(name)
+        if not isinstance(group, dict):
+            group = groups[name] = {"preference": 0.0, "weight": 0.0}
+        group["support"] = value
+
+
+def _red_line_response(disposition: dict) -> str:
+    """How an actor answers a crossed line: bold actors escalate, cautious ones protest.
+
+    Reads only the seeded dispositions, so the same actor always answers the same way and a
+    crossing cannot become a war by itself.
+    """
+    if disposition["aggressiveness"] >= .55:
+        return "escalate" if disposition["patience"] < .60 else "mobilize"
+    if disposition["risk_tolerance"] >= .45:
+        return "mobilize"
+    return "protest" if disposition["patience"] >= .55 else "bluster"
+
+
+def _number(value, default: float) -> float:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else default
+
+
+def _caution(actor: dict) -> float:
+    """How far a low-confidence leadership pulls its punches: 1.0 at ordinary confidence, .60 at none.
+
+    This is a modulation of decisions the actor already makes, not a decision of its own.
+    """
+    leadership = actor.get("leadership")
+    confidence = _number(leadership.get("confidence"), .70) if isinstance(leadership, dict) else .70
+    return clamp(.60 + .60 * confidence)
+
+
 def _actor(actor_id: str, seed: int) -> dict:
     rng = rng_for(seed, 0, "foreign-disposition:" + actor_id)
     base = {
@@ -28,9 +206,11 @@ def _actor(actor_id: str, seed: int) -> dict:
                      "economic_growth": .015, "inflation": .03, "unemployment": .06,
                      "fiscal_stress": .18, "war_weariness": 0.0},
         "political_pressures": {},
-        "constituencies": {},
+        "constituencies": {name: dict(spec) for name, spec in CONSTITUENCIES[actor_id].items()},
         "strategic_goals": {},
         "disposition": disposition,
+        "red_lines": _red_lines(actor_id),
+        "leadership": _leadership_state(actor_id, seed),
         "beliefs": {
             "karamaniya_permanent_separation": {"value": .57, "confidence": .28},
             "karamaniya_offensive_intent": {"value": .18, "confidence": .20},
@@ -90,6 +270,169 @@ def initial_state(seed: int) -> dict:
         "escalation_chains": [],
         "decision_log": [],
     }
+
+
+def _ensure_actor_shape(actor: dict, actor_id: str, seed: int) -> None:
+    """Add anything a checkpoint saved before red lines, leadership and groups existed is missing.
+
+    Old state is upgraded in place rather than re-derived, so a resumed run keeps the standing its
+    constituencies already had. Nothing here raises on a partial or old actor.
+    """
+    leadership = actor.get("leadership")
+    if not isinstance(leadership, dict):
+        leadership = actor["leadership"] = _leadership_state(actor_id, seed)
+    else:
+        opening = _leadership_state(actor_id, seed)
+        for key, value in opening.items():
+            leadership.setdefault(key, value)
+    red_lines = actor.get("red_lines")
+    if not isinstance(red_lines, list) or not red_lines:
+        actor["red_lines"] = _red_lines(actor_id)
+    groups = actor.get("constituencies")
+    if not isinstance(groups, dict):
+        groups = actor["constituencies"] = {}
+    for name, spec in CONSTITUENCIES.get(actor_id, {}).items():
+        group = groups.get(name)
+        if isinstance(group, dict):
+            group.setdefault("preference", spec["preference"])
+            group.setdefault("weight", spec["weight"])
+            group.setdefault("support", spec["support"])
+        else:
+            groups[name] = {"preference": spec["preference"], "weight": spec["weight"],
+                            "support": _support(group, spec["support"])}
+    # A group an older checkpoint tracked but this version does not know keeps its standing and
+    # carries no posture of its own, rather than being dropped or crashing the reader.
+    for name, group in list(groups.items()):
+        if not isinstance(group, dict):
+            groups[name] = {"preference": 0.0, "weight": 0.0, "support": _support(group, .6)}
+
+
+def posture_toward_karamaniya(w, actor_id: str) -> float:
+    """Where an actor's actual policy toward Karamaniya sits: -1 accommodation, +1 confrontation.
+
+    Read from instruments the engine already moves — embargoes, a war, an ultimatum, a signed pact,
+    settled trade — so a constituency's grievance is a statement about real policy, not a label.
+    """
+    dip = w.dip
+    if actor_id == "veleria":
+        confrontation = clamp(.75 * clamp(dip.coal_embargo / .40) + (.25 if dip.war else 0.0)
+                              + (.15 if dip.ultimatum else 0.0))
+        accommodation = clamp(.35 * (1.0 if dip.nonaggression else 0.0)
+                              + .35 * (1.0 if dip.federation else 0.0))
+    else:
+        confrontation = clamp(.70 * clamp(dip.grain_embargo / .35) + (.30 if dip.war else 0.0))
+        accommodation = clamp(.55 * clamp(-dip.grain_embargo / .12)
+                              + .30 * (1.0 if _bilateral_trade_open(w) else 0.0))
+    return clamp(confrontation - accommodation, -1.0, 1.0)
+
+
+def _constituency_pressures(w) -> None:
+    """Rewrite each weighted constituency's grievance over the actor's current posture.
+
+    A group that is getting the policy it wants carries no grievance; one whose preference is being
+    ignored carries pressure proportional to its weight and to how loud domestic politics is.
+    """
+    for actor_id, actor in w.foreign["actors"].items():
+        groups, d = actor["constituencies"], actor["domestic"]
+        posture = posture_toward_karamaniya(w, actor_id)
+        tension = clamp(.5 * (1 - d["approval"]) + 1.5 * d["inflation"] + .3 * d["war_weariness"])
+        for name, group in groups.items():
+            key = f"{name}_grievance"
+            weight = _number(group.get("weight"), 0.0) if isinstance(group, dict) else 0.0
+            if weight <= 0:
+                actor["political_pressures"].pop(key, None)
+                continue
+            preference = _number(group.get("preference"), 0.0)
+            ignored = clamp(abs(posture - preference) / 2.0)
+            actor["political_pressures"][key] = round(clamp(weight * ignored * (.80 + .40 * tension)), 3)
+
+
+def _coercing(w, actor_id: str, actor: dict) -> bool:
+    """Whether the actor is visibly applying economic pressure on Karamaniya this month."""
+    embargo = w.dip.coal_embargo if actor_id == "veleria" else max(0.0, w.dip.grain_embargo)
+    recent = any(action.get("type") in COERCIVE_ACTIONS and w.month - action.get("month", -99) <= 2
+                 for action in actor["diplomacy"].get("last_actions", []))
+    return embargo >= .05 or recent
+
+
+def _strategy_failure(w, actor_id: str, actor: dict) -> float:
+    """How visibly the actor's pressure on Karamaniya is failing, 0..1.
+
+    Only counted while the actor is actually coercing: an actor that is not applying pressure
+    cannot be seen to fail at it. The verdict comes from the belief the engine already updates
+    from observed outcomes, so a revival of independence support after coercion reads as failure.
+    """
+    if not _coercing(w, actor_id, actor):
+        return 0.0
+    effectiveness = _belief(actor, "economic_pressure_effectiveness")["value"]
+    return clamp((.48 - effectiveness) / .36)
+
+
+def _leadership(w) -> None:
+    """Move each leadership's confidence toward what its domestic position and results justify.
+
+    Confidence falls faster than it recovers, so a bad year is not undone by one quiet month.
+    """
+    for actor_id, actor in w.foreign["actors"].items():
+        lead, d = actor["leadership"], actor["domestic"]
+        grievance = sum(value for key, value in actor["political_pressures"].items()
+                        if key.endswith("_grievance"))
+        pressure = clamp(.38 * (1 - d["approval"]) + 1.6 * d["inflation"] + .35 * d["war_weariness"]
+                         + .55 * d["fiscal_stress"] + .45 * grievance)
+        lead["domestic_pressure"] = round(pressure, 3)
+        target = clamp(.70 - .55 * pressure - .30 * _strategy_failure(w, actor_id, actor))
+        rate = .12 if target < lead["confidence"] else .04
+        lead["confidence"] = round(clamp(lead["confidence"] + rate * (target - lead["confidence"])), 3)
+        # Tenure follows the calendar, so resolving a month twice does not age a government twice.
+        lead["months_in_office"] = _tenure_opening(actor_id, w.seed) + w.month
+
+
+def red_line_measurements(w, actor_id: str) -> dict:
+    """This month's reading for every condition the actor's red lines are written against."""
+    return {line["condition"]: float(RED_LINE_CONDITIONS[line["condition"]](w))
+            for line in w.foreign["actors"][actor_id].get("red_lines", [])
+            if line.get("condition") in RED_LINE_CONDITIONS}
+
+
+def _cross_red_line(w, actor: dict, line: dict, response: str) -> None:
+    """A crossed line: it hardens the actor's view of Karamaniya. It never starts a war or an attack."""
+    severity = clamp(_number(line.get("severity"), .5))
+    hostilities, threat, belief_move = RED_LINE_RESPONSES.get(response, RED_LINE_RESPONSES["protest"])
+    relations = actor["relations"]["karamaniya"]
+    relations["hostility"] = round(clamp(relations["hostility"] + hostilities * severity), 3)
+    relations["threat_perception"] = round(clamp(relations["threat_perception"] + threat * severity), 3)
+    perceived = actor["threat_perception"]
+    perceived["karamaniya"] = round(clamp(_number(perceived.get("karamaniya"), relations["threat_perception"])
+                                          + threat * severity), 3)
+    intent = _belief(actor, "karamaniya_offensive_intent")
+    intent["value"] = round(clamp(intent["value"] + belief_move * severity), 3)
+    intent["confidence"] = round(clamp(intent["confidence"] + .06 * severity), 3)
+    if response == "escalate":
+        disposition = actor["disposition"]
+        disposition["aggressiveness"] = round(clamp(disposition["aggressiveness"] + .02 * severity), 3)
+        disposition["patience"] = round(clamp(disposition["patience"] - .02 * severity), 3)
+    _remember(w.foreign, actor["id"], "red_line",
+              f"Karamaniya crossed the {line['id'].replace('_', ' ')} line; the government chose to {response}.",
+              w.month, red_line=line["id"], severity=severity, response=response)
+
+
+def evaluate_red_lines(w) -> None:
+    """Test every actor's lines against observable state and record the first crossing of each.
+
+    A crossing is one-way: a line that stays breached keeps the month it was first crossed and is
+    never re-triggered, so a standing condition cannot ratchet hostility month after month.
+    """
+    for actor in w.foreign["actors"].values():
+        for line in actor.get("red_lines", []):
+            if _number(line.get("crossed_month"), -1) >= 0:
+                continue
+            measure = RED_LINE_CONDITIONS.get(line.get("condition"))
+            if measure is None or measure(w) < _number(line.get("threshold"), 1.0):
+                continue
+            response = _red_line_response(actor["disposition"])
+            line["crossed_month"] = w.month
+            line["response"] = response
+            _cross_red_line(w, actor, line, response)
 
 
 def _belief(actor: dict, key: str) -> dict:
@@ -188,37 +531,43 @@ def _domestic(w) -> None:
         d["inflation"] = e["inflation"]
         d["economic_growth"] = e["growth"]
         if actor_id == "veleria":
-            c.update({"industrial_elites": clamp(.62 - .9 * dip.coal_embargo - .5 * dip.war),
-                      "workers": clamp(.68 - 1.4 * e["inflation"] - .18 * dip.war),
-                      "army": clamp(.68 + .22 * actor["threat_perception"]["karamaniya"]),
-                      "nationalists": clamp(.55 + .38 * _belief(actor, "karamaniya_permanent_separation")["value"]),
-                      "commercial_sector": clamp(.65 - .55 * dip.war - .35 * dip.blockade),
-                      "bureaucracy": clamp(.66 - .24 * state["union"]["policy_disagreement"])})
-            p.update({"industrial_disruption": 1 - c["industrial_elites"], "worker_price_pressure": 1-c["workers"],
-                      "nationalist_demand": c["nationalists"], "army_readiness_lobby": c["army"]})
+            support = {"industrial_elites": clamp(.62 - .9 * dip.coal_embargo - .5 * dip.war),
+                       "workers": clamp(.68 - 1.4 * e["inflation"] - .18 * dip.war),
+                       "army": clamp(.68 + .22 * actor["threat_perception"]["karamaniya"]),
+                       "nationalists": clamp(.55 + .38 * _belief(actor, "karamaniya_permanent_separation")["value"]),
+                       "commercial_sector": clamp(.65 - .55 * dip.war - .35 * dip.blockade),
+                       "bureaucracy": clamp(.66 - .24 * state["union"]["policy_disagreement"])}
+            _set_support(c, support)
+            p.update({"industrial_disruption": 1 - support["industrial_elites"],
+                      "worker_price_pressure": 1 - support["workers"],
+                      "nationalist_demand": support["nationalists"],
+                      "army_readiness_lobby": support["army"]})
         else:
-            c.update({"farmers": clamp(.70 - .85 * dip.grain_embargo - .30 * dip.war),
-                      "grain_exporters": clamp(.74 - .80 * dip.grain_embargo - .42 * dip.war),
-                      "army": clamp(.61 + .18 * actor["threat_perception"]["karamaniya"]),
-                      "regional_elites": clamp(.61 - .22 * (1-state["union"]["cohesion"])),
-                      "merchants": clamp(.65 - .48 * dip.war - .62 * dip.grain_embargo),
-                      "union_supporters": clamp(.61 - .16 * (1-state["union"]["cohesion"])),
-                      "union_skeptics": clamp(.28 + .55 * (1-state["union"]["cohesion"]))})
-            p.update({"farm_income_pressure": 1-c["farmers"], "exporter_opposition": 1-c["grain_exporters"],
-                      "regional_autonomy_demand": c["union_skeptics"]})
+            support = {"farmers": clamp(.70 - .85 * dip.grain_embargo - .30 * dip.war),
+                       "grain_exporters": clamp(.74 - .80 * dip.grain_embargo - .42 * dip.war),
+                       "army": clamp(.61 + .18 * actor["threat_perception"]["karamaniya"]),
+                       "regional_elites": clamp(.61 - .22 * (1-state["union"]["cohesion"])),
+                       "merchants": clamp(.65 - .48 * dip.war - .62 * dip.grain_embargo),
+                       "union_supporters": clamp(.61 - .16 * (1-state["union"]["cohesion"])),
+                       "union_skeptics": clamp(.28 + .55 * (1-state["union"]["cohesion"]))}
+            _set_support(c, support)
+            p.update({"farm_income_pressure": 1 - support["farmers"],
+                      "exporter_opposition": 1 - support["grain_exporters"],
+                      "regional_autonomy_demand": support["union_skeptics"]})
         economic_stress = clamp(e["inflation"] * 2.5 + max(0, -.01-e["growth"])*3
                                 + d["war_weariness"] * .25)
         approval = clamp(d["approval"] + .012 * (1-economic_stress) - .010 * economic_stress
-                         + .004 * (sum(c.values())/max(1,len(c))-.5))
+                         + .004 * (sum(_support(group) for group in c.values())/max(1,len(c))-.5))
         d["approval"] = round(approval, 3)
         d["fiscal_stress"] = round(clamp(.72*d.get("fiscal_stress", .18) + .28*economic_stress), 3)
         actor["strategic_goals"] = ({"union_leadership": .72, "prevent_hostile_alignment": .48 + .38*_belief(actor, "league_strategic_influence")["value"],
                                      "avoid_damaging_war": .66 + .20*d["fiscal_stress"], "industrial_growth": .77,
                                      "domestic_legitimacy": .65, "prevent_separation": .55 + .42*_belief(actor, "karamaniya_permanent_separation")["value"]}
                                     if actor_id == "veleria" else
-                                    {"grain_exports": .65 + .32*(1-c["grain_exporters"]), "border_stability": .77,
+                                    {"grain_exports": .65 + .32*(1-support["grain_exporters"]), "border_stability": .77,
                                      "union_security": .55 + .2*state["union"]["shared_threat_perception"],
-                                     "avoid_war": .82, "trade_access": .80, "independent_judgment": .51+c["union_skeptics"]*.22})
+                                     "avoid_war": .82, "trade_access": .80,
+                                     "independent_judgment": .51+support["union_skeptics"]*.22})
         if economic_stress > .35:
             label = "inflation protest" if e["inflation"] > .12 else "economic slowdown"
             if w.month % 3 == 0:
@@ -232,9 +581,15 @@ def prepare(w) -> dict:
         w.foreign = initial_state(w.seed)
     # Keep old and new checkpoints compatible, while canonical unit counts remain Rival.army.
     for actor_id, actor in w.foreign["actors"].items():
+        _ensure_actor_shape(actor, actor_id, w.seed)
         actor["military"]["active"] = w.rivals[actor_id].army
     _domestic(w)
+    _constituency_pressures(w)
+    _leadership(w)
     _signal_intelligence(w)
+    # A crossing hardens what the actor believes after this month's signals have been read in, so
+    # its effect on next month's assessment is not washed out by the same month's evidence.
+    evaluate_red_lines(w)
     _government_estimates(w)
     return {actor_id: cabinet_context(w, actor_id) for actor_id in ("veleria", "dorsania")}
 
@@ -281,18 +636,20 @@ def positions(w) -> dict:
     v["threat_perception"]["karamaniya"] = round(threat_v, 3)
     d["threat_perception"]["karamaniya"] = round(threat_d, 3)
     vp, dp = v["disposition"], d["disposition"]
+    # A leadership that has lost domestic confidence does not spend what it has left on a fight.
+    caution_v, caution_d = _caution(v), _caution(d)
     # A cost-aware Veleria generally prefers dependency and pressure to war.
-    pressure_v = clamp(.52*threat_v + .32*v["political_pressures"].get("nationalist_demand", .4)
-                       - .19*v["political_pressures"].get("industrial_disruption", .2)
-                       - .18*v["domestic"]["fiscal_stress"]
-                       + .14*(_belief(v,"economic_pressure_effectiveness")["value"]-.5))
+    pressure_v = clamp((.52*threat_v + .32*v["political_pressures"].get("nationalist_demand", .4)
+                        - .19*v["political_pressures"].get("industrial_disruption", .2)
+                        - .18*v["domestic"]["fiscal_stress"]
+                        + .14*(_belief(v,"economic_pressure_effectiveness")["value"]-.5)) * caution_v)
     vel = {"pressure": pressure_v, "grain_embargo": 0.0, "coal_embargo": 0.0,
            "military_build": 0.0, "ultimatum": False, "union": "consult"}
     if not dip.union_formed and w.month >= 3 and state["union"]["cohesion"] > .42:
         vel["union"] = "found"
     if pressure_v > .40:
         vel["coal_embargo"] = clamp((pressure_v-.34)*.58, 0, .22)
-    vel["military_build"] = clamp((threat_v-.48)*9000 + (9000 if dip.war else 0), 0, 9000)
+    vel["military_build"] = clamp(((threat_v-.48)*9000 + (9000 if dip.war else 0)) * caution_v, 0, 9000)
     instability = _belief(v, "karamaniya_government_instability")["value"]
     if pressure_v > .52 and (threat_v > .58 or instability > .72) and v["domestic"]["approval"] > .36 and not dip.ultimatum and not dip.war:
         vel["ultimatum"] = True
@@ -310,7 +667,7 @@ def positions(w) -> dict:
 
     grain_interest = d["political_pressures"].get("exporter_opposition", .2)
     union_pressure = .38*threat_d + .24*(1-state["union"]["cohesion"]) + .18*dp["nationalism"]
-    dor_pressure = clamp(union_pressure - .42*grain_interest - .20*d["domestic"]["fiscal_stress"])
+    dor_pressure = clamp(union_pressure - .42*grain_interest - .20*d["domestic"]["fiscal_stress"]) * caution_d
     dors = {"pressure": dor_pressure, "grain_embargo": 0.0, "military_build": 0.0,
             "union": "support", "independent_trade": False}
     if dor_pressure > .38:
@@ -320,7 +677,7 @@ def positions(w) -> dict:
         dors["independent_trade"] = True
         dors["union"] = "oppose"
     if threat_d > .58:
-        dors["military_build"] = clamp((threat_d-.5)*4800, 0, 3000)
+        dors["military_build"] = clamp((threat_d-.5)*4800, 0, 3000) * caution_d
     dors["strategy"] = ("security coordination with protected grain trade" if dors["union"] == "oppose"
                         else "preserve Union security while limiting trade losses")
     return {"veleria": vel, "dorsania": dors}
@@ -736,7 +1093,7 @@ def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "") -> None:
                      f"Dorsania accepts a {duration}-month grain purchase agreement and will restore some exports to Karamaniya.",
                      channel="commercial channel")
     _remember(w.foreign, "dorsania", "bilateral_agreement", "Accepted a grain purchase agreement with Karamaniya.",
-              w.month, until=until, farmer_pressure=round(1-actor["constituencies"].get("farmers", .6),2),
+              w.month, until=until, farmer_pressure=round(1-_support(actor["constituencies"].get("farmers")),2),
               decision_factors=["grain exporter demand", "Karamaniya market access", "Union cohesion"])
     w.event("trade", "Dorsania accepted a bilateral grain agreement with Karamaniya, drawing objections from Veleria.",
             importance=2)

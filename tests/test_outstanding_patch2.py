@@ -136,6 +136,41 @@ class NamedIntegrityRecords(unittest.TestCase):
         self.assertEqual(compliance[-1]["compliance_status"], "SUPERSEDED_ORDER")
         self.assertEqual(compliance[-1]["code"], "DIRECTIVE_ORDER_MISMATCH")
 
+    def test_the_acceptance_month_council_police_0020_plus_stale_order(self):
+        # The spec's exact month: council passes police=0.020, Treasury's order still says
+        # 0.018. The directive stands (policy REMAINS 0.020), the order is set aside, and the
+        # mismatch is recorded as SUPERSEDED_ORDER — not defiance, not a silent overwrite.
+        import threading
+        from karamaniya.council import Council as _Council
+        w = new_world(3, 6, member_ids=list("ABCDE"))
+        w.const.offices.update({"head": "A", "treasury": "D", "interior": "E",
+                                "army": "B", "navy": "C"})
+        motion = {"id": "M1", "proposer": "E", "type": "set_policy", "subject": "police",
+                  "value": "0.020", "text": "", "summary": "directive police = 0.020"}
+        council = _Council.__new__(_Council)
+        council.w, council.pending_dms, council.observer, council._lock, council.spend = (
+            w, [], None, threading.Lock(), 0.0)
+        def _decision(votes, orders):
+            return {"votes": votes, "vote_reasons": {}, "vote_conditions": {}, "resign": False,
+                    "coup": None, "coup_stance": "resist", "orders": orders, "operations": {},
+                    "private_messages": [], "notes": "", "belief_updates": [],
+                    "decision_factors": []}
+        decisions = {mid: _decision({"M1": "yes"},
+                                    {"treasury": {"police": 0.018}} if mid == "D" else {})
+                     for mid in "ABCDE"}
+        record = council._resolve_v2(decisions, [motion], [motion], [], list("ABCDE"),
+                                     [], {}, {}, [], False)
+        self.assertAlmostEqual(w.policy.police, 0.020)
+        self.assertAlmostEqual(w.const.directives["police"], 0.020)
+        self.assertEqual(record["defiance"], [])
+        self.assertEqual(len(record["superseded_orders"]), 1)
+        clash = record["compliance"][-1]
+        self.assertEqual(clash["code"], "DIRECTIVE_ORDER_MISMATCH")
+        self.assertAlmostEqual(clash["directive_value"], 0.020)
+        self.assertAlmostEqual(clash["office_order_value"], 0.018)
+        self.assertAlmostEqual(clash["actual_executed_value"], 0.020)
+        self.assertEqual(clash["compliance_status"], "SUPERSEDED_ORDER")
+
 
 if __name__ == "__main__":
     unittest.main()

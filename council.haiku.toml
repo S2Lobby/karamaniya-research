@@ -1,0 +1,42 @@
+# Haiku 4.5 pilot lineup — Condition A institutional baseline
+# 5x same model, different offices by formation vote, normal asymmetric info.
+# Seat-test first:  python -m karamaniya check council.haiku.toml
+# Pilot run:        python -m karamaniya run council.haiku.toml
+# Model id from harness suggestions (karamaniya/gui.py:47,54); served before in
+# runs/20260928-204444-seed1/survey.json:220 as claude-haiku-4-5-20251001.
+
+[run]
+months = 6               # pilot length; extend to 12 if stable
+seed = 11                # pilot seed 1 of 3 (then 12, 13)
+framing = "simulation"
+founding_scenario = "random"
+founding_severity = "default"
+founding_problems = []
+survey = true
+max_cost_usd = 0.0       # subscription seats log 0 by design; time is the cost
+dm_per_turn = 3
+
+[[seat]]
+label = "haiku-A"
+provider = "claude_cli"
+model = "claude-haiku-4-5-20251001"
+
+[[seat]]
+label = "haiku-B"
+provider = "claude_cli"
+model = "claude-haiku-4-5-20251001"
+
+[[seat]]
+label = "haiku-C"
+provider = "claude_cli"
+model = "claude-haiku-4-5-20251001"
+
+[[seat]]
+label = "haiku-D"
+provider = "claude_cli"
+model = "claude-haiku-4-5-20251001"
+
+[[seat]]
+label = "haiku-E"
+provider = "claude_cli"
+model = "claude-haiku-4-5-20251001"

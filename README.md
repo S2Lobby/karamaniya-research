@@ -275,10 +275,13 @@ the League was sent a trade agreement and the Union never heard the protest.
 
 A foreign-policy motion now states its act explicitly in an `action` object (`action_type`, `target`,
 `issue`, `terms`), and that act governs where the motion is sent. Before a motion is tabled the council
-checks its words against its structured action: if the text addresses a different country, or describes a
-different act, the motion is **not** tabled. It goes back to its author alone with a `MOTION_ACTION_MISMATCH`
-message naming both sides of the conflict, and the rest of that delegate's turn stands. A motion that comes
-back still contradicting itself is recorded as rejected rather than executed as the wrong act.
+checks its words against its structured action: if the text addresses a different country (a country named
+only as the pressure being answered, as in "against Union pressure", is context and not the addressee), or
+describes a different act, or names an act its own target cannot receive (a trade deal is a Maritime League
+act; the only act Dorsania receives is a grain deal), the motion is **not** tabled. It goes back to its
+author alone with a `MOTION_ACTION_MISMATCH` message naming both sides of the conflict and what the target
+can receive, and the rest of that delegate's turn stands. A motion that comes back still contradicting
+itself is recorded as rejected rather than executed as the wrong act.
 
 Before anything changes the world, a second check confirms the action exists, names a real target, is an
 act that target can receive, matches the version that actually passed, and has not already run this month.

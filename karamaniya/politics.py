@@ -11,6 +11,7 @@ import math
 import re
 from difflib import SequenceMatcher, get_close_matches
 
+from . import military
 from .world import (ARMED_OFFICES, OFFICE_TITLES, OFFICES, World, clamp, month_label,
                     rng_for, smooth_step)
 
@@ -636,11 +637,20 @@ def resolve_coups(w: World, coups: dict, stances: dict) -> list:
             power = _power(w, office)
             if holder is not None and holder.id in plotters:
                 armed_plotters.add(holder.id)
-                follow = clamp(0.25 + 0.55 * force.bond + 0.25 * (1 - approval) - 0.25 * force.loyalty
-                               + (0.1 if force.arrears > 1 else 0.0)
-                               - (0.15 if w.const.elected or handover else 0.0), 0.05, 0.95)
-                attack += power * follow
-                defend += power * (1 - follow) * force.loyalty * 0.5
+                # The army is not one mind. `anticipated_response` returns the share of units that
+                # would obey the plotter, obey the government, stay neutral or split, from the same
+                # state the scalar below used to collapse: institutional loyalty, personal bond,
+                # pay arrears and the legitimacy of the government. Units that would join do so
+                # only if they expect enough others to join, so a plot that looks like it will fail
+                # collapses further rather than being carried by a determined few. Whole-army
+                # obedience is not a producible answer: the commander's share is capped.
+                division = military.anticipated_response(
+                    w, {"kind": "coup", "office": office, "leader": holder.id})
+                attack += power * division["obey_commander"]
+                # Units that stay in barracks are not defending the government either, so they
+                # count for neither side; a split garrison defends at half weight.
+                defend += power * (division["obey_government"]
+                                   + 0.5 * division["split"]) * force.loyalty
             elif holder is not None:
                 stance = stances.get(holder.id, "resist")
                 if stance == "resist":

@@ -8,7 +8,7 @@ of the government.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields as dataclass_fields
 
 from . import audits
 from .economy import front_region, labor
@@ -232,6 +232,7 @@ def update(w: World, fiscal: dict) -> None:
 
     _naval(w, rng)
     update_readiness(w)
+    sync_state(w)
     _combat(w, rng)
 
 
@@ -447,20 +448,29 @@ class Readiness:
     month: int = -1           # last month stepped
 
 
+def _hydrate(w: World, cls, store: str, attr: str):
+    """Rebuild one state object from its serialised dict, tolerating an older checkpoint."""
+    obj = getattr(w.mil, attr, None)
+    if obj is None:
+        saved = getattr(w.mil, store, None) or {}
+        known = {f.name for f in dataclass_fields(cls)}
+        obj = cls(**{k: v for k, v in saved.items() if k in known})
+        setattr(w.mil, attr, obj)
+    return obj
+
+
+def sync_state(w: World) -> None:
+    """Write the live objects back into the serialised fields, so a checkpoint carries them."""
+    w.mil.mobilization_state = asdict(mobilization_of(w))
+    w.mil.readiness_state = asdict(readiness_of(w))
+
+
 def mobilization_of(w: World) -> Mobilization:
-    mob = getattr(w.mil, "mobilization", None)
-    if mob is None:
-        mob = Mobilization()
-        w.mil.mobilization = mob
-    return mob
+    return _hydrate(w, Mobilization, "mobilization_state", "_mobilization")
 
 
 def readiness_of(w: World) -> Readiness:
-    r = getattr(w.mil, "readiness", None)
-    if r is None:
-        r = Readiness()
-        w.mil.readiness = r
-    return r
+    return _hydrate(w, Readiness, "readiness_state", "_readiness")
 
 
 def reserve_pool(w: World) -> float:

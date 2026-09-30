@@ -250,6 +250,11 @@ class Military:
     killed: float = 0.0         # Karamanian soldiers killed, cumulative
     union_killed: float = 0.0
     last_combat: dict = field(default_factory=dict)
+    # Reserve call-up and the supply chain. Stored as plain dicts so they serialise with the rest
+    # of the state; military.py hydrates them into its own objects and writes them back each month.
+    # Without this an in-progress call-up was lost on save and a resumed run silently restarted it.
+    mobilization_state: dict = field(default_factory=dict)
+    readiness_state: dict = field(default_factory=dict)
 
 
 @dataclass

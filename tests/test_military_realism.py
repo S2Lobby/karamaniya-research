@@ -365,3 +365,86 @@ class Determinism(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StateSurvivesSaveAndLoad(unittest.TestCase):
+    """The subagent that built this kept its state on the instance rather than on the dataclass,
+    so an in-progress call-up was silently lost on save and a resumed run restarted it. The state
+    now lives in `Military.mobilization_state` / `readiness_state` and syncs once a month."""
+
+    def test_an_in_progress_call_up_survives_a_round_trip(self):
+        from karamaniya.world import World
+        w = new_world(1, 24)
+        military.call_up(w, 20000)
+        w.month = 0
+        military.update_readiness(w)
+        military.sync_state(w)
+        before = military.mobilization_of(w).called_up
+        again = military.mobilization_of(World.from_dict(w.to_dict()))
+        self.assertAlmostEqual(again.called_up, before, delta=1.0)
+
+    def test_the_supply_chain_survives_a_round_trip(self):
+        from karamaniya.world import World
+        w = new_world(1, 24)
+        w.dip.blockade = True
+        w.dip.blockade_eff = 0.9
+        for m in range(6):
+            w.month = m
+            military.update_readiness(w)
+        military.sync_state(w)
+        before = military.readiness_of(w).transport
+        again = military.readiness_of(World.from_dict(w.to_dict()))
+        self.assertAlmostEqual(again.transport, before, places=6)
+        self.assertLess(before, 1.0, "the run never actually degraded anything")
+
+    def test_a_checkpoint_from_before_this_state_existed_still_loads(self):
+        from karamaniya.world import World
+        w = new_world(1, 12)
+        data = w.to_dict()
+        data["mil"].pop("mobilization_state", None)
+        data["mil"].pop("readiness_state", None)
+        old = World.from_dict(data)
+        self.assertAlmostEqual(military.mobilization_of(old).called_up, 0.0)
+        self.assertAlmostEqual(military.readiness_of(old).stock, 1.0)
+
+    def test_mobilized_strength_arrives_gradually_not_at_once(self):
+        w = new_world(1, 24)
+        military.call_up(w, 20000)
+        self.assertLess(military.mobilized_strength(w), 20000,
+                        "the whole call-up was effective immediately")
+
+
+class TheCoupIsNotOneMind(unittest.TestCase):
+    """`politics.resolve_coups` used a single `follow` scalar with a floor of 5% and a ceiling of
+    95%, so a plotter always carried a large block. It now reads the unit-response distribution."""
+
+    def _fragment(self, loyalty, bond, arrears=0.0):
+        from karamaniya.world import new_world as nw
+        w = nw(1, 12)
+        w.mil.army.loyalty = loyalty
+        w.mil.army.bond = bond
+        w.mil.army.arrears = arrears
+        return military.anticipated_response(w, {"kind": "coup", "office": "army", "leader": "A"})
+
+    def test_an_unpopular_plotter_carries_only_a_few_percent(self):
+        """Turkey 2016: 8,651 personnel participated, 1.5% of the armed forces."""
+        share = self._fragment(loyalty=0.85, bond=0.15)["obey_commander"]
+        self.assertLess(share, 0.10)
+
+    def test_a_garrison_can_stay_neutral_rather_than_picking_a_side(self):
+        d = self._fragment(loyalty=0.5, bond=0.5)
+        self.assertGreater(d["neutral"], 0.10, "every unit picked a side")
+
+    def test_the_whole_army_never_follows_one_officer(self):
+        d = self._fragment(loyalty=0.0, bond=1.0, arrears=6.0)
+        self.assertLessEqual(d["obey_commander"], military.ENGAGE_CEILING)
+        self.assertGreater(d["obey_government"] + d["neutral"] + d["split"], 0.0)
+
+    def test_the_resolve_coup_path_uses_the_distribution(self):
+        """The wiring itself, not just the function: the scalar is gone from the coup path."""
+        import inspect
+        from karamaniya import politics
+        source = inspect.getsource(politics.resolve_coups)
+        self.assertIn("anticipated_response", source)
+        self.assertNotIn("0.25 + 0.55 * force.bond", source,
+                         "the old scalar follow formula is still in the coup path")

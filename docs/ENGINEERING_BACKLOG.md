@@ -103,3 +103,28 @@ The mission asked for the existing run logs to be mined for problems that had ne
 | Zero state faults across 962 simulated months and 11,260 calls (no NaN, no negative stocks, no counters running backwards, no unstatused motions) | VERIFIED |
 | Regional logistics recover in a single month on dilemma resolution rather than ramping, producing a visible step in output | KNOWN LIMITATION — documented, not fixed |
 | Archived runs carry infrastructure call errors (session limits, quotas) but no engine faults | OBSERVED |
+
+
+---
+
+# Second shift: realism
+
+Both shifts share this register. Statuses as defined at the top of the file.
+
+| ID | Title | Severity | Status | Files | Tests | Result |
+|---|---|---|---|---|---|---|
+| R1 | Macro transmission chain with lags | high | VERIFIED | `causality.py`, `economy.py` | `test_transmission.py` | Credit, demand, money and import-price stocks; target moves at once, credit converges over ~9 months |
+| R2 | Money measured against capacity | high | VERIFIED | `economy.py` | `test_scenarios_realism.py` | Fixed a *stagflationary* rate rise; baseline inflation band tightened to -1.2%/+2.2% |
+| R3 | Policy rate reaches expectations | high | VERIFIED | `causality.py` | `test_scenarios_realism.py` | Credibility had no route from the policy rate at all |
+| R4 | Fiscal structure: arrears composition | high | VERIFIED | `economy.py`, `world.py` | `test_fiscal_structure.py` | Five categories with protection weights; army protected, not immune |
+| R5 | Debt service split, rollover, reserve adequacy | medium | VERIFIED | `economy.py` | `test_fiscal_structure.py` | Gross issuance capacity; rollover genuinely crowds out |
+| R6 | Post-harvest losses | medium | VERIFIED | `economy.py` | `test_food_distribution.py` | 7.5-17.5%, inside the APHLIS/World Bank 10-20% band |
+| R7 | Regional food distribution | high | VERIFIED | `economy.py` | `test_food_distribution.py` | National surplus 1.07 with a region at 28% of need unmet |
+| R8 | Foreign red lines and leadership | medium | VERIFIED | `foreign.py` | `test_foreign_strategy.py` | Delegated; trajectories verified byte-identical |
+| R9 | Forecast ledger and scoring | high | VERIFIED | `forecasts.py` | `test_forecasts.py` | Brier, Murphy, Pesaran-Timmermann baseline; own record only |
+| R10 | Military mobilization, unit response, supply chain | high | VERIFIED | `military.py`, `politics.py` | `test_military_realism.py` | Delegated; coup path now reads the distribution |
+| R11 | Adversarial scenario suite | high | VERIFIED | `tests/` | `test_scenarios_realism.py` | 22 qualitative checks; found three structural bugs |
+| R12 | Six defects from adversarial review | high | VERIFIED | see report | `test_review_regressions.py` | Four HIGH; all were one quantity computed in two places |
+| R13 | Mobilization policy lever | medium | DEFERRED | needs `Policy`, `actions.py`, `prompts.py` | — | Functions exist and persist; nothing calls them |
+| R14 | Agent causal learning from forecast errors | medium | DEFERRED | — | — | The ledger is the substrate; the belief update is not built |
+| R15 | Regime-dependent coefficients | low | DEFERRED | — | — | Persistence and multipliers are per-world, not per-regime |

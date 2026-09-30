@@ -9,7 +9,8 @@ ahead on whichever half the engine happened to read.
 
 Two problems, two functions. `validate` is exact: a full slate is a bijection between five offices
 and five delegates, and anything else is named precisely. `mismatches` reads the prose, but only in
-the narrow case where it makes an *explicit* assignment claim.
+the two narrow cases where it makes an *explicit* claim: that an office goes to a named delegate, or
+that a named delegate is not in the government at all.
 
 That narrowness is deliberate and is the main design decision here. Prose in this corpus is
 rhetorically varied — real statements include "Delegate D's payments-and-harvest knowledge suits
@@ -169,6 +170,84 @@ def _reads_as_assignment(gap: str, patterns) -> bool:
     return any(p.match(gap) for p in patterns)
 
 
+# Prose that says, in as many words, that a named delegate is not in the government. Only phrasings
+# that assert it are here: "suits", "would strengthen" and the rest describe a fit or an argument and
+# are left to the assignment reader or to nothing at all.
+# Both word boundaries matter. Without the closing one the alternation matches the prefix "exclude"
+# inside "excludes" and stops, leaving the "s" to sit in the gap between the phrase and the delegate
+# it names, so the phrase no longer reads as adjacent to them. Alternatives are longest-first so the
+# fuller form is tried before the shorter one it starts with.
+_EXCLUSION_RE = re.compile(
+    r"\b(?:"
+    r"exclud(?:ing|ed|es|e)"
+    r"|leaves out|left out|left off"
+    r"|omit(?:ted|s)?"
+    r"|holds? no office|holding no office|holds? no post"
+    r"|no office for|no post for|no place for"
+    r"|receiv(?:es|ed) no office|gets? no office|is given no office"
+    r"|without an office|without a post|without a portfolio"
+    r"|is not included|not included"
+    r"|passed over"
+    r"|dropped from"
+    r"|(?:remains?|sits?|stays?|standing) outside|outside (?:this|the) (?:slate|government|cabinet)"
+    r")\b", re.I)
+# A member and an exclusion phrase are adjacent, with at most a copula between them: "Delegate D is
+# excluded", "excluding Delegate D", "no office for Delegate D".
+_EXCL_SUBJECT = re.compile(r"^\s*(?:will be|would be|should be|shall be|have been|has been|had been|"
+                           r"am|is|are|was|were|be|been|being|get|gets|got|remains?|stays?)?\s*$", re.I)
+_EXCL_OBJECT = re.compile(r"^\s*(?:the|any|this|that|one|delegate|for|from (?:this|the) "
+                          r"(?:slate|government|cabinet))?\s*$", re.I)
+_EXCL_NEGATIONS = ("not ", "n't", "never", "no longer", "nor ", "no ", "cannot", "can't")
+# A repair round invites the delegate to explain what its last attempt got wrong, and "my previous
+# proposal excluded D" is a statement about that proposal rather than this one. Not hypothetical:
+# the first real repair the patch produced (2026-09-30) opened "My previous proposal failed to cover
+# all delegates and the Head office", and the same shape with an exclusion verb is a natural thing
+# for a model to write one clause later.
+_BACK_REFERENCE = re.compile(
+    r"\b(?:previous|earlier|first|last|original|initial|prior)\s+(?:\w+\s+){0,2}"
+    r"(?:proposal|slate|attempt|plan|draft|cabinet|version)\b", re.I)
+
+
+def exclusions(statement: str, speaker: str, ids) -> list:
+    """Delegates the statement explicitly says are not in the government.
+
+    The mirror of `claims`, and narrow for the same reason: "the army must not be excluded from the
+    budget" and "no delegate should be excluded" are arguments about a principle, not a statement
+    that a named delegate holds nothing, and reading either as one would reject a proposal that was
+    never malformed. A phrase only counts when a named delegate sits directly against it and nothing
+    in front of it turns it back around.
+    """
+    if not isinstance(statement, str) or not statement:
+        return []
+    low = statement.lower()
+    members = _member_mentions(statement, speaker, ids)
+    out = []
+    for m in _EXCLUSION_RE.finditer(low):
+        ps, pe = m.start(), m.end()
+        pre = low[max(0, ps - 45):ps]
+        # "is not excluded" turns the claim back around; "my previous slate excluded" points it at a
+        # different proposal. Neither is a statement about who holds office in this one.
+        if any(token in pre for token in _EXCL_NEGATIONS) or _BACK_REFERENCE.search(pre):
+            continue
+        for ms, me, member in members:
+            if me <= ps:
+                gap, ok = statement[me:ps], _EXCL_SUBJECT
+            elif ms >= pe:
+                gap, ok = statement[pe:ms], _EXCL_OBJECT
+            else:
+                continue
+            if len(" ".join(gap.split())) > 30 or ";" in gap or re.search(r"\.\s", gap):
+                continue
+            if ok.match(" ".join(gap.split()) + " "):
+                out.append(member)
+    seen, unique = set(), []
+    for member in out:
+        if member not in seen:
+            seen.add(member)
+            unique.append(member)
+    return unique
+
+
 def _gap_is_local(gap: str, gap_start: int, gap_end: int, members: list) -> bool:
     """Whether the text between a delegate and an office links those two and nothing else.
 
@@ -239,7 +318,11 @@ def assess(statement: str, slate, speaker: str, ids) -> dict:
 
 
 def mismatches(statement: str, slate, speaker: str, ids) -> list:
-    """Prose claims that contradict the structured slate. Never guesses which side is meant."""
+    """Prose claims that contradict the structured slate. Never guesses which side is meant.
+
+    Two kinds, and no others: an office the statement gives to one delegate and the slate gives to
+    another, and a delegate the statement says is not in the government and the slate seats anyway.
+    """
     if not isinstance(slate, dict):
         return []
     out = []
@@ -248,4 +331,9 @@ def mismatches(statement: str, slate, speaker: str, ids) -> list:
         if isinstance(holder, str) and holder.strip() and holder != member:
             out.append(f"the statement gives {office.upper()} to {member}, but the slate gives it "
                        f"to {holder}")
+    for member in exclusions(statement, speaker, ids):
+        held = [office.upper() for office in OFFICES if slate.get(office) == member]
+        if held:
+            out.append(f"the statement says {member} is excluded from the government, but the slate "
+                       f"seats {member} at {', '.join(held)}")
     return out

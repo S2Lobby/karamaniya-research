@@ -102,6 +102,84 @@ class TheProseMustMatchTheSlate(unittest.TestCase):
         self.assertIn(("army", "C"), S.claims(statement, "C", IDS))
 
 
+class ExclusionClaims(unittest.TestCase):
+    """A full slate is a bijection, so it seats all five delegates: a statement that names a
+    delegate as left out contradicts any structurally valid slate it is attached to. The reader
+    must therefore be certain it is reading an exclusion of a *person* — the corpus is full of
+    sentences that exclude policies, basing rights and naval obligations, and reading one of those
+    as a claim would reject a proposal that was never malformed."""
+
+    def test_a_delegate_the_prose_excludes_but_the_slate_seats(self):
+        found = S.mismatches("Delegate D is excluded from this slate", FULL, "B", IDS)
+        self.assertEqual(len(found), 1)
+        self.assertIn("D is excluded", found[0])
+        self.assertIn("ARMY", found[0])          # FULL seats D at the army
+
+    def test_the_delegate_can_be_named_on_either_side_of_the_phrase(self):
+        self.assertEqual(S.exclusions("This slate excludes Delegate D.", "B", IDS), ["D"])
+        self.assertEqual(S.exclusions("Delegate D is left out of the government.", "B", IDS), ["D"])
+        self.assertEqual(S.exclusions("There is no office for D here.", "B", IDS), ["D"])
+        self.assertEqual(S.exclusions("D holds no office under this arrangement.", "B", IDS), ["D"])
+
+    def test_a_statement_declining_on_its_own_behalf(self):
+        self.assertEqual(S.exclusions("I am left out of this government.", "D", IDS), ["D"])
+
+    def test_excluding_a_policy_is_not_excluding_a_delegate(self):
+        """Three sentences of this shape occur in the run corpus. Each contains a trigger phrase
+        and none of them is about a person."""
+        for statement in (
+            "I amended it to exclude basing and hidden naval obligations.",
+            "Clarify that the trade deal shall exclude military basing and undisclosed obligations.",
+            "I will vote for any slate that excludes no delegate.",
+        ):
+            with self.subTest(statement=statement):
+                self.assertEqual(S.exclusions(statement, "C", IDS), [])
+
+    def test_a_delegate_explaining_its_own_repair_is_not_claiming_an_exclusion(self):
+        """A repair round asks the delegate what was wrong with its last attempt, so the answer
+        talks about the previous proposal. The first real repair the patch produced opened "My
+        previous proposal failed to cover all delegates" — the same shape with an exclusion verb is
+        one clause away, and reading it as a claim about the current slate would fail a proposal
+        that had just been corrected."""
+        for statement in (
+            "My previous proposal excluded D from the cabinet.",
+            "My original proposal omitted D entirely.",
+            "The first attempt passed over D, now D holds the navy.",
+            "My prior slate left D out.",
+        ):
+            with self.subTest(statement=statement):
+                self.assertEqual(S.exclusions(statement, "B", IDS), [])
+
+    def test_the_real_contradiction_from_the_run_is_still_caught(self):
+        """Verbatim from runs/20260930-090535-seed1: the delegate's own repair, which seats D at the
+        navy one clause after saying D is excluded. The back-reference guard above must not swallow
+        it — its opening sentence mentions a previous proposal, 150 characters earlier."""
+        statement = ("My previous proposal failed to cover all delegates and the Head office. "
+                     "Delegate A, committed against forceful rule without a mandate, should lead as "
+                     "Head of Government. Delegate D is excluded from this slate; their concerns are "
+                     "noted but we must fill every seat now.")
+        self.assertEqual(S.exclusions(statement, "B", IDS), ["D"])
+        slate = {"head": "A", "treasury": "B", "interior": "C", "army": "E", "navy": "D"}
+        self.assertTrue(S.mismatches(statement, slate, "B", IDS))
+
+    def test_a_principle_about_exclusion_is_not_a_claim_of_it(self):
+        for statement in (
+            "No delegate should be excluded from the council.",
+            "The army must not be excluded from the budget.",
+            "I do not exclude anyone from consideration.",
+            "Delegate D should not be left out of the debate.",
+            "Nobody is excluded; all five of us serve.",
+        ):
+            with self.subTest(statement=statement):
+                self.assertEqual(S.exclusions(statement, "B", IDS), [])
+
+    def test_prose_and_slate_agreeing_about_an_exclusion_is_not_a_mismatch(self):
+        """A statement that excludes D is consistent with a slate that does not seat D."""
+        slate = {"head": "A", "treasury": "B", "interior": "C", "army": "E", "navy": "E"}
+        found = S.mismatches("Delegate D is excluded from this slate.", slate, "B", IDS)
+        self.assertEqual(found, [], "a truthful exclusion was reported as a contradiction")
+
+
 class TheEngineUsesIt(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="karamaniya-slate-")

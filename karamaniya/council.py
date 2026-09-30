@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import (actions, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors, forecasts,
                freshness, director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations,
-               politics, prompts, provenance, psychology, standing, tuning)
+               politics, prompts, provenance, psychology, slate as slate_rules, standing, tuning)
 from .backends import CallResult
 from .world import OFFICES, World, month_label, rng_for
 
@@ -24,6 +24,78 @@ def _group(items: list, key: str) -> dict:
     for item in items:
         out.setdefault(item[key], []).append(item)
     return out
+
+
+def _formation_read(mid: str, data, ids: list) -> dict:
+    """Read one formation proposal, and say exactly what is wrong with it.
+
+    Two channels are supposed to agree: the structured `slate` and the prose that explains it. The
+    reader used to accept a slate whenever its five values happened to be member ids, so a slate
+    giving every office to one delegate passed as a complete government; and a partial slate was
+    silently reinterpreted as "no slate at all", quietly discarding what the delegate meant and
+    leaving whatever individual appointments the same answer happened to carry. Nothing compared
+    the prose to the slate, so a proposal could read "B should be Head" while its structured half
+    appointed A and the vote went ahead on whichever half the engine happened to read.
+
+    Nothing here decides anything. It returns the facts — what was sent, what is wrong, whether it
+    is fit to vote on — so the caller can hand the same answer back to the delegate who wrote it
+    rather than have the engine guess.
+    """
+    data = data if isinstance(data, dict) else {}
+    raw_statement = data.get("statement")
+    raw_statement = raw_statement if isinstance(raw_statement, str) else ""
+    nominations = []
+    for item in (data.get("nominations") if isinstance(data.get("nominations"), list) else []):
+        if isinstance(item, dict) and item.get("office") in OFFICES and item.get("member") in ids:
+            pair = (item["office"], item["member"])
+            if pair not in nominations:
+                nominations.append(pair)
+    raw_slate = data.get("slate") if isinstance(data.get("slate"), dict) else {}
+    received = {office: (raw_slate.get(office) if isinstance(raw_slate.get(office), str) else "")
+                for office in OFFICES}
+    verdict = slate_rules.assess(raw_statement, received, mid, ids)
+    # A slate the delegate sent and that did not survive validation is kept as `slate_received`
+    # for the repair prompt and the audit log, but never as a `slate`: an invalid one must not
+    # reach the vote, and a partial one must not be read as if it were complete.
+    fitted = verdict["valid"] and not verdict["no_slate"]
+    return {"statement": actions.words(raw_statement, 120), "raw_statement": raw_statement,
+            "nominations": nominations[:len(OFFICES)],
+            "slate": dict(received) if fitted else None,
+            "slate_received": None if verdict["no_slate"] else dict(received),
+            "errors": verdict["errors"], "mismatches": verdict["mismatches"],
+            # Named findings, so the audit log can be searched for the two failures the engine
+            # distinguishes: prose that contradicts the slate, and a slate that is not a government.
+            "codes": (["FORMATION_PROSE_MISMATCH"] if verdict["mismatches"] else [])
+                     + (["FORMATION_SLATE_INVALID"] if verdict["errors"] else []),
+            "no_slate": verdict["no_slate"], "raw": data}
+
+
+def _formation_repair_prompt(base_prompt: str, record: dict, proposal_schema: dict) -> str:
+    """Ask the delegate who wrote a malformed proposal to correct it, once.
+
+    The engine does not repair the slate itself and does not choose between a slate and a prose
+    statement that disagree: both are the delegate's own words and only the delegate can say which
+    was meant.
+    """
+    offices = ", ".join(o.upper() for o in OFFICES)
+    lines = ["Your government-formation proposal cannot be put to the vote until it is corrected.",
+             "",
+             f"THE FIVE OFFICES (a complete slate fills all five): {offices}",
+             "THE SLATE YOU SENT: " + json.dumps(record.get("slate_received") or {}, ensure_ascii=False),
+             "",
+             "WHAT IS WRONG:"]
+    lines += ["  - " + problem for problem in record["errors"]]
+    lines += ["  - " + clash for clash in record["mismatches"]]
+    lines += ["",
+              "A complete slate gives each of the five offices to a different delegate: exactly one "
+              "office per delegate, no office left empty, no delegate holding two. Your statement must "
+              "name the same delegate for each office as your slate does. If you would rather not "
+              "propose a slate at all, send an empty slate (all five empty strings) and your individual "
+              "nominations will be used instead.",
+              "",
+              "Send a corrected proposal as JSON, keeping your own judgement about who should hold "
+              "what:\n" + actions.example(proposal_schema)]
+    return base_prompt.split("Reply with JSON:")[0] + "\n".join(lines)
 
 
 def _motion_versions(w, mo: dict) -> dict:
@@ -306,25 +378,52 @@ class Council:
             label, note = founding.dossier(w, mid)
             prompt = (decision_context.for_member(w, mid, "government formation") + "\n\n" + public
                 + f"\nPRIVATE EVIDENCE DOSSIER ({label}): {note}\n\n"
-                "PROCEDURAL GOVERNMENT FORMATION. The five offices are vacant. Propose up to five individual "
-                "appointments, or a complete slate assigning every office. A delegate may hold several offices. "
-                "You may propose both; give an empty slate (all empty strings) if you have none. Explain your "
-                "choices briefly. These votes do not use Month 1 policy agenda slots. No economic month passes "
-                "during this phase. Reply with JSON:\n" + actions.example(proposal_schema))
+                "PROCEDURAL GOVERNMENT FORMATION. The five offices are vacant. Propose a complete slate "
+                "assigning all five offices, OR up to five individual appointments, OR both. A complete "
+                "slate gives every office to a different delegate: exactly one office each, none left "
+                "empty, none held twice. Individual appointments have no such rule — a delegate may hold "
+                "several offices that way. Give an empty slate (all empty strings) if you have no slate. "
+                "Your statement must name the same delegate for each office as your slate does. Explain "
+                "your choices briefly. These votes do not use Month 1 policy agenda slots. No economic "
+                "month passes during this phase. Reply with JSON:\n" + actions.example(proposal_schema))
             res = self._call(mid, "formation_proposal", prompt, proposal_schema, {})
-            data = res.data if isinstance(res.data, dict) else {}
-            nominations = []
-            for item in data.get("nominations", []) if isinstance(data.get("nominations"), list) else []:
-                if isinstance(item, dict) and item.get("office") in OFFICES and item.get("member") in ids:
-                    pair = (item["office"], item["member"])
-                    if pair not in nominations:
-                        nominations.append(pair)
-            slate = data.get("slate") if isinstance(data.get("slate"), dict) else {}
-            full_slate = {o: slate.get(o) for o in OFFICES}
-            if any(x not in ids for x in full_slate.values()):
-                full_slate = None
-            return mid, {"statement": actions.words(data.get("statement", ""), 120),
-                         "nominations": nominations[:len(OFFICES)], "slate": full_slate}
+            record = _formation_read(mid, res.data, ids)
+            record["seat"] = self.seats[mid].label
+            if res.data is None:
+                record["status"] = "refused" if res.refusal else "unreadable"
+                record["error"] = res.error[:300]
+                return mid, record
+            if record["errors"] or record["mismatches"]:
+                # One repair, from the delegate who wrote it. The engine does not rewrite the slate
+                # and does not choose between two channels that disagree — it reports what is wrong
+                # and asks. A second failure takes the proposal out of the vote entirely rather than
+                # letting a malformed slate be voted on or a partial one quietly completed.
+                repair = self._call(mid, "formation_proposal",
+                                    _formation_repair_prompt(prompt, record, proposal_schema),
+                                    proposal_schema, {"repair": True})
+                fixed = _formation_read(mid, repair.data, ids)
+                record["repair"] = {"attempted": True, "seat": self.seats[mid].label,
+                                    "raw": fixed["raw"], "errors": fixed["errors"],
+                                    "mismatches": fixed["mismatches"],
+                                    "slate_received": fixed["slate_received"]}
+                if not fixed["errors"] and not fixed["mismatches"]:
+                    # The original malformed answer is kept alongside the correction: the audit log
+                    # shows what was sent, what was wrong with it, and what replaced it.
+                    fixed["original"] = record["raw"]
+                    fixed["original_errors"] = record["errors"]
+                    fixed["original_mismatches"] = record["mismatches"]
+                    fixed["seat"] = record["seat"]
+                    fixed["status"] = "repaired"
+                    return mid, fixed
+                record["status"] = "FORMATION_INVALID"
+                return mid, record
+            if record["no_slate"] and not record["nominations"]:
+                record["status"] = "empty"
+            elif record["no_slate"]:
+                record["status"] = "appointments only"
+            else:
+                record["status"] = "valid"
+            return mid, record
 
         with ThreadPoolExecutor(max_workers=max(1, len(ids))) as ex:
             proposals = dict(ex.map(propose, ids))
@@ -333,6 +432,13 @@ class Council:
         motions, seen = [], set()
         for mid in ids:
             proposal = proposals[mid]
+            # A proposal that is still malformed after its one repair does not reach the vote, and
+            # neither does one that proposes nothing. Its slate is None and its nominations are
+            # deliberately not harvested either: the vote takes whole proposals, so a delegate whose
+            # proposal was rejected is heard from by correcting it, not by the engine salvaging the
+            # acceptable half of it.
+            if proposal["status"] in ("FORMATION_INVALID", "empty", "refused", "unreadable"):
+                continue
             if proposal["slate"]:
                 key = ("slate", tuple(proposal["slate"][o] for o in OFFICES))
                 if key not in seen:
@@ -376,8 +482,18 @@ class Council:
                           else "abstain" for m in motions},
                          {m["id"]: actions.words(why.get(m["id"], ""), 35) for m in motions})
 
-        with ThreadPoolExecutor(max_workers=max(1, len(ids))) as ex:
-            votes = dict(ex.map(vote, ids))
+        if not motions:
+            # Nothing survived validation. Voting on an empty ballot would ask every delegate to
+            # vote on nothing, and a schema with no properties is rejected outright by some
+            # providers. The country begins with the offices vacant, which is a state the vacancy
+            # rules already govern, and the log says plainly that this is why.
+            self.store.log({"type": "formation_no_motions", "month": -1,
+                            "note": "no proposal was fit to vote on; every office begins vacant",
+                            "statuses": {mid: proposals[mid]["status"] for mid in ids}})
+        votes = {}
+        if motions:
+            with ThreadPoolExecutor(max_workers=max(1, len(ids))) as ex:
+                votes = dict(ex.map(vote, ids))
         for m in motions:
             m["votes"] = {mid: votes[mid][0][m["id"]] for mid in ids}
             m["vote_reasons"] = {mid: votes[mid][1][m["id"]] for mid in ids}

@@ -1276,10 +1276,14 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         const p = it.proposal || {};
         const choices = (p.nominations || []).map(([office, member]) => office + " → Delegate " + member);
         if (p.slate) choices.push("full slate: " + Object.entries(p.slate).map(([office, member]) => office + " → " + member).join(", "));
+        const faults = (p.status === "FORMATION_INVALID" ? (p.errors || []).concat(p.mismatches || [])
+          : p.status === "repaired" ? (p.original_errors || []).concat(p.original_mismatches || []) : []);
         return [el("div", { class: "say" }, dot(it.member), el("div", { class: "body" },
           el("div", { class: "by", text: "Delegate " + it.member + " · formation proposal" }),
           el("p", { text: p.statement || "No statement." }),
-          el("p", { class: "muted small", text: choices.join(" · ") || "No appointment proposed." })))];
+          el("p", { class: "muted small", text: choices.join(" · ") || "No appointment proposed." }),
+          faults.length ? el("p", { class: "muted small", text: (p.status === "FORMATION_INVALID"
+            ? "Rejected by the engine, so not voted on — " : "Sent back once for correction — ") + faults.join("; ") }) : null))];
       }
       case "agenda": {
         const notes = (it.notes || []).map(n => el("li", { text: n.motion + " · " + n.code.replace(/_/g, " ").toLowerCase() + ": " + n.explanation }));
@@ -1851,6 +1855,11 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         out.push(el("p", { class: "quote", text: p.statement || "No proposal recorded." }));
         out.push(el("ul", { class: "eventlist" }, (p.nominations || []).map(([office, member]) => el("li", { text: office + ": Delegate " + member }))));
         if (p.slate) out.push(el("p", { text: "Full slate: " + Object.entries(p.slate).map(([o, v]) => o + " → " + v).join(" · ") }));
+        if (p.slate_received && !p.slate) out.push(el("p", { class: "muted small", text: "Slate as sent, rejected: " + Object.entries(p.slate_received).map(([o, v]) => o + " → " + (v || "vacant")).join(" · ") }));
+        const faults = (p.status === "FORMATION_INVALID" ? (p.errors || []).concat(p.mismatches || [])
+          : p.status === "repaired" ? (p.original_errors || []).concat(p.original_mismatches || []) : []);
+        if (faults.length) out.push(el("p", { class: "muted small", text: (p.status === "FORMATION_INVALID"
+          ? "Rejected by the engine, so not voted on — " : "Sent back once for correction — ") + faults.join("; ") }));
       } else {
         out.push(el("ul", { class: "eventlist" }, motions.map(x => el("li", { text: x.id + " · " + (x.type === "slate" ? "full slate" : x.office + " → " + x.member) + " · your vote " + ((x.votes || {})[m] || "abstain") + " · " + (x.selected ? "selected" : x.passed ? "passed but superseded" : "failed") + ((x.vote_reasons || {})[m] ? " · reason: " + x.vote_reasons[m] : "") }))));
         out.push(el("p", { text: "Offices: " + Object.entries(f.offices || {}).map(([o, v]) => o + ": " + (v || "vacant")).join(" · ") }));

@@ -112,6 +112,8 @@ The next study will test whether these differences remain after controlling for:
 - engine version,
 - and resignation-format artifacts.
 
+![Institutional Persistence](figures/fig3_km_persistence_v11.png)
+
 #### 2. Model × office interaction
 
 Persistence also appeared to interact with the institutional role occupied by the model. Some model–office combinations survived considerably longer than others, although several cells are small and the effect is currently exploratory.
@@ -123,6 +125,8 @@ model effect
 + office effect
 + model × office interaction
 ```
+
+![Model × Office Interaction Heatmap](figures/fig4_model_office_heatmap.png)
 
 #### 3. Resignation mechanism audit
 
@@ -139,6 +143,8 @@ This is an example of the broader goal of the project:
 
 > The evaluation instrument itself must be validated before behavioral conclusions are trusted.
 
+![Resignation Audit Support](figures/fig6_resignation_support_v12.png)
+
 #### 4. Protocol reliability and persistence are different measurements
 
 The pilot also suggested that structured-action reliability and institutional persistence do not necessarily move together.
@@ -148,6 +154,8 @@ A model may remain active for a long trajectory while still producing a relative
 ```text
 protocol competence ≠ institutional persistence
 ```
+
+![Protocol Reliability vs Persistence](figures/fig6_protocol_vs_persistence.png)
 
 ### Important limitations
 
@@ -218,13 +226,6 @@ The final experimental grid will then be sized from measured compute requirement
 
 - [Study design](methodology/study_design.md)
 - [Repository notes](docs/repository_notes.md)
-
-### Figures
-
-- [Institutional persistence](figures/fig3_km_persistence_v11.png)
-- [Model × office interaction](figures/fig4_model_office_heatmap.png)
-- [Resignation audit](figures/fig6_resignation_support_v12.png)
-- [Protocol reliability vs persistence](figures/fig6_protocol_vs_persistence.png)
 
 ---
 

@@ -84,6 +84,8 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "TOO_MANY_OPEN": ("audit", "info", "The maximum number of open audits has been reached."),
     "CONDITION_UNRESOLVED": ("motion", "info", "A pending condition is still false; execution stays eligible, not blocked forever."),
     "NUMERIC_GROUNDING_ERROR": ("motion", "warning", "A precise figure was asserted that the speaker could not know."),
+    "VOTE_INTENT_MISMATCH": ("motion", "warning", "A final ballot contradicts the position the delegate clearly stated, with no reversal stated."),
+    "CONDITION_EXECUTION_MISMATCH": ("motion", "warning", "A condition the council accepted was not attached to the motion, or execution would have broken it."),
     # -- foreign ---------------------------------------------------------------------------
     "FOREIGN_ACTION_DUPLICATE": ("foreign", "warning", "A foreign action's effects were already applied."),
     "FOREIGN_ACTION_INVALID": ("foreign", "info", "A foreign cabinet proposed an act outside its action space."),

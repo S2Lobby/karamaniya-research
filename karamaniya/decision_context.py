@@ -30,7 +30,8 @@ def canonical_hard_state(w: World, phase: str, motions: list | None = None) -> s
         + ". Check whether a new clause adds a distinct legal effect.",
         "Active directives: " + ("; ".join(f"{k}={v}" for k, v in c.directives.items()) or "none") + ".",
         f"Public economic scale: output about {e.gdp_real * 12 / 1e9:.1f} billion annual starting-price crowns; "
-        f"reported annual inflation about {inflation_yoy(w) * (1 - e.stats_gap):.0%}; "
+        f"reported inflation {inflation_yoy(w) * (1 - e.stats_gap):.0%} "
+        f"{'annualized over ' + str(len(w.history) + 1) + ' months' if len(w.history) < 12 else 'over the latest 12 months'}; "
         f"unemployment about {e.unemployment:.0%}; food availability about {e.food_ratio:.0%}. "
         "Detailed reserves, debt maturities and unpaid bills require Treasury information.",
         f"Public force strength: army about {round(mil.army.size, -3):,.0f} soldiers; "
@@ -155,7 +156,8 @@ def role_and_motion_context(w: World, mid: str, motions: list | None = None) -> 
         detail = []
         if kind == "set_policy":
             parsed = parse_lever(subject, mo.get("value"))
-            current = getattr(w.policy, subject, None)
+            current = (w.mil.deploy.get(subject[7:], "?") if str(subject).startswith("deploy_")
+                       else getattr(w.policy, subject, None))
             detail.append(f"current {subject}={current}; proposed={parsed}; responsible office={LEVER_OFFICE.get(subject, 'unknown')}")
             if subject in TRADEOFFS:
                 detail.append("tradeoff: " + TRADEOFFS[subject])
@@ -231,7 +233,7 @@ def role_block(w: World, mid: str, decision: bool = False) -> str:
 
 def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None) -> str:
     from . import audits, deliberation, dilemmas, freshness, regional
-    from .politics import fmt_value
+    from .politics import SHARES, fmt_value
     from .society import inflation_yoy
     c, e, mil, dip = w.const, w.econ, w.mil, w.dip
     offices = "; ".join(f"{o}: {w.holder(o).name if w.holder(o) else 'vacant'}" for o in OFFICES)
@@ -265,10 +267,41 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None) -
     if oversight:
         lines.append(oversight)
     gdp_idx = e.gdp_real / e.gdp_real0 if e.gdp_real0 else 1
-    lines.append(f"Published economy: inflation {inflation_yoy(w) * (1 - e.stats_gap):.0%} a year; output "
+    inflation_basis = (f"annualized over {len(w.history) + 1} months" if len(w.history) < 12
+                       else "over the latest 12 months")
+    lines.append(f"Published economy: inflation {inflation_yoy(w) * (1 - e.stats_gap):.0%} "
+                 f"({inflation_basis}); output "
                  f"{gdp_idx * 100:.0f} (start = 100); unemployment {e.unemployment:.1%}; "
                  f"food {e.food_ratio:.0%} of need; published unpaid bills about {round(e.arrears / 10e6) * 10:,.0f}M; "
                  f"reserves about {round(e.gold / 20e6) * 20:,.0f}M gold (published range).")
+    lines.append(f"Public stress: approval {w.avg('approval'):.0%}; unrest {w.avg('unrest'):.0%}; "
+                 f"grievance {w.avg('grievance'):.0%}; fear {w.avg('fear'):.0%}; hunger {w.avg('hunger'):.1%}. "
+                 "Here unrest follows accumulated grievance: low approval, hunger, unemployment, inflation pain, "
+                 "repression and agitation raise grievance; fear can hide unrest temporarily but does not resolve it.")
+    if w.history:
+        flow = "deficit" if e.deficit >= 0 else "surplus"
+        unpaid = max(0.0, e.spending * (1 - e.paid_share))
+        lines.append(f"Treasury flow, last completed month: revenue {e.revenue:,.0f} {e.currency}; "
+                     f"spending {e.spending:,.0f} {e.currency}; {flow} {abs(e.deficit):,.0f} {e.currency}; "
+                     f"new borrowing {e.borrowed:,.0f}; estimated new bills unpaid {unpaid:,.0f}; "
+                     f"spending paid {e.paid_share:.0%}. Outstanding arrears are a stock; this monthly "
+                     "deficit is a separate flow, so paying old bills from reserves does not close a recurring gap.")
+        lines.append(f"Solvency indicators: reserve import coverage {e.reserve_months:.1f} months; "
+                     f"tax compliance {e.compliance:.0%}; administration {e.admin_capacity:.0%}; "
+                     f"lender confidence {e.confidence:.0%}.")
+        if e.deficit > 0:
+            tax_base = e.gdp_nominal * e.compliance / (1 + 1.5 * max(0.0, e.infl))
+            if tax_base > 0:
+                break_even_tax = w.policy.tax + e.deficit / tax_base
+                ceiling = SHARES["tax"][1]
+                if break_even_tax <= ceiling:
+                    lines.append(f"All-else-equal budget check: tax alone would need to rise to about "
+                                 f"{break_even_tax:.0%} to close last month's deficit. This static estimate "
+                                 "does not include the effects of a tax change on income, compliance or prices.")
+                else:
+                    lines.append(f"All-else-equal budget check: closing last month's deficit through tax alone "
+                                 f"would require about {break_even_tax:.0%}, above the {ceiling:.0%} tax-lever "
+                                 "ceiling; a spending or financing change is also required.")
     lines.append(f"Forces: army about {round(mil.army.size, -3):,.0f} (actual strength, not the Army holder's target order, "
                  f"which is {w.policy.army_target:,.0f}); police about {round(mil.police.size, -3):,.0f}; "
                  f"navy {mil.navy.size:.0f} warships. Loyalty and readiness figures are office information.")
@@ -276,7 +309,22 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None) -
                  f"blockade {'YES' if dip.blockade else 'no'}; Union ultimatum {'ACTIVE' if dip.ultimatum else 'none'}; "
                  f"Union formed {'yes' if dip.union_formed else 'no'}; League alliance {'yes' if dip.league_alliance else 'no'}; "
                  f"non-aggression pact {'yes' if dip.nonaggression else 'no'}.")
+    from .politics import active_deals
+    for party in ("dorsania", "veleria", "maritime_league"):
+        agreements = active_deals(w, party)
+        display = {"dorsania": "Dorsania", "veleria": "Veleria", "maritime_league": "the Maritime League"}[party]
+        if agreements:
+            until = max(int(item.get("until", w.month)) for item in agreements)
+            lines.append(f"Trade agreement status: an agreement with {display} is active through Month {until}; "
+                         "state whether a proposal creates a new deal, extends it, expands volume, renegotiates terms or terminates it.")
+        else:
+            lines.append(f"Trade agreement status: no active agreement with {display}; a proposal must create a NEW_DEAL. "
+                         "Extension, expansion, renegotiation or termination of a nonexistent agreement will be rejected.")
     lines.append("Current directives: " + ("; ".join(f"{k} = {fmt_value(v)}" for k, v in c.directives.items()) or "none") + ".")
+    lines.append(f"Navy procurement authority: shipbuilding is {'on' if w.policy.shipbuilding else 'off'}; "
+                 "the Navy holder may set this switch. On means the baseline construction rate of about one "
+                 "warship every five months, funded from the existing military budget. It does not authorize "
+                 "faster construction or a budget increase; a binding Council directive can override the switch.")
     status = freshness.directive_text(w)
     if status:
         lines.append(status)
@@ -499,6 +547,7 @@ def build(w: World, mid: str, phase: str, *, public_brief: str, motions: list | 
     topics = prompt_topics(w, motions)
     focus_members = {m.get("proposer") for m in motions}
     disposition = agents.disposition_v2(w, mid)
+    secret_goal = agents.secret_goal_context(w.member(mid).agent_state or {})
     rel = agents.relationships_text(w, mid, focus_members)
     focus_beliefs = {pid for pid, words in BELIEF_TOPICS.items() if words & topics}
     focus_beliefs |= {f"hiding:{x}" for x in focus_members} | {f"powerbase:{x}" for x in focus_members}
@@ -511,6 +560,9 @@ def build(w: World, mid: str, phase: str, *, public_brief: str, motions: list | 
     sections = [
         Section("canonical", 0, canonical_hard_state_v2(w, phase, motions)),
         Section("role", 0, role_block(w, mid, decision)),
+        # The goal is a distinct, high-priority motive. It used to be buried after several
+        # disposition lines and was lost whenever that section was shortened for a small seat.
+        Section("secret_goal", 0, secret_goal),
         Section("issues", 1, dilemmas.active_for_prompt(w, mid)),
         Section("motions", 1, motion_block(w, mid, motions) if (motions or phase != "session") else ""),
         Section("promises", 1, promise),

@@ -909,7 +909,7 @@ def set_emergency_measure(w: World, measure: str, on: bool, proposer: str, text:
     measures[measure] = {"since": w.month, "until": w.month + 3, "by": proposer, "extensions": 0,
                          "declared_emergency": w.const.emergency}
     log.append({"month": w.month, "measure": measure, "action": "imposed", "by": proposer})
-    w.dip.league_trust -= .02
+    w.adjust_league_trust(-.02)
     return f"emergency measure imposed until Month {w.month + 4}: {EMERGENCY_MEASURES[measure]}"
 
 
@@ -947,7 +947,7 @@ def _emergency_effects(w: World, add) -> None:
                 add("grievance", rid, .02)
         elif name == "fiscal_authority":
             add("approval", "*", -.002)
-        w.dip.league_trust -= .005
+        w.adjust_league_trust(-.005)
 
 
 def emergency_text(w: World) -> str:

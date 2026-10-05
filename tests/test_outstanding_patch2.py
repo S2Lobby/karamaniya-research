@@ -107,6 +107,12 @@ class NamedIntegrityRecords(unittest.TestCase):
         self.assertEqual(findings[0]["code"], "FACT_REFERENCE_ERROR")
         self.assertEqual(findings[0]["referred_to"], "kessel")
 
+    def test_audit_and_kessel_in_separate_clauses_do_not_create_a_false_reference(self):
+        from karamaniya import memory as _memory
+        findings = _memory.fact_reference_errors(world(), "C",
+            "I voted yes on D1 audit, D2 raised officer pay, D3 voluntary recruitment, and M1 Kessel cultural status.")
+        self.assertEqual(findings, [])
+
     def test_a_stale_treasury_order_is_a_named_mismatch_but_policy_still_moves(self):
         w = world()
         w.const.directives["police"] = 0.020

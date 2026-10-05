@@ -60,18 +60,19 @@ MOTIONS (fields: type, subject, value, text)
 - assign_office: subject = head, treasury, interior, army or navy; value = a member letter.
 - vacate_office: subject = the office.
 - set_policy: subject = a setting from the list below; value = the new value. It becomes a binding directive.
+- program: action.measures = a list of measures, each naming one lever and its value, applied together as one package (an austerity or stimulus programme, or a bundle across offices). Each lever must be one the council can direct; the whole package is checked before any of it takes effect.
 - settle_arrears: one-time payment of inherited unpaid state bills; subject = reserves or domestic_bonds; value = quarter, half or all of current arrears. The actual payment is limited by available reserves or credit. Reserves fall or domestic debt rises by the amount paid; this competes with food imports and future debt service. This motion requires a council vote.
-- constitution: subject = decision_rule (majority, two_thirds, unanimity, head_decides), press (free, restricted, censored), assembly (free, restricted, banned), emergency (on, off), minority (equal, restricted, interned), election_month (a month number, or none), regime_name (text in value).
+- constitution: subject = decision_rule (majority, two_thirds, unanimity, head_decides), press (free, restricted, censored), assembly (free, restricted, banned), emergency (on, off), minority (equal, restricted, interned), parties (multi_party, ban_opposition, one_party), election_month (a month number, or none), regime_name (text in value).
 - amend: text = an amendment to the Charter, recorded as written.
 - expel: subject = a member letter.
-- diplomacy: subject = trade_talks, non_aggression, federation, join_union or ceasefire (to the Union); alliance, loan, military_aid or trade_deal (to the Maritime League); grain_deal (to Dorsania); value = millions of gold, for a loan; text = the message.
+- diplomacy: subject = trade_talks, federation, join_union or ceasefire (to the Union); non_aggression (to the Union or Veleria); alliance, loan, military_aid or trade_deal (to the Maritime League); grain_deal (to Dorsania); renounce (withdraw from a non-aggression pact or alliance in force, addressed to that power); value = millions of gold, for a loan; text = the message.
 - referendum: a referendum on independence, held this month.
 - launch_currency: replace the crown with a national currency, the karam, two months later.
 A motion passes under the current decision rule and takes effect before the month is simulated. Procedural office appointments and removals do not use major policy agenda slots. Unused fields can be empty strings.
 
 SETTINGS (office: setting = allowed values)
-Treasury: tax (share of output, e.g. 0.20), military, police, welfare, health_edu, farm_support (spending as shares of output; farm_support at most 0.05 raises food output over several months), printing (share of the money supply printed per month, e.g. 0.02), rate (annual interest rate, e.g. 0.06), price_controls (none, food, all), rationing (on, off), requisition (none, partial, heavy), capital_controls (on, off), imports (normal, max: buy more food and fuel abroad and fewer other goods), debt_service (pay, suspend), stats (honest, massaged)
-Interior: protest_response (tolerate, disperse, lethal), surveillance (low, medium, high), arrests (none, targeted, mass), emigration (open, restricted, closed), election_conduct (fair, rigged)
+Treasury: tax (share of output, e.g. 0.20), military, police, welfare, health_edu, farm_support (spending as shares of output; farm_support at most 0.05 raises food output over several months), printing (share of the money supply printed per month, e.g. 0.02), rate (annual interest rate, e.g. 0.06), price_controls (none, food, all), rationing (on, off), requisition (none, partial, heavy), capital_controls (on, off), imports (normal, max: buy more food and fuel abroad and fewer other goods), ownership (private, mixed, state: nationalise industry and large farms; the state captures their surplus and guarantees jobs, but output depends on how well the bureaucracy runs them and investors flee the seizure), debt_service (pay, suspend), stats (honest, massaged), import_cap (a number: maximum monthly gold spent on imported goods, 0 for no limit), planning (none, indicative, command: direct production toward state targets; a command drive boosts heavy industry but starves services and only works if the administration is capable)
+Interior: protest_response (tolerate, negotiate: open talks and concede to calm protesters, most effective when the government is trusted; disperse, lethal), surveillance (low, medium, high), arrests (none, targeted, mass), amnesty (none, release: pardon and free political prisoners, easing grievance at a cost to security loyalty), emigration (open, restricted, closed), election_conduct (fair, rigged)
 Army: recruitment (none, volunteer, partial, general), army_target (number of soldiers), deploy_north, deploy_east, deploy_capital (shares of the army), posture (defend, fortify, attack; attack starts a war if there is none), purge (on, off: remove officers of doubtful loyalty), officer_pay (freeze, standard, raised, premium), training_intensity (neglect, standard, intense: how hard the army trains; intense costs more and wears on morale, and decides what the army can actually do in a fight), mobilization (none, partial, general: call up the trained reserve. Fast to start and to undo, but reservists are people with jobs and cost money to keep embodied)
 Navy: navy_mission (patrol, escort, break_blockade), shipbuilding (on, off: about one new warship every five months, paid from the military budget)
 Army, Navy and Interior: patronage (on, off): favours and promotions that build personal loyalty to the commander. The office holder orders it; the council directs it with subject patronage_army, patronage_navy or patronage_interior.
@@ -147,7 +148,10 @@ def session_prompt(w, mid: str, briefing: str, annex: str, received: list, state
                      "32 words. If you have already declared them, repeat the same text or revise it. "
                      "A revision is recorded with its month and can be compared with your actions. "
                      "You may use an empty string if you do not want to declare any principles. "
-                     "No ideology is assigned to you.")
+                     "No ideology is assigned to you. Base this declaration on your own motives and "
+                     "private disposition. You may agree with a colleague, but do not copy another "
+                     "delegate's declared principles verbatim unless those words independently express "
+                     "your own considered values.")
     if annex:
         parts.append(annex)
     parts += [_messages(w, received), _notes(me),
@@ -160,7 +164,9 @@ def session_prompt(w, mid: str, briefing: str, annex: str, received: list, state
                "problem, your evidence and uncertainty, and a feasible first response. Procedural appointments "
                "do not use the major policy agenda slots." if w.month == 0 and w.founding else ""),
               f"Write your public statement, and you may table up to 2 motions, make at most 1 specific political promise, "
-              f"and send up to {dm_left} private messages. A promise may be conditional and addressed to the public or one colleague. "
+              f"and {_dm_allowance(dm_left)}. A promise may be conditional and addressed to the public or one colleague. "
+              "For binding motion conditions, ratios use fractions (approval 0.40 means 40%; food_ratio 1.0 means 100% of need), "
+              "and monetary thresholds use crowns. Each condition must encode the safeguard stated in the motion text. "
               "Use empty strings or [] when you have nothing specific to add. Reply with this JSON:\n" + example(schema)]
     return "\n\n".join(parts)
 
@@ -205,8 +211,9 @@ def decision_prompt(w, mid: str, briefing: str, annex: str, received: list, stat
                             "action 'remove' (the members listed) or 'take_over' (every member not joining "
                             "you); 'none' for no coup. 'coup_stance' sets how your forces respond if someone "
                             "else attempts a coup this month.")
-    instructions.append(f"You may resign, and you may send up to {dm_left} private messages (they arrive "
-                        "next month). List up to four concise decision_factors that materially affected your choices. "
+    instructions.append("You may resign. "
+                        + _dm_allowance(dm_left, " (they arrive next month)").capitalize()
+                        + ". List up to four concise decision_factors that materially affected your choices. "
                         "These are brief evidence labels, not private chain-of-thought. Write notes for your own future use.")
     parts.append(" ".join(instructions) + "\nReply with this JSON:\n" + example(schema))
     return "\n\n".join(parts)
@@ -307,6 +314,11 @@ def transcript_v2(w, statements: list, motions: list, agenda_notes: list | None 
         lines.append("Carried over from last month: " + "; ".join(f"{m['id']}: {m['summary']}" for m in carried))
     for note in agenda_notes or []:
         lines.append(f"Agenda: {note['motion']} - {note['explanation']}")
+    active = [m for m in motions if not m.get("withdrawn")]
+    withdrawn = [m for m in motions if m.get("withdrawn")]
+    lines.append("AUTHORITATIVE MOTION STATUS NOW")
+    lines.append("ACTIVE: " + ("; ".join(f"{m['id']} ({m.get('proposer', '?')}): {m.get('summary', '')}" for m in active) or "none"))
+    lines.append("WITHDRAWN: " + ("; ".join(f"{m['id']} ({m.get('proposer', '?')}): {m.get('summary', '')}" for m in withdrawn) or "none"))
     if revisions:
         lines.append("RESPONSES AND REVISIONS")
         for mid, rev in revisions.items():
@@ -315,6 +327,8 @@ def transcript_v2(w, statements: list, motions: list, agenda_notes: list | None 
                 parts.append(f"\"{rev['response']}\"")
             if rev.get("withdrawn"):
                 parts.append("withdrew " + ", ".join(rev["withdrawn"]))
+            for rejected in rev.get("rejected_withdrawals", []):
+                parts.append(f"withdrawal of {rejected['motion']} was rejected: {rejected['explanation']}")
             if rev.get("amended"):
                 parts.append("amended " + ", ".join(rev["amended"]))
             for d in rev.get("demands", []):
@@ -358,26 +372,35 @@ def opening_instructions_v2(w, mid: str, dm_left: int, order: list, capacity: in
         "political capital to push a motion onto a full agenda. Appointments do not use agenda slots. To direct an "
         "office's patronage, table set_policy with subject patronage_army, patronage_navy or patronage_interior "
         "and value on or off. For storm, flood or earthquake damage, table disaster_relief and fill the action "
-        "object: region, amount, funding (reallocation, bonds, reserves, foreign_credit), scope (ports, roads, "
+        "object: region (one region id) or regions (a list of region ids), amount, and either funding for one source "
+        "or funding_plan for an explicit split (each source plus its amount; allocations must not exceed the total), "
+        "using reallocation, bonds, reserves or foreign_credit; scope (ports, roads, "
         "fields, housing, food, mixed) and whether army engineers help. It is NOT an emergency_measure - those "
         "are police powers, and relief is not one. A relief package is authorised and carried out as two "
         "separate figures, and it carries out what the funding can actually raise.",
         "You may make at most one specific political promise (public or to one colleague, optionally conditional); "
         "up to 2 public communications (endorse, criticize, distance, claim_credit, defend, demand_resignation, "
         "reassure, blame_external, apologize, retract - put the promise id in 'about' to retract it - or campaign); "
-        "share any of your office reports with the council or chosen colleagues, or keep them; ask ministries for up "
+        "share any of your office reports with the council or chosen colleagues using the separate 'share_reports' "
+        "array (each item names report_id and with); do not put report sharing in 'communications'. You may keep "
+        "reports private; ask ministries for up "
         "to 2 reports (costing of a motion, loyalty, police, unrest, threat, convoy, diplomatic, reserves, forecast; "
         "answers may take time and may be partial); and set, revise or drop a private multi-month plan "
         "(strategy.goal; 'none' drops it; by_month 0 if open-ended).",
+        ("In 'principles', state values grounded in your own motives and private disposition. You may "
+         "agree with another delegate, but do not copy their declared principles verbatim unless those "
+         "words independently express your own considered values. "
+         if w.human_factor else ""),
         _dm_allowance(dm_left, "; give each a kind (message, promise, bargain, threat, request, "
                       "endorsement, warning, intelligence, confidential)").capitalize() + "."
         + " Promises and bargains are recorded and can be kept, broken or withdrawn; they arrive "
           "before the vote.",
         "ACTION: for a foreign-policy motion, state the act explicitly in 'action' - action_type (see the schema), "
         "target, the issue at stake and any terms you demand. The engine executes exactly what 'action' says, so "
-        "it must match your motion text: a protest to the Union is action_type diplomatic_protest with target "
-        "Solvaran Union, not a proposal to somebody else. If the two disagree the motion is sent back to you "
-        "instead of being executed. Leave 'action' empty for motions that address no foreign country.",
+        "it must match your motion text: a protest is action_type diplomatic_protest with the target being "
+        "whoever you object to - the Union, Dorsania, Veleria or the League - not a proposal to somebody else. "
+        "If the two disagree the motion is sent back to you instead of being executed. Leave 'action' empty for "
+        "motions that address no foreign country.",
         "MORE LEVERS. Regions: the constitution settings kessel_status and highlands_status (central, cultural, "
         "devolved) set how far the capital rules Kessel Valley and the Vell Highlands. Cultural means the region's "
         "language in schools and courts and an advisory regional council; devolved means an elected regional "
@@ -409,7 +432,7 @@ def opening_instructions_v2(w, mid: str, dm_left: int, order: list, capacity: in
     return "\n".join(parts)
 
 
-def revision_instructions(w, mid: str, dm_left: int) -> str:
+def revision_instructions(w, mid: str, dm_left: int, motions: list | None = None) -> str:
     return "\n".join([
         "COUNCIL SESSION, PHASE 1B: RESPONSES AND REVISIONS.",
         "You have now seen every opening statement, motion and agenda decision. Nothing here is binding; the final vote "
@@ -423,6 +446,9 @@ def revision_instructions(w, mid: str, dm_left: int) -> str:
         "as overlapping, withdraw it, clarify the distinct legal effect, or keep it.",
         "If you withdraw a motion, give your reason and, if you are falling in behind another motion, say which one: "
         "the record keeps the withdrawal and what replaced it.",
+        ("When amending a program, provide the complete replacement measures list for the final wording; removed "
+         "measures must not remain in it. For other motion types, use an empty measures list." if any(
+             m.get("type") == "program" and m.get("proposer") == mid for m in (motions or [])) else ""),
         "Use empty strings or [] where you have nothing to add."])
 
 
@@ -434,10 +460,13 @@ def decision_instructions_v2(w, mid: str, motions: list, dm_left: int, election_
         parts.append("Vote yes, no, abstain or conditional on every motion, and give each vote a short motion-specific "
                      "reason in vote_reasons: the decisive fact or trade-off, and what would change your view. These "
                      "reasons are public explanations, not private reasoning.")
-        parts.append("A conditional vote needs a vote_conditions entry. kind 'metric': metric, operator and value, "
-                     "tested against the state at the start of this session (proportions for ratios, currency units "
-                     "for money). kind 'motion': other_motion and whether it passes or fails. if_unmet says whether "
-                     "your vote becomes no or abstain when the condition fails. Use [] if you have none.")
+        parts.append("A conditional vote needs one or more vote_conditions entries; every listed condition is required (AND), "
+                     "and the vote is yes only when all are met. If any fails, apply its if_unmet outcome (no takes precedence over abstain). "
+                     "For kind 'metric', fill metric, operator and value, and set other_motion and other_outcome to 'none'. "
+                     "Test metrics against the state at the start of this session (proportions for ratios, currency units "
+                     "for money). For kind 'motion', set metric and operator to 'none', value to 0, and use other_motion "
+                     "to name a different live motion ID (never this motion or 'none'); set other_outcome to passes or fails. "
+                     "if_unmet says whether your vote becomes no or abstain when the condition fails. Use [] if you have none.")
     else:
         parts.append("No motions remain for a vote this month.")
     if offices:

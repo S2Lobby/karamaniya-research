@@ -33,7 +33,103 @@ class TheActExists(unittest.TestCase):
 
     def test_it_is_offered_and_validates(self):
         self.assertIn("disaster_relief", actions.motion_schema(self.w, with_emergency=True)["properties"]["type"]["enum"])
+        self.assertIn("funding_plan", actions.action_schema(self.w)["properties"])
         self.assertIsNone(politics.validate_motion_detail(self.w, dict(REAL)))
+
+    def test_normalization_preserves_the_relief_payload(self):
+        normalized = actions.normalize_motion_v2(self.w, dict(REAL))
+        self.assertEqual(normalized["action"], REAL["action"])
+        self.assertIsNone(politics.validate_motion_detail(self.w, normalized))
+
+    def test_motion_summary_explains_the_relief_package(self):
+        summary = actions.motion_summary(self.w, REAL)
+        self.assertIn("relief for Lissen Coast", summary)
+        self.assertIn("20M", summary)
+        self.assertIn("reallocation", summary)
+
+    def test_a_unique_region_name_in_a_long_subject_resolves(self):
+        mo = {**REAL, "subject": "Lissen Coast storm recovery 20M",
+              "action": {key: value for key, value in REAL["action"].items() if key != "region"}}
+        self.assertIsNone(politics.validate_motion_detail(self.w, mo))
+
+    def test_run_style_prose_fills_only_explicit_relief_fields(self):
+        mo = actions.normalize_motion_v2(self.w, {
+            "type": "disaster_relief", "subject": "Lissen Coast storm recovery", "value": "20M",
+            "text": "Use reserves for ports, roads, fields, housing and food distribution with army engineers."})
+        self.assertEqual(mo["action"]["region"], "lissen")
+        self.assertEqual(mo["action"]["funding"], "reserves")
+        self.assertEqual(mo["action"]["scope"], "mixed")
+        self.assertTrue(mo["action"]["military_engineers"])
+        self.assertIsNone(politics.validate_motion_detail(self.w, mo))
+
+    def test_an_explicit_text_amount_is_used_when_value_is_empty(self):
+        mo = actions.normalize_motion_v2(self.w, {
+            "type": "disaster_relief", "subject": "Lissen Coast storm recovery", "value": "",
+            "text": "Authorize up to 20M gold for Lissen Coast storm recovery, financed from reserves, "
+                    "for ports, roads and housing."})
+        self.assertEqual(mo["action"]["amount"], "20M")
+        self.assertEqual(politics.validate_motion_detail(self.w, mo), None)
+
+    def test_a_labeled_total_wins_over_individual_funding_components(self):
+        mo = actions.normalize_motion_v2(self.w, {
+            "type": "disaster_relief", "subject": "", "value": "",
+            "text": "Total package 50M gold: 30M reallocation and 20M from reserves for Port Aster."})
+        self.assertEqual(mo["action"]["amount"], "50M")
+        self.assertEqual(mo["action"]["funding_plan"], [
+            {"source": "reallocation", "amount": "30M"},
+            {"source": "reserves", "amount": "20M"}])
+        self.assertIsNone(politics.validate_motion_detail(self.w, mo))
+
+    def test_mixed_funding_executes_and_records_each_source(self):
+        self.w.econ.gdp_nominal = 500_000_000
+        before_gold = self.w.econ.gold
+        mo = actions.normalize_motion_v2(self.w, {
+            "type": "disaster_relief", "subject": "", "value": "",
+            "text": "Authorize Port Aster and Lissen Coast relief. Total package 50M gold: "
+                    "30M reallocation within the existing budget, 20M from reserves. "
+                    "Repair ports, roads and fields with army engineers."})
+        self.assertIsNone(politics.validate_motion_detail(self.w, mo))
+        politics.apply_motion(self.w, {**mo, "proposer": "B"})
+        record = self.w.institutions["relief"][-1]
+        self.assertEqual(record["funding"], "reallocation, reserves")
+        self.assertEqual([part["source"] for part in record["funding_plan"]], ["reallocation", "reserves"])
+        self.assertLess(self.w.econ.gold, before_gold)
+        self.assertLessEqual(record["executed_amount"], record["approved_amount"])
+
+    def test_mixed_funding_reserve_floor_checks_the_post_draw_balance(self):
+        from karamaniya.motion_actions import evaluate_conditions, motion_conditions
+        self.w.econ.gdp_nominal = 500_000_000
+        self.w.econ.gold = 41_000_000
+        mo = actions.normalize_motion_v2(self.w, {
+            "type": "disaster_relief", "subject": "", "value": "",
+            "text": "Total package 50M gold for Port Aster and Lissen Coast: 30M reallocation, "
+                    "20M from reserves. Maintain reserve floor at 30M gold; mixed port and road relief."})
+        mo["conditions"] = motion_conditions(mo)
+        (result,) = evaluate_conditions(self.w, mo["conditions"], mo)
+        self.assertFalse(result["met"])
+        self.assertAlmostEqual(result["observed"], 21_000_000)
+
+    def test_text_naming_two_regions_preserves_both_targets(self):
+        mo = actions.normalize_motion_v2(self.w, {
+            "type": "disaster_relief", "subject": "",
+            "text": "Storm relief for ports and fields in Lissen Coast and Dorran March."})
+        self.assertEqual(mo["action"]["regions"], ["lissen", "dorran"])
+        self.assertEqual(politics.validate_motion_detail(self.w, mo)["reason_code"], "BAD_AMOUNT")
+
+    def test_a_multi_region_package_reaches_each_named_region(self):
+        dorran = next(region for region in self.w.regions if region.id == "dorran")
+        self.lissen.damage = dorran.damage = 0.30
+        mo = {**REAL, "action": {**REAL["action"], "region": None, "regions": ["lissen", "dorran"]}}
+        politics.apply_motion(self.w, mo)
+        record = self.w.institutions["relief"][-1]
+        self.assertEqual(record["regions"], ["lissen", "dorran"])
+        self.assertEqual(len(record["regional_effects"]), 2)
+        self.assertLess(self.lissen.damage, 0.30)
+        self.assertLess(dorran.damage, 0.30)
+
+    def test_a_subject_naming_multiple_regions_resolves_both(self):
+        mo = {**REAL, "action": {**REAL["action"], "region": "Lissen Coast and Port Aster"}}
+        self.assertIsNone(politics.validate_motion_detail(self.w, mo))
 
     def test_the_real_motion_that_was_refused_now_runs(self):
         self.lissen.damage = 0.30

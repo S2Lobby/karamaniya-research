@@ -94,6 +94,18 @@ def update_potential(w: World, prod: dict) -> None:
 def produce(w: World) -> dict:
     from . import causality
     e, pol, dip = w.econ, w.policy, w.dip
+    # Ownership changes how well the same capital and labour are run. State management hits output
+    # unless the bureaucracy is capable (a SYNTHETIC assumption calibrated so a strong administration
+    # loses little and a weak one loses a lot); `private` leaves the engine's prior behaviour intact.
+    own = str(getattr(pol, "ownership", "private"))
+    admin = e.admin_capacity
+    own_ind = {"private": 1.0, "mixed": 0.98}.get(own, max(0.45, min(1.0, 0.55 + 0.45 * admin)))
+    own_farm = {"private": 1.0, "mixed": 1.0}.get(own, max(0.5, min(1.0, 0.6 + 0.4 * admin)))
+    # Central planning bends the mix toward heavy industry at the cost of services; a command drive
+    # only hits its targets if the bureaucracy can actually run one. `none` leaves both at 1.0.
+    plan = str(getattr(pol, "planning", "none"))
+    plan_ind = {"none": 1.0, "indicative": 1.02}.get(plan, max(0.8, min(1.25, 0.85 + 0.4 * admin)))
+    plan_serv = {"none": 1.0, "indicative": 0.98}.get(plan, 0.85)
     kessel = w.region("kessel")
     kessel_ok = 1.0 if kessel.controller == "karamaniya" else 0.0
     highlands_ok = 1.0 if w.region("highlands").controller == "karamaniya" else 0.0
@@ -149,9 +161,9 @@ def produce(w: World) -> dict:
         # output as well as to potential, so that the output gap measures frictions and demand
         # rather than being contaminated by the trend: without this, potential grows every month
         # and actual does not, and the gap drifts permanently negative for no economic reason.
-        food += farm * r.land * K_FOOD * e.weather * e.farm_incentive * d_farm * r.logistics * e.productivity
-        industry += workers * 0.94 * r.industry * K_IND * util_ind * d * r.logistics * e.productivity
-        services += middle * 0.95 * r.services * K_SERV * util_serv * d * r.logistics * e.productivity
+        food += farm * r.land * K_FOOD * e.weather * e.farm_incentive * d_farm * r.logistics * e.productivity * own_farm
+        industry += workers * 0.94 * r.industry * K_IND * util_ind * d * r.logistics * e.productivity * own_ind * plan_ind
+        services += middle * 0.95 * r.services * K_SERV * util_serv * d * r.logistics * e.productivity * own_ind * plan_serv
         util[r.id] = {
             "workers": clamp(1 - 0.94 * util_ind * (1 - 0.5 * r.damage), 0.03, 0.85),
             "middle": clamp(1 - 0.95 * util_serv * (1 - 0.5 * r.damage), 0.03, 0.85),
@@ -181,6 +193,12 @@ def trade_and_food(w: World, prod: dict) -> dict:
     food_over_want = (1.2e6 if maxed else 0.37e6) * sea * e.food_import_capacity
     fuel_cost = (0.5 if maxed else 0.2) * sea * 60e6
     goods_want = (15e6 if maxed else 38e6) * sea
+    # A numeric import ceiling (0 = none): the council caps how much is spent abroad on goods -- the
+    # 'economic sovereignty' lever delegates reached for as prose. It conserves reserves but leaves
+    # fewer consumer and industrial goods on the market, so it feeds the goods-price channel.
+    cap = float(getattr(pol, "import_cap", 0.0) or 0.0)
+    if cap > 0:
+        goods_want = min(goods_want, cap)
     union_cost = union_exports = 0.0
     if not in_crown and not dip.war:
         union_cost = food_dors * WORLD_FOOD_PRICE + 0.40 * (1 - coal_restriction) * 60e6
@@ -403,6 +421,20 @@ def _water_fill(sizes: list, weights: dict, supply: float) -> list:
 # at the founding the rollover calendar consumes most of it and net new borrowing is the 2% of
 # monthly output the model used before the rollover channel existed.
 GROSS_BORROWING_CAPACITY = 0.10
+# How far the refinancing calendar may stretch before it starts shutting out new deficit
+# financing, measured as a share of gross market capacity. A sovereign with a well-mated domestic
+# debt stock rolls its maturities smoothly -- the same domestic banks and pension funds that hold
+# the maturing paper absorb the new issue, and that refinancing does not compete for the same
+# headroom as fresh borrowing. Only the part of the calendar that exceeds what the market can
+# take in its stride crowds out new issuance. Below the tolerance a normal calendar crowds out
+# nothing; at roughly double the tolerance it crowds out fully, so a genuinely stretched or large
+# refinancing pipeline still closes the market. This replaces the earlier fixed subtraction of the
+# whole calendar from capacity, which clamped every state's net borrowing to zero the moment
+# confidence slipped a little -- a 40%-of-output sovereign does not stop being able to borrow in
+# its own currency, and treating it as if it did turned every run into an arithmetic doom loop
+# rather than an economic one. Crisis is still reachable: gross scales with confidence, so when
+# inflation expectations collapse confidence toward zero the market does shut.
+ROLLOVER_STRAIN_TOLERANCE = 0.20
 ARREARS_CATEGORIES = ("army", "police", "civil_service", "contractors", "foreign_debt")
 CIVIL_SERVICE_STRIKE_MONTHS = 2.5   # months of unpaid wages before the service starts to break
 PROCUREMENT_PREMIUM_CAP = 0.35      # most contractors will add when they are owed a lot
@@ -433,6 +465,32 @@ def budget_bills(w: World) -> dict:
                         + regional.spending(w)) * gdp,
         "foreign_debt": max(1.0, e.interest_for),
     }
+
+
+def _sync_arrears_composition(w: World) -> None:
+    """Reconcile legacy aggregate arrears with the category ledger before using either one."""
+    e = w.econ
+    total = max(0.0, float(e.arrears))
+    composition = {name: max(0.0, float((e.arrears_by or {}).get(name, 0.0)))
+                   for name in ARREARS_CATEGORIES_ORDER}
+    recorded = sum(composition.values())
+    if total > recorded:
+        missing = total - recorded
+        bills = budget_bills(w)
+        weights = {name: max(0.0, bills.get(name, 0.0)) for name in ARREARS_CATEGORIES_ORDER}
+        weight_total = sum(weights.values())
+        if weight_total <= 0:
+            composition["civil_service"] += missing
+        else:
+            for name, weight in weights.items():
+                composition[name] += missing * weight / weight_total
+    elif recorded > total and recorded > 0:
+        if total <= 0:
+            e.arrears = recorded
+        else:
+            scale = total / recorded
+            composition = {name: amount * scale for name, amount in composition.items()}
+    e.arrears_by = composition
 
 
 # Who a government protects when it runs out of money. This is not a moral claim but the
@@ -511,6 +569,7 @@ def settle_arrears(w: World, amount: float, categories=None) -> float:
     paid rather than by the whole of the debt.
     """
     e = w.econ
+    _sync_arrears_composition(w)
     names = normalise_categories(categories) or list(ARREARS_CATEGORIES)
     owed = sum(max(0.0, e.arrears_by.get(name, 0.0)) for name in names)
     if owed <= 0:
@@ -530,6 +589,7 @@ def seed_arrears(w: World, amount: float) -> None:
     if amount <= 0:
         return
     e = w.econ
+    _sync_arrears_composition(w)
     bills = budget_bills(w)
     total = sum(bills.values())
     if total <= 0:
@@ -548,8 +608,18 @@ def arrears_months(w: World) -> dict:
     the same function the accrual uses, so the two cannot drift apart again.
     """
     e = w.econ
+    composition = {name: max(0.0, float((e.arrears_by or {}).get(name, 0.0)))
+                   for name in ARREARS_CATEGORIES_ORDER}
+    if e.arrears > 0 and not any(composition.values()):
+        bills = budget_bills(w)
+        bill_total = sum(max(0.0, bills.get(name, 0.0)) for name in ARREARS_CATEGORIES_ORDER)
+        if bill_total > 0:
+            composition = {name: e.arrears * max(0.0, bills.get(name, 0.0)) / bill_total
+                           for name in ARREARS_CATEGORIES_ORDER}
+        else:
+            composition["civil_service"] = e.arrears
     bills = budget_bills(w)
-    return {name: (e.arrears_by.get(name, 0.0) / bills[name] if bills[name] > 0 else 0.0)
+    return {name: (composition[name] / bills[name] if bills[name] > 0 else 0.0)
             for name in ARREARS_CATEGORIES}
 
 
@@ -582,10 +652,20 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
     revenue = (pol.tax * gdp_nom * e.compliance * olivera_tanzi
                + 0.02 * gdp_nom * (1 - dip.blockade_eff) * (0.5 if dip.war else 1.0)
                + 0.01 * gdp_nom)
+    # A state-ownership economy books the enterprises' surplus directly instead of taxing private
+    # profit: the government runs the firms and keeps what they earn, scaled by how much of the
+    # economy is nationalised. Private leaves this at zero, so prior runs and every default are intact.
+    own_share = {"private": 0.0, "mixed": 0.12}.get(str(getattr(pol, "ownership", "private")), 0.45)
+    revenue += own_share * 0.30 * (prod["industry"] + prod["services"]) * e.cpi
 
     gold_to_local = z.price / (e.fx_conf if e.currency == "karam" else 1.0)
     debt_ratio = (e.debt_dom + e.debt_for * gold_to_local) / max(1.0, 12 * gdp_nom)
-    risk = clamp(0.5 * max(0.0, debt_ratio - 0.6) + 0.5 * max(0.0, exp_annual - 0.2), 0.0, 0.4)
+    # A heavy refinancing calendar is expensive before it is impossible: rolling a large slice of
+    # the stock every month bids up the yield the market demands to hold it, so the strain is
+    # priced into interest rather than expressed only as a quantity ceiling.
+    rollover_strain = e.rollover_need / max(1.0, gdp_nom)
+    risk = clamp(0.5 * max(0.0, debt_ratio - 0.6) + 0.5 * max(0.0, exp_annual - 0.2)
+                 + 0.6 * max(0.0, rollover_strain - 0.04), 0.0, 0.4)
     league_loan = w.foreign.get("league", {}).get("loan", {})
     league_principal = max(0.0, league_loan.get("principal", 0.0))
     league_rate = league_loan.get("interest", .05)
@@ -641,8 +721,30 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
         # Gross capacity is set so that at the founding — 40% of annual output in debt, 20% of it
         # inside a year — gross minus rollover reproduces the original 2% of monthly output. The
         # rollover calendar now genuinely crowds out new issuance without changing the baseline.
-        gross = GROSS_BORROWING_CAPACITY * gdp_nom * e.confidence
-        capacity = max(0.0, gross - e.rollover_need - arrears_bonds)
+        #
+        # Market access also responds to payment reliability, read from last month's track record:
+        # a borrower that has not been paying its bills finds the primary market closing. This is
+        # deliberately left-anchored and slow to bite: arrears under about a month of output do not
+        # touch access at all, and the penalty on the unpaid share is gentle, so a solvent or merely
+        # stressed government keeps its market open rather than being tipped into a self-fulfilling
+        # run. Only chronic default -- a state paying a small share of its bills on a large arrears
+        # stock -- drives access toward zero. Macro confidence alone was not enough: a state could be
+        # paying a tenth of its bills on a big inherited debt stock while showing a calm inflation
+        # outlook, which read as full market access. That is the recorded link between arrears and
+        # losing the market, and it is what makes a genuine fiscal collapse starve even the senior
+        # pay lines rather than papering the shortfall over with fresh issuance.
+        arrears_load = max(0.0, e.arrears) / max(1.0, gdp_nom)
+        reliability = clamp(1.0 - 0.5 * (1.0 - clamp(e.paid_share, 0.0, 1.0))
+                            - 0.4 * max(0.0, arrears_load - 1.0), 0.05, 1.0)
+        gross = GROSS_BORROWING_CAPACITY * gdp_nom * e.confidence * reliability
+        # Only the part of the refinancing calendar that strains the market competes with new
+        # deficit financing (see ROLLOVER_STRAIN_TOLERANCE). A normal calendar is rolled by the
+        # same holders without eating into fresh-issuance headroom; a stretched one closes the
+        # market progressively rather than on a single arithmetic cliff.
+        strain = e.rollover_need / max(1.0, GROSS_BORROWING_CAPACITY * gdp_nom)
+        crowd = e.rollover_need * clamp((strain - ROLLOVER_STRAIN_TOLERANCE)
+                                        / (1.0 - ROLLOVER_STRAIN_TOLERANCE), 0.0, 1.0)
+        capacity = max(0.0, gross - crowd - arrears_bonds)
         borrowed = min(need, capacity)
         unpaid = need - borrowed
     else:
@@ -651,6 +753,7 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
         e.debt_dom = max(0.0, e.debt_dom - (surplus - repay))
     e.debt_dom += borrowed
     if unpaid > 0:
+        _sync_arrears_composition(w)
         e.arrears += unpaid
         _accrue_arrears(w, e, unpaid)
     base = programs + patronage + interest
@@ -703,7 +806,7 @@ def statistics(w: World) -> None:
         z = w.zone_of("karamaniya")
         if e.currency == "karam":
             z.exp_infl += 0.01
-        w.dip.league_trust -= 0.25
+        w.adjust_league_trust(-0.25)
         w.event("stats_scandal", "Independent economists and journalists show that the official "
                 "inflation and output figures have been understated. Public trust in government "
                 "statistics has collapsed.", importance=2)

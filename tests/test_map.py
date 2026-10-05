@@ -9,6 +9,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from karamaniya import engine, mapgen  # noqa: E402
+from karamaniya.report import engine_source_groups, engine_source_unrecorded_months, history_rows  # noqa: E402
 from karamaniya.runner import new_run  # noqa: E402
 from karamaniya.world import FRONT_CHAINS, new_world  # noqa: E402
 
@@ -56,6 +57,36 @@ class Island(unittest.TestCase):
 
 
 class MonthDetail(unittest.TestCase):
+    def test_stored_history_projects_effective_front_strength_and_legacy_defaults(self):
+        world = {
+            "regions": [{"id": "capital", "capital": True}],
+            "history": [
+                {"month": 0, "army": 1000, "army_mobilized": 200, "army_mobilized_effective": 100,
+                 "engine_source_fingerprint": "engine-a",
+                 "deploy": {"north": 0.4, "east": 0.35, "capital": 0.25},
+                 "fronts": {"north": {"region": "capital", "ours": 400, "union": 500},
+                            "east": {"region": "coast", "ours": 350, "union": 500}}},
+                {"month": 1, "army": 800, "engine_source_fingerprint": "engine-b",
+                 "fronts": {"north": {"region": "coast", "ours": 320, "union": 0}}},
+                {"month": 2, "army": 700, "fronts": {"north": {"region": "coast", "ours": 280, "union": 0}}},
+            ],
+        }
+        rows = history_rows(world)
+        self.assertEqual(rows[0]["currency"], "crown")
+        self.assertEqual(rows[0]["army_field_total"], 1100)
+        self.assertEqual(rows[0]["fronts"]["north"]["ours_effective"], 465)
+        self.assertEqual(rows[0]["fronts"]["east"]["ours_effective"], 385)
+        self.assertEqual(rows[1]["army_field_total"], 800)
+        self.assertNotIn("ours_effective", rows[1]["fronts"]["north"])
+        self.assertEqual(rows[2]["army_field_total"], 700)
+        self.assertEqual(engine_source_groups(rows), [
+            {"fingerprint": "engine-a", "months": [0]},
+            {"fingerprint": "engine-b", "months": [1]},
+        ])
+        self.assertEqual(engine_source_unrecorded_months(rows), [2])
+        # Projection is safe for the shared Atlas cache: it does not rewrite checkpoint data.
+        self.assertNotIn("ours_effective", world["history"][0]["fronts"]["north"])
+
     def test_snapshot_has_regions_and_fronts(self):
         w = new_world(1, 6)
         for _ in range(3):
@@ -82,6 +113,11 @@ class MonthDetail(unittest.TestCase):
             self.assertIn("window.KaramaniyaMap", html)
             self.assertIn('"geo":{', html)
             self.assertIn('"region_detail":', html)
+            self.assertIn("Karamaniya effective field strength", html)
+            self.assertIn('h.currency === "karam" ? "karam" : "crown"', html)
+            self.assertIn("ours_effective", html)
+            self.assertIn("This run recorded multiple engine source fingerprints", html)
+            self.assertIn("Engine source not recorded for this history", html)
             self.assertNotIn("/*__MAPVIEW__*/", html)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

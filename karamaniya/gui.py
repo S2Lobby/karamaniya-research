@@ -48,6 +48,7 @@ SUGGESTED_MODELS = {
     "codex_cli": ["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-6-astra", "gpt-5.5"],
     "cline_cli": ["cline-pass/kimi-k3", "cline-pass/glm-5.3-flash", "cline-pass/glm-5.2"],
     "copilot_cli": ["auto"],
+    "qoder_cli": [],
     "antigravity_cli": ["gemini-3.1-pro-high", "gemini-3.1-pro-low", "gemini-3.8-flash-high", "gemini-3.8-flash-medium",
                         "gemini-3.8-flash-low"],
     "deepseek": ["deepseek-flash"],
@@ -77,7 +78,7 @@ class Library:
 
     def _stamp(self, d: Path):
         out = []
-        for name in ("config.json", "checkpoint.json", "scorecard.json"):
+        for name in ("config.json", "checkpoint.json", "scorecard.json", "report.html"):
             p = d / name
             out.append((p.stat().st_mtime_ns, p.stat().st_size) if p.exists() else None)
         return tuple(out)
@@ -95,7 +96,8 @@ class Library:
         except (OSError, ValueError, KeyError) as exc:
             s = {"id": d.name, "status": "unreadable", "error": f"{type(exc).__name__}: {exc}",
                  "mapping": {}, "seats": [], "months_done": 0, "months_total": 0, "outcome": {},
-                 "stopped": "", "spend": 0.0, "has_report": False, "created": "", "card": None}
+                 "stopped": "", "spend": 0.0, "has_report": False, "report_months": None,
+                 "report_stale": False, "created": "", "card": None}
         with self._lock:
             self._cache[d.name] = (stamp, s)
         return s
@@ -114,7 +116,8 @@ class Library:
              "seats": [{k: seat.get(k, "") for k in ("label", "provider", "model", "persona")}
                        for seat in cfg.get("seats", [])],
              "months_done": 0, "outcome": {}, "stopped": "", "spend": 0.0,
-             "has_report": (d / "report.html").exists(), "status": "not started", "card": None}
+             "has_report": (d / "report.html").exists(), "report_months": None, "report_stale": False,
+             "status": "not started", "card": None}
         if (d / "checkpoint.json").exists():
             ck = _read_json(d / "checkpoint.json")
             world = ck.get("world", {})
@@ -130,6 +133,16 @@ class Library:
                 s["status"] = "stopped" if s["stopped"] else "interrupted"
         if (d / "scorecard.json").exists():
             s["card"] = _read_json(d / "scorecard.json")
+            country = s["card"].get("country", {})
+            if isinstance(country, dict):
+                months = country.get("months_run")
+                if isinstance(months, int) and not isinstance(months, bool):
+                    s["report_months"] = months
+        # report.html and scorecard.json are generated from the same report
+        # projection. A different month count means the saved export trails
+        # the checkpoint (for example, after a resumed run advanced further).
+        s["report_stale"] = bool(s["has_report"] and s["report_months"] is not None
+                                 and s["report_months"] != s["months_done"])
         return s
 
     def forget(self, run_id: str) -> None:
@@ -153,6 +166,8 @@ HARNESS_NOTES = {
                        "of the message; plan mode and sandbox; answer held to the schema.",
     "copilot_cli": "GitHub Copilot CLI: no system-prompt option, so the standing instructions are put at the top of "
                    "the message; every tool, MCP server and instruction file off; answer read from the reply text.",
+    "qoder_cli": "Qoder CLI: the standing instructions are the session system prompt; every tool, MCP server and hook "
+                 "is off and no session is saved; the answer is read from the CLI's JSON reply and held to the schema.",
     "scripted": "Scripted stand-in: no AI. The rules read the same prompt and answer by persona.",
 }
 
@@ -389,7 +404,7 @@ class Analyst:
                   "architecture": row.get("agent_architecture_version", world.get("agent_architecture_version", 0))}
         out = {"month": month, "member": member, "public": public}
         if deep:
-            keys = ("traits", "role_shift", "stress", "stress_profile", "priorities", "secret_goal", "confidence",
+            keys = ("traits", "role_shift", "stress", "stress_trace", "stress_profile", "priorities", "secret_goal", "confidence",
                     "beliefs", "relationships", "grievances", "favor_debts", "promises", "commitments", "strategy",
                     "lessons", "constituencies", "private_disposition", "long_term_ambitions", "ambition_history")
             deep_state = {k: social.get(k) for k in keys if social.get(k) is not None}
@@ -552,6 +567,13 @@ def discover_models(provider: str) -> list:
         code, out, err = cli_common.run(cli_common.resolve({}, "agy") + ["models"], None, 60)
         return [line.split("\t")[0].strip() for line in out.splitlines()
                 if "\t" in line and not line.lower().startswith("fetching")]
+    if provider == "qoder_cli":
+        code, out, err = cli_common.run(cli_common.resolve({}, "qoder") + ["--list-models"], None, 60)
+        if code != 0:
+            raise RuntimeError((out or err or "qoder --list-models failed").strip()[:200])
+        skip = ("listing", "available", "not logged", "model", "usage", "sign in")
+        return [line.strip() for line in out.splitlines()
+                if line.strip() and not line.strip().lower().startswith(skip)]
     return list(SUGGESTED_MODELS.get(provider, []))
 
 
@@ -668,9 +690,27 @@ class Controller:
             elif t == "resolved":
                 self._push("resolved", month=ev["month"], motions=ev.get("motions", []),
                            coups=ev.get("coups", []), resigned=ev.get("resigned", []),
-                           defiance=ev.get("defiance", 0), leaks=ev.get("leaks", []))
+                           defiance=ev.get("defiance", 0), defiance_details=ev.get("defiance_details", []),
+                           office_orders=ev.get("office_orders", []),
+                           leaks=ev.get("leaks", []))
             elif t == "simulate":
                 job["phase"] = "simulate"
+            elif t == "foreign_call_start":
+                actor = ev["actor"]
+                job.setdefault("foreign_calls", {})[actor] = {
+                    "phase": "foreign", "since": time.time(), "seat": ev.get("seat", ""),
+                    "provider": ev.get("provider", ""), "model": ev.get("model", "")}
+                job["phase"] = "foreign_cabinets"
+                self._push("status", text=f"Waiting for the {actor.title()} cabinet model ({ev.get('seat', 'foreign delegate')})")
+            elif t == "foreign_call_end":
+                actor = ev["actor"]
+                job.setdefault("foreign_calls", {}).pop(actor, None)
+                job["spend"] = ev.get("spend", job["spend"])
+                job["done_calls"] += 1
+                job["phase"] = "foreign_cabinets" if job.get("foreign_calls") else "simulate"
+                if not ev.get("ok"):
+                    self._push("external_problem", actor=actor, seat=ev.get("seat", ""),
+                               provider=ev.get("provider", ""), error=ev.get("error", ""))
             elif t == "month_done":
                 job.update(months_done=ev["months_done"], spend=ev["spend"], line=ev.get("line", ""),
                            stats=ev.get("stats", {}), phase="", outcome=ev.get("outcome") or {},
@@ -694,7 +734,7 @@ class Controller:
         self.job = {"id": self.job_seq, "kind": kind, "status": "starting", "run_id": run_id, "mapping": {},
                     "months_total": months_total, "months_done": 0, "month": None, "phase": "",
                     "members": {}, "offices": {}, "labels": {},
-                    "calls": {}, "done_calls": 0, "spend": 0.0, "line": "", "stats": {}, "outcome": {},
+                    "calls": {}, "foreign_calls": {}, "done_calls": 0, "spend": 0.0, "line": "", "stats": {}, "outcome": {},
                     "stopped": "", "error": "", "started": time.time(), "ended": 0.0}
         self.feed.clear()
         return self.job
@@ -720,6 +760,7 @@ class Controller:
                 with self.lock:
                     self.job["ended"] = time.time()
                     self.job["calls"] = {}
+                    self.job["foreign_calls"] = {}
                     if self.job["status"] in ("starting", "checking", "running", "stopping"):
                         self.job["status"] = "stopped"
                 self.library.forget(self.job["run_id"])
@@ -801,6 +842,9 @@ class Controller:
                 job = {**self.job, "calls": {m: {"phase": c["phase"], "elapsed": round(now - c["since"], 1),
                                                   "preview": c.get("preview", "")}
                                              for m, c in self.job["calls"].items()},
+                       "foreign_calls": {actor: {**{k: v for k, v in c.items() if k != "since"},
+                                                  "elapsed": round(now - c["since"], 1)}
+                                         for actor, c in (self.job.get("foreign_calls") or {}).items()},
                        "elapsed": round((self.job["ended"] or now) - self.job["started"], 1),
                        "active": self.busy()}
             items = [i for i in self.feed if i["seq"] > since]
@@ -1055,7 +1099,8 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as exc:  # the CLI is missing or not logged in: fall back to suggestions
                     return self._json(200, {"models": SUGGESTED_MODELS.get(provider, []), "found": False,
                                             "error": f"{type(exc).__name__}: {exc}"[:300]})
-                return self._json(200, {"models": models, "found": provider in ("codex_cli", "antigravity_cli")})
+                return self._json(200, {"models": models,
+                                        "found": provider in ("codex_cli", "antigravity_cli", "qoder_cli")})
             if method == "POST" and name == "config":
                 return self._json(200, c.save(str(body.get("name", "")), body.get("config") or {}))
             if method == "POST" and name == "keys":

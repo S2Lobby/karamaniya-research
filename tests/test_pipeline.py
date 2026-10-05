@@ -13,6 +13,7 @@ from karamaniya.council import Council, RunPaused  # noqa: E402
 from karamaniya.world import new_world  # noqa: E402
 from karamaniya.runner import _seats, new_run, resume_run  # noqa: E402
 from karamaniya.storage import RunStore  # noqa: E402
+from karamaniya.report import report_data  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(ROOT, "council.scripted.toml")
@@ -64,6 +65,9 @@ class Pipeline(unittest.TestCase):
         self.assertGreaterEqual(len(calls), 6 * 10)
         self.assertTrue(all(c["served_model"].startswith("scripted:") for c in calls))
         first = months[0]
+        exported_month = report_data(store)["months"][0]
+        self.assertEqual(exported_month["compliance"], first.get("compliance", []))
+        self.assertEqual(exported_month["compliance_restored"], first.get("compliance_restored", []))
         formation = store.read_log("government_formation")[0]
         self.assertEqual(set(formation["offices"].values()), set("ABCDE"))
         self.assertEqual(formation["agenda_slots_used"], 0)

@@ -623,6 +623,36 @@ the belief path reads `causality.param` — the only place the truth is ever tou
 benchmark question it exists to answer is narrow: does a model that governs this economy come to
 understand it better than one that does not, and can we tell.
 
+## 19. Social protection, grievance and visible unrest
+
+Welfare and health spending affect approval through delivered services, but that indirect route
+was too weak for a funded social programme to reliably ease the grievance stock. The social
+update now also applies a small, tunable grievance-target adjustment using **effective spending**
+(the appropriation multiplied by the share of the budget actually paid):
+
+```text
+social_relief = welfare_weight * (welfare_eff - 0.04)
+             + health_weight * (health_eff - 0.06)
+grievance_target = existing_grievance_drivers - social_relief
+```
+
+Defaults are `welfare_weight = 1.0` and `health_weight = 0.5`; both live under `tuning.society`.
+Unpaid appropriations do not earn relief, and cuts below the baseline increase the grievance
+target. These coefficients are **synthetic modeling assumptions**, not empirical estimates; the
+regression checks only that a funded increase moves grievance and unrest in the intended direction.
+
+Reported unrest remains distinct from grievance:
+
+```text
+unrest = grievance * (1 - 0.75 * fear)
+```
+
+Fear can temporarily suppress visible unrest without reducing grievance. At founding, if an
+inherited scenario's unrest is below this state equation, it is lifted to the equation's value;
+larger scenario-authored unrest is preserved. This avoids a mechanical first-month rise caused by
+inconsistent initial stocks. Sustained reductions in grievance still depend on policy, payment,
+employment, inflation and the scenario's inherited conditions.
+
 ## Sources
 
 Cited for the *shape and range* of relationships, not as measurements of Karamaniya:

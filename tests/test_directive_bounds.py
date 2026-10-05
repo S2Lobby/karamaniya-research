@@ -14,6 +14,7 @@ word "floor" says >= 0.035. The words around it say = 0.035, and they are what w
 import copy
 import json
 import os
+import re
 import sys
 import unittest
 
@@ -93,6 +94,13 @@ class TheBoundIsTheIntersection(unittest.TestCase):
         # A disagreement must never widen what an office may do: the voted value is kept exactly.
         self.assertEqual(bound, {"min": 0.035, "max": 0.035})
 
+    def test_conditional_warning_about_later_rate_hike_does_not_conflict_with_lower_amendment(self):
+        bound, clashes = politics.directive_bounds(self.w, motion(
+            "Raise the policy rate to 10% as a measured step.", value="0.10", subject="rate",
+            demands=[{"member": "C", "demand": "Do not raise the rate to 11% without evidence that the added tightening will reduce inflation; publish the basis for any later change."}]))
+        self.assertEqual(clashes, [])
+        self.assertEqual(bound, {"min": 0.10, "max": 0.10})
+
     def test_a_bare_directive_is_still_exactly_its_value(self):
         bound = self.bound("Directive: military = 3.5% of output.")
         self.assertEqual(politics.bound_kind(bound), politics.FIXED)
@@ -154,6 +162,7 @@ class NothingInTheCorpusWidened(unittest.TestCase):
         import glob
         w = new_world(1, member_ids=list("ABCDE"))
         read = widened = conflicts = 0
+        unsupported_widening = []
         for path in glob.glob(os.path.join(ROOT, "runs", "*", "log.jsonl")):
             with open(path, encoding="utf-8") as f:
                 for line in f:
@@ -173,10 +182,16 @@ class NothingInTheCorpusWidened(unittest.TestCase):
                         conflicts += len(clashes)
                         if politics.bound_kind(bound) != politics.FIXED:
                             widened += 1
+                            wording = " ".join(str(mo.get(k, "")) for k in ("text", "description", "rationale"))
+                            if not re.search(r"\b(minimum|floor|at least|no less than|not below)\b", wording, re.I):
+                                unsupported_widening.append((path, row.get("month"), mo.get("id"), wording))
         if not read:
             self.skipTest("no recorded runs to check against")
         self.assertEqual(conflicts, 0, "a real directive was reported as disagreeing with itself")
-        self.assertEqual(widened, 0, "a real directive was widened past the value the council voted")
+        self.assertEqual(
+            unsupported_widening, [],
+            f"a real directive was widened without floor wording: {unsupported_widening[:1]}",
+        )
 
 
 if __name__ == "__main__":

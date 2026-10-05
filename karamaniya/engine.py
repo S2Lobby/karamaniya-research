@@ -56,14 +56,22 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         audits.deliver(w)
         dilemmas.review(w, w.agenda.get("this_month"))
         dilemmas.generate(w)
-        w.history[-1]["member_social"] = agents.snapshot(w)
-        w.history[-1]["v2"] = v2_extras(w)
-    state_validation.refresh(w, w.history[-1])
     if not w.ended() and w.month + 1 >= w.months_total:
         c = w.const
         w.outcome = {"type": "survived", "month": w.month,
                      "text": f"After {w.months_total} months, the {c.regime_name} still governs an "
                              "independent Karamaniya."}
+    # Keep the early row available to handlers such as credit_and_blame(), which
+    # compare this month with the prior one. Replace it only after post-month work
+    # so events, audit consequences, issue reversals and terminal outcomes are current.
+    snapshot(w, refresh_last=True)
+    if v2:
+        # The canonical snapshot does not include the v2 inspector payload. Rebuild both
+        # from final state after replacing the row, including reports and audits produced
+        # after the early snapshot.
+        w.history[-1]["member_social"] = agents.snapshot(w)
+        w.history[-1]["v2"] = v2_extras(w)
+    state_validation.refresh(w, w.history[-1])
     w.last_events = w.events
     w.month += 1
 
@@ -174,8 +182,26 @@ def nation_detail(w: World) -> dict:
     return out
 
 
-def snapshot(w: World) -> None:
+def snapshot(w: World, refresh_last: bool = False) -> None:
+    if refresh_last:
+        # Rebuild against the preceding months: inflation and other history-derived
+        # values must not shift just because this row was already appended once.
+        if not w.history or w.history[-1].get("month") != w.month:
+            raise ValueError("cannot refresh a snapshot without this month's history row")
+        previous = w.history.pop()
+        try:
+            snapshot(w)
+            refreshed = w.history.pop()
+        finally:
+            w.history.append(previous)
+        previous.clear()
+        previous.update(refreshed)
+        return
+
     e, m, dip, c = w.econ, w.mil, w.dip, w.const
+    army_mobilized = military.mobilization_draw(w)
+    army_mobilized_effective = military.mobilized_strength(w)
+    military.sync_state(w)
     pops = w.k_pops()
     total = sum(p.size for p in pops) or 1.0
     by_ident = {}
@@ -191,8 +217,13 @@ def snapshot(w: World) -> None:
     gdp_nom = e.gdp_nominal or 1.0
     z = w.zone_of("karamaniya")
     gold_to_local = z.price / (e.fx_conf if e.currency == "karam" else 1.0)
+    # A run can be resumed after an engine update. Capture the loaded runtime's source signature
+    # on every month so historical reports can detect a mixed-code run instead of pretending the
+    # entire history was produced by the engine version currently on disk.
+    from .manifest import RUNTIME_SOURCE_FINGERPRINT
     w.history.append({
         "month": w.month,
+        "engine_source_fingerprint": RUNTIME_SOURCE_FINGERPRINT,
         "cpi": e.cpi, "infl_m": e.infl, "infl_a": annualize(e.infl), "infl_yoy": inflation_yoy(w),
         "published_infl_a": annualize(e.infl) * (1 - e.stats_gap),
         "exp_infl_a": annualize(z.exp_infl), "zone_price": z.price,
@@ -211,7 +242,10 @@ def snapshot(w: World) -> None:
         "population": w.population(), "population_all": sum(p.size for p in w.pops),
         "approval": w.avg("approval"), "indep": w.avg("indep"), "unrest": w.avg("unrest"),
         "fear": w.avg("fear"), "by_ident": by_ident,
-        "army": m.army.size, "army_equipment": m.army.equipment, "army_morale": m.army.morale,
+        "army": m.army.size, "army_mobilized": army_mobilized,
+        "army_mobilized_effective": army_mobilized_effective,
+        "army_field_total": m.army.size + army_mobilized_effective,
+        "army_equipment": m.army.equipment, "army_morale": m.army.morale,
         "army_loyalty": m.army.loyalty, "army_bond": m.army.bond, "army_arrears": m.army.arrears,
         "navy": m.navy.size, "navy_loyalty": m.navy.loyalty, "navy_bond": m.navy.bond,
         "police_loyalty": m.police.loyalty, "police_bond": m.police.bond,
@@ -233,7 +267,9 @@ def snapshot(w: World) -> None:
             "league_alliance": dip.league_alliance, "league_sanctions": dip.league_sanctions,
             "offices": dict(c.offices), "directives": dict(c.directives),
             "election_month": c.election_month,
-            "army": m.army.size, "navy": m.navy.size, "police": m.police.size,
+            "army": m.army.size, "army_mobilized": army_mobilized,
+            "army_mobilized_effective": army_mobilized_effective,
+            "navy": m.navy.size, "police": m.police.size,
             "debt_dom": e.debt_dom, "debt_for": e.debt_for, "reserves": e.gold,
             "arrears": e.arrears,
             "regions": {r.id: r.controller for r in w.regions if r.nation == "karamaniya"},

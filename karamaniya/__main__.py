@@ -46,6 +46,12 @@ def main(argv=None) -> int:
     a.add_argument("--write", action="store_true",
                    help="write correction.json beside the run (recorded history is never altered)")
 
+    an = sub.add_parser("analyze", help="scan runs for engine bugs and what delegates could not do")
+    an.add_argument("runs_dir", nargs="?", default="runs")
+    an.add_argument("--recent", type=int, help="only the N most recently written runs")
+    an.add_argument("--run", help="one run id, listed in full detail")
+    an.add_argument("--json", dest="json_out", help="also write machine-readable findings to this file")
+
     batch = sub.add_parser("simulate", help="run one model-seat assignment across several seeds")
     batch.add_argument("config", nargs="?", default="council.scripted.toml")
     batch.add_argument("--runs", type=int, default=5)
@@ -118,6 +124,9 @@ def main(argv=None) -> int:
         if args.write:
             print(f"  wrote {store.path / 'correction.json'}")
         return 1 if executed_wrongly else 0
+    elif args.cmd == "analyze":
+        from .analyze import analyze
+        analyze(args.runs_dir, recent=args.recent, run_id=args.run, json_out=args.json_out)
     elif args.cmd == "simulate":
         from .batch import simulate
         result = simulate(args.config, runs=args.runs, months=args.months,

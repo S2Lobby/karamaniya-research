@@ -17,7 +17,7 @@ import re
 from difflib import SequenceMatcher
 
 from . import standing, tuning
-from .politics import LEVER_OFFICE, validate_motion_detail
+from .politics import LEVER_OFFICE, canonical_lever, validate_motion_detail
 from .world import World
 
 PROCEDURAL = ("assign_office", "vacate_office")
@@ -66,6 +66,13 @@ def topic(mo: dict) -> str:
     t, s = mo.get("type"), mo.get("subject", "")
     if t in PROCEDURAL:
         return "appointments"
+    if t == "program":
+        # A package takes the topic of its first measure, so an austerity programme is debated as
+        # fiscal business and a security bundle as policing -- the same slot discipline as set_policy.
+        ms = (mo.get("action") or {}).get("measures") if isinstance(mo.get("action"), dict) else None
+        first = canonical_lever(str((ms or [{}])[0].get("lever", ""))) if ms else ""
+        return {"treasury": "fiscal", "interior": "policing", "army": "military",
+                "navy": "navy"}.get(LEVER_OFFICE.get(first), "fiscal")
     if t == "set_policy":
         office = LEVER_OFFICE.get(s)
         if s in ("rationing", "imports", "farm_support", "requisition", "price_controls"):
@@ -94,6 +101,11 @@ def capacity(w: World) -> int:
     slots = int(tuning.get(w, "agenda.major_motions"))
     if w.dip.war or w.dip.blockade or w.dip.ultimatum or w.const.emergency:
         slots += int(tuning.get(w, "agenda.emergency_extra"))
+    e = w.econ
+    arrears_ratio = e.arrears / max(1.0, e.gdp_nominal)
+    if (arrears_ratio >= float(tuning.get(w, "agenda.fiscal_arrears_ratio"))
+            or e.paid_share < float(tuning.get(w, "agenda.fiscal_paid_share_floor"))):
+        slots += int(tuning.get(w, "agenda.fiscal_extra"))
     return slots
 
 
@@ -144,8 +156,20 @@ def amendment_cost(w: World) -> float:
     return round(float(tuning.get(w, "amendments.capital_cost")) + float(tuning.get(w, "amendments.repeat_cost")) * recent, 3)
 
 
+def _program_measure_key(w: World, motion: dict) -> tuple:
+    """Canonical executable program payload, independent of input measure ordering."""
+    from . import motion_actions
+    measures = motion_actions.structured_action(w, motion).get("measures", [])
+    pairs = [(measure.get("lever"), measure.get("value")) for measure in measures]
+    return tuple(sorted(pairs, key=lambda item: (str(item[0]), repr(item[1]))))
+
+
 def check(w: World, mo: dict, tabled: list, proposer: str) -> tuple[dict | None, dict | None]:
     """(rejection, warning) for one tabled motion."""
+    if w.agent_architecture_version >= 2 and not str(mo.get("text", "") or "").strip():
+        return {"status": "rejected", "reason_code": "EMPTY_MOTION_TEXT",
+                "explanation": "a motion needs non-empty text stating the policy the council will vote on",
+                "related_state": {}}, None
     detail = validate_motion_detail(w, mo)
     if detail:
         return detail, None
@@ -153,6 +177,8 @@ def check(w: World, mo: dict, tabled: list, proposer: str) -> tuple[dict | None,
     for other in tabled:
         if (other.get("type"), str(other.get("subject", "")).casefold(), str(other.get("value", "")).casefold()) == key \
                 and mo.get("type") != "amend":
+            if mo.get("type") == "program" and _program_measure_key(w, other) != _program_measure_key(w, mo):
+                continue
             if other.get("proposer") == proposer:
                 return {"status": "rejected", "reason_code": "SAME_MOTION_TABLED",
                         "explanation": "you already tabled this motion this month", "related_state": {}}, None
@@ -229,6 +255,8 @@ def carried_over(w: World) -> list:
     keep = []
     months = int(tuning.get(w, "agenda.carry_over_months"))
     for m in w.agenda.get("deferred", []):
+        if w.agent_architecture_version >= 2 and not str(m.get("text", "") or "").strip():
+            continue
         # A delegate that named the month it wants the question back holds it there until then, and
         # the window in which a deferred motion may return runs from THAT month. Measured from the
         # month it was set aside instead, "defer until Month 6" lapses before Month 6 and the
@@ -261,6 +289,7 @@ def coalesce_carried(w: World, candidate: dict, carried: list, proposer: str) ->
     """
     if validate_motion_detail(w, candidate):
         return None
+    from . import motion_actions
     for motion in carried:
         if candidate.get("type") != motion.get("type"):
             continue
@@ -272,26 +301,43 @@ def coalesce_carried(w: World, candidate: dict, carried: list, proposer: str) ->
         elif (str(candidate.get("subject", "")).casefold(), str(candidate.get("value", "")).casefold()) != \
                 (str(motion.get("subject", "")).casefold(), str(motion.get("value", "")).casefold()):
             continue
+        elif candidate.get("type") == "program" and \
+                _program_measure_key(w, candidate) != _program_measure_key(w, motion):
+            continue
         if motion["proposer"] == proposer:
-            if candidate.get("text") and candidate["text"] != motion.get("text"):
-                motion.setdefault("revisions", []).append({"value": motion.get("value"), "text": motion.get("text")})
-                motion["text"] = candidate["text"]
-                motion["summary"] = _motion_summary(w, motion)
-            if candidate.get("conditions") is not None:
-                # An amendment may add, narrow or clear execution safeguards; the final
-                # text plus these stored conditions are what the gate will test.
-                from . import motion_actions
-                clean = motion_actions.motion_conditions({**motion, "conditions": candidate["conditions"]})
-                motion["conditions"] = clean
-                motion["final_conditions"] = list(clean)
-                motion["final_motion_text"] = str(motion.get("text", ""))
-            elif motion.get("text") and "conditions" in motion:
-                from . import motion_actions
-                refreshed = motion_actions.motion_conditions(motion)
-                motion["conditions"] = refreshed
-                motion["final_conditions"] = list(refreshed)
-                motion["final_motion_text"] = str(motion.get("text", ""))
-            motion["force_agenda"] = bool(candidate.get("force_agenda"))
+            old_action = motion_actions.structured_action(w, motion)
+            new_action = motion_actions.structured_action(w, candidate)
+            updated = {**motion,
+                       "subject": candidate.get("subject", motion.get("subject")),
+                       "value": candidate.get("value", motion.get("value", "")),
+                       "text": candidate.get("text", motion.get("text", "")),
+                       "action": dict(candidate.get("action") or {}),
+                       "declared_subject": candidate.get("declared_subject"),
+                       "declared_type": candidate.get("declared_type")}
+            changed = any(updated.get(key) != motion.get(key)
+                          for key in ("subject", "value", "text", "action", "declared_subject", "declared_type"))
+            if changed:
+                previous = {"value": motion.get("value"), "text": motion.get("text", ""),
+                            "conditions": list(motion.get("conditions") or [])}
+                if isinstance(motion.get("action"), dict):
+                    previous["action"] = dict(motion["action"])
+                updated.setdefault("revisions", []).append(previous)
+                if old_action != new_action and not updated.get("original_action"):
+                    updated["original_action"] = old_action
+
+            # A renewal is the same carried motion only if its words and executable payload still
+            # form one valid act. In particular, changing a diplomatic target must replace the
+            # target in the structured action as well as in the prose that delegates vote on.
+            if validate_motion_detail(w, updated) or motion_actions.conflict(w, updated):
+                return None
+            conditions = motion_actions.motion_conditions(
+                {**updated, "conditions": candidate.get("conditions") or []})
+            updated["conditions"] = conditions
+            updated["final_conditions"] = list(conditions)
+            updated["final_motion_text"] = str(updated.get("text", ""))
+            updated["force_agenda"] = bool(candidate.get("force_agenda"))
+            updated["summary"] = _motion_summary(w, updated)
+            motion.update(updated)
             return {"code": "RENEWED_CARRIED", "motion": motion["id"]}
         if proposer not in motion.setdefault("cosponsors", []):
             motion["cosponsors"].append(proposer)
@@ -305,7 +351,7 @@ def _motion_summary(w: World, motion: dict) -> str:
 
 
 def resolve_mutual_withdrawals(motions: list) -> list:
-    """Stop a mutual consolidation from taking the whole agreement off the agenda.
+    """Detect inconsistent withdrawal cycles without reviving a withdrawn motion.
 
     Withdrawals are applied one delegate at a time, so two delegates can each withdraw their own
     motion in order to fall in behind the other's, and both stand withdrawn before either can be
@@ -314,12 +360,10 @@ def resolve_mutual_withdrawals(motions: list) -> list:
     Neither withdrawal is wrong on its own, which is why only a pass over the finished set can see
     it — the cycle exists in the links, not in any single delegate's answer.
 
-    One motion is restored, chosen by the consolidation itself: the target that the most of the
-    cycle's delegates fell in behind, then the one with the most co-sponsors, then the one tabled
-    earliest. That is the motion the withdrawals were converging on, read back out of them. Nothing
-    is invented and no proposal is rewritten — the survivor is one a delegate already tabled.
-
-    Returns one record per collision for the audit trail.
+    Such cycles are now blocked when each withdrawal is applied: a delegate cannot withdraw in
+    favour of a motion that has already left the agenda. This final audit remains for old or
+    malformed records. It never changes a terminal motion back to active; delegates may re-table
+    a proposal next month under a new motion id.
     """
     from .convergence import families, _is_duplicate
 
@@ -341,26 +385,18 @@ def resolve_mutual_withdrawals(motions: list) -> list:
             continue
         seen.add(key)
         members = [by_id[mid] for mid in cycle]
-        # How many of the cycle's own delegates named this motion as the one they fell in behind.
         consensus = {m["id"]: sum(1 for other in members if other.get("replaced_by") == m["id"])
                      for m in members}
-        kept = max(members, key=lambda m: (consensus[m["id"]], len(m.get("cosponsors") or []),
-                                           -order.get(m["id"], 0)))
-        kept["withdrawn"] = False
-        kept["restored_from_collision"] = {
-            "with": [m["id"] for m in members if m["id"] != kept["id"]],
-            "why": "each proposer withdrew in favour of another in the same group, so all of them "
-                   "would have left the agenda together"}
         collisions.append({
             "code": "MUTUAL_WITHDRAWAL_COLLISION",
             "motions": sorted(cycle, key=lambda mid: order.get(mid, 0)),
             "proposers": {m["id"]: m.get("proposer") for m in members},
-            "kept": kept["id"], "dropped": [m["id"] for m in members if m["id"] != kept["id"]],
+            "kept": None, "dropped": sorted(cycle, key=lambda mid: order.get(mid, 0)),
             "fell_in_behind": consensus,
             "same_family": len({fam.get(m["id"]) for m in members}) == 1,
             "duplicates": all(_is_duplicate(members[0], m) for m in members[1:]),
-            "note": "one motion was restored: the rest of the cycle stays withdrawn, so the "
-                    "consolidation still reduces the agenda to a single motion",
+            "note": "all motions remain withdrawn; a proposal can return only as a new motion "
+                    "in a later agenda",
         })
     return collisions
 
@@ -368,7 +404,7 @@ def resolve_mutual_withdrawals(motions: list) -> list:
 # ---- the revision round (spec 33) ---------------------------------------------------------------
 def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_all: list) -> dict:
     """Withdrawals and amendments of a delegate's own motions after hearing the council."""
-    notes = {"withdrawn": [], "amended": [], "rejected": []}
+    notes = {"withdrawn": [], "amended": [], "rejected": [], "rejected_withdrawals": []}
     own = {m["id"]: m for m in motions if m["proposer"] == mid or mid in m.get("cosponsors", [])}
     for item in revision.get("withdraw", []):
         # The structured form carries the stated reason and the motion the delegate fell in behind;
@@ -377,6 +413,13 @@ def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_al
         motion_id = entry.get("motion_id")
         m = own.get(motion_id)
         if m and not m.get("withdrawn"):
+            target_id = entry.get("replaced_by")
+            target = next((candidate for candidate in motions if candidate.get("id") == target_id), None)
+            if target_id and (target is None or target.get("withdrawn")):
+                notes["rejected_withdrawals"].append({"motion": motion_id, "target": target_id,
+                    "code": "WITHDRAWAL_TARGET_INACTIVE",
+                    "explanation": f"{motion_id} remains active because replacement {target_id} was already withdrawn"})
+                continue
             if m["proposer"] != mid and mid in m.get("cosponsors", []):
                 m["cosponsors"] = [x for x in m["cosponsors"] if x != mid]
                 continue
@@ -398,21 +441,56 @@ def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_al
             continue
         candidate = {**m, "value": str(item.get("value", m.get("value", ""))).strip() or m.get("value", ""),
                      "text": str(item.get("text", "")).strip() or m.get("text", "")}
+        program_text_changed = (m.get("type") == "program"
+                                and (candidate["value"] != m.get("value") or candidate["text"] != m.get("text")))
+        program_measures_changed = (m.get("type") == "program" and "measures" in item
+                                    and isinstance(item.get("measures"), list)
+                                    and item.get("measures") != (m.get("action") or {}).get("measures"))
+        if m.get("type") == "program" and "measures" in item and not isinstance(item.get("measures"), list):
+            notes["rejected"].append({"motion": m["id"], "code": "PROGRAM_AMENDMENT_MISSING_MEASURES",
+                                       "reason_code": "NO_STRUCTURED_ACTION",
+                                       "explanation": "a revised program must provide its complete replacement measure list; the original package remains on the agenda"})
+            continue
+        if m.get("type") == "program" and (program_text_changed or program_measures_changed):
+            if not isinstance(item.get("measures"), list):
+                notes["rejected"].append({"motion": m["id"], "code": "PROGRAM_AMENDMENT_MISSING_MEASURES",
+                                           "reason_code": "NO_STRUCTURED_ACTION",
+                                           "explanation": "a revised program must provide its complete replacement measure list; the original package remains on the agenda"})
+                continue
+            candidate["original_action"] = m.get("original_action") or m.get("action") or {}
+            candidate["action"] = {**(m.get("action") or {}), "measures": item["measures"]}
+            candidate.pop("measures", None)  # validate the replacement list, never the cached original
         if isinstance(item.get("conditions"), list):
             from .motion_actions import motion_conditions as _motion_conditions
             candidate["conditions"] = list(item["conditions"])
             candidate["final_conditions"] = _motion_conditions({**candidate})
             candidate["final_motion_text"] = str(candidate.get("text", ""))
+        same_program_measures = (m.get("type") != "program" or "measures" not in item or
+                                 item.get("measures") == (m.get("action") or {}).get("measures"))
         if candidate["value"] == m.get("value") and candidate["text"] == m.get("text") \
-                and candidate.get("conditions", m.get("conditions")) == m.get("conditions"):
+                and candidate.get("conditions", m.get("conditions")) == m.get("conditions") \
+                and same_program_measures:
             continue
         detail = validate_motion_detail(w, candidate)
         if detail:
             notes["rejected"].append({"motion": m["id"], **detail})
             continue
+        from . import motion_actions
+        clash = motion_actions.conflict(w, candidate)
+        if clash:
+            notes["rejected"].append({"motion": m["id"], "status": "rejected",
+                                      "reason_code": clash["code"],
+                                      "explanation": "; ".join(
+                                          reason["detail"] for reason in clash.get("reasons", []))})
+            continue
         m.setdefault("revisions", []).append({"value": m.get("value"), "text": m.get("text"),
-                                              "conditions": list(m.get("conditions", [])) if m.get("conditions") else []})
+                                              "conditions": list(m.get("conditions", [])) if m.get("conditions") else [],
+                                              **({"action": m.get("action")} if m.get("type") == "program" else {})})
         m["value"], m["text"] = candidate["value"], candidate["text"]
+        if m.get("type") == "program" and "action" in candidate:
+            m["original_action"] = candidate.get("original_action")
+            m["action"] = candidate["action"]
+            m["measures"] = candidate.get("measures", [])
         if "conditions" in candidate:
             from .motion_actions import motion_conditions as _final_conditions
             m["conditions"] = _final_conditions({**m, "conditions": candidate.get("conditions")})
@@ -444,36 +522,57 @@ def resolve_conditionals(w: World, motions: list, votes_by_motion: dict, conditi
     from .politics import passes
     outcome = {}
     details = {}
-    pending = {mid_: dict(conds) for mid_, conds in conditions.items()}
+    pending = {mid_: {member: (cond if isinstance(cond, list) else [cond])
+                      for member, cond in conds.items()} for mid_, conds in conditions.items()}
     order = [m["id"] for m in motions]
-    for _ in range(3):
+    # A dependency can point backwards through every motion on the agenda. Give an acyclic chain
+    # enough passes to settle regardless of agenda order; a fixed three-pass limit made later
+    # conditional votes abstain even when every prerequisite eventually passed.
+    for _ in range(max(1, len(order) + 1)):
         progress = False
         for motion_id in order:
-            for member, cond in list(pending.get(motion_id, {}).items()):
-                kind = cond.get("kind", "metric")
-                met = None
-                if kind == "metric":
-                    value = opening_values.get(cond.get("metric"))
-                    if value is not None:
-                        met = value >= cond["value"] if cond.get("operator") == ">=" else value <= cond["value"]
-                else:
-                    other = cond.get("other_motion")
-                    if other in outcome:
-                        met = outcome[other] == (cond.get("other_outcome", "passes") == "passes")
-                    elif other not in order:
-                        met = False
-                if met is None:
+            for member, conds in list(pending.get(motion_id, {}).items()):
+                results = []
+                unresolved = False
+                for cond in conds:
+                    kind = cond.get("kind", "metric")
+                    met = None
+                    if kind == "metric":
+                        value = opening_values.get(cond.get("metric"))
+                        if value is not None:
+                            met = value >= cond["value"] if cond.get("operator") == ">=" else value <= cond["value"]
+                    else:
+                        other = cond.get("other_motion")
+                        if other in outcome:
+                            met = outcome[other] == (cond.get("other_outcome", "passes") == "passes")
+                        elif other not in order:
+                            met = False
+                    if met is None:
+                        unresolved = True
+                    results.append((cond, met))
+                if unresolved:
                     continue
-                fallback = cond.get("if_unmet", "abstain")
-                votes_by_motion[motion_id][member] = "yes" if met else (fallback if fallback in ("no", "abstain") else "abstain")
-                details.setdefault(motion_id, {})[member] = {"condition": cond, "met": met,
-                                                             "observed": opening_values.get(cond.get("metric")) if kind == "metric" else outcome.get(cond.get("other_motion")),
-                                                             "counted_as": votes_by_motion[motion_id][member]}
+                met = all(result for _, result in results)
+                fallback_votes = [cond.get("if_unmet", "abstain") for cond, passed in results
+                                  if not passed and cond.get("if_unmet") in ("no", "abstain")]
+                counted_as = "yes" if met else ("no" if "no" in fallback_votes else "abstain")
+                votes_by_motion[motion_id][member] = counted_as
+                details.setdefault(motion_id, {})[member] = {
+                    "condition": conds[0] if len(conds) == 1 else conds,
+                    "conditions": [{"condition": cond, "met": passed,
+                                    "observed": opening_values.get(cond.get("metric"))
+                                    if cond.get("kind", "metric") == "metric" else outcome.get(cond.get("other_motion"))}
+                                   for cond, passed in results],
+                    "met": met, "observed": opening_values.get(conds[0].get("metric")) if len(conds) == 1 else None,
+                    "counted_as": counted_as}
                 del pending[motion_id][member]
                 progress = True
             if not pending.get(motion_id):
                 counted = {k: v for k, v in votes_by_motion[motion_id].items() if w.member(k).status == "active"}
-                outcome[motion_id] = passes(w, counted)
+                resolved_outcome = passes(w, counted)
+                if motion_id not in outcome or outcome[motion_id] != resolved_outcome:
+                    outcome[motion_id] = resolved_outcome
+                    progress = True
         if not progress:
             break
     for motion_id, members in pending.items():

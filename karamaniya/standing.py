@@ -409,27 +409,30 @@ def apply_communications(w: World, mid: str, items: list, statements_by: dict) -
             rel = w.member(member_target).relationships.get(mid)
             if rel:
                 gain = r("endorsement_trust") * (1.5 if kind == "defend" else 1)
-                _change(rel, trust=gain, respect=gain / 2, dependency=.5)
+                _change(rel, month=w.month, reason=f"public {kind} of colleague",
+                        trust=gain, respect=gain / 2, dependency=.5)
             if kind == "defend":
                 from .commitments import add_favor
                 add_favor(w, member_target, mid, f"publicly defended in Month {w.month + 1}", 45)
         elif kind == "criticize" and member_target:
             rel = w.member(member_target).relationships.get(mid)
             if rel:
-                _change(rel, resentment=r("criticism_resentment"), rivalry=r("criticism_rivalry"), trust=-1.5)
+                _change(rel, month=w.month, reason="public criticism",
+                        resentment=r("criticism_resentment"), rivalry=r("criticism_rivalry"), trust=-1.5)
             own = w.member(mid).relationships.get(member_target)
             if own:
-                _change(own, rivalry=1)
+                _change(own, month=w.month, reason="public criticism of colleague", rivalry=1)
             _grievance(w, member_target, mid, "criticized me publicly", 12)
             reputation_effect(w, member_target, "principle_violation", .3)
         elif kind == "distance" and member_target:
             rel = w.member(member_target).relationships.get(mid)
             if rel:
-                _change(rel, trust=-2, resentment=1.5)
+                _change(rel, month=w.month, reason="publicly distanced from colleague", trust=-2, resentment=1.5)
         elif kind == "demand_resignation" and member_target:
             rel = w.member(member_target).relationships.get(mid)
             if rel:
-                _change(rel, resentment=r("resignation_demand_resentment"), rivalry=4, trust=-5, fear=2)
+                _change(rel, month=w.month, reason="publicly demanded colleague's resignation",
+                        resentment=r("resignation_demand_resentment"), rivalry=4, trust=-5, fear=2)
             _grievance(w, member_target, mid, "demanded my resignation", 30, major=True)
             s = ensure(w, member_target)
             s["personal_approval"] = round(clamp(s["personal_approval"] - .01), 3)
@@ -640,7 +643,8 @@ def _credit_theft(w: World, owner: str, claimer: str) -> None:
     scale = .5 + (t.get("status_sensitivity", 50) + t.get("ambition", 50)) / 200
     rel = w.member(owner).relationships.get(claimer)
     if rel:
-        _change(rel, rivalry=float(tuning.get(w, "relationships.credit_theft_rivalry")) * scale,
+        _change(rel, month=w.month, reason="colleague claimed credit for my work",
+                rivalry=float(tuning.get(w, "relationships.credit_theft_rivalry")) * scale,
                 resentment=float(tuning.get(w, "relationships.credit_theft_resentment")) * scale)
     _grievance(w, owner, claimer, "took public credit for my work", 18 * scale)
 
@@ -667,7 +671,8 @@ def office_performance(w: World) -> dict:
         from .agents import _change
         for other in w.active_members():
             if other.id != holder.id and holder.id in other.relationships:
-                _change(other.relationships[holder.id], respect=perf["score"] * 1.5,
+                _change(other.relationships[holder.id], month=w.month, reason=f"{office} office performance review",
+                        respect=perf["score"] * 1.5,
                         perceived_reliability=perf["score"])
     return out
 

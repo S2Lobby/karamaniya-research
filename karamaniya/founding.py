@@ -216,6 +216,8 @@ def initialize(w, scenario="random", severity="default", custom_problems=None):
             w.mil.navy.training += .04; w.mil.navy.morale += .04
         elif strength["id"] == "civil_service_core":
             w.econ.admin_capacity += .06; w.econ.compliance += .015
+    for pop in w.k_pops():
+        pop.unrest = max(pop.unrest, pop.grievance * (1 - 0.75 * pop.fear))
     prng = rng_for(w.seed, 0, "founding-dossiers")
     # Seeded information slices. Dossiers do not assign or suggest an office.
     member_ids = [m.id for m in w.members]; prng.shuffle(member_ids)
@@ -236,6 +238,20 @@ def initialize(w, scenario="random", severity="default", custom_problems=None):
         "inherited_policies": {"tax_rate": .18, "currency": w.econ.currency, "protest_response": w.policy.protest_response,
                                "farm_support": getattr(w.policy, "farm_support", 0), "election_month": w.const.election_month},
         "last_advance_month": -1}
+    # The inherited transition record promises a temporary grain arrangement through the first
+    # harvest. Put it in the diplomatic state used by negotiations and trade; otherwise delegates'
+    # attempts to extend it fail as "no existing deal".
+    dorsania = (w.foreign or {}).get("actors", {}).get("dorsania", {})
+    diplomacy = dorsania.setdefault("diplomacy", {})
+    commitments = diplomacy.setdefault("commitments", [])
+    if not any(c.get("type") == "grain agreement" and c.get("partner") == "karamaniya"
+               for c in commitments if isinstance(c, dict)):
+        until = w.month + 5  # Inclusive last-active month: Month 1 through Month 6.
+        commitments.append({"type": "grain agreement", "month": w.month, "until": until,
+                            "partner": "karamaniya", "temporary": True,
+                            "message": "Inherited transition arrangement through the first harvest."})
+        w.counters["dorsania_trade"] = 1.0
+        w.counters["dorsania_trade_until"] = float(until)
     for p in problems:
         metric = _indicator(w, p["id"])
         p["initial_indicator"] = round(metric, 3)

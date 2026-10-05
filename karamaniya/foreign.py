@@ -1079,18 +1079,25 @@ def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "") -> None:
         _message(w, w.names["dorsania"], "Dorsania declines a grain agreement while the border and political conditions remain unsettled.")
         return
     duration = 6 if pressure < .55 else 9
-    until = w.month + duration
+    commitments = actor["diplomacy"].setdefault("commitments", [])
+    existing = [c for c in commitments if isinstance(c, dict) and c.get("partner") == "karamaniya"
+                and c.get("type") == "grain agreement" and c.get("until", -1) >= w.month]
+    prior_until = max((int(c.get("until", w.month - 1)) for c in existing), default=w.month - 1)
+    until = prior_until + duration
     w.counters["dorsania_trade"] = 1.0
     w.counters["dorsania_trade_until"] = float(until)
     w.dip.grain_embargo = max(0.0, w.dip.grain_embargo-.12)
     relation["trust"] = round(clamp(relation["trust"]+.08),3)
     relation["trade_importance"] = round(clamp(relation["trade_importance"]+.06),3)
-    actor["diplomacy"]["commitments"].append({"type": "grain agreement", "month": w.month,
-                                                "until": until, "partner": "karamaniya",
-                                                "message": text[:240]})
+    if existing:
+        agreement = max(existing, key=lambda c: int(c.get("until", -1)))
+        agreement.update({"until": until, "last_renewed": w.month, "message": text[:240]})
+    else:
+        commitments.append({"type": "grain agreement", "month": w.month, "until": until,
+                            "partner": "karamaniya", "message": text[:240]})
     actor["diplomacy"]["strategy"] = "preserve Union membership while honoring profitable grain agreements"
     _private_message(w, w.names["dorsania"], "treasury",
-                     f"Dorsania accepts a {duration}-month grain purchase agreement and will restore some exports to Karamaniya.",
+                     f"Dorsania accepts a grain purchase arrangement through Month {until + 1} and will restore some exports to Karamaniya.",
                      channel="commercial channel")
     _remember(w.foreign, "dorsania", "bilateral_agreement", "Accepted a grain purchase agreement with Karamaniya.",
               w.month, until=until, farmer_pressure=round(1-_support(actor["constituencies"].get("farmers")),2),
@@ -1109,8 +1116,7 @@ def league_month(w) -> None:
     democratic -= .10 if w.month - e.scandal_month < 12 else 0
     credible = .50 if w.policy.debt_service == "suspend" else 1.0
     target = clamp(democratic * credible + (.10 if victim else 0))
-    state["trust_in_karamaniya"] = round(clamp(.88*state["trust_in_karamaniya"]+.12*target),3)
-    dip.league_trust = state["trust_in_karamaniya"]
+    w.set_league_trust(.88*state["trust_in_karamaniya"]+.12*target)
     loan = state["loan"]
     loan["default_risk"] = round(clamp(.14 + max(0,e.deficit/(e.gdp_nominal or 1)-.04)*2
                                         + max(0,.45-dip.league_trust)*.35
@@ -1126,6 +1132,9 @@ def league_month(w) -> None:
     if dip.league_loan_pending > 0:
         if not conditions_met and loan["default_risk"] > .42:
             dip.league_loan_pending = 0.0
+            # Credit approved but never disbursed is not outstanding exposure. If earlier
+            # tranches were already paid, retain only the principal still owed.
+            state["financial_exposure"] = round(clamp(loan["principal"] / 300e6), 3)
             _private_message(w, w.names["league"], "treasury",
                              "The League has frozen the remaining loan tranches after its fiscal review.",
                              channel="credit review")
@@ -1141,8 +1150,7 @@ def league_month(w) -> None:
             state["financial_exposure"] = round(clamp(loan["principal"]/300e6),3)
         else:
             loan["default_risk"] = round(clamp(loan["default_risk"]+.08),3)
-            state["trust_in_karamaniya"] = round(clamp(state["trust_in_karamaniya"]-.025),3)
-            dip.league_trust = state["trust_in_karamaniya"]
+            w.adjust_league_trust(-.025)
             if w.month % 3 == 0:
                 _private_message(w, w.names["league"], "treasury",
                                  "The League has raised concerns about overdue loan repayment.",

@@ -269,6 +269,32 @@ class Military(unittest.TestCase):
 
 
 class SocietyUnderStress(unittest.TestCase):
+    def test_founding_unrest_is_not_below_its_grievance_and_fear_state(self):
+        for seed in (1, 7, 41):
+            w = new_world(seed, 24, founding_scenario="fiscal-inheritance")
+            with self.subTest(seed=seed):
+                for pop in w.k_pops():
+                    self.assertGreaterEqual(pop.unrest + 1e-12,
+                                            pop.grievance * (1 - 0.75 * pop.fear))
+
+    def test_paid_social_support_reduces_grievance_and_unrest(self):
+        def policy(w, social):
+            steady(w)
+            w.policy.tax = 0.20
+            w.policy.military = 0.005
+            w.policy.welfare = 0.055 if social else 0.04
+            w.policy.health_edu = 0.07 if social else 0.06
+
+        for seed in (1, 7, 41):
+            baseline = run(new_world(seed, 24, founding_scenario="fiscal-inheritance"), 12,
+                           each=lambda w: policy(w, False))
+            supported = run(new_world(seed, 24, founding_scenario="fiscal-inheritance"), 12,
+                            each=lambda w: policy(w, True))
+            with self.subTest(seed=seed):
+                self.assertGreaterEqual(supported.econ.paid_share, 0.98)
+                self.assertLess(supported.avg("grievance"), baseline.avg("grievance"))
+                self.assertLess(supported.avg("unrest"), baseline.avg("unrest"))
+
     def test_a_protest_wave_raises_unrest_and_repression_does_not_remove_grievance(self):
         def tolerate(x):
             steady(x)

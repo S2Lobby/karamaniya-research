@@ -36,29 +36,29 @@ REAL_NOTE = ("As of Month 1: Council agreed on farm_support=0.05 and arrears set
              "(quarter). E confirmed no printing.")
 
 
-class ConsensusMustNotVanish(unittest.TestCase):
-    def test_the_real_collision_left_the_agenda_empty_and_no_longer_does(self):
+class WithdrawalsAreTerminal(unittest.TestCase):
+    def test_a_mutual_withdrawal_cycle_is_audited_without_reviving_a_motion(self):
         motions = copy.deepcopy(REAL_PAIR)
         self.assertEqual([m["id"] for m in motions if not m.get("withdrawn")], [],
-                         "the run's two motions were both withdrawn, which is the fault")
+                         "both motions have been withdrawn")
         collisions = resolve_mutual_withdrawals(motions)
-        self.assertEqual([m["id"] for m in motions if not m.get("withdrawn")], ["M4"])
+        self.assertEqual([m["id"] for m in motions if not m.get("withdrawn")], [])
         self.assertEqual(len(collisions), 1)
         record = collisions[0]
         self.assertEqual(record["code"], "MUTUAL_WITHDRAWAL_COLLISION")
         self.assertEqual(record["proposers"], {"M4": "A", "M1": "E"})
         self.assertTrue(record["same_family"], "both motions were about farm support")
-        self.assertEqual(record["kept"], "M4")
+        self.assertIsNone(record["kept"])
+        self.assertEqual(set(record["dropped"]), {"M4", "M1"})
 
-    def test_the_survivor_is_the_one_the_withdrawals_converged_on(self):
-        """Both fell in behind each other, so consensus ties; the motion tabled first survives."""
+    def test_a_cycle_does_not_clear_terminal_withdrawal_metadata(self):
         a = {"id": "M1", "proposer": "A", "type": "set_policy", "subject": "rail", "value": "x",
              "text": "t", "summary": "s", "withdrawn": True, "replaced_by": "M2", "cosponsors": []}
         b = {"id": "M2", "proposer": "B", "type": "set_policy", "subject": "rail", "value": "x",
              "text": "t", "summary": "s", "withdrawn": True, "replaced_by": "M1", "cosponsors": ["C"]}
         # M2 has a co-sponsor, so it is the one more of the council stood behind.
         resolve_mutual_withdrawals([a, b])
-        self.assertEqual([m["id"] for m in (a, b) if not m.get("withdrawn")], ["M2"])
+        self.assertEqual([m["id"] for m in (a, b) if not m.get("withdrawn")], [])
 
     def test_a_one_way_withdrawal_is_left_alone(self):
         a = {"id": "M1", "proposer": "A", "type": "set_policy", "subject": "rail", "value": "x",
@@ -69,7 +69,7 @@ class ConsensusMustNotVanish(unittest.TestCase):
         self.assertTrue(a.get("withdrawn"), "a delegate withdrawing to back another was undone")
         self.assertNotIn("restored_from_collision", b)
 
-    def test_a_three_way_cycle_is_also_one_collision(self):
+    def test_a_three_way_cycle_is_audited_without_reopening_a_motion(self):
         motions = [{"id": f"M{i}", "proposer": p, "type": "set_policy", "subject": "rail", "value": "x",
                     "text": "t", "summary": "s", "cosponsors": []}
                    for i, p in ((1, "A"), (2, "B"), (3, "C"))]
@@ -77,15 +77,14 @@ class ConsensusMustNotVanish(unittest.TestCase):
             mo.update(withdrawn=True, replaced_by=target)
         collisions = resolve_mutual_withdrawals(motions)
         self.assertEqual(len(collisions), 1, "a three-way cycle was seen as three separate pairs")
-        self.assertEqual(len([m for m in motions if not m.get("withdrawn")]), 1)
-        self.assertEqual(collisions[0]["dropped"], ["M2", "M3"])
+        self.assertEqual(len([m for m in motions if not m.get("withdrawn")]), 0)
+        self.assertEqual(collisions[0]["dropped"], ["M1", "M2", "M3"])
 
-    def test_the_restored_motion_says_so_on_its_face(self):
+    def test_the_audit_says_all_motions_remain_withdrawn(self):
         motions = copy.deepcopy(REAL_PAIR)
-        resolve_mutual_withdrawals(motions)
-        kept = [m for m in motions if m["id"] == "M4"][0]
-        self.assertIn("restored_from_collision", kept)
-        self.assertEqual(kept["restored_from_collision"]["with"], ["M1"])
+        collisions = resolve_mutual_withdrawals(motions)
+        self.assertIn("remain withdrawn", collisions[0]["note"])
+        self.assertTrue(all(m["withdrawn"] for m in motions))
 
 
 class MemoriesMustMatchTheRecord(unittest.TestCase):

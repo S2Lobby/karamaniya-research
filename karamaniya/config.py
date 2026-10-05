@@ -42,6 +42,17 @@ def normalize_config(raw: dict, source: str = "") -> dict:
     for i, s in enumerate(seats):
         if not s.get("provider"):
             raise ValueError(f"{where}: seat {i + 1} has no provider")
+        if "max_tokens" in s:
+            raw_max_tokens = s["max_tokens"]
+            try:
+                max_tokens = int(raw_max_tokens)
+                whole_number = not isinstance(raw_max_tokens, bool) and not (
+                    isinstance(raw_max_tokens, float) and not raw_max_tokens.is_integer())
+            except (TypeError, ValueError, OverflowError):
+                max_tokens, whole_number = 0, False
+            if not whole_number or max_tokens <= 0:
+                raise ValueError(f"{where}: seat {i + 1} max_tokens must be a positive integer")
+            s["max_tokens"] = max_tokens
         s["label"] = str(s.get("label") or s.get("model") or s.get("persona") or f"seat{i + 1}").strip()
     labels = [s["label"] for s in seats]
     if len(set(labels)) != len(labels):

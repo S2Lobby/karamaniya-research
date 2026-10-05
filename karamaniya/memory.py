@@ -24,6 +24,7 @@ SALIENCE = {
     "strategy": 40, "appointment": 55, "criticized": 40, "defended": 40, "credit_theft": 50,
     "vindicated": 62, "minority_stand": 38, "ignored_warning": 40, "minority_mistaken": 34,
     "defiance": 55, "compliance_restored": 42, "audit_report": 52,
+    "relief_underfunded": 58,
 }
 # What kind of claim a memory is. The engine's memory is never the state of the world now: it is a dated
 # past event, a private estimate, or the delegate's own judgement, each true as of its month.
@@ -46,15 +47,16 @@ def _mem(state: dict) -> list:
 
 def add(w: World, mid: str, kind: str, text: str, tags=(), actors=(), salience: float | None = None,
         source: str = "", written_phase: str = "", execution_status: str = "",
-        provenance: dict | None = None) -> None:
+        provenance: dict | None = None, month: int | None = None) -> None:
     state = w.member(mid).agent_state
     if not state:
         return
+    recorded_month = w.month if month is None else int(month)
     items = _mem(state)
-    key = (w.month, kind, text[:80])
+    key = (recorded_month, kind, text[:80])
     if any((x["month"], x["kind"], x["text"][:80]) == key for x in items):
         return
-    entry = {"month": w.month, "observed_month": w.month, "kind": kind, "text": " ".join(text.split())[:220],
+    entry = {"month": recorded_month, "observed_month": recorded_month, "kind": kind, "text": " ".join(text.split())[:220],
              "claim": CLAIM_TYPES.get(kind, "PAST_EVENT"), "source": source or SOURCES.get(kind, ""),
              "salience": float(SALIENCE.get(kind, 30) if salience is None else salience),
              "tags": sorted({t for t in tags if t}), "actors": sorted({a for a in actors if a}),
@@ -231,8 +233,18 @@ def fact_reference_errors(w: World, mid: str, text: str) -> list:
             continue
         low = sentence.lower()
         named_offices = [o for o in OFFICES if o in low]
-        named_regions = [r.id for r in w.k_regions() if r.id in low]
-        if not (named_offices or named_regions):
+        # A region mentioned elsewhere in the same coordinated sentence is not the
+        # subject of the audit. Require a local link: "Kessel audit" or "audit of
+        # Kessel". This avoids attaching a named audit to a neighbouring policy item.
+        linked_regions = []
+        for region in w.k_regions():
+            name = re.escape(region.id.replace("_", " "))
+            patterns = (rf"\b{ name }\b\s+(?:valley\s+)?(?:audit|inquiry|investigation)\b",
+                        rf"\b(?:audit|inquiry|investigation)\b[^.;!?\n]{{0,32}}?\b(?:of|in|into|for|at)\s+"
+                        rf"(?:the\s+)?{ name }\b")
+            if any(re.search(pattern, low) for pattern in patterns):
+                linked_regions.append(region.id)
+        if not (named_offices or linked_regions):
             continue
         # Naming an office that no audit has examined, while some other office has one, is the
         # shape the check is for. Anything vaguer is prose, not a false reference.
@@ -242,11 +254,11 @@ def fact_reference_errors(w: World, mid: str, text: str) -> list:
                         "referred_to": wrong[0], "canonical": sorted(set(done)),
                         "claim": sentence.strip()[:200],
                         "note": "the statement is kept as written; the record names the audit that ran"})
-        elif named_regions and not named_offices:
+        elif linked_regions and not named_offices:
             # An audit examines an office, never a province. A delegate remembering "the Kessel
             # audit" is remembering one that could not have happened, whatever else the auditors
             # have been doing — and that is the case this check was written for.
-            region = named_regions[0]
+            region = linked_regions[0]
             ran_here = any(region in str(r.get("text", "")).lower() or r.get("region") == region
                            for r in audits.state(w).get("done", []))
             if not ran_here:
@@ -258,10 +270,39 @@ def fact_reference_errors(w: World, mid: str, text: str) -> list:
     return out
 
 
-def record_month(w: World, record: dict) -> None:
-    """Write this month's memories for every delegate from the resolved record and events."""
+def record_month(w: World, record: dict, private_messages=(), events=None,
+                 completed_month: int | None = None) -> None:
+    """Write a completed month's memories from its resolved record and final event list.
+
+    The council calls this after the engine finishes the month, when ``w.month`` may already
+    point at the next turn. ``completed_month`` keeps every memory dated to the month that
+    produced it. Direct callers may omit it; the record month (or current world month) is used.
+    """
+    month = completed_month
+    if month is None:
+        month = record.get("month", w.month)
+
+    def remember(mid, kind, text, tags=(), actors=(), **kwargs):
+        kwargs.setdefault("month", month)
+        return add(w, mid, kind, text, tags, actors, **kwargs)
+
     active = {m.id for m in w.members}
     names = {m.id: m.name for m in w.members}
+    important_dm_kinds = {"promise", "bargain", "threat", "request", "endorsement", "warning",
+                          "intelligence", "confidential"}
+    for dm in private_messages or ():
+        recipient, sender = dm.get("to"), dm.get("from")
+        kind = str(dm.get("kind") or "message").lower()
+        text = str(dm.get("text") or "").strip()
+        if recipient not in active or sender not in active or kind not in important_dm_kinds or not text:
+            continue
+        salience = 72 if kind in ("confidential", "threat") else 55 if kind in ("warning", "bargain") else 34
+        remember(recipient, "dm", f"{names[sender]} sent you a private {kind} message: \"{text[:175]}\"",
+            ["private_message", kind], [sender], salience=salience,
+            written_phase="POST_EXECUTION",
+            provenance={"layer": "PRIVATE_MESSAGE", "source": names[sender],
+                        "confidence": "sender's statement", "verification_status": "UNVERIFIED",
+                        "who_knows_it": [recipient], "interpretation_history": []})
     for mo in record.get("motions", []):
         proposer = mo.get("proposer")
         tags = [mo.get("type"), mo.get("subject")]
@@ -283,7 +324,7 @@ def record_month(w: World, record: dict) -> None:
             text = f"Your motion {mo.get('summary', '')} {verb} {mo.get('tally', '')}."
             if kind == "motion_passed" and not mo.get("passed") is False and "block" in verb:
                 text += " Compliance status was decided after the vote; it is not evidence of implementation."
-            add(w, proposer, kind, text, tags, [proposer],
+            remember(proposer, kind, text, tags, [proposer],
                 written_phase="POST_EXECUTION", execution_status=exec_status or state)
         votes = mo.get("votes", {})
         yes = sum(v == "yes" for v in votes.values())
@@ -294,7 +335,7 @@ def record_month(w: World, record: dict) -> None:
                     continue
                 on_losing = (vote == "yes") != bool(mo.get("passed"))
                 if on_losing:
-                    add(w, voter, "outvoted", f"You were outvoted on {mo.get('summary', '')} ({yes}-{no}).", tags,
+                    remember(voter, "outvoted", f"You were outvoted on {mo.get('summary', '')} ({yes}-{no}).", tags,
                         [voter, proposer], written_phase="POST_EXECUTION",
                         execution_status=str(mo.get("execution_status") or ""))
             # A lone holdout is worth remembering by itself: it is the seed a later
@@ -302,49 +343,68 @@ def record_month(w: World, record: dict) -> None:
             from .psychology import lone_dissenter
             lone = lone_dissenter(mo)
             if lone in active:
-                add(w, lone, "minority_stand",
-                    f"You stood alone against {mo.get('summary', '')} ({yes}-{no}) in Month {w.month + 1}.",
+                remember(lone, "minority_stand",
+                    f"You stood alone against {mo.get('summary', '')} ({yes}-{no}) in Month {month + 1}.",
                     tags, [lone, proposer], written_phase="POST_EXECUTION",
                     execution_status=str(mo.get("execution_status") or ""))
-    for ev in w.events:
+    for ev in (w.events if events is None else events):
         kind = ev.get("kind")
         member = ev.get("member")
         if kind in ("coup", "officers_coup"):
             for mid in active:
-                add(w, mid, "coup", ev.get("text", "")[:200], ["coup", "army"], [])
+                remember(mid, "coup", ev.get("text", "")[:200], ["coup", "army"], [])
         elif kind in ("election", "defeat", "mandate", "fraud"):
             for mid in active:
-                add(w, mid, "election" if kind != "fraud" else "election_interference", ev.get("text", "")[:200], ["election"], [])
+                remember(mid, "election" if kind != "fraud" else "election_interference", ev.get("text", "")[:200], ["election"], [])
         elif kind == "war":
             for mid in active:
-                add(w, mid, "war", ev.get("text", "")[:200], ["war", "union"], [])
+                remember(mid, "war", ev.get("text", "")[:200], ["war", "union"], [])
         elif kind in ("massacre", "crackdown"):
             for mid in active:
-                add(w, mid, "massacre" if kind == "massacre" else "emergency", ev.get("text", "")[:200],
+                remember(mid, "massacre" if kind == "massacre" else "emergency", ev.get("text", "")[:200],
                     ["civil_liberties", "protest_response"], [])
         elif kind == "resignation":
             for mid in active:
-                add(w, mid, "resignation", ev.get("text", "")[:200], ["office"], [member] if member else [])
+                remember(mid, "resignation", ev.get("text", "")[:200], ["office"], [member] if member else [])
+        elif kind == "relief_underfunded":
+            # A vote can authorize more aid than the treasury can actually raise. Preserve the
+            # shortfall as a public fact in every delegate's memory so later credit/blame has an
+            # evidence trail without the engine assigning fault to a person.
+            for mid in active:
+                tags = ["disaster_relief", "funding_shortfall", ev.get("region")]
+                remember(mid, "relief_underfunded", ev.get("text", "")[:220], tags,
+                    [ev.get("member")] if ev.get("member") else [], salience=58,
+                    written_phase="POST_EXECUTION", execution_status="PARTIALLY_EXECUTED",
+                    provenance={"layer": "CANONICAL_FACT", "source": "treasury execution record",
+                                "confidence": "recorded", "verification_status": "VERIFIED",
+                                "who_knows_it": sorted(active), "interpretation_history": []})
         elif kind == "promise_broken" and member:
             promise = next((p for p in w.member(member).promises if p["id"] == ev.get("promise_id")), None)
             if promise:
                 to = promise.get("to")
                 if to in active:
-                    add(w, to, "betrayal", f"{names[member]} broke a promise to you: \"{promise['text'][:120]}\".",
+                    remember(to, "betrayal", f"{names[member]} broke a promise to you: \"{promise['text'][:120]}\".",
                         promise.get("tags", []) + [(promise.get("normalized") or {}).get("lever")], [member])
                 elif promise.get("public"):
                     for mid in active - {member}:
-                        add(w, mid, "grievance", f"{names[member]} broke a public promise: \"{promise['text'][:120]}\".",
+                        remember(mid, "grievance", f"{names[member]} broke a public promise: \"{promise['text'][:120]}\".",
                             promise.get("tags", []), [member], salience=45)
         elif kind == "leak":
             for mid in active:
-                # S4: keep RAW_SOURCE / PRESS_INTERPRETATION / AGENT_BELIEF / CANONICAL_FACT apart.
-                # The canonical engine knows only that a leak was published; anything the press
-                # added stays an allegation until evidence establishes it.
-                add(w, mid, "leak", ev.get("text", "")[:200], ["leak"], [ev.get("from")] if ev.get("from") else [],
+                # The leak event contains both the press headline and the exact source text. Keep
+                # the headline as framing, while giving every delegate the publicly exposed text
+                # and route as direct evidence of what was published.
+                sender = ev.get("from")
+                recipient = ev.get("to")
+                names_route = f"{names.get(sender, sender or 'unknown')} to {names.get(recipient, recipient or 'the public')}"
+                published = str(ev.get("leaked_text") or "")[:160]
+                content = f"A message from {names_route} was leaked: \"{published}\"" if published else ev.get("text", "")[:200]
+                remember(mid, "leak", content, ["leak"], [x for x in (sender, recipient) if x],
                     written_phase="POST_EXECUTION",
-                    provenance={"layer": "PRESS_INTERPRETATION", "source": ev.get("headline", "the press"),
-                                "confidence": "unverified", "verification_status": "UNVERIFIED",
+                    provenance={"layer": "RAW_SOURCE" if published else "PRESS_INTERPRETATION",
+                                "source": "published leaked communication" if published else ev.get("headline", "the press"),
+                                "confidence": "direct" if published else "unverified",
+                                "verification_status": "VERIFIED" if published else "UNVERIFIED",
                                 "who_knows_it": sorted(active),
                                 "interpretation_history": [str(ev.get("headline", "published"))[:120]]})
     # A violation of a directive is public and stays on the member's record after they comply.
@@ -353,9 +413,13 @@ def record_month(w: World, record: dict) -> None:
     for d in record.get("defiance", []):
         for mid in active:
             who = "You" if mid == d["member"] else names.get(d["member"], d["member"])
-            add(w, mid, "defiance", f"{who} ordered {d['lever']} {fmt_value(d['value'])} against the council's "
+            actual = getattr(w.policy, d["lever"], None)
+            if actual is None and d["lever"].startswith("patronage_"):
+                actual = (w.policy.patronage or {}).get(d.get("office"))
+            actual_text = fmt_value(actual) if actual is not None else "not recorded"
+            remember(mid, "defiance", f"{who} ordered {d['lever']} {fmt_value(d['value'])} against the council's "
                 f"{fmt_value(d['directive'])} directive (council directive {fmt_value(d['directive'])}; "
-                f"current office order {fmt_value(d['value'])}; actual world state pending execution).",
+                f"current office order {fmt_value(d['value'])}; current setting after execution {actual_text}).",
                 [d["lever"], "defiance", d.get("office")], [d["member"]],
                 written_phase="POST_EXECUTION",
                 provenance={"layer": "CANONICAL_FACT", "source": "council record",
@@ -368,39 +432,39 @@ def record_month(w: World, record: dict) -> None:
                                f"the {r['directive_text']} directive",
                    "directive lifted": f"the {r['lever']} directive was lifted",
                    "office changed hands": f"the office that held {r['lever']} changed hands"}.get(r["ended"], "the matter ended")
-            add(w, mid, "compliance_restored", f"{how}; the {_months_word(r['months'])} violation remains on the record.",
+            remember(mid, "compliance_restored", f"{how}; the {_months_word(r['months'])} violation remains on the record.",
                 [r["lever"], "defiance"], [r["member"]], written_phase="POST_EXECUTION",
                 provenance={"layer": "CANONICAL_FACT", "source": "council record",
                             "confidence": "recorded", "verification_status": "VERIFIED",
                             "who_knows_it": sorted(active), "interpretation_history": []})
     for mid in record.get("resigned", []):
         if mid in active:
-            add(w, mid, "resignation", "You resigned from the government.", ["office"], [mid])
+            remember(mid, "resignation", "You resigned from the government.", ["office"], [mid])
     before = (record.get("pre_resolution") or {}).get("offices", {})
     for office, holder in before.items():
         now = w.const.offices.get(office)
         if holder and holder != now and holder in active:
-            add(w, holder, "dismissal", f"You lost the {office} portfolio in Month {w.month + 1}.", [office, "office"],
+            remember(holder, "dismissal", f"You lost the {office} portfolio in Month {month + 1}.", [office, "office"],
                 [holder, now] if now else [holder])
         if now and now != holder and now in active:
-            add(w, now, "appointment", f"You took the {office} portfolio in Month {w.month + 1}.", [office, "office"], [now])
+            remember(now, "appointment", f"You took the {office} portfolio in Month {month + 1}.", [office, "office"], [now])
     for promise in record.get("commitments_added", []):
         mid = promise.get("member")
         if mid in active:
             public = promise.get("to") in ("public", "", None)
-            add(w, mid, "promise_made_public" if public else "promise_made_private",
+            remember(mid, "promise_made_public" if public else "promise_made_private",
                 f"You promised{'' if public else ' ' + names.get(promise.get('to'), '')}: \"{promise.get('text', '')[:140]}\"",
                 promise.get("tags", []) + [(promise.get("normalized") or {}).get("lever")], [promise.get("to")])
             if not public and promise.get("to") in active:
-                add(w, promise["to"], "promise_to_me", f"{names[mid]} promised you: \"{promise.get('text', '')[:140]}\"",
+                remember(promise["to"], "promise_to_me", f"{names[mid]} promised you: \"{promise.get('text', '')[:140]}\"",
                     promise.get("tags", []) + [(promise.get("normalized") or {}).get("lever")], [mid])
     for comm in record.get("communications", []):
         target, mid = comm.get("target"), comm.get("member")
         if target in active and comm.get("kind") in ("criticize", "demand_resignation"):
-            add(w, target, "criticized", f"{names[mid]} {'demanded your resignation' if comm['kind'] == 'demand_resignation' else 'criticized you publicly'}: {comm.get('about', '')[:100]}",
+            remember(target, "criticized", f"{names[mid]} {'demanded your resignation' if comm['kind'] == 'demand_resignation' else 'criticized you publicly'}: {comm.get('about', '')[:100]}",
                 ["criticism"], [mid])
         if target in active and comm.get("kind") == "defend":
-            add(w, target, "defended", f"{names[mid]} defended you publicly.", ["support"], [mid])
+            remember(target, "defended", f"{names[mid]} defended you publicly.", ["support"], [mid])
 
 
 def record_stand_verdict(w: World, mid: str, stand: dict) -> None:

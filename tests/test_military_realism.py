@@ -169,6 +169,51 @@ class MobilizingTakesTime(unittest.TestCase):
         self.assertAlmostEqual(military.mobilization_person_months(w),
                                military.mobilization_draw(w), delta=1)
 
+    def test_mobilized_reservists_add_to_combat_strength(self):
+        w = world()
+        w.dip.war = True
+        w.dip.union_intensity = 0.01
+        w.dip.union_front["north"] = 50_000
+        w.mil.deploy.update({"north": 1.0, "east": 0.0, "capital": 0.0})
+        military.call_up(w, 8_000)
+        w.month = 3
+        expected = w.mil.army.size + military.mobilized_strength(w)
+
+        military._combat(w, military.rng_for(w.seed, w.month, "military"))
+
+        north = w.mil.last_combat["north"]
+        self.assertAlmostEqual(north["k_soldiers"], round(expected), delta=1)
+        self.assertGreater(north["k_reserve_soldiers"], 0)
+
+    def test_reserve_population_draw_survives_resume_without_doubling(self):
+        w = world()
+        w.policy.recruitment = "volunteer"
+        w.policy.mobilization = "partial"
+        military._mobilize(w)
+        military.sync_state(w)
+        before = sum(p.conscripted for p in w.k_pops())
+
+        loaded = World.from_dict(w.to_dict())
+        military._mobilize(loaded)
+
+        self.assertAlmostEqual(sum(p.conscripted for p in loaded.k_pops()), before, delta=1)
+        self.assertAlmostEqual(military.mobilization_draw(loaded),
+                               military.mobilization_draw(w), delta=1)
+
+    def test_month_snapshot_reports_standing_and_mobilized_forces_separately(self):
+        w = world()
+        military.call_up(w, 7_000)
+        military.sync_state(w)
+
+        engine.snapshot(w)
+        row = w.history[-1]
+
+        self.assertEqual(row["army"], 28_000)
+        self.assertEqual(row["army_mobilized"], 7_000)
+        self.assertGreater(row["army_mobilized_effective"], 0)
+        self.assertEqual(row["army_field_total"],
+                         row["army"] + row["army_mobilized_effective"])
+
 
 class UnitsAreNotOfOneMind(unittest.TestCase):
     def test_the_answer_is_a_distribution_over_unit_responses(self):
@@ -316,9 +361,7 @@ class ItSurvivesACheckpoint(unittest.TestCase):
         self.assertEqual(military.unit_response(loaded), military.unit_response(w))
 
     def test_a_round_trip_after_this_feature_still_loads(self):
-        """Known limitation: an in-progress call-up is not serialised, because the state rides on
-        the force rather than in a field of `Military` (world.py, not owned by this change). The
-        run loads; the chain restarts from its standing start."""
+        """A direct helper call is not persisted until the normal monthly sync runs."""
         w = world()
         w.policy.recruitment = "volunteer"
         military.call_up(w, 5000)
@@ -456,7 +499,7 @@ class TheMobilizationLever(unittest.TestCase):
 
     def _mobilized(self, mode, months=12, recruitment="volunteer"):
         from karamaniya import director, engine
-        w = new_world(1, 18)
+        w = new_world(1, 36)
 
         def each(x):
             x.const.elected = True
@@ -488,6 +531,30 @@ class TheMobilizationLever(unittest.TestCase):
         self.assertEqual(none, 0.0)
         self.assertGreater(partial, 0.0)
         self.assertGreater(general, partial)
+
+    def test_partial_mobilization_keeps_the_28k_standing_force_and_matures_to_7k(self):
+        """The run's orders used no new recruitment and called up a quarter of the trained pool."""
+        w = new_world(1, 18)
+        w.policy.recruitment = "none"
+        w.policy.mobilization = "partial"
+        w.policy.army_target = 28_000
+        standing = w.mil.army.size
+        pool = military.reserve_pool(w)
+
+        w.month = 4
+        military._mobilize(w)
+        mob = military.mobilization_of(w)
+
+        self.assertEqual(standing, 28_000)
+        self.assertAlmostEqual(pool, 28_000)
+        self.assertAlmostEqual(mob.called_up, 7_000)
+        self.assertEqual(w.mil.army.size, standing,
+                         "reservists must remain separate from the standing army")
+
+        w.month = 18
+        effective = military.mobilized_strength(w)
+        self.assertAlmostEqual(effective, 7_000, delta=1.0)
+        self.assertEqual(w.mil.army.size, standing)
 
     def test_mobilizing_takes_people_out_of_the_labour_force(self):
         from karamaniya import economy

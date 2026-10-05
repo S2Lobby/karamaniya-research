@@ -20,11 +20,41 @@ from __future__ import annotations
 
 import platform
 import sys
+import hashlib
+from pathlib import Path
 
 from . import causality, errors, versions
 from .world import World
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
+
+
+def source_fingerprint(package_dir: str | Path | None = None) -> str | None:
+    """Hash the installed simulation source so runs can be compared beyond manual version bumps.
+
+    This is calculated once when the process imports this module. If the files are edited while a
+    run is live, the loaded engine continues using its original code and keeps this fingerprint;
+    a resumed run in a fresh process records a new fingerprint at the month boundary.
+    """
+    root = Path(package_dir) if package_dir is not None else Path(__file__).resolve().parent
+    if not root.is_dir():
+        return None
+    files = sorted(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
+    digest = hashlib.sha256()
+    try:
+        for path in files:
+            digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(path.read_bytes())
+            digest.update(b"\0")
+    except OSError:
+        return None
+    return digest.hexdigest()
+
+
+# Freeze this at import: re-hashing the files at run end would claim newly edited disk code
+# produced earlier months, even though the live Python process still has its original modules.
+RUNTIME_SOURCE_FINGERPRINT = source_fingerprint()
 
 # Each seeded stream, and what it governs. Recording the tag list matters because adding a new
 # stream changes the RNG draw sequence for that tag only, and a reader needs to know which.
@@ -43,7 +73,7 @@ SEEDED_STREAMS = {
 }
 
 # Settings that affect what a model returns and therefore whether a run is comparable.
-SAMPLING_KEYS = ("temperature", "top_p", "effort", "max_tokens", "seed", "thinking",
+SAMPLING_KEYS = ("temperature", "top_p", "effort", "max_tokens", "max_tokens_cap", "seed", "thinking",
                  "reasoning_effort", "framing")
 
 
@@ -56,7 +86,8 @@ def sampling(cfg: dict) -> dict:
             out[key] = run[key]
     for seat in cfg.get("seats") or []:
         label = seat.get("label")
-        for key in ("temperature", "top_p", "effort", "thinking", "model"):
+        for key in ("temperature", "top_p", "effort", "thinking", "model", "max_tokens", "max_tokens_cap",
+                    "reasoning_effort"):
             if seat.get(key) is not None and label:
                 out.setdefault("by_seat", {})[label] = out.get("by_seat", {}).get(label, {})
                 out["by_seat"][label][key] = seat[key]
@@ -72,7 +103,8 @@ def seats(cfg: dict, mapping: dict | None = None) -> list:
         seat = by_label.get(label) or {}
         out.append({"seat": letter, "label": label, "provider": seat.get("provider"),
                     "model": seat.get("model"), "cli_command": seat.get("cli_command"),
-                    "base_url": seat.get("base_url"),
+                    "base_url": seat.get("base_url"), "max_tokens": seat.get("max_tokens"),
+                    "max_tokens_cap": seat.get("max_tokens_cap"),
                     "max_prompt_chars": seat.get("max_prompt_chars")})
     return out
 
@@ -104,6 +136,11 @@ def build(world: World, cfg: dict, council_state: dict | None = None, store=None
     seat_rows = seats(cfg, cfg.get("mapping"))
     served = served_from_log(store) if store is not None else \
         (council_state or {}).get("served_models", {}) or {}
+    # A manifest refreshed by a later process must describe the code behind the latest completed
+    # month. Legacy histories have no fingerprint; leave that unknown instead of stamping the
+    # current code onto months that it did not produce.
+    source_fingerprint_at_latest_month = (
+        world.history[-1].get("engine_source_fingerprint") if world.history else RUNTIME_SOURCE_FINGERPRINT)
     return {
         "manifest_version": MANIFEST_VERSION,
         "architecture": versions.stamp(world.agent_architecture_version),
@@ -114,6 +151,7 @@ def build(world: World, cfg: dict, council_state: dict | None = None, store=None
             "causality_version": versions.WORLD_ENGINE,
             "provenance_version": versions.PROVENANCE,
             "error_taxonomy_version": versions.ERROR_TAXONOMY,
+            "source_fingerprint": source_fingerprint_at_latest_month,
             "python": sys.version.split()[0],
             "platform": platform.platform(),
         },
@@ -159,6 +197,12 @@ def divergences(a: dict, b: dict) -> list:
         out.append("last_run_seed")
     if a.get("versions") != b.get("versions"):
         out.append("prompt_or_schema_version")
+    source_a = a.get("engine", {}).get("source_fingerprint")
+    source_b = b.get("engine", {}).get("source_fingerprint")
+    if not source_a or not source_b:
+        out.append("engine_source_unrecorded")
+    elif source_a != source_b:
+        out.append("engine_source")
     if a.get("architecture") != b.get("architecture"):
         out.append("agent_architecture")
     if a.get("structural_parameters") != b.get("structural_parameters"):

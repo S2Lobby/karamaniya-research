@@ -19,7 +19,10 @@ from .world import OFFICES, World, clamp
 
 DM_KINDS = ("message", "promise", "bargain", "threat", "request", "endorsement", "warning",
             "intelligence", "confidential")
-COMMITTING = {"promise", "bargain", "threat", "confidential"}
+# A confidential DM describes who may read it, not what the sender is committing to.
+# Treating every message in that channel as a promise turns warnings and intelligence
+# into political commitments. Explicit promise/bargain/threat kinds remain trackable.
+COMMITTING = {"promise", "bargain", "threat"}
 
 LEVER_WORDS = {
     "military": ("military budget", "defence budget", "defense budget", "army funding", "military spending", "army budget"),
@@ -112,6 +115,33 @@ def normalize(text: str, to: str, w: World) -> dict | None:
             return {"type": "share_information", "beneficiary": to}
     if re.search(r"\b(deploy|use) (the )?(army|troops|soldiers|force)\b.*\b(protest|demonstrat|civilians)", s) and negated:
         return {"type": "no_repression"}
+    if to in ("public", "") and re.search(r"\b(publish|release|issue|circulate|make available)\b", s) \
+            and re.search(r"\b(review|report|audit|briefing)\b", s):
+        topics = [topic for topic in ("kessel", "policing", "implementation", "delivery", "complaints",
+                                      "arrests", "force", "advisory") if topic in s]
+        deliverable = next((noun for noun in ("review", "report", "audit", "briefing") if noun in s), "report")
+        return {"type": "publish_report", "deliverable": deliverable, "topics": topics[:5]}
+    # A first-person vote pledge belongs to the sender and, where named, to the specific
+    # motion. Do not infer the motion from the DM recipient: that recipient may only be
+    # lobbying the sender, and may have proposed an unrelated motion in the same month.
+    vote_pledge = re.search(
+        r"\b(?:i\s+(?:will|shall|'ll)|i\s+promise\s+to|i\s+commit\s+to)\s+"
+        r"(?:vote\s+for|support|back)\s+(?:the\s+)?(?:motion\s+)?"
+        r"(?:\(?([a-z]\d{1,3})\)?\b|(?:the\s+)?(alliance|budget|audit|relief|grain|trade|"
+        r"non[- ]aggression|election|charter)\s+(?:motion|proposal|measure)\b)", s)
+    if vote_pledge:
+        motion_id, topic = vote_pledge.groups()
+        return {"type": "support_motion", "motion_id": motion_id.upper() if motion_id else None,
+                "topic": topic.replace("-", " ") if topic else None}
+    # An imperative such as "Vote for D2 now" is a request to the recipient, not
+    # evidence that the sender promised a vote. In particular, it must not become
+    # "support all motions proposed by the recipient".
+    imperative_vote = re.search(r"\bvote\s+for\s+(?:the\s+)?(?:motion\s+)?[a-z]\d{1,3}\b", s) or \
+        re.search(r"\bvote\s+for\s+(?:the\s+)?(?:alliance|budget|audit|relief|grain|trade)\s+"
+                  r"(?:motion|proposal|measure)\b", s)
+    if to not in ("public", "") and imperative_vote \
+            and not re.search(r"\b(?:i\s+(?:will|shall|'ll)|i\s+promise\s+to|i\s+commit\s+to)\b", s):
+        return None
     if lever and re.search(r"\b(raise|increase|fund|more money|expand|restore|boost)\b", s) and not negated:
         return {"type": "fund" if lever not in ("tax", "printing", "rate") else "raise", "lever": lever, "direction": "increase"}
     if lever and negated and re.search(r"\b(raise|increase|new)\b", s):
@@ -125,6 +155,26 @@ def normalize(text: str, to: str, w: World) -> dict | None:
     if negated and lever:
         return {"type": "oppose_policy", "lever": lever}
     return None
+
+
+def deadline_from_text(text: str, current_month: int) -> int:
+    """Read a plainly stated simulation deadline; months are stored zero-based."""
+    s = str(text or "").casefold()
+    # "before Month 6 passes" means the promise is due by the end of visible Month 5.
+    # Month N is stored as N-1, so the preceding month's final index is N-2.
+    match = re.search(r"\bbefore\s+(?:the\s+)?month\s+(\d{1,2})\s+(?:passes|ends|is over)\b", s)
+    if match:
+        return max(current_month, int(match.group(1)) - 2)
+    match = re.search(r"\bby\s+(?:the\s+)?(?:end\s+of\s+)?month\s+(\d{1,2})(?:\s+(?:briefing|monthly briefing))?\b", s)
+    if match:
+        # The visible calendar is one-based (Month 1 is the first month of the run).
+        return max(current_month, int(match.group(1)) - 1)
+    match = re.search(r"\bwithin\s+(\d{1,2})\s+months?\b", s)
+    if match:
+        return current_month + max(1, int(match.group(1)))
+    if re.search(r"\b(?:by\s+)?(?:next month|the next monthly briefing|next briefing)\b", s):
+        return current_month + 1
+    return -1
 
 
 def infer_kind(text: str) -> str:
@@ -167,6 +217,7 @@ def record(w: World, mid: str, text: str, to: str, condition: str = "", source: 
         _, condition = split_condition(text)
     cond = parse_condition(condition)
     normalized = normalize(text, to, w)
+    explicit_deadline = deadline_from_text(text, w.month)
     public = (to in ("public", "") and source != "dm") if public is None else public
     importance = 70 if public else 45
     if kind == "threat":
@@ -177,19 +228,29 @@ def record(w: World, mid: str, text: str, to: str, condition: str = "", source: 
                "condition": " ".join(str(condition or "").split())[:160], "condition_metric": cond,
                "to": to or "public", "kind": kind, "normalized": normalized, "public": public,
                "importance": importance, "source": source, "tags": _tags(text), "status": "active",
-               "created_month": w.month, "deadline_month": deadline_month if deadline_month >= 0 else
+               "created_month": w.month, "deadline_explicit": deadline_month >= 0 or explicit_deadline >= 0,
+               "deadline_month": deadline_month if deadline_month >= 0 else
+               explicit_deadline if explicit_deadline >= 0 else
                (w.month + 3 if normalized and normalized["type"] in ("fund", "share_information", "raise", "cut") else -1),
                "reaffirmations": [], "violations": [], "reminders": [], "evaluations": []}
+    if normalized and normalized.get("type") in ("fund", "raise", "cut", "policy_limit"):
+        # Office orders are judged against the policy in force when the promise was made.
+        # Capturing it here matters because evaluation runs after the delegate has already
+        # issued this month's order; lazily taking the baseline then would erase the change.
+        lever = normalized.get("lever")
+        if lever:
+            from .politics import parse_lever
+            promise["baseline_value"] = parse_lever(lever, getattr(w.policy, lever, None))
     m.promises.append(promise)
     if kind == "threat" and to not in ("public", ""):
         target = w.member(to)
         rel = target.relationships.get(mid)
         if rel:
-            _change(rel, fear=6, resentment=4, trust=-3)
+            _change(rel, month=w.month, reason="received a political threat", fear=6, resentment=4, trust=-3)
     elif to not in ("public", "") and kind in ("promise", "bargain"):
         rel = w.member(to).relationships.get(mid)
         if rel:
-            _change(rel, dependency=1.5)
+            _change(rel, month=w.month, reason="received a promise or bargain", dependency=1.5)
     w.event("political_commitment", f"{m.name} made a political commitment.", public=False,
             member=mid, promise_id=promise["id"], to=promise["to"], promise_kind=kind)
     return promise
@@ -200,9 +261,11 @@ def _tags(text: str) -> list:
     return agent_tags(text)
 
 
-def _change(rel: dict, **deltas) -> None:
-    for key, delta in deltas.items():
-        rel[key] = round(clamp(float(rel.get(key, 50 if key in ("trust", "respect", "perceived_reliability") else 0)) + delta, 0, 100), 1)
+def _change(rel: dict, *, month: int | None = None, reason: str | None = None, **deltas) -> None:
+    # Keep the same event ledger as the rest of the relationship system; promise effects used to
+    # update the emotional-looking values through a second helper that recorded no provenance.
+    from .agents import _change as record_relationship_change
+    record_relationship_change(rel, month=month, reason=reason, **deltas)
 
 
 # ---- monthly evaluation ---------------------------------------------------------------------
@@ -227,15 +290,16 @@ def evaluate(w: World, record_: dict) -> list:
                 continue
             if cond and met and w.month not in p["reminders"]:
                 p["reminders"].append(w.month)
-            verdict = _judge(w, m.id, p, norm, motions, decisions, shares)
+            verdict = _judge(w, m.id, p, norm, motions, decisions, shares, record_)
             if verdict is None and p.get("deadline_month", -1) >= 0 and w.month >= p["deadline_month"]:
-                verdict = "lapsed"
+                verdict = "broken" if p.get("deadline_explicit") else "lapsed"
             if verdict:
                 results.append(_settle(w, m.id, p, verdict))
     return results
 
 
-def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: dict, shares: list) -> str | None:
+def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: dict, shares: list,
+           record: dict | None = None) -> str | None:
     kind = norm.get("type")
     vote_of = lambda mo: mo.get("votes", {}).get(mid)
     if kind == "support_proposals_of":
@@ -249,6 +313,24 @@ def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: di
         if any(v == "no" for v in votes):
             return "broken"
         return None
+    if kind == "support_motion":
+        if norm.get("motion_id") and p.get("created_month") != w.month:
+            return None
+        relevant = []
+        for mo in motions:
+            if norm.get("motion_id"):
+                matches = str(mo.get("id", "")).upper() == norm["motion_id"]
+            else:
+                searchable = " ".join(str(mo.get(key, "")) for key in ("summary", "text", "subject")).casefold()
+                matches = bool(norm.get("topic")) and norm["topic"] in searchable
+            if matches:
+                relevant.append(mo)
+        # A topic that matches several motions is ambiguous; wait for a precise motion
+        # or an explicit deadline instead of crediting an unrelated yes vote.
+        if len(relevant) != 1:
+            return None
+        vote = vote_of(relevant[0])
+        return "kept" if vote == "yes" else "broken" if vote in ("no", "abstain", "conditional") else None
     if kind in ("support_policy", "oppose_policy"):
         relevant = [mo for mo in motions if mo.get("type") == "set_policy" and mo.get("subject") == norm.get("lever")]
         if not relevant:
@@ -262,6 +344,7 @@ def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: di
         return None
     if kind == "support_appointment":
         relevant = [mo for mo in motions if mo.get("type") == "assign_office"
+                    and mo.get("subject") == norm.get("office")
                     and str(mo.get("value", "")).upper() == norm.get("beneficiary")]
         if not relevant:
             return None
@@ -291,6 +374,22 @@ def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: di
         if any(x["from"] == mid and x["with"] in (norm.get("beneficiary"), "council") for x in shares):
             return "kept"
         return None
+    if kind == "publish_report":
+        public_text = " ".join(
+            [str(s.get("statement", "")) for s in (record or {}).get("statements", [])
+             if isinstance(s, dict) and s.get("member") == mid]
+            + [str(c.get("about", "")) for c in (record or {}).get("communications", [])
+               if isinstance(c, dict) and c.get("member") == mid]
+        ).casefold()
+        noun = re.escape(str(norm.get("deliverable", "report")))
+        completed = re.search(r"\b(?:published|issued|released|circulated|made available)\b", public_text)
+        denied = re.search(r"\b(?:not|never|haven't|hasn't|not yet)\b.{0,24}\b(?:published|issued|released|circulated)\b",
+                           public_text)
+        topics = [str(x).casefold() for x in norm.get("topics", [])]
+        topic_hits = sum(1 for topic in topics if topic in public_text)
+        has_title = re.search(rf"\b{noun}\b", public_text)
+        if completed and not denied and has_title and (not topics or topic_hits >= min(2, len(topics))):
+            return "kept"
     return None
 
 
@@ -332,7 +431,8 @@ def _settle(w: World, mid: str, p: dict, verdict: str) -> dict:
             rel = o.relationships.get(mid)
             if rel:
                 gain = float(r(w, "relationships.kept_promise_trust")) * (1 if o.id == p.get("to") else .4)
-                _change(rel, trust=gain, perceived_reliability=gain)
+                _change(rel, month=w.month, reason="kept a political promise", trust=gain,
+                        perceived_reliability=gain)
         w.event("promise_kept", f"{m.name} kept a recorded commitment.", public=bool(p.get("public")),
                 member=mid, promise_id=p["id"])
     elif verdict == "broken":
@@ -342,7 +442,8 @@ def _settle(w: World, mid: str, p: dict, verdict: str) -> dict:
             rel = o.relationships.get(mid)
             if rel:
                 scale = 1 if o.id == p.get("to") else .5
-                _change(rel, trust=float(r(w, "relationships.broken_promise_trust")) * scale,
+                _change(rel, month=w.month, reason="broke a political promise",
+                        trust=float(r(w, "relationships.broken_promise_trust")) * scale,
                         resentment=float(r(w, "relationships.broken_promise_resentment")) * scale,
                         perceived_reliability=-8 * scale)
             from .agents import _grievance
@@ -356,7 +457,8 @@ def _settle(w: World, mid: str, p: dict, verdict: str) -> dict:
         if target not in ("public", "") and target in {o.id for o in w.members}:
             rel = w.member(target).relationships.get(mid)
             if rel:
-                _change(rel, trust=-3, resentment=2, perceived_reliability=-3)
+                _change(rel, month=w.month, reason="let a political promise lapse",
+                        trust=-3, resentment=2, perceived_reliability=-3)
             from .agents import _grievance
             _grievance(w, target, mid, "let a promise to me lapse", 12)
     return {"member": mid, "promise_id": p["id"], "verdict": verdict, "text": p["text"], "to": p.get("to")}
@@ -375,7 +477,8 @@ def withdraw(w: World, mid: str, promise_id: str, reason: str = "") -> bool:
     if target not in ("public", "") and target in {o.id for o in w.members}:
         rel = w.member(target).relationships.get(mid)
         if rel:
-            _change(rel, trust=-2, resentment=1.5)
+            _change(rel, month=w.month, reason="openly withdrew a political promise",
+                    trust=-2, resentment=1.5)
     w.event("promise_withdrawn", f"{m.name} openly withdrew an earlier commitment.", public=bool(p.get("public")),
             member=mid, promise_id=promise_id)
     return True

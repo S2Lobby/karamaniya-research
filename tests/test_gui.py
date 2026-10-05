@@ -9,10 +9,12 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from karamaniya import envfile  # noqa: E402
+from karamaniya import gui  # noqa: E402
 from karamaniya.gui import Controller, compare, comparative_notes, make_server  # noqa: E402
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -21,6 +23,19 @@ SECRET = "sk-test-value-9f8e7d"
 
 
 class LiveDraft(unittest.TestCase):
+    def test_live_feed_keeps_details_of_directive_violations(self):
+        with tempfile.TemporaryDirectory(prefix="karamaniya-live-defiance-") as tmp:
+            controller = Controller(Path(tmp), Path(tmp) / "runs")
+            controller._new_job("run", "defiance", 1)
+            detail = {"member": "D", "office": "army", "lever": "officer_pay",
+                      "directive": 0.0, "value": 0.05}
+            controller.observer({"type": "resolved", "month": 3, "motions": [], "defiance": 1,
+                                 "defiance_details": [detail]})
+            event = controller.live(0)["items"][-1]
+            self.assertEqual(event["kind"], "resolved")
+            self.assertEqual(event["defiance"], 1)
+            self.assertEqual(event["defiance_details"], [detail])
+
     def test_public_speech_draft_is_visible_during_call(self):
         with tempfile.TemporaryDirectory(prefix="karamaniya-live-draft-") as tmp:
             controller = Controller(Path(tmp), Path(tmp) / "runs")
@@ -33,6 +48,25 @@ class LiveDraft(unittest.TestCase):
             controller.observer({"type": "call_end", "member": "A", "phase": "session", "month": 0,
                                  "ok": True, "spend": 0})
             self.assertNotIn("A", controller.live(0)["job"]["calls"])
+
+    def test_external_cabinet_call_is_visible_during_simulation(self):
+        with tempfile.TemporaryDirectory(prefix="karamaniya-foreign-live-") as tmp:
+            controller = Controller(Path(tmp), Path(tmp) / "runs")
+            controller._new_job("run", "foreign", 1)
+            controller.observer({"type": "simulate", "month": 0})
+            controller.observer({"type": "foreign_call_start", "actor": "dorsania", "month": 0,
+                                 "seat": "Space", "provider": "openrouter", "model": "stealth/space-bunny-alpha"})
+            live = controller.live(0)["job"]
+            self.assertEqual(live["phase"], "foreign_cabinets")
+            self.assertEqual(live["foreign_calls"]["dorsania"]["seat"], "Space")
+            self.assertGreaterEqual(live["foreign_calls"]["dorsania"]["elapsed"], 0)
+            controller.observer({"type": "foreign_call_end", "actor": "dorsania", "month": 0,
+                                 "seat": "Space", "provider": "openrouter", "ok": False,
+                                 "error": "IncompleteRead", "spend": 0})
+            live = controller.live(0)
+            self.assertEqual(live["job"]["phase"], "simulate")
+            self.assertEqual(live["job"]["done_calls"], 1)
+            self.assertEqual(live["items"][-1]["kind"], "external_problem")
 
 
 class ComparisonEligibility(unittest.TestCase):
@@ -56,6 +90,43 @@ class ComparisonEligibility(unittest.TestCase):
         runs[1]["card"] = {**card, "analytics": {**card["analytics"],
                                                 "political_history": [{"month": 0, "kind": "coup"}]}}
         self.assertEqual(comparative_notes(runs)[0]["first_divergence"]["month"], 0)
+
+
+class LibraryReportFreshness(unittest.TestCase):
+    def test_saved_report_is_marked_stale_when_checkpoint_has_more_months(self):
+        with tempfile.TemporaryDirectory(prefix="karamaniya-report-freshness-") as tmp:
+            run = Path(tmp) / "run"
+            run.mkdir()
+            (run / "config.json").write_text(json.dumps({"run": {"months": 36, "seed": 1}}), encoding="utf-8")
+            (run / "checkpoint.json").write_text(json.dumps({
+                "world": {"history": [{"month": 0}, {"month": 1}], "outcome": {}},
+                "meta": {"stopped": ""}, "council": {"spend": 0},
+            }), encoding="utf-8")
+            (run / "scorecard.json").write_text(json.dumps({"country": {"months_run": 1}}), encoding="utf-8")
+            (run / "report.html").write_text("saved report", encoding="utf-8")
+
+            summary = gui.Library(Path(tmp)).summary(run)
+
+        self.assertEqual(summary["months_done"], 2)
+        self.assertEqual(summary["report_months"], 1)
+        self.assertTrue(summary["has_report"])
+        self.assertTrue(summary["report_stale"])
+
+    def test_saved_report_with_matching_month_count_is_current(self):
+        with tempfile.TemporaryDirectory(prefix="karamaniya-report-freshness-") as tmp:
+            run = Path(tmp) / "run"
+            run.mkdir()
+            (run / "config.json").write_text(json.dumps({"run": {"months": 2}}), encoding="utf-8")
+            (run / "checkpoint.json").write_text(json.dumps({
+                "world": {"history": [{"month": 0}, {"month": 1}], "outcome": {}},
+                "meta": {"stopped": ""}, "council": {},
+            }), encoding="utf-8")
+            (run / "scorecard.json").write_text(json.dumps({"country": {"months_run": 2}}), encoding="utf-8")
+            (run / "report.html").write_text("saved report", encoding="utf-8")
+
+            summary = gui.Library(Path(tmp)).summary(run)
+
+        self.assertFalse(summary["report_stale"])
 
 
 class ControlRoom(unittest.TestCase):
@@ -130,6 +201,19 @@ class ControlRoom(unittest.TestCase):
         nonce = csp.split("'nonce-")[1].split("'")[0]
         self.assertIn(f'nonce="{nonce}"', html)
         self.assertIn("frame-ancestors 'none'", csp)
+
+    def test_qoder_model_discovery_returns_cli_canonical_names(self):
+        with patch.object(gui, "discover_models", return_value=["Qwen3.8-Flash"]):
+            status, d = self.api("GET", "models", provider="qoder_cli")
+        self.assertEqual(status, 200)
+        self.assertTrue(d["found"])
+        self.assertEqual(d["models"], ["Qwen3.8-Flash"])
+        _, _, raw = self.req("GET", "/")
+        self.assertIn("exact, case-sensitive model id", raw.decode())
+
+    def test_map_front_summary_labels_effective_field_strength(self):
+        _, _, raw = self.req("GET", "/")
+        self.assertIn("effective field strength vs", raw.decode())
 
     def test_live_chamber_photo_is_served_locally(self):
         status, headers, raw = self.req("GET", "/council-chamber.png", token=None)

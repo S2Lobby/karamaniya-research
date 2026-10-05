@@ -14,8 +14,8 @@ reach a different conclusion from any other. So the terminal state is worked out
 stored on the motion as `status`; everything downstream reads that field rather than re-deriving it
 from "not passed".
 
-Nothing here decides what a delegate may propose. It only refuses to execute an action that is not
-the one the council was shown and voted on.
+The consistency checks keep an invalid or misaddressed diplomatic action off the agenda, so the
+council does not vote on one action and later discover that a different action was executable.
 """
 from __future__ import annotations
 
@@ -52,11 +52,32 @@ DIPLOMATIC_ACTIONS = {
     "alliance": MARITIME_LEAGUE, "loan_request": MARITIME_LEAGUE,
     "military_aid": MARITIME_LEAGUE, "trade_deal": MARITIME_LEAGUE,
     "grain_deal": DORSANIA,
+    # Withdrawing from a commitment is addressed to whichever power holds it, like a protest.
+    "renounce": SOLVARAN_UNION,
 }
+#: Which actors each diplomatic act may be addressed to. Most acts are structurally tied to one
+#: partner -- you cannot seek Union membership from the League, or a grain purchase from a country
+#: with no grain -- and those stay bound. A protest is different: it is addressed to whoever is doing
+#: the thing you object to, so it is open to every actor. Welding protest to the Union alone capped
+#: what the council could say to the powers actually squeezing it, which is a limit on the delegates
+#: rather than a property of the world. DIPLOMATIC_ACTIONS still supplies the default target when a
+#: delegate names an act but no country.
+DIPLOMATIC_TARGETS = {action: {target} for action, target in DIPLOMATIC_ACTIONS.items()}
+DIPLOMATIC_TARGETS["diplomatic_protest"] = {SOLVARAN_UNION, MARITIME_LEAGUE, DORSANIA, VELERIA}
+DIPLOMATIC_TARGETS["renounce"] = {SOLVARAN_UNION, MARITIME_LEAGUE, DORSANIA, VELERIA}
+# Veleria is a Union member, but the Union receives the answer on its behalf. Preserve the
+# specifically addressed target so a border non-aggression proposal is not silently relabelled as
+# a pact with the whole Union.
+DIPLOMATIC_TARGETS["non_aggression_pact"] = {SOLVARAN_UNION, VELERIA}
 #: The engine's own subject vocabulary, which the diplomatic action names map onto.
 ACTION_TO_SUBJECT = {"diplomatic_protest": "diplomatic_protest", "non_aggression_pact": "non_aggression",
                      "loan_request": "loan"}
 SUBJECT_TO_ACTION = {v: k for k, v in ACTION_TO_SUBJECT.items()}
+#: Names that denote a diplomatic *act*, as opposed to an actor, an office or a topic. The
+#: consistency check uses this to tell a motion whose subject claims a different act -- a real
+#: contradiction worth stopping -- from one whose subject merely labels what the motion is about.
+ACT_NAMES = (set(DIPLOMATIC_ACTIONS) | set(ACTION_TO_SUBJECT) | set(ACTION_TO_SUBJECT.values())
+             | set(SUBJECT_TO_ACTION))
 
 #: Prose that names a foreign act, strongest signal first. Each entry is (action_type, patterns).
 PROSE_ACTIONS = (
@@ -103,9 +124,10 @@ def structured_action(w, motion: dict) -> dict:
     subject = str(motion.get("subject", ""))
     explicit = motion.get("action") if isinstance(motion.get("action"), dict) else {}
     action_type = str(explicit.get("action_type") or SUBJECT_TO_ACTION.get(subject) or subject).strip()
-    target = str(explicit.get("target") or "").strip().lower() or None
-    if target:
-        target = _canonical_actor(w, target)
+    raw_target = str(explicit.get("target") or "").strip()
+    # Preserve an explicit but unrecognized target so validation can reject it. Falling back to
+    # the action's default here would silently route a motion to a different country.
+    target = (_canonical_actor(w, raw_target) or raw_target) if raw_target else None
     if kind == "diplomacy":
         target = target or DIPLOMATIC_ACTIONS.get(action_type) or DIPLOMATIC_ACTIONS.get(subject)
         return {"action_type": action_type, "target": target, "policy": None,
@@ -126,6 +148,30 @@ def structured_action(w, motion: dict) -> dict:
         return {"action_type": "appointment", "target": str(motion.get("value", "")).upper() or None,
                 "policy": subject, "value": motion.get("value"), "issue": "", "terms": [],
                 "kind": kind, "subject": subject}
+    if kind == "program":
+        raw_measures = motion.get("measures") or explicit.get("measures") or []
+        measures = []
+        from .politics import canonical_lever, parse_lever
+        for measure in raw_measures:
+            if isinstance(measure, dict):
+                lever = canonical_lever(str(measure.get("lever", "")))
+                raw_value = measure.get("value")
+            elif isinstance(measure, (list, tuple)) and len(measure) == 2:
+                lever = canonical_lever(str(measure[0]))
+                raw_value = measure[1]
+            else:
+                continue
+            parsed_value = parse_lever(lever, raw_value)
+            measures.append({"lever": lever,
+                             "value": raw_value if parsed_value is None else parsed_value})
+        return {"action_type": "program", "target": None, "policy": None,
+                "value": motion.get("value"), "issue": "", "terms": [], "kind": kind,
+                "subject": subject, "measures": measures}
+    if kind == "disaster_relief":
+        fields = ("region", "regions", "amount", "funding", "funding_plan", "scope", "military_engineers")
+        return {"action_type": "disaster_relief", "target": None, "policy": None,
+                "value": motion.get("value"), "issue": "", "terms": [], "kind": kind, "subject": subject,
+                **{field: explicit[field] for field in fields if field in explicit}}
     return {"action_type": action_type or kind, "target": target, "policy": subject,
             "value": motion.get("value"), "issue": "", "terms": [], "kind": kind, "subject": subject}
 
@@ -136,6 +182,25 @@ def structured_action(w, motion: dict) -> dict:
 CONDITION_METRICS = ("food_ratio", "reserves", "reserves_after_payment", "arrears", "unemployment",
                      "army_morale", "army_arrears", "inflation", "approval", "deficit",
                      "league_credit_received", "audited_register")
+BOUNDED_PROPORTION_METRICS = {"unemployment", "army_morale", "approval"}
+UNBOUNDED_RATIO_METRICS = {"food_ratio", "inflation", "deficit"}
+MONEY_METRICS = {"reserves", "reserves_after_payment", "arrears", "army_arrears"}
+
+
+def canonical_metric_value(metric: str, value: float) -> float:
+    """Read percent-point thresholds in the same fractional units used by world state."""
+    value = float(value)
+    if metric in BOUNDED_PROPORTION_METRICS and abs(value) > 1:
+        value /= 100.0
+    elif metric in UNBOUNDED_RATIO_METRICS and abs(value) >= 10:
+        value /= 100.0
+    elif metric in MONEY_METRICS and 0 < abs(value) < 100_000:
+        # Briefings commonly express large fiscal values as "90" for 90 million crowns,
+        # while world state stores full currency units. Bring bare small money thresholds to
+        # the same scale so 90 cannot vacuously pass against an 88,000,000 reserve balance.
+        value *= 1_000_000.0
+    return value
+
 CONDITION_WORDS = (
     (("reserves", "reserve", "gold", "treasury balance"), "reserves"),
     (("arrears", "unpaid bills", "unpaid bill"), "arrears"),
@@ -153,7 +218,7 @@ CONDITION_WORDS = (
 _CONDITION_CLAUSE = re.compile(
     r"(?:only\s+if|provided\s+that|on\s+condition\s+that|subject\s+to|as\s+long\s+as|"
     r"after|once|when|if|unless|until|while|preserv\w*|remain\w*|keep\w*|above|below|"
-    r"at\s+least|no\s+less\s+than|no\s+more\s+than|not\s+below|not\s+fall|floor|cap|"
+    r"at\s+least|no\s+less\s+than|no\s+more\s+than|not\s+below|not\s+fall|reserv\w*|floor|cap|"
     r"credit|audit|register|league)[^.;]*", re.IGNORECASE)
 
 
@@ -205,7 +270,8 @@ def parse_conditions(text: str, motion_type: str = "", subject: str = "") -> lis
        re.search(r"(after|once|when)[^.;]{0,40}leagu\w*[^.;]{0,40}(credit|loan|tranche)", joined) or \
        re.search(r"only\s+(?:if|after|once)[^.;]*leagu", joined):
         add("league_credit_received", "==", 1.0, "league credit gate")
-    if re.search(r"audit", joined) and re.search(r"register|verif|certif|reconcile", joined):
+    is_investigation = str(motion_type).strip().lower() in ("investigation", "audit")
+    if not is_investigation and re.search(r"audit", joined) and re.search(r"register|verif|certif|reconcile", joined):
         add("audited_register", "==", 1.0, "audited register gate")
     return out
 
@@ -224,15 +290,22 @@ def motion_conditions(motion: dict) -> list:
                 value = float(c.get("value"))
             except (TypeError, ValueError):
                 continue
+            value = canonical_metric_value(c["metric"], value)
             clean.append({"metric": c["metric"], "operator": c["operator"], "value": value,
                           "source": str(c.get("source", "explicit"))[:220]})
+        if clean:
+            is_investigation = str(motion.get("type", "")).strip().lower() in ("investigation", "audit")
+            if is_investigation:
+                clean = [condition for condition in clean
+                         if not (condition["metric"] == "audited_register"
+                                 and condition["source"] == "audited register gate")]
         if clean:
             return clean
     return parse_conditions(str(motion.get("text", "")),
                             str(motion.get("type", "")), str(motion.get("subject", "")))
 
 
-def condition_values(w) -> dict:
+def condition_values(w, motion: dict | None = None) -> dict:
     """Canonical state one execution condition may test, in the units conditions use."""
     from .society import inflation_yoy
     e = w.econ
@@ -253,7 +326,32 @@ def condition_values(w) -> dict:
                 audited = 1.0
         except (TypeError, ValueError):
             continue
-    return {"food_ratio": e.food_ratio, "reserves": e.gold, "reserves_after_payment": e.gold,
+    reserves_after = e.gold
+    if isinstance(motion, dict) and motion.get("type") == "settle_arrears":
+        from .politics import settle_arrears_cost
+        reserves_after = max(0.0, e.gold - settle_arrears_cost(w, motion))
+    elif isinstance(motion, dict) and motion.get("type") == "disaster_relief":
+        from .politics import parse_money, relief_funding_capacity
+        plan = motion.get("action") if isinstance(motion.get("action"), dict) else {}
+        approved = parse_money(plan.get("amount", motion.get("value", ""))) or 0.0
+        reserve_draw = 0.0
+        allocated = 0.0
+        funding_plan = plan.get("funding_plan") if isinstance(plan.get("funding_plan"), list) else []
+        if funding_plan:
+            allocations = [(str(item.get("source", "")).strip().lower(),
+                            parse_money(item.get("amount")) or 0.0)
+                           for item in funding_plan if isinstance(item, dict)]
+        else:
+            funding = str(plan.get("funding", "")).strip().lower()
+            allocations = [(funding, approved)] if funding else []
+        for source, requested in allocations:
+            draw = min(requested, relief_funding_capacity(w, source), max(0.0, approved - allocated))
+            allocated += draw
+            if source == "reserves":
+                reserve_draw += draw
+        rate = w.zone_of("karamaniya").price / (e.fx_conf if e.currency == "karam" else 1.0)
+        reserves_after = max(0.0, e.gold - reserve_draw / max(rate, .01))
+    return {"food_ratio": e.food_ratio, "reserves": e.gold, "reserves_after_payment": reserves_after,
             "arrears": e.arrears, "unemployment": e.unemployment, "army_morale": w.mil.army.morale,
             "army_arrears": w.mil.army.arrears, "inflation": inflation_yoy(w),
             "approval": w.avg("approval") if w.k_pops() else 0.0,
@@ -263,21 +361,18 @@ def condition_values(w) -> dict:
 
 def evaluate_conditions(w, conditions: list, motion: dict | None = None) -> list:
     """Test every binding condition against current canonical state. Pure: no mutation."""
-    values = condition_values(w)
+    values = condition_values(w, motion)
     results = []
     for cond in conditions or []:
         metric = cond.get("metric")
         observed = values.get(metric)
         detail = ""
         if metric == "reserves_after_payment" and motion is not None:
-            from .politics import settle_arrears_cost
-            try:
-                cost = float(settle_arrears_cost(w, motion))
-                observed = float(values.get("reserves", 0)) - cost
+            if observed is None:
+                detail = "post-action reserve balance could not be calculated"
+            else:
                 detail = (f"reserves_after_payment would fall to {observed:,.0f} "
                           f"(floor {cond.get('value'):,.0f})")
-            except (TypeError, ValueError):
-                observed = None
         elif metric == "league_credit_received":
             detail = "league credit received" if observed else "no league credit received yet"
         elif metric == "audited_register":
@@ -310,8 +405,27 @@ def condition_mismatch(w, motion: dict) -> dict | None:
                            f"({'; '.join(c['metric'] + ' ' + c['operator'] + ' ' + str(c['value']) for c in text_conds)}) "
                            "but the motion carries no executable conditions; it would run unconditionally"),
                 "final_conditions": text_conds, "stored_conditions": []}
-    stored_metrics = {(c.get("metric"), c.get("operator")) for c in stored if isinstance(c, dict)}
-    missing = [c for c in text_conds if (c["metric"], c["operator"]) not in stored_metrics]
+    def stored_condition_satisfies(required: dict, candidate) -> bool:
+        if not isinstance(candidate, dict) or candidate.get("metric") != required["metric"]:
+            return False
+        if candidate.get("operator") not in (">=", "<=", "=="):
+            return False
+        try:
+            value = canonical_metric_value(required["metric"], float(candidate.get("value")))
+        except (TypeError, ValueError):
+            return False
+        threshold = canonical_metric_value(required["metric"], float(required["value"]))
+        operator = candidate["operator"]
+        # A stored safeguard is adequate only when every state in which it permits execution
+        # also satisfies the threshold stated in the final prose.
+        if required["operator"] == ">=":
+            return operator in (">=", "==") and value >= threshold
+        if required["operator"] == "<=":
+            return operator in ("<=", "==") and value <= threshold
+        return operator == "==" and value == threshold
+
+    missing = [c for c in text_conds
+               if not any(stored_condition_satisfies(c, candidate) for candidate in stored)]
     if not missing:
         return None
     return {"code": "MOTION_CONDITION_MISMATCH",
@@ -341,6 +455,33 @@ def party_of(actor: str | None) -> str | None:
     """The state model's name for a canonical actor, for routing a proposal."""
     return {SOLVARAN_UNION: "union", MARITIME_LEAGUE: "league", DORSANIA: "dorsania",
             VELERIA: "veleria"}.get(actor)
+
+
+def validate_diplomatic_action(w, motion: dict) -> dict | None:
+    """Check diplomatic text/action agreement and statically valid targets before a vote."""
+    action = structured_action(w, motion)
+    if action.get("kind") != "diplomacy":
+        return None
+    mismatch = conflict(w, motion)
+    if mismatch:
+        details = "; ".join(reason["detail"] for reason in mismatch.get("reasons", []))
+        return {"code": mismatch["code"],
+                "detail": "the diplomatic motion's text and executable action disagree: " + details}
+    if not action.get("target"):
+        return {"code": "NO_TARGET",
+                "detail": f"a {action['action_type']} does not name a country or institution to address"}
+    if action["target"] not in ACTORS:
+        return {"code": "UNKNOWN_TARGET", "detail": f"unknown target {action['target']!r}"}
+    expected = DIPLOMATIC_ACTIONS.get(action["action_type"])
+    if expected is None:
+        return {"code": "UNKNOWN_ACTION_TYPE", "detail": f"unknown diplomatic action {action['action_type']!r}"}
+    allowed = DIPLOMATIC_TARGETS.get(action["action_type"], {expected})
+    if action["target"] not in allowed:
+        names = ", ".join(ACTOR_NAMES[a] for a in sorted(allowed))
+        return {"code": "ACTION_NOT_VALID_FOR_TARGET",
+                "detail": f"a {action['action_type']} can be addressed to {names}, "
+                          f"not the {ACTOR_NAMES[action['target']]}"}
+    return None
 
 
 def prose_intent(w, text: str) -> dict:
@@ -376,11 +517,19 @@ def conflict(w, motion: dict) -> dict | None:
                         "detail": f"the text addresses the {ACTOR_NAMES[named[0]]}, but the structured "
                                   f"action is sent to the {ACTOR_NAMES.get(action['target'], action['target'])}"})
     declared = motion.get("declared_subject")
-    if declared and motion.get("subject") and declared not in (motion.get("subject"), action["action_type"]):
-        reasons.append({"code": "DECLARED_SUBJECT_CONTRADICTS_ACTION", "declared": declared,
-                        "action_type": action["action_type"],
-                        "detail": f"the motion's own subject says {declared}, but its action says "
-                                  f"{action['action_type'].replace('_', ' ')}"})
+    if declared and motion.get("subject"):
+        # Only a subject that names a *different act* contradicts the payload. A subject that is a
+        # topic ("Head of Government"), an office ("Treasury") or an actor ("Solvaran Union") is the
+        # delegate labelling what the motion concerns, not claiming a different action; reading any
+        # such label as a contradiction was rejecting a large share of sound motions on a wording
+        # technicality, which is harness friction rather than a genuine disagreement about the act.
+        norm = re.sub(r"[\s\-]+", "_", str(declared).strip().lower())
+        if norm in ACT_NAMES and norm not in (str(motion.get("subject", "")).lower(),
+                                              str(action["action_type"]).lower()):
+            reasons.append({"code": "DECLARED_SUBJECT_CONTRADICTS_ACTION", "declared": declared,
+                            "action_type": action["action_type"],
+                            "detail": f"the motion's own subject says {declared}, but its action says "
+                                      f"{action['action_type'].replace('_', ' ')}"})
     said = intent["actions"]
     if said and action["action_type"] not in said:
         # "protest" and "trade deal" are different acts even when both are sent abroad.
@@ -421,6 +570,19 @@ def repair_request(w, c: dict) -> str:
     lines.append("Correct either the structured action or the motion text so they describe the same motion, "
                  "then resubmit that motion only. The rest of your answer stands.")
     return "\n".join(lines)
+
+
+def structured_action_repair_request(motion: dict, rejection: dict) -> str:
+    """Ask for one missing executable payload while preserving the delegate's stated policy."""
+    return ("NO_STRUCTURED_ACTION\n"
+            "This motion was not tabled because its structured action is incomplete: "
+            f"{rejection.get('explanation', 'the program is missing executable measures')}.\n"
+            f"Motion type: {motion.get('type', '')}; subject: {motion.get('subject', '')}; "
+            f"value: {motion.get('value', '')}; text: \"{str(motion.get('text', ''))[:400]}\".\n"
+            "Return this motion with the same type, subject, value and text. Fill only the structured "
+            "action fields needed to carry out the policy already stated. For a program, provide "
+            "measures as [{lever, value}]. Use only levers and choices directly supported by the motion; "
+            "do not add new policies or change its political intent. This is the single format-repair retry.")
 
 
 # ---- numeric grounding: what a delegate may claim -------------------------------------------
@@ -679,6 +841,8 @@ def validate_execution(w, motion: dict, executed: dict | None = None) -> dict | 
     carried politically but whose floor is not met returns EXECUTION_BLOCKED_CONDITION with
     per-condition results, never a silent unconditional run.
     """
+    if not isinstance(motion, dict):
+        return {"code": "NO_STRUCTURED_ACTION", "detail": "the motion record must be an object"}
     status = str(motion.get("status") or "")
     if status in ("WITHDRAWN", "SUPERSEDED"):
         return {"code": "MOTION_WITHDRAWN", "detail": "the proposer withdrew this motion; it cannot execute"}
@@ -696,6 +860,11 @@ def validate_execution(w, motion: dict, executed: dict | None = None) -> dict | 
     if not action.get("action_type"):
         return {"code": "NO_STRUCTURED_ACTION", "detail": "the motion carries no executable action"}
     if action["kind"] == "diplomacy":
+        mismatch = conflict(w, motion)
+        if mismatch:
+            details = "; ".join(reason["detail"] for reason in mismatch.get("reasons", []))
+            return {"code": mismatch["code"],
+                    "detail": "the diplomatic motion's text and executable action disagree: " + details}
         if not action.get("target"):
             return {"code": "NO_TARGET",
                     "detail": f"a {action['action_type']} does not name a country or institution to address"}
@@ -704,9 +873,11 @@ def validate_execution(w, motion: dict, executed: dict | None = None) -> dict | 
         expected = DIPLOMATIC_ACTIONS.get(action["action_type"])
         if expected is None:
             return {"code": "UNKNOWN_ACTION_TYPE", "detail": f"unknown diplomatic action {action['action_type']!r}"}
-        if expected != action["target"]:
+        allowed = DIPLOMATIC_TARGETS.get(action["action_type"], {expected})
+        if action["target"] not in allowed:
+            names = ", ".join(ACTOR_NAMES[a] for a in sorted(allowed))
             return {"code": "ACTION_NOT_VALID_FOR_TARGET",
-                    "detail": f"a {action['action_type']} is addressed to the {ACTOR_NAMES[expected]}, "
+                    "detail": f"a {action['action_type']} can be addressed to {names}, "
                               f"not the {ACTOR_NAMES[action['target']]}"}
     if executed is not None:
         key = execution_key(w, motion)

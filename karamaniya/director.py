@@ -37,21 +37,28 @@ def _once(w: World, key: str) -> bool:
 
 def prepare_external(w: World) -> dict:
     """Resolve Karamaniya's completed diplomatic and military choices before foreign calls."""
+    if w.ended():
+        return {}
     w.dip.inbox = []
     # The council has just read the previous month's private dispatches.
     w.dip.private_inbox = []
     if not w.foreign:
         w.foreign = foreign.initial_state(w.seed)
     _answer_proposals(w)
+    if w.ended():
+        return {}
     _karamanian_aggression(w)
     return foreign.prepare(w)
 
 
 def act(w: World, cabinet_decisions: dict | None = None, foreign_prepared: bool = False) -> None:
+    if w.ended():
+        return
     if not foreign_prepared:
         prepare_external(w)
-    if not w.ended():
-        _foreign_cabinets(w, cabinet_decisions, foreign_prepared)
+    if w.ended():
+        return
+    _foreign_cabinets(w, cabinet_decisions, foreign_prepared)
     _union_forces(w)
     foreign.league_month(w)
     _weather(w)
@@ -95,12 +102,12 @@ def _deadline_policy(w: World) -> None:
 
 def _karamanian_aggression(w: World) -> None:
     dip = w.dip
-    if w.policy.posture == "attack" and not dip.war:
+    if not w.ended() and w.policy.posture == "attack" and not dip.war:
         dip.war = True
         dip.war_start = w.month
         dip.aggressor = "karamaniya"
         dip.ceasefire = False
-        dip.league_trust -= 0.3
+        w.adjust_league_trust(-0.3)
         for r in w.rivals.values():
             r.morale = clamp(r.morale + 0.1)
         w.event("war", f"Karamaniya's army has attacked across the border. The {w.names['union']} "
@@ -211,7 +218,15 @@ def _answer_proposals(w: World) -> None:
     pending, dip.proposals = dip.proposals, []
     for pr in pending:
         kind = pr["kind"]
-        if pr["party"] == "union":
+        if kind == "renounce":
+            # Withdrawing from a commitment is addressed to whoever holds it, like a protest.
+            _renounce(w, pr["party"])
+        elif kind == "diplomatic_protest":
+            # A protest is answered by whoever it is addressed to, easing that power's own pressure
+            # rather than being routed to the Union by default. This is the one diplomatic act that
+            # is not structurally tied to a single partner, so it is handled by target.
+            _protest_reply(w, pr["party"])
+        elif pr["party"] == "union":
             _union_reply(w, kind)
         elif pr["party"] == "dorsania":
             foreign.dorsania_reply(w, kind, pr.get("amount", 0.0), pr.get("text", ""))
@@ -224,6 +239,63 @@ def _answer_proposals(w: World) -> None:
             _league_reply(w, kind, pr.get("amount", 0.0))
         if w.ended():
             return
+
+
+def _protest_reply(w: World, party: str) -> None:
+    """A protest is answered, not granted, by the power it names. Each eases the pressure it is
+    applying when it is already inclined to -- weary of the friction, or keen on the relationship --
+    and hardens a little when it is not. This is the same dynamic the Union protest already modelled,
+    opened to every actor so the council can object to whichever power is actually squeezing it
+    (the Union's inspections, Dorsania's grain embargo, Veleria's coal embargo, a League incident)
+    instead of having one diplomatic channel welded to one country."""
+    dip, n = w.dip, w.names
+    if party == "dorsania":
+        actor = (w.foreign or {}).get("actors", {}).get("dorsania", {})
+        trust = (actor.get("relations", {}).get("karamaniya", {}) or {}).get("trust", 0.5)
+        if dip.grain_embargo > 0.1 and trust > 0.35:
+            dip.grain_embargo = max(0.0, dip.grain_embargo - 0.1)
+            _msg(w, n["dorsania"], "Dorsania notes the protest and eases its grain export restrictions.")
+        else:
+            _msg(w, n["dorsania"], "Dorsania rejects the protest; its grain exports answer to Union obligations.")
+    elif party == "veleria":
+        if dip.coal_embargo > 0.1:
+            dip.coal_embargo = max(0.0, dip.coal_embargo - 0.1)
+            _msg(w, n["veleria"], "Veleria acknowledges the protest and relaxes some coal shipment checks.")
+        else:
+            _msg(w, n["veleria"], "Veleria dismisses the protest as unwarranted.")
+    elif party == "league":
+        if dip.league_trust > 0.4:
+            w.adjust_league_trust(0.02)
+            _private_msg(w, n["league"], "head", "The League takes the protest seriously and reviews the incident.")
+        else:
+            _private_msg(w, n["league"], "head", "The League notes the protest but disputes the account of events.")
+    else:
+        _union_reply(w, "diplomatic_protest")
+
+
+def _renounce(w: World, party: str) -> None:
+    """Withdraw from a commitment in force with the named power. The engine could join a federation,
+    a non-aggression pact or an alliance but had no way to leave one, so a council that wanted out
+    could only say so in prose the machine could not execute. Repudiating a treaty is a real act of
+    state and is answered with displeasure; it reverses only commitments that can be reversed (a
+    federation or reunification, once it has ended the run, is not among them)."""
+    dip, n = w.dip, w.names
+    if party == "union":
+        if dip.nonaggression:
+            dip.nonaggression = False
+            dip.propaganda = min(1.0, dip.propaganda + 0.1)
+            _msg(w, n["union"], "The Union denounces Karamaniya's repudiation of the non-aggression pact.")
+        else:
+            _msg(w, n["union"], "The Union finds no agreement in force for Karamaniya to renounce.")
+    elif party == "league":
+        if dip.league_alliance:
+            dip.league_alliance = False
+            w.adjust_league_trust(-0.2)
+            _private_msg(w, n["league"], "head", "The League accepts Karamaniya's withdrawal from the alliance.")
+        else:
+            _private_msg(w, n["league"], "head", "The League finds no alliance in force to renounce.")
+    else:
+        _msg(w, n.get(party, party), "There is no agreement in force to renounce.")
 
 
 def _union_reply(w: World, kind: str) -> None:

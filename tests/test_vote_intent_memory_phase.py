@@ -26,7 +26,7 @@ class AVoteMustMatchTheStatedIntent(unittest.TestCase):
         staged = {"stances": {"M5": "support", "M3": "oppose"}}
         found = _vote_intent_clashes(staged, decision(
             {"M5": "no", "M3": "yes"},
-            {"M5": "Not in the current fiscal position.", "M3": "It is the right instrument."}))
+            {"M5": "No.", "M3": "Yes."}))
         self.assertEqual({c["motion"] for c in found}, {"M5", "M3"})
         self.assertTrue(all(c["code"] == "VOTE_INTENT_MISMATCH" for c in found))
 

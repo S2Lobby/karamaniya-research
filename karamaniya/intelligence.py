@@ -11,6 +11,8 @@ Private messages, withheld reports and intercepts can leak.
 """
 from __future__ import annotations
 
+import hashlib
+
 from . import tuning
 from .world import OFFICE_TITLES, OFFICES, World, clamp, rng_for
 
@@ -577,7 +579,7 @@ def costing(w: World, motion: dict | None) -> float | None:
 # ---- evidence for beliefs ------------------------------------------------------------------
 def office_evidence(w: World) -> tuple[dict, dict]:
     """Evidence each delegate draws from its own reports, and from reports shared with it."""
-    own, shared = {}, {}
+    own, shared, shared_ids = {}, {}, {}
     for m in w.active_members():
         for r in reports_for(w, m.id):
             ev = _report_evidence(w, r, "office")
@@ -591,6 +593,12 @@ def office_evidence(w: World) -> tuple[dict, dict]:
             ev = _report_evidence(w, {"id": item["report_id"] + f"-{mid}", "proposition": item["proposition"],
                                       "estimate": item["estimate"], "subject": item["subject"]}, "shared")
             if ev:
+                # A council share already reaches every colleague. If the sender also shared the
+                # same report privately with one of them, count that report only once.
+                seen = shared_ids.setdefault(mid, set())
+                if ev["id"] in seen:
+                    continue
+                seen.add(ev["id"])
                 ev["from"] = item["from"]
                 shared.setdefault(mid, []).append(ev)
     return own, shared
@@ -675,7 +683,10 @@ def _person_factor(w: World, leaker: str, sender: str) -> float:
 def _leak_payload(w: World, cand: dict) -> dict:
     item = cand["item"]
     if cand["kind"] in ("dm", "intercept"):
-        return {"from": item["from"], "to": item["to"], "text": item["text"],
+        text = str(item.get("text", ""))
+        fingerprint = hashlib.sha256(text.encode("utf-8")).hexdigest()[:10]
+        message_id = item.get("message_id") or f"DM{w.month + 1}-{item['from']}{item['to']}-{fingerprint}"
+        return {"message_id": message_id, "from": item["from"], "to": item["to"], "text": text,
                 "headline": f"A private message from {w.member(item['from']).name} to {w.member(item['to']).name} was published"}
     holder = item["holder"]
     return {"from": holder, "report_id": item["report_id"], "text": item["text"],

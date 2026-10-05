@@ -19,7 +19,8 @@ DEFAULTS = {
     "deepseek": {"base_url": "https://api.deepseek.com", "api_key_env": "DEEPSEEK_API_KEY",
                  "json_mode": "json_object", "token_param": "max_tokens"},
     "openrouter": {"base_url": "https://openrouter.ai/api/v1", "api_key_env": "OPENROUTER_API_KEY",
-                   "json_mode": "json_schema", "token_param": "max_tokens", "max_tokens": 16000},
+                   "json_mode": "json_schema", "token_param": "max_tokens", "max_tokens": 16000,
+                   "max_tokens_cap": 65536},
     "lmstudio": {"base_url": "http://localhost:1234/v1", "api_key_env": "",
                  "json_mode": "json_schema", "token_param": "max_tokens"},
     "llamacpp": {"base_url": "http://localhost:8080/v1", "api_key_env": "",
@@ -47,9 +48,11 @@ class OpenAICompatBackend(Backend):
         self.token_param = cfg.get("token_param", d["token_param"])
         # A reasoning model spends part of this on thinking the reply never shows: one such seat
         # used 5,700-7,700 of an 8,000 budget on ordinary turns and ran out on harder ones, leaving the
-        # answer empty. A cut-off answer is retried once with a larger budget, up to max_tokens_cap.
+        # answer empty. A cut-off answer is retried with a larger budget until it fits or reaches the cap.
         self.max_tokens = int(cfg.get("max_tokens", d.get("max_tokens", 8000)))
-        self.max_tokens_cap = max(self.max_tokens, int(cfg.get("max_tokens_cap", 32000)))
+        if self.max_tokens <= 0:
+            raise ValueError("max_tokens must be a positive integer")
+        self.max_tokens_cap = max(self.max_tokens, int(cfg.get("max_tokens_cap", d.get("max_tokens_cap", 32000))))
         self.reasoning_effort = cfg.get("reasoning_effort", "")
         self.extra = cfg.get("extra_body", {}) or {}
 
@@ -91,8 +94,10 @@ class OpenAICompatBackend(Backend):
 
     def call(self, system: str, user: str, schema: dict, context: dict) -> CallResult:
         result, cut_off = self._call_once(system, user, schema, context)
-        if result.data is None and cut_off and self.max_tokens < self.max_tokens_cap:
-            self.max_tokens = min(self.max_tokens_cap, self.max_tokens * 2)
+        while result.data is None and cut_off and self.max_tokens < self.max_tokens_cap:
+            # Keep retry progress explicit even if this logic is changed to use a non-doubling
+            # budget later. A zero budget otherwise remains zero and can loop forever on cutoffs.
+            self.max_tokens = min(self.max_tokens_cap, max(self.max_tokens + 1, self.max_tokens * 2))
             result, cut_off = self._call_once(system, user, schema, context)
         if result.data is None and cut_off:
             raise FatalError(f"the answer was cut off at {self.max_tokens} tokens (finish_reason=length): the "

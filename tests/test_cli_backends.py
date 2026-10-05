@@ -179,9 +179,9 @@ class PauseAndReplay(unittest.TestCase):
         cfg = load_config(os.path.join(HERE, "council.scripted.toml"))
         cfg["seats"][4] = {"label": "fake-codex", **seat("codex", "codex_cli")}
         cfg["run"].update(months=3, survey=False, shuffle_seats=False)
-        # Diagnosis takes one targeted repair for this deliberately incomplete fake reply.
-        # Two formation calls and Month 1's two calls follow; Month 2's decision hits the limit.
-        os.environ["FAKE_CLI_LIMIT_AFTER"] = "7"
+        # The incomplete diagnosis reply is repaired, then this seat participates through Month 1.
+        # Its ninth call lands in Month 2, where the limit must roll back only that month.
+        os.environ["FAKE_CLI_LIMIT_AFTER"] = "8"
         path = new_run(cfg, runs_dir=self.tmp, name="p", quiet=True, check=False)
         store = RunStore(path)
         ck = store.read_json("checkpoint.json")

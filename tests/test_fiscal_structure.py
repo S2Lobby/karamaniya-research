@@ -150,6 +150,25 @@ class DebtServiceAndRollover(unittest.TestCase):
         self.assertGreater(rich.econ.reserve_months, poor.econ.reserve_months)
 
 
+class StateEnterpriseRevenue(unittest.TestCase):
+    def _ownership_revenue(self, cpi, ownership):
+        w = new_world(9, 12)
+        w.econ.cpi = cpi
+        w.policy.ownership = ownership
+        prod = {"gdp_real": 500e6, "food": 0, "industry": 200e6, "services": 300e6,
+                "energy": 1.0, "unemployment": {}, "credit": 1.0, "uncertainty": 1.0}
+        return economy.fiscal(w, prod, {"loans": 0.0})["revenue"]
+
+    def test_state_enterprise_revenue_is_converted_from_real_to_nominal(self):
+        private_at_one = self._ownership_revenue(1.0, "private")
+        state_at_one = self._ownership_revenue(1.0, "state")
+        private_at_two = self._ownership_revenue(2.0, "private")
+        state_at_two = self._ownership_revenue(2.0, "state")
+        increment_at_one = state_at_one - private_at_one
+        increment_at_two = state_at_two - private_at_two
+        self.assertAlmostEqual(increment_at_two, 2 * increment_at_one, delta=1.0)
+
+
 class Repayment(unittest.TestCase):
     def test_repayment_clears_arrears_across_categories(self):
         w = new_world(9, 12)

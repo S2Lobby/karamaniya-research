@@ -11,7 +11,8 @@ import re
 
 from .motion_actions import ACTION_TO_SUBJECT, DIPLOMATIC_ACTIONS as DIPLOMATIC_ACTION_TYPES
 from .politics import (BOOLS, CONSTITUTION_FIELDS, DIPLOMACY, ENUMS, LEVER_OFFICE, MOTION_TYPES,
-                       SHARES, V2_MOTION_TYPES, canonical_lever, patronage_subject)
+                       SHARES, V2_MOTION_TYPES, canonical_diplomacy_subject, canonical_funding,
+                       canonical_lever, canonical_office, parse_loan_amount, patronage_subject)
 from .world import ARMED_OFFICES, OFFICES, World
 
 STATEMENT_WORDS = 150
@@ -111,9 +112,18 @@ def action_schema(w: World) -> dict:
                      # crisis was the toggle for police powers, so every relief motion was refused
                      # as an unknown measure and the delegate lost its whole policy response.
                      "region": {"type": "string", "enum": regions},
+                     "regions": {"type": "array", "items": {"type": "string", "enum": regions},
+                                 "minItems": 1, "uniqueItems": True},
                      "amount": {"type": "string"},
                      "funding": {"type": "string", "enum": list(RELIEF_FUNDING)},
+                     "funding_plan": {"type": "array", "items": _obj({
+                         "source": {"type": "string", "enum": list(RELIEF_FUNDING)},
+                         "amount": {"type": "string"}}), "minItems": 1},
                      "scope": {"type": "string", "enum": list(RELIEF_SCOPES)},
+                     # A package of settings moved at once, the way a cabinet resolves an austerity or
+                     # stimulus programme. Each measure is one lever the council can direct plus a value.
+                     "measures": {"type": "array", "minItems": 1, "items": _obj({
+                         "lever": {"type": "string"}, "value": {"type": "string"}})},
                      "military_engineers": {"type": "boolean"}})
 
 
@@ -236,8 +246,14 @@ def _dms(w: World, mid: str, raw, quota: int, problems: list) -> list:
             continue
         to = str(dm.get("to", "")).strip().upper().replace("DELEGATE ", "")
         text = words(dm.get("text", ""), DM_WORDS)
-        if to not in ids or to == mid or not text.strip():
+        if to not in ids:
             problems.append(f"bad private message recipient '{dm.get('to')}'")
+            continue
+        if to == mid:
+            problems.append(f"private message cannot be sent to self ('{to}')")
+            continue
+        if not text.strip():
+            problems.append(f"private message to {to} has an empty body")
             continue
         out.append({"from": mid, "to": to, "text": text})
     return out
@@ -324,10 +340,11 @@ def normalize_decision(w: World, mid: str, data, motion_ids: list, dm_quota: int
         if not -1e12 <= value <= 1e12:
             problems.append(f"invalid vote condition value for {motion_id}")
             continue
-        conditions[motion_id] = {"metric": metric, "operator": operator, "value": value}
+        conditions.setdefault(motion_id, []).append({"metric": metric, "operator": operator, "value": value})
     for i in motion_ids:
         if votes[i] == "conditional" and i not in conditions and not defer_to_v2:
             problems.append(f"conditional vote missing valid condition for {i}")
+    conditions = {key: value[0] if len(value) == 1 else value for key, value in conditions.items()}
     held = w.offices_of(mid)
     orders = {}
     raw_orders = data.get("orders") if isinstance(data.get("orders"), dict) else {}
@@ -369,6 +386,21 @@ def motion_summary(w: World, mo: dict) -> str:
         return f"directive {s} = {v}"
     if t == "settle_arrears":
         return f"pay {v} of inherited unpaid bills using {s.replace('_', ' ')}"
+    if t == "disaster_relief":
+        payload = mo.get("action") if isinstance(mo.get("action"), dict) else {}
+        places = payload.get("regions") or ([payload["region"]] if payload.get("region") else [])
+        region_names = {region.id: region.name for region in w.regions}
+        place_text = ", ".join(region_names.get(str(x), str(x)) for x in places) if places else (s or "the affected area")
+        amount = payload.get("amount") or v or "unspecified amount"
+        scope = str(payload.get("scope") or "mixed")
+        plan = payload.get("funding_plan")
+        if isinstance(plan, list) and plan:
+            funding = " + ".join(f"{x.get('amount', '?')} from {str(x.get('source', 'unknown')).replace('_', ' ')}"
+                                  for x in plan if isinstance(x, dict))
+        else:
+            funding = str(payload.get("funding") or "unspecified funding").replace("_", " ")
+        engineers = ", with military engineers" if payload.get("military_engineers") else ""
+        return f"relief for {place_text}: {amount} ({scope}), funded by {funding}{engineers}"
     if t == "constitution":
         return f"constitution: {s} = {v}"
     if t == "amend":
@@ -376,11 +408,16 @@ def motion_summary(w: World, mo: dict) -> str:
     if t == "expel":
         return f"expel {w.member(s.upper()).name if s.upper() in {m.id for m in w.members} else s}"
     if t == "diplomacy":
-        who = {"union": "Union", "league": "Maritime League", "dorsania": "Dorsania"}.get(DIPLOMACY.get(s), "Maritime League")
-        amt = f" ({v} million)" if s == "loan" and v else ""
+        from .motion_actions import ACTOR_NAMES, structured_action
+        target = structured_action(w, mo).get("target")
+        who = {"SOLVARAN_UNION": f"the {w.names['union']}",
+               "MARITIME_LEAGUE": f"the {w.names['league']}",
+               "DORSANIA": w.names["dorsania"],
+               "VELERIA": w.names["veleria"]}.get(target, ACTOR_NAMES.get(target, "the Maritime League"))
+        amt = _loan_amount_summary(mo) if s == "loan" else ""
         if s == "diplomatic_protest":
-            return f"deliver a diplomatic protest to the {who}"
-        return f"propose {s.replace('_', ' ')}{amt} to the {who}"
+            return f"deliver a diplomatic protest to {who}"
+        return f"propose {s.replace('_', ' ')}{amt} to {who}"
     if t == "referendum":
         return "hold a referendum on independence this month"
     if t == "launch_currency":
@@ -390,6 +427,15 @@ def motion_summary(w: World, mo: dict) -> str:
         office = audits.office_of(s) or s
         return f"close the audit of the {office}" if audits.parse_action(v) == "close" else f"audit the {office}"
     return t
+
+
+def _loan_amount_summary(motion: dict) -> str:
+    """Render the numeric loan amount in the engine's canonical millions-of-gold unit."""
+    action = motion.get("action") if isinstance(motion.get("action"), dict) else {}
+    amount = parse_loan_amount(motion.get("value"))
+    if amount is None:
+        amount = parse_loan_amount(action.get("amount"))
+    return f" ({amount:g} million)" if amount is not None else ""
 
 
 CONSTITUTION_HELP = ", ".join(f"{k} ({'/'.join(v) if v else 'text' if k == 'regime_name' else 'month number or none'})"
@@ -495,8 +541,13 @@ def revision_schema(w: World, mid: str, motions: list, dm_left: int = DM_PER_PHA
                                        "reason": {"type": "string"},
                                        "replaced_by": {"type": "string", "enum": ids + ["none"]}}))
     if own:
-        props["amend"] = _arr(_obj({"motion_id": {"type": "string", "enum": own}, "value": {"type": "string"},
-                                    "text": {"type": "string"}}), 1)
+        amend_props = {"motion_id": {"type": "string", "enum": own}, "value": {"type": "string"},
+                       "text": {"type": "string"}}
+        if any(m.get("type") == "program" and m.get("id") in own for m in motions):
+            # A program amendment replaces a package. Requiring the complete new measure list
+            # prevents the engine from executing cached measures from the original wording.
+            amend_props["measures"] = _arr(_obj({"lever": {"type": "string"}, "value": {"type": "string"}}))
+        props["amend"] = _arr(_obj(amend_props), 1)
     props["communications"] = _comm_schema(w, mid, others)
     share = _share_schema(w, mid, others)
     if share:
@@ -518,11 +569,14 @@ def decision_schema_v2(w: World, mid: str, motion_ids: list, election_pending: b
         props["vote_conditions"] = _arr(_obj({
             "motion_id": {"type": "string", "enum": motion_ids},
             "kind": {"type": "string", "enum": ["metric", "motion"]},
-            "metric": {"type": "string", "enum": list(METRICS)},
-            "operator": {"type": "string", "enum": [">=", "<="]},
+            # Structured-output providers require every object property even when a field only
+            # applies to one condition kind. Make the unused branch explicit instead of forcing
+            # models to invent a metric for motion dependencies (or another motion for metrics).
+            "metric": {"type": "string", "enum": [*METRICS, "none"]},
+            "operator": {"type": "string", "enum": [">=", "<=", "none"]},
             "value": {"type": "number"},
             "other_motion": {"type": "string", "enum": motion_ids + ["none"]},
-            "other_outcome": {"type": "string", "enum": ["passes", "fails"]},
+            "other_outcome": {"type": "string", "enum": ["passes", "fails", "none"]},
             "if_unmet": {"type": "string", "enum": ["no", "abstain"]}}))
     held = w.offices_of(mid)
     orders = {o: _obj({lv: _lever_schema(lv) for lv in _office_levers(o)}) for o in held if o != "head"}
@@ -570,12 +624,32 @@ def _comms(raw, problems: list) -> list:
         if not isinstance(item, dict) or len(out) >= 2:
             continue
         kind = str(item.get("kind", "")).strip().lower()
+        # Some models put report sharing in communications despite the dedicated field.
+        # It is migrated below instead of reported as an unknown communication kind.
+        if kind == "share_reports":
+            continue
         if kind not in COMM_KINDS:
             problems.append(f"unknown communication kind '{kind}'")
             continue
         out.append({"kind": kind, "target": str(item.get("target", "public")).strip(),
                     "about": words(item.get("about", ""), 40)})
     return out
+
+
+def _legacy_report_shares(w, mid: str, raw) -> list:
+    """Recover report IDs placed in a share_reports communication item."""
+    from .intelligence import own_report_ids
+    known = own_report_ids(w, mid)
+    out = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict) or str(item.get("kind", "")).strip().lower() != "share_reports":
+            continue
+        description = " ".join(str(item.get(k, "")) for k in ("target", "about", "text", "message"))
+        target = str(item.get("target", "council")).strip()
+        recipient = "council" if target.casefold() in ("", "public", "council", "full council") else target.upper()
+        matched = [rid for rid in known if rid.casefold() in description.casefold()]
+        out.extend({"report_id": rid, "with": recipient} for rid in matched)
+    return out[:3]
 
 
 def normalize_motion_v2(w: World, raw: dict) -> dict:
@@ -586,12 +660,35 @@ def normalize_motion_v2(w: World, raw: dict) -> dict:
     and be sent somewhere else by a stale `subject`. Binding execution `conditions` ride along
     untouched; the gate tests them against canonical state before any mutation.
     """
+    # The session parser filters non-object entries first; keep the standalone parser safe too.
+    if not isinstance(raw, dict):
+        raw = {}
     from .motion_actions import motion_conditions as _derive_conditions
-    mo = {"type": str(raw.get("type", "")).strip(),
+    motion_type = str(raw.get("type", "")).strip()
+    if motion_type.lower() == "audit":
+        motion_type = "investigation"
+    mo = {"type": motion_type,
           "subject": canonical_lever(patronage_subject(raw.get("subject", ""))),
           "value": str(raw.get("value", "")).strip(),
           "text": words(raw.get("text", ""), 120),
           "action": _explicit_action(w, raw.get("action"))}
+    # Resolve the words a delegate used for an office, a foreign act, or a settlement source to the
+    # engine's own id at intake, so the record, the vote and the executed act all name the same
+    # target. Ambiguous phrases are left as written and rejected later, never guessed.
+    if mo["type"] in ("assign_office", "vacate_office"):
+        mo["subject"] = canonical_office(mo["subject"])
+    elif mo["type"] == "diplomacy":
+        mo["subject"] = canonical_diplomacy_subject(mo["subject"])
+        if mo["subject"] == "loan":
+            amount = parse_loan_amount(mo["value"])
+            if amount is None:
+                amount = parse_loan_amount(mo["action"].get("amount"))
+            if amount is not None:
+                mo["value"] = format(amount, ".12g")
+    elif mo["type"] == "settle_arrears":
+        mo["subject"] = canonical_funding(mo["subject"])
+    if mo["type"] == "disaster_relief":
+        _infer_relief_action(w, mo)
     if mo["type"] == "investigation":
         # 'navy procurement' names the navy; an empty value is an order to open it.
         from . import audits
@@ -652,7 +749,78 @@ def _explicit_action(w, raw) -> dict:
               "issue": words(raw.get("issue", ""), 20),
               "terms": [words(x, 20) for x in (raw.get("terms") or raw.get("demands") or [])
                         if isinstance(x, str) and words(x, 20)][:4]}
-    return {k: v for k, v in action.items() if v}
+    for key in ("deal_action", "region", "amount", "funding", "funding_plan", "scope",
+                "military_engineers", "regions", "measures"):
+        if key in raw:
+            value = raw[key]
+            if key == "regions" and isinstance(value, list):
+                value = list(dict.fromkeys(x for x in value if isinstance(x, str)))
+            action[key] = value
+    return {k: v for k, v in action.items() if v not in ("", None, [], {})}
+
+
+def _infer_relief_action(w: World, motion: dict) -> None:
+    """Fill relief fields only when the motion names an unambiguous executable choice."""
+    from .politics import RELIEF_FUNDING, _regions_of
+    action = motion["action"]
+    text = " ".join((str(motion.get("subject", "")), str(motion.get("text", ""))))
+    if not action.get("region") and not action.get("regions"):
+        regions = _regions_of(w, text)
+        if regions:
+            ids = [region.id for region in regions]
+            if len(ids) == 1:
+                action["region"] = ids[0]
+            else:
+                action["regions"] = ids
+    if not action.get("amount") and not motion.get("value"):
+        units = r"(m|mn|million|bn|billion|k|thousand)"
+        labeled = re.search(r"\b(?:total\s+(?:package\s+)?|package\s+total\s+|up\s+to\s+|about\s+|"
+                            r"target(?:ing)?(?:\s+about)?\s+|budget(?:\s+of)?\s+|amount(?:\s+of)?\s+)"
+                            r"(\d[\d,]*(?:\.\d+)?)\s*" + units + r"\b", text, re.I)
+        amounts = re.findall(r"\b(\d[\d,]*(?:\.\d+)?)\s*" + units + r"\b", text, re.I)
+        if labeled:
+            action["amount"] = labeled.group(1) + labeled.group(2)
+        elif len({(value.replace(",", ""), unit.lower()) for value, unit in amounts}) == 1:
+            value, unit = amounts[0]
+            action["amount"] = value + unit
+    if not action.get("funding") and not action.get("funding_plan"):
+        source_patterns = {"foreign credit": "foreign_credit", "credit line": "foreign_credit",
+                           "reallocation": "reallocation", "bond": "bonds", "reserve": "reserves"}
+        allocation_pattern = re.compile(
+            r"\b(?P<amount>\d[\d,]*(?:\.\d+)?\s*(?:m|mn|million|bn|billion|k|thousand))"
+            r"\s*(?:gold\s*)?(?:from\s+)?(?P<source>foreign\s+credit|credit\s+line|"
+            r"reallocation|bonds?|reserves?)\b", re.I)
+        allocations = []
+        for match in allocation_pattern.finditer(text):
+            source_text = re.sub(r"\s+", " ", match.group("source").lower())
+            source = next((canonical for pattern, canonical in source_patterns.items()
+                           if source_text.startswith(pattern)), None)
+            if source:
+                allocations.append({"source": source, "amount": re.sub(r"\s+", "", match.group("amount"))})
+        if len(allocations) > 1:
+            action["funding_plan"] = allocations
+    if not action.get("funding") and not action.get("funding_plan"):
+        funding_terms = {"foreign_credit": ("foreign credit", "credit line", "foreign_credit"),
+                         "reallocation": ("reallocation", "reallocated"),
+                         "reserves": ("reserves", "reserve drawdown"),
+                         "bonds": ("bonds", "bond issue", "bond issuance")}
+        matches = [choice for choice in RELIEF_FUNDING
+                   if any(re.search(r"\b" + re.escape(term) + r"\b", text, re.I)
+                          for term in funding_terms[choice])]
+        if len(matches) == 1:
+            action["funding"] = matches[0]
+    if not action.get("scope"):
+        scope_terms = {"ports": ("port", "harbour", "harbor"), "roads": ("road",),
+                       "fields": ("field", "farm", "harvest"), "housing": ("housing", "homes"),
+                       "food": ("food", "grain")}
+        matches = [choice for choice, terms in scope_terms.items()
+                   if any(re.search(r"\b" + re.escape(term) + r"\w*\b", text, re.I) for term in terms)]
+        if len(matches) == 1:
+            action["scope"] = matches[0]
+        elif len(matches) > 1 or re.search(r"\bmixed\b", text, re.I):
+            action["scope"] = "mixed"
+    if "military_engineers" not in action and re.search(r"\bengineers?\b", text, re.I):
+        action["military_engineers"] = True
 
 
 def _shares(raw) -> list:
@@ -681,7 +849,8 @@ def normalize_session_v2(w: World, mid: str, data, dm_quota: int) -> tuple:
     base["communications"] = _comms(data.get("communications"), problems)
     base["information_requests"] = [{"topic": str(x.get("topic", "")), "motion_id": str(x.get("motion_id", ""))}
                                     for x in (data.get("information_requests") or []) if isinstance(x, dict)][:2]
-    base["share_reports"] = _shares(data.get("share_reports"))
+    base["share_reports"] = (_shares(data.get("share_reports"))
+                             + _legacy_report_shares(w, mid, data.get("communications")))[:3]
     from .deliberation import TOPICS
     base["agenda_priorities"] = [x for x in (data.get("agenda_priorities") or []) if x in TOPICS][:4] \
         if "head" in w.offices_of(mid) else []
@@ -729,8 +898,12 @@ def normalize_revision(w: World, mid: str, data, motions: list, dm_quota: int) -
                        for x in (data.get("demands") or []) if isinstance(x, dict) and x.get("motion_id") in ids
                        and words(x.get("demand", ""), 30)][:2],
            "withdraw": _withdrawals(data.get("withdraw"), own | sponsored_ids, ids),
-           "amend": [{"motion_id": x.get("motion_id"), "value": str(x.get("value", "")).strip(),
-                      "text": words(x.get("text", ""), 120)}
+            "amend": [{"motion_id": x.get("motion_id"), "value": str(x.get("value", "")).strip(),
+                       "text": words(x.get("text", ""), 120),
+                       **({"measures": [{"lever": str(m.get("lever", "")),
+                                         "value": str(m.get("value", ""))}
+                                        for m in x.get("measures", []) if isinstance(m, dict)]}
+                          if isinstance(x.get("measures"), list) else {})}
                      for x in (data.get("amend") or []) if isinstance(x, dict) and x.get("motion_id") in own][:1],
            "communications": _comms(data.get("communications"), problems)[:1],
            "share_reports": _shares(data.get("share_reports")),
@@ -762,9 +935,10 @@ def normalize_decision_v2(w: World, mid: str, data, motion_ids: list, dm_quota: 
             if other not in motion_ids or other == motion_id:
                 problems.append(f"invalid motion condition for {motion_id}")
                 continue
-            conditions[motion_id] = {"kind": "motion", "other_motion": other,
-                                     "other_outcome": item.get("other_outcome") if item.get("other_outcome") in ("passes", "fails") else "passes",
-                                     "if_unmet": if_unmet}
+            condition = {"kind": "motion", "other_motion": other,
+                         "other_outcome": item.get("other_outcome") if item.get("other_outcome") in ("passes", "fails") else "passes",
+                         "if_unmet": if_unmet}
+            conditions.setdefault(motion_id, []).append(condition)
             continue
         metric, operator = item.get("metric"), item.get("operator")
         try:
@@ -775,11 +949,15 @@ def normalize_decision_v2(w: World, mid: str, data, motion_ids: list, dm_quota: 
         if metric not in METRICS or operator not in (">=", "<=") or not -1e12 <= value <= 1e12:
             problems.append(f"invalid vote condition for {motion_id}")
             continue
-        conditions[motion_id] = {"kind": "metric", "metric": metric, "operator": operator, "value": value,
-                                 "if_unmet": if_unmet}
+        from .motion_actions import canonical_metric_value
+        value = canonical_metric_value(metric, value)
+        condition = {"kind": "metric", "metric": metric, "operator": operator, "value": value,
+                     "if_unmet": if_unmet}
+        conditions.setdefault(motion_id, []).append(condition)
     for i in motion_ids:
         if base["votes"].get(i) == "conditional" and i not in conditions:
             problems.append(f"conditional vote missing valid condition for {i}")
+    conditions = {key: value[0] if len(value) == 1 else value for key, value in conditions.items()}
     base["vote_conditions"] = conditions
     raw_ops = data.get("operations") if isinstance(data.get("operations"), dict) else {}
     base["operations"] = {o: v for o, v in raw_ops.items() if o in w.offices_of(mid) and isinstance(v, dict)}

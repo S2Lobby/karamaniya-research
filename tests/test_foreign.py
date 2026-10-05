@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from karamaniya import briefing, director, economy, foreign  # noqa: E402
+from karamaniya import briefing, director, economy, foreign, politics  # noqa: E402
 from karamaniya.world import World, new_world  # noqa: E402
 
 
@@ -72,6 +72,41 @@ class ForeignActors(unittest.TestCase):
         self.assertNotIn("accepts a", head_annex)
         self.assertNotIn("accepts a", briefing.public(w))
 
+    def test_bilateral_trade_and_economic_bonus_share_the_inclusive_expiry_month(self):
+        with_trade = self.world()
+        with_trade.region("dorran").controller = "karamaniya"
+        with_trade.counters["dorsania_trade"] = 1.0
+        with_trade.counters["dorsania_trade_until"] = with_trade.month
+        without_trade = World.from_dict(with_trade.to_dict())
+        without_trade.counters["dorsania_trade"] = 0.0
+
+        self.assertTrue(foreign._bilateral_trade_open(with_trade))
+        food_with_trade = economy.trade_and_food(with_trade, economy.produce(with_trade))["food_dors"]
+        food_without_trade = economy.trade_and_food(without_trade, economy.produce(without_trade))["food_dors"]
+        self.assertAlmostEqual(food_with_trade - food_without_trade,
+                               .14e6 * with_trade.econ.food_import_capacity)
+
+        with_trade.month += 1
+        self.assertFalse(foreign._bilateral_trade_open(with_trade))
+
+    def test_grain_agreement_duration_is_exact_and_renewal_extends_the_end_date(self):
+        w = self.world()
+        foreign.prepare(w)
+        pressure = w.foreign["actors"]["dorsania"]["political_pressures"]["exporter_opposition"]
+        duration = 6 if pressure < .55 else 9
+
+        foreign.dorsania_reply(w, "grain_deal")
+        original_until = int(w.counters["dorsania_trade_until"])
+        self.assertEqual(original_until, w.month + duration - 1)
+        w.month = original_until
+        self.assertTrue(foreign._bilateral_trade_open(w))
+
+        foreign.dorsania_reply(w, "grain_deal")
+        renewed_until = int(w.counters["dorsania_trade_until"])
+        self.assertEqual(renewed_until, original_until + duration)
+        w.month = renewed_until + 1
+        self.assertFalse(foreign._bilateral_trade_open(w))
+
     def test_market_embargo_effect_includes_enforcement_and_leakage(self):
         w = self.world()
         w.dip.grain_embargo = .8
@@ -124,6 +159,92 @@ class ForeignActors(unittest.TestCase):
         director._league_reply(w2, "loan", 100)
         self.assertEqual(w2.dip.league_loan_pending, 0)
         self.assertIn("declines", w2.dip.private_inbox[-1]["text"])
+
+    def test_frozen_undisbursed_loan_releases_reserved_exposure(self):
+        w = self.world()
+        w.set_league_trust(.55)
+        w.econ.deficit = .20 * w.econ.gdp_nominal
+        w.policy.debt_service = "pay"
+
+        director._league_reply(w, "loan", 100)
+        self.assertGreater(w.dip.league_loan_pending, 0)
+        self.assertEqual(w.foreign["league"]["loan"]["principal"], 0)
+        self.assertGreater(w.foreign["league"]["financial_exposure"], 0)
+
+        foreign.league_month(w)
+
+        self.assertEqual(w.dip.league_loan_pending, 0)
+        self.assertEqual(w.foreign["league"]["loan"]["principal"], 0)
+        self.assertEqual(w.foreign["league"]["financial_exposure"], 0)
+
+    def test_league_trust_actions_survive_monthly_smoothing(self):
+        cases = (
+            ("protest", .02, lambda w: director._protest_reply(w, "league")),
+            ("renounce", -.2, lambda w: (setattr(w.dip, "league_alliance", True),
+                                          director._renounce(w, "league"))),
+            ("aggression", -.3, lambda w: (setattr(w.policy, "posture", "attack"),
+                                            director._karamanian_aggression(w))),
+        )
+        for name, adjustment, apply_action in cases:
+            with self.subTest(action=name):
+                w = self.world()
+                w.set_league_trust(.65)
+                baseline = World.from_dict(w.to_dict())
+
+                apply_action(w)
+
+                self.assertAlmostEqual(w.dip.league_trust,
+                                       w.foreign["league"]["trust_in_karamaniya"])
+                foreign.league_month(w)
+                foreign.league_month(baseline)
+                self.assertAlmostEqual(w.dip.league_trust - baseline.dip.league_trust,
+                                       round(.88 * adjustment, 3), places=3)
+                self.assertEqual(w.dip.league_trust,
+                                 w.foreign["league"]["trust_in_karamaniya"])
+
+    def test_internment_clamps_league_trust_and_monthly_recovery_remains_smooth(self):
+        w = self.world()
+        w.set_league_trust(.1)
+
+        politics.apply_motion(w, {"type": "constitution", "subject": "minority",
+                                  "value": "interned", "text": "intern the minority",
+                                  "proposer": "A"})
+
+        self.assertEqual(w.dip.league_trust, 0.0)
+        self.assertEqual(w.foreign["league"]["trust_in_karamaniya"], 0.0)
+
+        foreign.league_month(w)
+
+        self.assertAlmostEqual(w.dip.league_trust, .039)
+        self.assertEqual(w.dip.league_trust, w.foreign["league"]["trust_in_karamaniya"])
+
+    def test_terminal_union_outcomes_stop_external_preparation_and_aggression(self):
+        for kind in ("join_union", "federation"):
+            with self.subTest(proposal=kind):
+                w = self.world()
+                w.policy.posture = "attack"
+                if kind == "federation":
+                    w.dip.union_weariness = .5  # The Union accepts when it is weary.
+                w.dip.proposals.append({"kind": kind, "party": "union"})
+                intelligence_before = {
+                    actor_id: len(actor["intelligence"])
+                    for actor_id, actor in w.foreign["actors"].items()
+                }
+                league_history_before = len(w.foreign["league"]["history"])
+                gdp_before = {actor_id: rival.gdp_real for actor_id, rival in w.rivals.items()}
+
+                director.act(w)
+
+                self.assertTrue(w.ended())
+                self.assertFalse(w.dip.war)
+                self.assertEqual(
+                    {actor_id: len(actor["intelligence"])
+                     for actor_id, actor in w.foreign["actors"].items()},
+                    intelligence_before,
+                )
+                self.assertEqual(len(w.foreign["league"]["history"]), league_history_before)
+                self.assertEqual({actor_id: rival.gdp_real for actor_id, rival in w.rivals.items()},
+                                 gdp_before)
 
 
 if __name__ == "__main__":

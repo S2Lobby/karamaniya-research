@@ -164,9 +164,19 @@ class WhatTheFundDoes(unittest.TestCase):
         w.policy.regional_fund = "kessel"
         for _ in range(60):
             regional.effects(w, lambda *a: None)
+        self.assertAlmostEqual(w.institutions["regional"]["industry_gain"]["kessel"],
+                               regional.FUND_INDUSTRY_CAP)
+
+    def test_a_partially_paid_fund_cannot_overshoot_the_industry_cap(self):
+        w = world()
+        w.policy.regional_fund = "kessel"
+        w.econ.paid_share = 0.73
+        for _ in range(60):
+            regional.effects(w, lambda *a: None)
         self.assertLessEqual(w.institutions["regional"]["industry_gain"]["kessel"],
-                             regional.FUND_INDUSTRY_CAP + regional.FUND_INDUSTRY_STEP)
-        self.assertGreater(w.institutions["regional"]["industry_gain"]["kessel"], regional.FUND_INDUSTRY_CAP - .01)
+                             regional.FUND_INDUSTRY_CAP)
+        self.assertAlmostEqual(w.institutions["regional"]["industry_gain"]["kessel"],
+                               regional.FUND_INDUSTRY_CAP)
 
     def test_it_costs_a_share_of_output_per_region_and_costing_says_so(self):
         base = run(months=1)

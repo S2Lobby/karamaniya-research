@@ -95,6 +95,22 @@ class ContestedReports(unittest.TestCase):
         self.assertIn(police["id"], [r["id"] for r in intelligence.reports_for(w, "C")])
         self.assertIn(police["text"], intelligence.office_context(w, "C"))
 
+    def test_a_council_share_and_private_reshare_count_as_one_belief_evidence_item(self):
+        w = world()
+        report = next(r for r in intelligence.generate(w)
+                      if r["office"] == "interior" and r.get("proposition"))
+
+        council_share = intelligence.share(
+            w, "C", [{"report_id": report["id"], "with": "council"}], "session")
+        private_share = intelligence.share(
+            w, "C", [{"report_id": report["id"], "with": "E"}], "revision")
+        self.assertEqual(len(council_share), 1)
+        self.assertEqual(len(private_share), 1)
+
+        _, shared = intelligence.office_evidence(w)
+        recipient_evidence = [e for e in shared["E"] if report["id"] in e["id"]]
+        self.assertEqual(len(recipient_evidence), 1)
+        self.assertEqual(recipient_evidence[0]["source"], "shared")
 
 class GroundingAcceptsWhatWasShown(unittest.TestCase):
     INTERIOR = ("PRIVATE OFFICE INFORMATION\n- [R4-INT1] Interior field reports (police district returns): national "

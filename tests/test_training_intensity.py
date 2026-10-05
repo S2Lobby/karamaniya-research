@@ -61,6 +61,7 @@ class Aliases(unittest.TestCase):
     def test_the_name_agents_actually_used_resolves(self):
         self.assertEqual(politics.canonical_lever("army_training_focus"), "training_intensity")
         self.assertEqual(politics.canonical_lever("army training focus"), "training_intensity")
+        self.assertEqual(politics.canonical_lever("army_training_intensity"), "training_intensity")
 
     def test_recruitment_phrasings_resolve_to_the_existing_lever(self):
         self.assertEqual(politics.canonical_lever("army_recruitment_focus"), "recruitment")
@@ -152,19 +153,22 @@ class AVotingCouncilCanDirectIt(unittest.TestCase):
     def test_a_directive_on_training_intensity_is_accepted(self):
         w = new_world(9, 6)
         w.const.offices["army"] = "A"
-        motion = {"type": "set_policy", "subject": "training_intensity", "value": "intense"}
+        motion = {"type": "set_policy", "subject": "training_intensity", "value": "intense",
+                  "text": "Set army training intensity to intense."}
         self.assertIsNone(politics.validate_motion_detail(w, motion))
 
     def test_the_aliased_name_also_produces_a_valid_motion(self):
         w = new_world(9, 6)
         w.const.offices["army"] = "A"
-        motion = {"type": "set_policy", "subject": "army_training_focus", "value": "intense"}
+        motion = {"type": "set_policy", "subject": "army_training_focus", "value": "intense",
+                  "text": "Set army training focus to intense."}
         self.assertIsNone(politics.validate_motion_detail(w, motion))
 
     def test_an_invalid_setting_is_rejected_with_the_allowed_values(self):
         w = new_world(9, 6)
         w.const.offices["army"] = "A"
-        motion = {"type": "set_policy", "subject": "training_intensity", "value": "maximum"}
+        motion = {"type": "set_policy", "subject": "training_intensity", "value": "maximum",
+                  "text": "Set army training intensity to maximum."}
         result = politics.validate_motion_detail(w, motion)
         self.assertIsNotNone(result)
         self.assertEqual(result["reason_code"], "BAD_VALUE")

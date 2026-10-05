@@ -261,7 +261,7 @@ def _consequences(w: World, audit: dict, report: dict) -> None:
         if force is not None:
             force.bond = max(0.0, force.bond * .85)
             force.morale = clamp(force.morale - .01)
-        w.dip.league_trust = clamp(w.dip.league_trust + .02)
+        w.adjust_league_trust(.02)
         if target:
             for mid in active_ids - {target}:
                 _relate(w, mid, target, trust=-3)
@@ -289,10 +289,14 @@ def text(w: World) -> str:
     s = state(w)
     lines = []
     if s["open"]:
-        lines.append("Investigations under way: " + "; ".join(
-            f"an audit of the {OFFICE_TITLES[a['office']]}, ordered in Month {a['opened'] + 1} by "
-            f"{w.member(a['by']).name}, reports after Month {a['due'] + 1} (the office is under strain meanwhile)"
-            for a in s["open"]) + ".")
+        descriptions = []
+        for audit in s["open"]:
+            initiator = next((member for member in w.members if member.id == audit.get("by")), None)
+            ordered_by = initiator.name if initiator else "the council"
+            descriptions.append(
+                f"an audit of the {OFFICE_TITLES[audit['office']]}, ordered in Month {audit['opened'] + 1} by "
+                f"{ordered_by}, reports after Month {audit['due'] + 1} (the office is under strain meanwhile)")
+        lines.append("Investigations under way: " + "; ".join(descriptions) + ".")
     recent = [r for r in s["done"] if w.month - r["month"] <= 3]
     if recent:
         lines.append("Audit findings (public; auditors can be wrong or unable to say): "

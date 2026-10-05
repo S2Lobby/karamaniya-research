@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from karamaniya import actions, audits, decision_context, deliberation, dilemmas, engine, politics, prompts, standing  # noqa: E402
+from karamaniya import actions, audits, decision_context, deliberation, dilemmas, engine, intelligence, politics, prompts, standing  # noqa: E402
 from karamaniya.world import new_world  # noqa: E402
 from tests.test_orders_vs_directives import resolve, world  # noqa: E402
 
@@ -83,6 +83,12 @@ class Naming(unittest.TestCase):
         self.assertEqual((mo["type"], mo["subject"], mo["value"]), ("investigation", "navy", "open"))
         self.assertEqual(actions.motion_summary(w, mo), "audit the navy")
         self.assertEqual(actions.motion_summary(w, {**mo, "value": "close"}), "close the audit of the navy")
+
+    def test_audit_is_accepted_as_the_investigation_motion_type(self):
+        w = world()
+        mo = actions.normalize_motion_v2(w, {"type": "audit", "subject": "Treasury", "value": "open"})
+        self.assertEqual((mo["type"], mo["subject"], mo["value"]), ("investigation", "treasury", "open"))
+        self.assertIsNone(politics.validate_motion_detail(w, mo))
 
     def test_the_type_is_in_the_second_architectures_schema_and_only_there(self):
         w = world()
@@ -193,6 +199,12 @@ class WhileItRuns(unittest.TestCase):
         self.assertIn("reports after 2 months", block)
         self.assertIn("army and navy equipment buying slows", block)
 
+    def test_an_audit_with_missing_initiator_does_not_break_the_briefing(self):
+        w = world()
+        audits.state(w)["open"].append({"id": "A1-army", "office": "army", "target": None,
+                                         "by": "", "opened": 0, "due": 1})
+        self.assertIn("ordered in Month 1 by the council", audits.text(w))
+
     def test_votes_on_it_are_read_by_the_audiences_the_office_answers_to(self):
         w = world()
         for office, tag in (("army", "audit_army"), ("navy", "audit_navy"), ("interior", "audit_interior"),
@@ -213,6 +225,32 @@ class WhileItRuns(unittest.TestCase):
 
 
 class WhatTheAuditorsFind(unittest.TestCase):
+    def test_audit_delivery_events_and_consequences_match_the_month_snapshot(self):
+        w = world()
+        hold(w, "army", corruption=.09)
+        real = audits.rng_for
+        audits.rng_for = lambda *_args: FixedRng(.99, .99)
+        try:
+            for _ in range(2):
+                intelligence.generate(w)
+                engine.begin_month(w)
+                engine.step(w)
+        finally:
+            audits.rng_for = real
+
+        report = audits.state(w)["done"][-1]
+        row = w.history[-1]
+        self.assertEqual(report["verdict"], "irregularities")
+        self.assertEqual(row["month"], report["month"])
+        self.assertTrue(any(event["kind"] == "audit_report" for event in row["events"]))
+        self.assertEqual(row["events"], w.last_events)
+        self.assertAlmostEqual(row["army_morale"], w.mil.army.morale)
+        self.assertAlmostEqual(row["army_bond"], w.mil.army.bond)
+        self.assertAlmostEqual(row["league_trust"], w.dip.league_trust)
+        self.assertEqual(row["outcome"], w.outcome)
+        self.assertTrue(any(x["month"] == row["month"] for x in row["v2"]["contested"]))
+        self.assertTrue(any(r["month"] == row["month"] for r in row["v2"]["audits"]["reports"]))
+
     def test_a_corrupt_office_is_found_out_and_cut_back(self):
         w = world()
         hold(w, "army", corruption=.09, votes={"E": "yes", "A": "yes"})

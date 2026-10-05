@@ -18,7 +18,8 @@ RELGRAPH = Path(__file__).with_name("relgraph.js")
 DEATH_KEYS = ("deaths_famine", "deaths_state_violence", "deaths_war_civilian", "deaths_internment",
               "deaths_coups", "soldiers_killed")
 HISTORY_KEYS = ("month", "approval", "indep", "unrest", "fear", "infl_yoy", "food_ratio", "gdp_idx",
-                "unemployment", "army", "union_army", "democracy", "war", "ceasefire", "blockade_eff",
+                "unemployment", "army", "army_mobilized", "army_mobilized_effective", "army_field_total",
+                "union_army", "democracy", "war", "ceasefire", "blockade_eff",
                 "currency", "regions", "nations", "offices", "members", "member_social", "constitution", "policy", "events",
                 "league_trust", "hunger", "population", "cpi", "region_detail", "fronts", "deploy", "garrison",
                 "union_intensity", "union_formed", "ultimatum", "arms_smuggling", "league", "police", "fort",
@@ -26,14 +27,50 @@ HISTORY_KEYS = ("month", "approval", "indep", "unrest", "fear", "infl_yoy", "foo
                 "propaganda", "rally", "by_ident", "food_stock", "gold", "energy", "fx", "real_wage", "army_morale",
                 "army_loyalty", "army_equipment", "union_weariness", "published_infl_a", "deficit_gdp",
                 "printed_gdp", "paid_share", "integrity", "hard_state", "geopolitics", "founding", "founding_divergence",
-                "v2", "agent_architecture_version")
+                "v2", "agent_architecture_version", "engine_source_fingerprint")
+
+
+def engine_source_groups(rows: list) -> list:
+    """Group recorded source fingerprints by the months that used them."""
+    grouped = {}
+    for row in rows:
+        fingerprint = row.get("engine_source_fingerprint")
+        if not fingerprint:
+            continue
+        grouped.setdefault(fingerprint, []).append(row.get("month"))
+    return [{"fingerprint": fingerprint, "months": months} for fingerprint, months in grouped.items()]
+
+
+def engine_source_unrecorded_months(rows: list) -> list:
+    """List history months without a fingerprint; never fill these from the current code."""
+    return [row.get("month") for row in rows if not row.get("engine_source_fingerprint")]
 
 
 def history_rows(w: dict, start: int = 0) -> list:
     """The month-by-month rows the report and the live map read."""
     rows = []
+    capitals = {r.get("id") for r in w.get("regions", []) if r.get("capital")}
     for h in w["history"][start:]:
         row = {k: h.get(k) for k in HISTORY_KEYS}
+        # Older checkpoints do not have mobilization fields. Keep their standing
+        # army as the only known field-strength value instead of plotting zero.
+        if row["army_field_total"] is None:
+            row["army_field_total"] = (row.get("army") or 0) + (row.get("army_mobilized_effective") or 0)
+        # Currency was crown before karam was introduced; old histories may not
+        # have recorded the field at all.
+        if not row.get("currency"):
+            row["currency"] = "crown"
+        # Front counts in the saved snapshot contain standing troops. Combat also
+        # uses the effective share of called-up reserves assigned to each front.
+        reserve_strength = row.get("army_mobilized_effective") or 0
+        deploy = row.get("deploy") or {}
+        row["fronts"] = {
+            front: ({**details, "ours_effective": round(
+                (details.get("ours") or 0) + reserve_strength * (
+                    (deploy.get(front) or 0) + ((deploy.get("capital") or 0) if details.get("region") in capitals else 0)
+                ))} if reserve_strength and isinstance(details, dict) else dict(details))
+            for front, details in (row.get("fronts") or {}).items() if isinstance(details, dict)
+        }
         row["deaths_total"] = sum(h.get("counters", {}).get(k, 0.0) for k in DEATH_KEYS)
         row["events"] = [{k: e.get(k) for k in ("kind", "text", "public", "importance")} for e in h.get("events", [])]
         rows.append(row)
@@ -63,7 +100,8 @@ def report_data(store: RunStore) -> dict:
     raw_months = store.read_log("month")
     months = []
     for rec in raw_months:
-        months.append({k: rec.get(k) for k in ("month", "order", "statements", "motions", "coups", "defiance", "social",
+        months.append({k: rec.get(k) for k in ("month", "order", "statements", "motions", "coups", "defiance", "compliance",
+                                               "compliance_restored", "social",
                                                "resigned", "decisions", "calls", "outcome", "pre_positions",
                                                "commitments_added", "agent_architecture_version", "integrity", "foreign_calls",
                                                "founding_state", "founding_diagnoses", "founding_divergence", "agenda_slots",
@@ -106,6 +144,8 @@ def report_data(store: RunStore) -> dict:
         "names": w["names"], "mapping": cfg["mapping"], "outcome": w.get("outcome", {}),
         "stopped": ck.get("meta", {}).get("stopped", ""),
         "regions": regions, "geo": build_map(regions), "history": history, "months": months,
+        "engine_source_fingerprints": engine_source_groups(history),
+        "engine_source_unrecorded_months": engine_source_unrecorded_months(history),
         "dms": [{k: d.get(k) for k in ("month", "from", "to", "when", "text", "kind", "phase")} for d in store.read_log("dm")],
         "intercepts": [{k: d.get(k) for k in ("month", "by", "from", "to", "text")} for d in store.read_log("intercept")],
         "geopolitics": geopolitics, "scorecard": card, "start_policy": asdict(Policy()),

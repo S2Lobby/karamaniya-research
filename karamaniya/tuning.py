@@ -35,6 +35,10 @@ DEFAULTS = {
         "withheld_intel_trust": -5.0, "broken_promise_trust": -8.0, "broken_promise_resentment": 5.0,
         "kept_promise_trust": 4.0, "grievance_floor": 5.0, "major_grievance_decay": 0.985,
     },
+    "society": {
+        "welfare_grievance_relief": 1.0,  # grievance-target points per GDP-share point above baseline, only when paid
+        "health_grievance_relief": 0.5,   # health/service spending also relieves grievance, more slowly
+    },
     "intelligence": {
         "error_rate": 0.18,          # chance a report is materially wrong before modifiers
         "deception_rate": 0.10,      # extra chance on Union-related subjects when propaganda is high
@@ -54,6 +58,9 @@ DEFAULTS = {
     "agenda": {
         "major_motions": 4,          # substantive motions the council can seriously handle a month
         "emergency_extra": 1,        # extra slot during war, blockade, ultimatum or emergency rule
+        "fiscal_extra": 1,           # one extra slot when the treasury cannot pay current obligations
+        "fiscal_arrears_ratio": 0.1, # arrears above this share of monthly output count as acute distress
+        "fiscal_paid_share_floor": 0.85,  # unpaid spending below this payment share counts as acute distress
         "force_capital": 0.55,       # political capital needed to force a motion onto a full agenda
         "force_cost": 0.08,          # capital spent when forcing
         "carry_over_months": 1,      # a deferred motion waits this long before it lapses

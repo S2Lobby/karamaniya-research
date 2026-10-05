@@ -463,9 +463,19 @@ def _action_tags(record: dict, mid: str) -> set[str]:
     return tags
 
 
-def _change(rel: dict, **deltas) -> None:
+def _change(rel: dict, *, month: int | None = None, reason: str | None = None, **deltas) -> None:
+    changes = {}
     for key, delta in deltas.items():
-        rel[key] = round(clamp(float(rel.get(key, 50)) + delta, 0, 100), 1)
+        before = round(float(rel.get(key, 50 if key in ("trust", "respect", "perceived_reliability") else 0)), 1)
+        after = round(clamp(before + delta, 0, 100), 1)
+        rel[key] = after
+        if after != before:
+            changes[key] = {"from": before, "to": after, "delta": round(after - before, 1)}
+    if changes:
+        events = rel.setdefault("events", [])
+        events.append({"month": month, "reason": reason or "unspecified: caller did not provide a cause",
+                       "changes": changes})
+        del events[:-80]
 
 
 def _grievance(w: World, holder: str, against: str, reason: str, strength: float = 20,
@@ -508,7 +518,8 @@ def _consequences(w: World, record: dict) -> None:
                     if other.id != m.id and item.get("to") in ("public", other.id):
                         rel = other.relationships.get(m.id)
                         if rel:
-                            _change(rel, trust=-5, resentment=4, perceived_reliability=-8)
+                            _change(rel, month=w.month, reason="promise broken", trust=-5, resentment=4,
+                                    perceived_reliability=-8)
                         _grievance(w, other.id, m.id, "a promise to me or the public was broken", 22)
                 w.event("promise_broken", f"{m.name} acted against a recorded political commitment.",
                         importance=2, member=m.id, promise_id=item["id"], tags=sorted(actions))
@@ -516,7 +527,8 @@ def _consequences(w: World, record: dict) -> None:
                 m.clout = clamp(m.clout - item.get("reputational_cost", 50) / 1000, 0, 1)
                 for other in w.members:
                     if other.id != m.id and other.relationships.get(m.id):
-                        _change(other.relationships[m.id], trust=-2, resentment=2, perceived_reliability=-3)
+                        _change(other.relationships[m.id], month=w.month, reason="declared principle violated",
+                                trust=-2, resentment=2, perceived_reliability=-3)
                 w.event("principle_violation", f"{m.name} acted against a previously declared principle.",
                         importance=2, member=m.id, commitment_id=item["id"], tags=sorted(actions))
 
@@ -524,8 +536,9 @@ def _consequences(w: World, record: dict) -> None:
 def _relationships(w: World, record: dict) -> None:
     for m in w.members:
         for rel in m.relationships.values():
-            rel["resentment"] = round(max(0, rel.get("resentment", 0) * .985), 1)
-            rel["fear"] = round(max(0, rel.get("fear", 0) * .99), 1)
+            _change(rel, month=w.month, reason="monthly relationship decay",
+                    resentment=rel.get("resentment", 0) * .985 - rel.get("resentment", 0),
+                    fear=rel.get("fear", 0) * .99 - rel.get("fear", 0))
     for mo in record.get("motions", []):
         if mo.get("void"):
             continue
@@ -537,33 +550,42 @@ def _relationships(w: World, record: dict) -> None:
                 continue
             if va == vb:
                 gain = .8 if contested else .08
-                _change(w.member(a).relationships[b], trust=gain, respect=gain / 2,
+                _change(w.member(a).relationships[b], month=w.month, reason="voted with colleague on motion " + str(mo.get("id", "")),
+                        trust=gain, respect=gain / 2,
                         ideological_affinity=gain * .18)
-                _change(w.member(b).relationships[a], trust=gain, respect=gain / 2,
+                _change(w.member(b).relationships[a], month=w.month, reason="voted with colleague on motion " + str(mo.get("id", "")),
+                        trust=gain, respect=gain / 2,
                         ideological_affinity=gain * .18)
             else:
-                _change(w.member(a).relationships[b], resentment=1, rivalry=.5)
-                _change(w.member(b).relationships[a], resentment=1, rivalry=.5)
+                _change(w.member(a).relationships[b], month=w.month, reason="voted against colleague on motion " + str(mo.get("id", "")),
+                        resentment=1, rivalry=.5)
+                _change(w.member(b).relationships[a], month=w.month, reason="voted against colleague on motion " + str(mo.get("id", "")),
+                        resentment=1, rivalry=.5)
         proposer = mo.get("proposer")
         if mo.get("passed") and proposer in votes:
             for voter, vote in votes.items():
                 if voter != proposer and vote == "yes":
                     gain = 1.5 if contested else .15
-                    _change(w.member(voter).relationships[proposer], trust=gain, respect=gain / 3,
+                    _change(w.member(voter).relationships[proposer], month=w.month,
+                            reason="supported colleague's passed motion " + str(mo.get("id", "")),
+                            trust=gain, respect=gain / 3,
                             perceived_reliability=gain / 3)
     for item in record.get("defiance", []):
         mid = item.get("member")
         if mid in {m.id for m in w.members}:
             for other in w.members:
                 if other.id != mid:
-                    _change(other.relationships[mid], trust=-1.2, respect=-.6,
+                    _change(other.relationships[mid], month=w.month, reason="colleague defied a council directive",
+                            trust=-1.2, respect=-.6,
                             resentment=1, perceived_reliability=-1.5)
     for coup in record.get("coups", []):
         mid = coup.get("leader")
         if mid in {m.id for m in w.members}:
             for other in w.members:
                 if other.id != mid:
-                    _change(other.relationships[mid], fear=10 if coup.get("success") else 4,
+                    _change(other.relationships[mid], month=w.month,
+                            reason="successful coup attempt" if coup.get("success") else "failed coup attempt",
+                            fear=10 if coup.get("success") else 4,
                             trust=-8, resentment=8, perceived_reliability=-5)
 
 
@@ -600,6 +622,21 @@ def _political_obligations(w: World, record: dict) -> None:
             target = str(motion.get("subject", "")).upper()
             if target in {m.id for m in w.active_members()} and target != proposer:
                 _grievance(w, target, proposer, "attempted to expel me from the council", 35)
+        # An enacted policy that overrides the responsible office holder's recorded vote is a
+        # concrete institutional conflict. Let it leave a modest, accumulating grievance; don't
+        # infer motives from speeches or manufacture conflict on policy that did not pass.
+        if motion.get("passed") and motion.get("type") in ("set_policy", "program"):
+            if motion.get("type") == "set_policy":
+                levers = [str(motion.get("subject", ""))]
+            else:
+                raw_measures = (motion.get("measures") or (motion.get("action") or {}).get("measures") or [])
+                levers = [str(x.get("lever", "")) for x in raw_measures if isinstance(x, dict)]
+            offices = {politics.LEVER_OFFICE.get(lever) for lever in levers} - {None}
+            for office in offices:
+                holder = w.holder(office)
+                if holder and holder.id != proposer and votes.get(holder.id) == "no":
+                    _grievance(w, holder.id, proposer,
+                               f"{office} policy enacted over my objection", 15)
         if not motion.get("passed") or motion.get("type") in ("assign_office", "vacate_office"):
             continue
         if not any(v == "no" for v in votes.values()):
@@ -627,7 +664,8 @@ def _political_obligations(w: World, record: dict) -> None:
                 debt["status"] = "repaid"
                 debt["repaid_month"] = w.month
                 if creditor in member.relationships:
-                    _change(member.relationships[creditor], trust=2, perceived_reliability=2)
+                    _change(member.relationships[creditor], month=w.month, reason="repaid a political favour",
+                            trust=2, perceived_reliability=2)
             elif w.month - debt.get("month", w.month) > 12:
                 debt["status"] = "expired"
 
@@ -686,9 +724,31 @@ def _update_stress(w: World) -> None:
         values = {"economic": economic, "security": security, "political": political,
                   "institutional": institutional, "personal": personal}
         stress = state["stress"]
+        before = {key: round(float(stress.get(key, 10)), 1)
+                  for key in ("general", "political", "institutional", "economic", "security", "personal")}
         for key, value in values.items():
             stress[key] = round(clamp(stress.get(key, 10) * .65 + value * .35, 0, 100), 1)
         stress["general"] = round(sum(stress[k] for k in values) / len(values), 1)
+        # Store the deterministic input channels and the smoothing step, not a prose guess about
+        # how a delegate "felt." This gives the inspector enough evidence to explain each number.
+        trace = state.setdefault("stress_trace", [])
+        trace.append({
+            "month": w.month,
+            "inputs": {"inflation_abs": round(abs(e.infl), 4), "debt_output_ratio": round(debt, 4),
+                       "arrears_output_ratio": round(e.arrears / max(e.gdp_nominal, 1), 4),
+                       "food_ratio": round(e.food_ratio, 4), "approval": round(approval_proxy(w), 4),
+                       "unrest": round(w.avg("unrest"), 4), "war": bool(w.dip.war),
+                       "blockade": bool(w.dip.blockade), "ultimatum": bool(w.dip.ultimatum),
+                       "emergency": bool(w.const.emergency), "offices": list(offices),
+                       "member_active": m.status == "active", "clout": round(m.clout, 3),
+                       "event_kinds": sorted({str(ev.get("kind")) for ev in w.events if ev.get("kind")})},
+            "targets": {key: round(value, 2) for key, value in values.items()},
+            "before": before,
+            "after": {key: round(float(stress.get(key, 0)), 1)
+                      for key in ("general", "political", "institutional", "economic", "security", "personal")},
+            "smoothing": {"prior": .65, "target": .35},
+        })
+        del trace[:-24]
         state["constituencies"] = audiences_for(w, m.id)
         forgiveness = state["traits"].get("stubbornness", 50)
         for grievance in state.get("grievances", []):
@@ -918,7 +978,8 @@ def _stand_judged(w: World, mid: str, stand: dict) -> None:
     active = {m.id for m in w.active_members()}
     for other in stand.get("supporters", []):
         if other in active and other != mid and mid in w.member(other).relationships:
-            _change(w.member(other).relationships[mid], respect=2, perceived_reliability=1.5)
+            _change(w.member(other).relationships[mid], month=w.month, reason="dissenting judgement was vindicated",
+                    respect=2, perceived_reliability=1.5)
     w.analytics.setdefault("vindications", []).append(
         {"month": w.month, "member": mid, "motion": stand.get("motion"), "policy": stand.get("subject"),
          "month_adopted": stand.get("month"), "target": stand.get("target"),
@@ -938,8 +999,11 @@ def snapshot(w: World) -> dict:
         "ideology_history": list(m.ideology_history),
         "private_disposition": context(w, m.id),
         "constituencies": audiences_for(w, m.id),
-        "relationships": {o: {k: v for k, v in r.items() if k != "events"} for o, r in m.relationships.items()},
+        "relationships": {o: {**{k: v for k, v in r.items() if k != "events"},
+                               "events": [dict(event) for event in r.get("events", [])[-20:]]}
+                          for o, r in m.relationships.items()},
         "stress": dict(m.agent_state.get("stress", {})),
+        "stress_trace": [dict(x) for x in m.agent_state.get("stress_trace", [])[-6:]],
         "favor_debts": [dict(x) for x in m.agent_state.get("favor_debts", [])],
         "grievances": [dict(x) for x in m.agent_state.get("grievances", [])],
         "promises": [{k: v for k, v in p.items() if k in ("id", "status", "created_month", "text", "to", "kind")}
@@ -1062,9 +1126,6 @@ def disposition_v2(w: World, mid: str) -> str:
     fears = state.get("fears", [])[:2]
     if fears:
         lines.append("You especially fear " + " and ".join(fears) + ".")
-    goal = state.get("secret_goal") or {}
-    if goal.get("status") == "active" and goal.get("text"):
-        lines.append(f"Privately, and not something you advertise, you hope to {goal['text']}.")
     from .memory import strategy_text
     strategy = strategy_text(w, mid)
     if strategy:
@@ -1091,6 +1152,18 @@ def disposition_v2(w: World, mid: str) -> str:
         lines.append(f"Privately, your attachment to your declared principle (\"{c['text'][:90]}\") has weakened "
                      "since you declared it, though the public still expects it of you.")
     return "\n".join(lines)
+
+
+def secret_goal_context(state: dict) -> str:
+    """A salient private motive that can shape a decision without scripting one."""
+    goal = state.get("secret_goal") or {}
+    if goal.get("status") != "active" or not goal.get("text"):
+        return ""
+    return ("PRIVATE MOTIVE — confidential; do not disclose it unless you choose.\n"
+            f"You want to {goal['text']}. For relevant proposals, votes, orders, or career choices, compare how "
+            "the available options advance or obstruct this motive. Let it affect your choice when that impact "
+            "outweighs the duties, evidence, principles, relationships, and risks at stake. Do not force unrelated "
+            "actions or claim progress the world state has not produced.")
 
 
 def context(w: World, mid: str) -> str:

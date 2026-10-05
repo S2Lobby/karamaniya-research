@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from karamaniya import actions, deliberation, prompts  # noqa: E402
+from karamaniya import actions, deliberation, motion_actions, prompts  # noqa: E402
 from karamaniya.politics import apply_motion, validate_motion_detail  # noqa: E402
 from karamaniya.world import new_world  # noqa: E402
 
@@ -35,11 +35,52 @@ class CarriedAgendaTests(unittest.TestCase):
         self.assertEqual(deferred, [])
         self.assertIn("D1 by B", prompts.opening_instructions_v2(self.w, "A", 3, list("ABCDE"), 4, carried))
 
+    def test_renewal_updates_diplomatic_text_and_executable_target_together(self):
+        w = self.w
+        w.agenda["deferred"] = [{
+            "type": "diplomacy", "subject": "non_aggression", "value": "",
+            "text": "Propose a non-aggression pact to Veleria for three years.",
+            "action": {"action_type": "non_aggression_pact", "target": "Veleria",
+                       "terms": ["three years"]},
+            "proposer": "B", "summary": "non-aggression pact", "deferred_month": 0,
+        }]
+        carried = deliberation.carried_over(w)
+        carried[0]["id"] = "D1"
+        proposal = actions.normalize_motion_v2(w, {
+            "type": "diplomacy", "subject": "non_aggression", "value": "",
+            "text": "Propose a non-aggression pact to the Solvaran Union for ten years.",
+            "action": {"action_type": "non_aggression_pact", "target": "Solvaran Union",
+                       "terms": ["ten years"]},
+        })
+        proposal["proposer"] = "B"
+
+        renewed = deliberation.coalesce_carried(w, proposal, carried, "B")
+
+        self.assertEqual(renewed, {"code": "RENEWED_CARRIED", "motion": "D1"})
+        self.assertIn("Solvaran Union", carried[0]["text"])
+        self.assertEqual(motion_actions.structured_action(w, carried[0])["target"], "SOLVARAN_UNION")
+        self.assertEqual(carried[0]["action"]["terms"], ["ten years"])
+        self.assertEqual(carried[0]["original_action"]["target"], "VELERIA")
+        self.assertIsNone(motion_actions.validate_diplomatic_action(w, carried[0]))
+
+    def test_fiscal_distress_adds_one_agenda_slot_but_normal_months_do_not(self):
+        self.assertEqual(deliberation.capacity(self.w), 4)
+        self.w.econ.paid_share = 0.80
+        self.assertEqual(deliberation.capacity(self.w), 5)
+
+    def test_large_arrears_add_a_slot_even_if_current_bills_are_paid(self):
+        self.w.econ.gdp_nominal = 500e6
+        self.w.econ.arrears = 60e6
+        self.assertEqual(deliberation.capacity(self.w), 5)
+
     def test_cosponsor_can_keep_or_leave_motion_after_originator_withdraws(self):
         carried = deliberation.carried_over(self.w)
         motion = carried[0]
         motion["id"] = "D1"
         motion["cosponsors"] = ["A"]
+        replacement = {"id": "M9", "proposer": "C", "type": "set_policy", "subject": "tax",
+                       "value": "0.3", "text": "", "summary": "tax"}
+        carried.append(replacement)
         schema = actions.revision_schema(self.w, "A", carried)
         self.assertIn("D1", schema["properties"]["withdraw"]["items"]["properties"]["motion_id"]["enum"])
         deliberation.apply_revisions(self.w, "B", {"withdraw": ["D1"]}, carried, carried)
@@ -53,6 +94,20 @@ class CarriedAgendaTests(unittest.TestCase):
         self.assertEqual(motion["withdrawal_reason"], "consolidating behind the costed alternative")
         self.assertEqual(motion["replaced_by"], "M9")
 
+    def test_withdrawal_cannot_fall_in_behind_a_motion_already_withdrawn(self):
+        first = {"id": "D1", "proposer": "B", "type": "set_policy", "subject": "tax",
+                 "value": "0.3", "withdrawn": False, "cosponsors": []}
+        second = {"id": "D2", "proposer": "E", "type": "set_policy", "subject": "welfare",
+                  "value": "0.1", "withdrawn": False, "cosponsors": []}
+        motions = [first, second]
+        deliberation.apply_revisions(self.w, "B", {"withdraw": [
+            {"motion_id": "D1", "reason": "support D2", "replaced_by": "D2"}]}, motions, motions)
+        self.assertTrue(first["withdrawn"])
+        notes = deliberation.apply_revisions(self.w, "E", {"withdraw": [
+            {"motion_id": "D2", "reason": "support D1", "replaced_by": "D1"}]}, motions, motions)
+        self.assertFalse(second.get("withdrawn"))
+        self.assertEqual(notes["rejected_withdrawals"][0]["code"], "WITHDRAWAL_TARGET_INACTIVE")
+
     def test_arrears_settlement_is_a_funded_vote_with_real_cost(self):
         w = self.w
         w.econ.arrears = 40e6
@@ -64,6 +119,7 @@ class CarriedAgendaTests(unittest.TestCase):
         apply_motion(w, cash)
         self.assertAlmostEqual(w.econ.arrears, 30e6)
         self.assertAlmostEqual(w.econ.gold, 20e6)
+        self.assertAlmostEqual(sum(w.econ.arrears_by.values()), w.econ.arrears)
         bonds = {**cash, "subject": "domestic_bonds", "value": "all"}
         before_debt = w.econ.debt_dom
         apply_motion(w, bonds)

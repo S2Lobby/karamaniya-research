@@ -251,9 +251,10 @@ def _mobilize(w: World) -> None:
     serve.
     """
     m, pol = w.mil, w.policy
+    mob = mobilization_of(w)
+    old_distribution = _restore_mobilized_distribution(w)
     pool = reserve_pool(w)
     target = pool * MOBILIZATION_SHARE.get(getattr(pol, "mobilization", "none"), 0.0)
-    mob = mobilization_of(w)
     if target > mob.called_up:
         call_up(w, target - mob.called_up)
     elif target < mob.called_up:
@@ -261,18 +262,48 @@ def _mobilize(w: World) -> None:
     # Reservists who are serving are not available to their employers. Booked exactly as
     # conscription is, so economy.labor() subtracts them through the same path.
     drawn = mobilization_draw(w)
-    if drawn <= 0:
-        return
     pops = [p for p in w.k_pops() if p.cls in DRAFT_WEIGHT]
+    by_key = {_pop_key(p): p for p in pops}
+    for key, share in old_distribution.items():
+        p = by_key.get(key)
+        if p is not None:
+            p.conscripted = max(0.0, p.conscripted - share)
+            p._mobilized_share = 0.0
+    if drawn <= 0:
+        mob.distribution = {}
+        return
     weights = [DRAFT_WEIGHT[p.cls] * labor(p) for p in pops]
     total = sum(weights)
     if total <= 0:
+        mob.distribution = {}
         return
     # Distribute over the same groups conscription uses, proportional to who is available.
+    new_distribution = {}
     for p, wt in zip(pops, weights):
-        p.conscripted = max(0.0, p.conscripted - getattr(p, "_mobilized_share", 0.0))
         p._mobilized_share = drawn * wt / total
         p.conscripted += p._mobilized_share
+        new_distribution[_pop_key(p)] = p._mobilized_share
+    mob.distribution = new_distribution
+
+
+def _pop_key(p) -> str:
+    return f"{p.region}|{p.cls}|{p.ident}"
+
+
+def _restore_mobilized_distribution(w: World) -> dict:
+    """Restore reserve shares, including from checkpoints predating the distribution field."""
+    mob = mobilization_of(w)
+    pops = [p for p in w.k_pops() if p.cls in DRAFT_WEIGHT]
+    distribution = dict(mob.distribution or {})
+    if mob.called_up > 0 and not distribution:
+        weights = [DRAFT_WEIGHT[p.cls] * max(0.0, labor(p)) for p in pops]
+        total = sum(weights)
+        if total > 0:
+            distribution = {_pop_key(p): mob.called_up * wt / total for p, wt in zip(pops, weights)}
+    for p in pops:
+        p._mobilized_share = max(0.0, distribution.get(_pop_key(p), 0.0))
+    mob.distribution = distribution
+    return distribution
 
 
 def _recruit(w: World) -> None:
@@ -301,17 +332,41 @@ def _recruit(w: World) -> None:
 
 
 def _release(w: World, amount: float, killed: bool) -> None:
-    """Take soldiers out of the army and back to (or out of) their population groups."""
-    pops = [p for p in w.pops if p.conscripted > 0]
-    total = sum(p.conscripted for p in pops)
+    """Release standing soldiers without accidentally releasing called-up reservists."""
+    _restore_mobilized_distribution(w)
+    pops = [p for p in w.pops if p.conscripted > getattr(p, "_mobilized_share", 0.0)]
+    active = [max(0.0, p.conscripted - getattr(p, "_mobilized_share", 0.0)) for p in pops]
+    total = sum(active)
     if total <= 0:
         return
     frac = min(1.0, amount / total)
-    for p in pops:
-        n = p.conscripted * frac
+    for p, available in zip(pops, active):
+        n = available * frac
         p.conscripted -= n
         if killed:
-            p.size -= n
+            p.size = max(0.0, p.size - n)
+
+
+def _release_mobilized(w: World, amount: float, killed: bool) -> None:
+    """Remove casualties from the embodied reserve cohort and its population allocation."""
+    mob = mobilization_of(w)
+    total = mob.called_up
+    if total <= 0:
+        return
+    amount = min(total, max(0.0, amount))
+    frac = amount / total
+    by_key = {_pop_key(p): p for p in w.k_pops()}
+    for key, share in list((mob.distribution or {}).items()):
+        lost = share * frac
+        p = by_key.get(key)
+        if p is not None:
+            p.conscripted = max(0.0, p.conscripted - lost)
+            p._mobilized_share = max(0.0, share - lost)
+            if killed:
+                p.size = max(0.0, p.size - lost)
+        mob.distribution[key] = max(0.0, share - lost)
+    mob.served *= (total - amount) / total
+    mob.called_up = max(0.0, total - amount)
 
 
 def _naval(w: World, rng) -> None:
@@ -352,9 +407,12 @@ def _combat(w: World, rng) -> None:
         u_sold = dip.union_front.get(front, 0.0)
         if r is None or u_sold <= 0:
             continue
-        k_sold = m.army.size * m.deploy.get(front, 0.0)
+        active_sold = m.army.size * m.deploy.get(front, 0.0)
+        reserve_sold = mobilized_strength(w) * m.deploy.get(front, 0.0)
         if r.capital:
-            k_sold += m.army.size * m.deploy.get("capital", 0.0)
+            active_sold += m.army.size * m.deploy.get("capital", 0.0)
+            reserve_sold += mobilized_strength(w) * m.deploy.get("capital", 0.0)
+        k_sold = active_sold + reserve_sold
         k_sold = max(k_sold, 1.0)
         fort = m.fort.get(front, 0.0) if r.id == FRONT_CHAINS[front][0] else 0.3 * m.fort.get(front, 0.0)
         k_str = k_sold * kq * r.terrain * (1 + fort) * supply
@@ -364,9 +422,13 @@ def _combat(w: World, rng) -> None:
         u_loss = 0.02 * u_sold * min(4.0, 1 / ratio) ** 0.5 * intensity * (1.3 if attack else 1.0)
         k_loss = min(k_loss, k_sold * 0.4) * rng.uniform(0.8, 1.2)
         u_loss *= rng.uniform(0.8, 1.2)
-        _release(w, k_loss * 0.3, killed=True)
-        _release(w, k_loss * 0.7, killed=False)
-        m.army.size = max(0.0, m.army.size - k_loss)
+        active_loss = k_loss * active_sold / k_sold
+        reserve_loss = k_loss - active_loss
+        _release(w, active_loss * 0.3, killed=True)
+        _release(w, active_loss * 0.7, killed=False)
+        _release_mobilized(w, reserve_loss * 0.3, killed=True)
+        _release_mobilized(w, reserve_loss * 0.7, killed=False)
+        m.army.size = max(0.0, m.army.size - active_loss)
         m.killed += k_loss * 0.3
         w.count("soldiers_killed", k_loss * 0.3)
         k_loss_total += k_loss
@@ -389,7 +451,8 @@ def _combat(w: World, rng) -> None:
             m.recapture[front] += 0.12 * (counter - ADVANCE_AT)
         m.last_combat[front] = {"region": r.id, "ratio": round(ratio, 2),
                                 "k_loss": round(k_loss), "u_loss": round(u_loss),
-                                "k_soldiers": round(k_sold), "u_soldiers": round(u_sold),
+                                "k_soldiers": round(k_sold), "k_active_soldiers": round(active_sold),
+                                "k_reserve_soldiers": round(reserve_sold), "u_soldiers": round(u_sold),
                                 "progress": round(m.progress[front], 2), "month": w.month}
         if m.progress[front] >= 1.0:
             m.progress[front] = 0.0
@@ -398,7 +461,8 @@ def _combat(w: World, rng) -> None:
         elif m.recapture[front] >= 1.0:
             m.recapture[front] = 0.0
             _liberate(w, front)
-    m.last_combat["k_loss_rate"] = k_loss_total / max(1.0, m.army.size + k_loss_total)
+    m.last_combat["k_loss_rate"] = k_loss_total / max(
+        1.0, m.army.size + mobilization_draw(w) + k_loss_total)
     if k_loss_total > 0:
         w.event("combat", f"Fighting on the front: about {k_loss_total * 0.3:,.0f} Karamanian soldiers "
                 "killed this month.", importance=1, detail=dict(m.last_combat))
@@ -464,11 +528,9 @@ def _merge(target, source, n: float) -> None:
 
 
 # ---- the trained reserve and mobilization -----------------------------------------------------
-# The reserve state lives on the force rather than in a new engine field, so checkpoints written
-# before this feature load unchanged: `Military` is a plain dataclass, an attribute it does not
-# declare is ignored by `asdict()` and restored by `mobilization_of()`/`readiness_of()` on demand.
-# The cost of that choice is honest and worth stating: an in-progress call-up does not survive a
-# save/load cycle, because nothing serialises it yet.
+# The reserve state is held as dataclasses in this module and copied into explicit dict fields on
+# `Military` at the end of each update. Older checkpoints load with empty state; current checkpoints
+# preserve both the call-up clock and its population allocation.
 @dataclass
 class Mobilization:
     """Reservists currently embodied: who is out of the labour force, and for how long."""
@@ -476,6 +538,11 @@ class Mobilization:
     served: float = 0.0      # person-months the embodied cohort has served
     released: float = 0.0    # cumulative reservists sent home again
     month: int = -1          # last month person-months were accrued
+    distribution: dict = None  # call-up by population key, persisted with the checkpoint
+
+    def __post_init__(self):
+        if self.distribution is None:
+            self.distribution = {}
 
 
 @dataclass

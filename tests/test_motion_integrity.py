@@ -62,6 +62,18 @@ class ProseAgainstAction(unittest.TestCase):
     def test_a_matching_protest_is_not_flagged(self):
         self.assertIsNone(motion_actions.conflict(world(), REPAIRED))
 
+    def test_an_explicit_unknown_target_is_not_replaced_with_the_action_default(self):
+        w = world()
+        raw = {"type": "diplomacy", "subject": "trade_deal", "value": "",
+               "text": "Establish a new trade deal for grain.",
+               "action": {"action_type": "trade_deal", "target": "Atlantis"}}
+        motion = actions.normalize_motion_v2(w, raw)
+
+        self.assertEqual(motion_actions.structured_action(w, motion)["target"], "Atlantis")
+        self.assertEqual(motion_actions.validate_diplomatic_action(w, motion)["code"], "UNKNOWN_TARGET")
+        verdict = motion_actions.validate_execution(w, {**motion, "passed": True})
+        self.assertEqual(verdict["code"], "UNKNOWN_TARGET")
+
     def test_genuine_foreign_motions_are_left_alone(self):
         for mo in (
             {"type": "diplomacy", "subject": "trade_deal", "value": "",
@@ -92,6 +104,10 @@ class ProseAgainstAction(unittest.TestCase):
 
 class Execution(unittest.TestCase):
     """2, 3 and 8: what may reach world state, and what may not."""
+
+    def test_a_non_object_motion_is_refused_without_crashing(self):
+        verdict = motion_actions.validate_execution(world(), "not a motion object")
+        self.assertEqual(verdict["code"], "NO_STRUCTURED_ACTION")
 
     def test_a_protest_executes_only_against_the_union(self):
         w = world()
@@ -125,13 +141,36 @@ class Execution(unittest.TestCase):
         verdict = motion_actions.validate_execution(world(), {**REPAIRED, "passed": False})
         self.assertEqual(verdict["code"], "NOT_PASSED")
 
-    def test_a_protest_addressed_to_the_wrong_hand_is_refused(self):
+    def test_a_protest_may_be_addressed_to_whichever_actor_is_doing_the_act(self):
+        # A protest is aimed at whoever applies the pressure, so it is not welded to the Union:
+        # protesting Dorsania's grain embargo is a valid act, not a misroute.
         w = world()
-        wrong = {**REPAIRED, "subject": "trade_deal", "action": {"action_type": "diplomatic_protest",
-                                                                 "target": "Maritime League"}}
+        protest = {"type": "diplomacy", "subject": "diplomatic_protest", "value": "",
+                   "text": "Formal protest to Dorsania over its grain export embargo.",
+                   "action": {"action_type": "diplomatic_protest", "target": "Dorsania"}}
+        self.assertIsNone(motion_actions.validate_execution(w, {**protest, "passed": True}))
+
+    def test_an_act_tied_to_one_partner_cannot_be_addressed_to_another(self):
+        # A grain deal is Dorsania's to make; filing it at the Union is still refused, so opening
+        # the protest channel did not dissolve the check that catches a genuinely wrong target.
+        w = world()
+        wrong = {**REPAIRED, "subject": "grain_deal",
+                 "text": "Conclude a grain deal with Dorsania for imports.",
+                 "action": {"action_type": "grain_deal", "target": "Solvaran Union"}}
         verdict = motion_actions.validate_execution(w, {**wrong, "passed": True})
-        self.assertEqual(verdict["code"], "ACTION_NOT_VALID_FOR_TARGET")
+        self.assertEqual(verdict["code"], "MOTION_ACTION_MISMATCH")
+        self.assertIn("Dorsania", verdict["detail"])
         self.assertIn("Solvaran Union", verdict["detail"])
+        self.assertEqual(w.dip.proposals, [])
+
+    def test_a_protest_eases_the_addressed_powers_own_pressure(self):
+        # Protesting Dorsania must actually reach Dorsania: the handler eases the grain embargo it
+        # is applying, not the Union's inspections, so the target of the motion drives the effect.
+        from karamaniya import director
+        w = world()
+        w.dip.grain_embargo = 0.3
+        director._protest_reply(w, "dorsania")
+        self.assertLess(w.dip.grain_embargo, 0.3)
 
     def test_an_action_with_no_target_is_refused(self):
         verdict = motion_actions.validate_execution(world(), {
@@ -370,6 +409,27 @@ class ConditionalExecution(unittest.TestCase):
                 "votes": dict.fromkeys("ABCDE", "yes")}
         return {**base, **kw}
 
+    def test_an_investigation_does_not_require_its_register_audit_in_advance(self):
+        motion = {"type": "investigation", "subject": "interior", "value": "open",
+                  "text": "Audit Interior and the inherited police register; verify custody and publish findings."}
+        conditions = motion_actions.motion_conditions(motion)
+        self.assertNotIn("audited_register", {condition["metric"] for condition in conditions})
+
+    def test_an_investigation_discards_only_the_persisted_generated_self_gate(self):
+        motion = {"type": "investigation", "subject": "interior", "value": "open",
+                  "text": "Audit Interior and the inherited police register.",
+                  "conditions": [{"metric": "audited_register", "operator": "==", "value": 1,
+                                  "source": "audited register gate"}]}
+        self.assertEqual(motion_actions.motion_conditions(motion), [])
+        motion["conditions"][0]["source"] = "explicit user safeguard"
+        self.assertEqual(motion_actions.motion_conditions(motion)[0]["source"], "explicit user safeguard")
+
+    def test_a_non_audit_action_can_still_require_an_audited_register(self):
+        motion = {"type": "settle_arrears", "subject": "reserves", "value": "quarter",
+                  "text": "Pay bills only after the audit verifies the inherited register."}
+        conditions = motion_actions.motion_conditions(motion)
+        self.assertIn("audited_register", {condition["metric"] for condition in conditions})
+
     def test_a_reserve_floor_blocks_execution_and_changes_nothing(self):
         import json
         w = world()
@@ -430,6 +490,21 @@ class ConditionalExecution(unittest.TestCase):
         self.assertEqual(clash["code"], "MOTION_CONDITION_MISMATCH")
         gate = motion_actions.validate_execution(w, self.pay())
         self.assertEqual(gate["code"], "MOTION_CONDITION_MISMATCH")
+
+    def test_stored_reserve_threshold_must_be_at_least_as_strong_as_the_prose(self):
+        w = world()
+        conditions = [dict(c) for c in motion_actions.motion_conditions(self.pay())]
+        reserve_floor = next(c for c in conditions if c["metric"] == "reserves_after_payment")
+        self.assertEqual(reserve_floor["value"], 55e6)
+        reserve_floor["value"] = 50e6
+        motion = self.pay(conditions=conditions)
+
+        clash = motion_actions.condition_mismatch(w, motion)
+        self.assertIsNotNone(clash)
+        self.assertEqual(clash["code"], "MOTION_CONDITION_MISMATCH")
+        self.assertEqual(clash["final_conditions"][0]["value"], 55e6)
+        self.assertEqual(motion_actions.validate_execution(w, motion)["code"],
+                         "MOTION_CONDITION_MISMATCH")
 
 
 class NumericGrounding(unittest.TestCase):

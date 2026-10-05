@@ -337,6 +337,10 @@ class Constitution:
     assembly: str = "free"            # free | restricted | banned
     emergency: bool = False
     minority: str = "equal"           # equal | restricted | interned
+    # Political pluralism, the other half of a regime's character. `one_party` and `ban_opposition`
+    # raise the liberty deficit and erode legitimacy (no competition to renew it) the way a real
+    # single-party state does; `multi_party` is the default and changes nothing already modelled.
+    parties: str = "multi_party"      # multi_party | ban_opposition | one_party
     kessel_status: str = "central"    # central | cultural | devolved: how far the capital rules Kessel Valley
     highlands_status: str = "central"  # the same for the Vell Highlands
     amendments: list = field(default_factory=list)
@@ -374,6 +378,20 @@ class Policy:
     requisition: str = "none"         # none | partial | heavy
     capital_controls: bool = False
     imports: str = "normal"           # normal | max
+    # Who owns and runs production. A SYNTHETIC institutional axis, deliberately left open so a
+    # council can choose a command economy: `state` nationalises industry and large farms, which
+    # lets the government capture the surplus and guarantee jobs, but runs them only as well as the
+    # bureaucracy can (so output falls when administration is weak) and triggers capital flight on
+    # the seizure. `private` is the default and reproduces the engine's prior behaviour exactly.
+    ownership: str = "private"        # private | mixed | state
+    # A numeric ceiling on the monthly foreign outlay for goods (gold, start prices); 0 = no limit.
+    # Lets a council cap imports as a number -- the 'sovereignty' programme delegates kept reaching
+    # for -- rather than only the coarse normal/max switch. 0 keeps the prior behaviour exactly.
+    import_cap: float = 0.0
+    # Central planning of production. `command` mobilises heavy industry toward state targets but
+    # starves services and consumer goods, and only a capable bureaucracy can hit the targets at
+    # all. `none` (the default) leaves the engine's prior behaviour intact.
+    planning: str = "none"            # none | indicative | command
     stats: str = "honest"             # honest | massaged
     debt_service: str = "pay"         # pay | suspend
     regional_fund: str = "none"       # none | kessel | highlands | both: a development budget for a region
@@ -383,6 +401,10 @@ class Policy:
     arrests: str = "none"               # none | targeted | mass
     emigration: str = "open"            # open | restricted | closed
     election_conduct: str = "fair"      # fair | rigged
+    # A general pardon for political prisoners: a one-shot de-escalation that lowers grievance and
+    # fear among the repressed at a small cost to the loyalty of the security apparatus. `none` is
+    # the default and does nothing until a council sets `release`.
+    amnesty: str = "none"             # none | release
     # Army Command
     recruitment: str = "none"           # none | volunteer | partial | general
     army_target: float = 28000.0
@@ -501,6 +523,23 @@ class World:
             self.event("fatality_counter", "A tracked fatality counter changed.", public=False,
                        counter=key, amount=amount)
 
+    def set_league_trust(self, value: float) -> float:
+        """Clamp League trust and keep diplomacy and foreign state in sync."""
+        trust = float(value)
+        if not math.isfinite(trust):
+            trust = 0.0
+        trust = round(clamp(trust), 3)
+        self.dip.league_trust = trust
+        if not self.foreign:
+            from .foreign import initial_state
+            self.foreign = initial_state(self.seed)
+        self.foreign.setdefault("league", {})["trust_in_karamaniya"] = trust
+        return trust
+
+    def adjust_league_trust(self, amount: float) -> float:
+        """Apply a signed League trust change through the shared bounded state."""
+        return self.set_league_trust(self.dip.league_trust + amount)
+
     # ---- aggregates ----------------------------------------------------------------
     def population(self) -> float:
         return sum(p.size for p in self.k_pops())
@@ -539,6 +578,9 @@ class World:
         w.const = _mk(Constitution, d["const"])
         w.members = [_mk(Member, x) for x in d["members"]]
         w.policy = _mk(Policy, d["policy"])
+        # Older checkpoints could persist an out-of-range diplomacy value or a foreign mirror
+        # that disagreed with it. Diplomacy is canonical; normalize it once at load time.
+        w.set_league_trust(w.dip.league_trust)
         from . import agents
         if w.human_factor and w.agent_architecture_version >= 1:
             agents.ensure(w)

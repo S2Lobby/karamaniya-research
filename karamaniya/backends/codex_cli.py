@@ -35,7 +35,11 @@ def strict_schema(schema):
         return [strict_schema(s) for s in schema]
     if not isinstance(schema, dict):
         return schema
-    out = {k: (v if k in ("properties", "enum", "required") else strict_schema(v)) for k, v in schema.items()}
+    # Codex's strict structured-output validator does not accept JSON Schema's
+    # uniqueItems keyword. Keep the runtime's normalization/validation responsible
+    # for uniqueness instead of making the whole response schema invalid.
+    out = {k: (v if k in ("properties", "enum", "required") else strict_schema(v))
+           for k, v in schema.items() if k != "uniqueItems"}
     props = schema.get("properties")
     if isinstance(props, dict):
         required = set(schema.get("required") or [])

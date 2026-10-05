@@ -45,6 +45,13 @@ def legitimacy(w: World) -> float:
         legit = 0.0
     if w.month - c.coup_month < 12:
         legit -= 0.15
+    # A regime that abolishes competition loses the renewal that competitive elections supply: a
+    # one-party state is less legitimate to those who had no part in it, and banning the opposition
+    # somewhat less. Multi-party (the default) changes nothing already modelled.
+    if getattr(c, "parties", "multi_party") == "one_party":
+        legit -= 0.15
+    elif getattr(c, "parties", "multi_party") == "ban_opposition":
+        legit -= 0.05
     return legit
 
 
@@ -57,6 +64,8 @@ def liberty_deficit(w: World) -> float:
         lib += 0.3
     if w.month - c.coup_month < 12:
         lib += 0.4
+    lib += {"multi_party": 0.0, "ban_opposition": 0.25,
+            "one_party": 0.5}.get(getattr(c, "parties", "multi_party"), 0.0)
     return clamp(lib, 0.0, 1.5)
 
 
@@ -93,7 +102,18 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
     gap = union_idx - k_income
     welfare = fiscal["welfare_eff"]
     health = fiscal["health_eff"]
+    from . import tuning
+    # SYNTHETIC MODELING ASSUMPTION: actually delivered social protection eases grievance;
+    # unpaid appropriations do not. Cuts below baseline work in the opposite direction.
+    social_relief = ((welfare - 0.04) * float(tuning.get(w, "society.welfare_grievance_relief"))
+                     + (health - 0.06) * float(tuning.get(w, "society.health_grievance_relief")))
     opp = MINORITY_OPP[c.minority]
+    # Ownership redistributes political feeling by class: nationalisation promises the working and
+    # farming classes jobs and equity (a small appeal) and dispossesses the middle and elite classes
+    # (a grievance). Private -- the default -- leaves both at zero, so prior behaviour is unchanged.
+    own = str(getattr(pol, "ownership", "private"))
+    own_appeal = {"private": 0.0, "mixed": 0.01}.get(own, 0.05)
+    own_griev = {"private": 0.0, "mixed": 0.0}.get(own, 0.10)
     defending = dip.war and dip.aggressor == "union"
     dip.rally *= 0.97 if defending else 0.9
 
@@ -188,6 +208,8 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
                   - savings_loss - 0.35 * p.repression
                   - 0.18 * lib * LIBERTY_WEIGHT[p.cls] * (1.3 if p.ident == "vell" else 1.0)
                   + legit + rally - ww + ident_term + CLASS_TERM[p.cls] + wel - scandal - 0.25 * occ
+                  + (own_appeal if p.cls in ("workers", "farmers")
+                     else -0.6 * own_appeal if p.cls in ("middle", "elite") else 0.0)
                   + mod("approval", p.region) * 4)
         p.approval = clamp(p.approval + 0.18 * (target - p.approval) + rng.gauss(0, 0.004), 0.01, 0.99)
 
@@ -207,6 +229,8 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
                          + 0.5 * max(0.0, p.unemployment - 0.08) + 0.35 * pain + 0.25 * agitation
                          + 0.2 * p.repression - 0.1 * dip.rally
                          - (0.15 if defending and p.ident != "imperial" else 0.0)
+                         - social_relief
+                         + (own_griev if p.cls in ("middle", "elite") else 0.0)
                          + mod("grievance", p.region) * 4, 0.0, 1.2)
         p.grievance += 0.25 * (g_target - p.grievance)
         p.fear += 0.25 * (clamp(p.repression * 0.9 + mod("fear", p.region) * 4) - p.fear)
@@ -287,6 +311,21 @@ def _protests(w: World, rng) -> None:
             w.event("protest", f"Protests and strikes in {r.name}: about {protesters:,.0f} people on the "
                     f"streets. Police are not intervening.{illegal}", region=r.id, importance=1)
             continue
+        if resp == "negotiate":
+            # Conciliation works on the political cause of the protest rather than its symptoms, so
+            # it lowers grievance directly -- but a government the public does not believe has no
+            # words that carry, so the relief is gated on credibility and capped. It reaches only the
+            # regions that are actually protesting and cannot outlast real hardship: it is a
+            # deliberate instrument of de-escalation, not a way to switch unrest off.
+            credibility = clamp((w.avg("approval") - 0.30) / 0.40, 0.0, 1.0)
+            relief = 0.02 + 0.13 * credibility
+            r.strike = min(0.12, (u_r - 0.33) * 0.3)
+            for p in rp:
+                p.grievance = max(0.0, p.grievance - relief)
+            w.event("protest", f"National dialogue in {r.name}: the government opens talks with the "
+                    f"protesters, who begin to stand down; about {protesters:,.0f} people remain.{illegal}",
+                    region=r.id, importance=1)
+            continue
         force = m.police
         obey = clamp(0.35 + 0.55 * force.loyalty + 0.2 * force.bond
                      - (0.25 if u_r > 0.6 else 0.0) - (0.15 if resp == "lethal" else 0.0), 0.05, 0.98)
@@ -319,7 +358,7 @@ def _protests(w: World, rng) -> None:
             national.append(r.id)
             _kill_civilians(w, r.id, dead, "deaths_state_violence")
             w.count("lethal_crackdowns", 1)
-            w.dip.league_trust -= 0.2
+            w.adjust_league_trust(-0.2)
             w.event("crackdown", f"Security forces opened fire on about {protesters:,.0f} protesters in "
                     f"{r.name}. About {dead:,.0f} people were killed.{illegal}", region=r.id, importance=3)
     if national:

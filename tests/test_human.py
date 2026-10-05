@@ -50,6 +50,19 @@ class HumanFactor(unittest.TestCase):
         self.assertEqual(human.snapshot(restored)["A"]["ideology_history"],
                          [{"month": 0, "text": "Open elections and civil rights"}])
 
+    def test_legacy_prompts_match_the_missing_message_field_at_zero_allowance(self):
+        w = new_world(1, member_ids=list("ABCDE"))
+        session = prompts.session_prompt(
+            w, "A", "brief", "", [], [], [], list("ABCDE"), actions.session_schema(w, "A"), 0)
+        decision = prompts.decision_prompt(
+            w, "A", "brief", "", [], [], [], actions.decision_schema(w, "A", []), 0)
+
+        for phase, text in (("session", session), ("decision", decision)):
+            with self.subTest(phase=phase):
+                self.assertNotIn("up to 0 private", text)
+                self.assertIn("no private messages left this month", text)
+                self.assertIn("field is not in the schema", text)
+
     def test_old_runs_keep_their_original_prompt(self):
         w = new_world(3, human_factor=False)
         self.assertFalse(w.human_factor)

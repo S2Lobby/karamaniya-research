@@ -13,6 +13,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from karamaniya import provenance  # noqa: E402
+from karamaniya import memory  # noqa: E402
 from karamaniya.council import Council  # noqa: E402
 from karamaniya.runner import _seats  # noqa: E402
 from karamaniya.storage import RunStore  # noqa: E402
@@ -84,6 +85,24 @@ class LeakThroughTheCouncil(unittest.TestCase):
         self._publish(HEDGED)
         leaks = [e for e in self.w.events if e["kind"] == "leak"]
         self.assertEqual(len(leaks), 1)
+
+    def test_published_text_and_route_reach_the_public_chronicle_and_memories(self):
+        text = "I will support the grain corridor, but keep the troop deployment under civilian control."
+        self._publish(text)
+        event = next(e for e in self.w.events if e["kind"] == "leak")
+        self.assertEqual(event["leaked_text"], text)
+        self.assertEqual((event["from"], event["to"]), ("B", "C"))
+        completed_month = self.w.month
+        self.w.last_events = list(self.w.events)
+        self.w.month = completed_month + 1
+        memory.record_month(self.w, {"month": completed_month, "motions": []},
+                            events=self.w.last_events, completed_month=completed_month)
+        entries = [x for x in self.w.member("A").agent_state["memory"] if x["kind"] == "leak"]
+        self.assertEqual(len(entries), 1)
+        self.assertIn(text, entries[0]["text"])
+        self.assertIn("Delegate B to Delegate C", entries[0]["text"])
+        self.assertEqual(entries[0]["provenance"]["layer"], "RAW_SOURCE")
+        self.assertEqual(entries[0]["month"], completed_month)
 
     def test_provenance_survives_the_runs_own_save_and_load(self):
         from karamaniya.world import World

@@ -29,8 +29,21 @@ def validate(w: World, snapshot: dict | None = None) -> list[dict]:
     for name, value in (("army", w.mil.army.size), ("navy", w.mil.navy.size), ("police", w.mil.police.size),
                         ("debt_dom", w.econ.debt_dom), ("debt_for", w.econ.debt_for),
                         ("reserves", w.econ.gold), ("arrears", w.econ.arrears)):
-        if not math.isfinite(float(value)) or value < 0:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError, OverflowError):
             issue("invalid_numeric_state", f"{name} is not a finite non-negative value ({value}).")
+            continue
+        if not math.isfinite(numeric) or numeric < 0:
+            issue("invalid_numeric_state", f"{name} is not a finite non-negative value ({value}).")
+    trust = w.dip.league_trust
+    try:
+        trust_value = float(trust)
+    except (TypeError, ValueError, OverflowError):
+        issue("invalid_numeric_state", f"league_trust is not a finite value in [0, 1] ({trust}).")
+    else:
+        if not math.isfinite(trust_value) or not 0 <= trust_value <= 1:
+            issue("invalid_numeric_state", f"league_trust is not a finite value in [0, 1] ({trust}).")
     for region in w.regions:
         if region.nation == "karamaniya" and region.controller not in ("karamaniya", "union", "rebels"):
             issue("region_controller", f"{region.id} has unknown controller {region.controller!r}.")

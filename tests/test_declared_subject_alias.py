@@ -23,11 +23,20 @@ def world():
 
 
 def normalized(w, subject, action_type, target, text):
-    return actions.normalize_motion_v2(w, {"type": "diplomacy", "subject": subject, "value": "", "text": text,
+    value = "150" if action_type == "loan_request" else ""
+    return actions.normalize_motion_v2(w, {"type": "diplomacy", "subject": subject, "value": value, "text": text,
                                            "action": {"action_type": action_type, "target": target}})
 
 
 class SubjectNamedLikeTheAction(unittest.TestCase):
+    def test_deal_action_survives_normalization(self):
+        w = world()
+        mo = actions.normalize_motion_v2(w, {"type": "diplomacy", "subject": "grain_deal", "value": "",
+                                             "text": "Renew the grain deal with Dorsania",
+                                             "action": {"action_type": "grain_deal", "target": "Dorsania",
+                                                        "deal_action": "renew"}})
+        self.assertEqual(mo["action"]["deal_action"], "renew")
+
     def test_loan_request_as_subject_of_a_loan_request_is_consistent(self):
         w = world()
         mo = normalized(w, "loan_request", "loan_request", "Maritime League", LOAN_TEXT)
@@ -35,6 +44,42 @@ class SubjectNamedLikeTheAction(unittest.TestCase):
         self.assertNotIn("declared_subject", mo)
         self.assertIsNone(motion_actions.conflict(w, {**mo, "proposer": "C"}))
         self.assertIsNone(politics.validate_motion_detail(w, {**mo, "proposer": "C"}))
+
+    def test_loan_summary_uses_a_numeric_amount_without_duplicating_units(self):
+        w = world()
+        from_value = {"type": "diplomacy", "subject": "loan", "value": "150 million",
+                      "text": "Request 150 million from the League."}
+        from_action = {"type": "diplomacy", "subject": "loan", "value": "[MARITIME_LEAGUE]",
+                       "text": "Request a 150M credit line from the League.",
+                       "action": {"amount": '["150M"]'}}
+        self.assertEqual(actions.motion_summary(w, from_value),
+                         f"propose loan (150 million) to the {w.names['league']}")
+        self.assertEqual(actions.motion_summary(w, from_action),
+                         f"propose loan (150 million) to the {w.names['league']}")
+        no_amount = {"type": "diplomacy", "subject": "loan", "value": "[MARITIME_LEAGUE]", "text": "Request credit."}
+        self.assertEqual(actions.motion_summary(w, no_amount), f"propose loan to the {w.names['league']}")
+
+    def test_loan_amount_in_action_fallback_is_normalized_and_executed(self):
+        w = world()
+        motion = actions.normalize_motion_v2(w, {
+            "type": "diplomacy", "subject": "loan", "value": "[MARITIME_LEAGUE]",
+            "text": "Request a 150M credit line from the Maritime League.",
+            "action": {"action_type": "loan_request", "target": "Maritime League", "amount": '["150M"]'},
+        })
+        motion.update(id="M6", proposer="D")
+        self.assertEqual(motion["value"], "150")
+        self.assertIsNone(politics.validate_motion_detail(w, motion))
+        self.assertIn("150 million", actions.motion_summary(w, motion))
+        politics.apply_motion(w, motion)
+        self.assertEqual(w.dip.proposals[-1]["amount"], 150)
+
+    def test_loan_without_a_numeric_amount_is_rejected(self):
+        w = world()
+        motion = {"type": "diplomacy", "subject": "loan", "value": "[MARITIME_LEAGUE]",
+                  "text": "Request credit from the Maritime League.",
+                  "action": {"action_type": "loan_request", "target": "Maritime League"}}
+        problem = politics.validate_motion_detail(w, motion)
+        self.assertEqual(problem["reason_code"], "BAD_LOAN_AMOUNT")
 
     def test_non_aggression_pact_as_subject_of_that_act_is_consistent(self):
         w = world()

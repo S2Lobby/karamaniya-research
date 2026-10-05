@@ -592,6 +592,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     cline_cli: { name: "Cline CLI", note: "Your Cline account (Cline Pass). Runs cline headless, tools not approved.", effort: ["none", "low", "medium", "high", "xhigh"] },
     antigravity_cli: { name: "Antigravity CLI", note: "Your Google login. Runs agy headless in plan mode and its sandbox.", effort: ["low", "medium", "high", "max"], discover: true },
     copilot_cli: { name: "GitHub Copilot CLI", note: "Your GitHub Copilot login (copilot login once). Runs copilot -p headless, all tools off. Spends premium requests.", effort: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+    qoder_cli: { name: "Qoder CLI", note: "Your Qoder login (qoder login once). Use Find models for the exact, case-sensitive model id. Runs qoder -p headless, all tools off.", effort: ["none", "low", "medium", "high"], discover: true },
     deepseek: { name: "DeepSeek API", note: "Pays per token from your DeepSeek balance.", key: "DEEPSEEK_API_KEY" },
     scripted: { name: "Scripted stand-in", note: "Rule-following, no AI, free. For testing and as a baseline." },
     anthropic: { name: "Anthropic API", note: "Pays per token.", key: "ANTHROPIC_API_KEY", effort: ["low", "medium", "high", "xhigh", "max"] },
@@ -602,7 +603,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     llamacpp: { name: "llama.cpp server (local)", note: "llama-server must be running." },
     ollama: { name: "Ollama (local)", note: "ollama serve must be running. Thinking off keeps a small model fast and inside its context.", effort: ["off", "on"], effortKey: "think" },
   };
-  const CLI = ["claude_cli", "codex_cli", "cline_cli", "antigravity_cli", "copilot_cli"];
+  const CLI = ["claude_cli", "codex_cli", "cline_cli", "antigravity_cli", "copilot_cli", "qoder_cli"];
   const PAID = ["deepseek", "anthropic", "openai", "openrouter", "openai_compat"];
   const PERSONAS = ["democrat", "technocrat", "hawk", "loyalist", "opportunist"];
   const DEEPSEEK_ROUTE = { base_url: "https://api.deepseek.com/anthropic", api_key_env: "DEEPSEEK_API_KEY" };
@@ -1047,6 +1048,9 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
   // defeat means the council voted it down, and a motion that never reached a vote was not voted down.
   function motionStatus(mo) {
     // The record stores one canonical status; read it rather than working one out again here.
+    if (mo.execution_status === "EXECUTION_BLOCKED") return "passed · execution blocked";
+    if (mo.execution_status === "EXECUTION_BLOCKED_CONDITION") return "passed conditionally · awaiting conditions";
+    if (mo.execution_status === "EXECUTED") return "passed · executed";
     if (mo.status) return String(mo.status).toLowerCase().replace(/_/g, " ");
     const result = String(mo.result || "");
     if (mo.passed) return "passed";
@@ -1118,12 +1122,13 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       $("live-grid").hidden = true; renderMini(); return;
     }
     const total = j.months_total || 0, done = j.months_done || 0;
-    const phase = j.phase === "session" ? "council session" : j.phase === "decision" ? "decisions" : j.phase === "simulate" ? "simulating the month" : j.phase === "survey" ? "questionnaire" : j.phase === "founding_diagnosis" ? "independent founding diagnoses" : j.phase === "formation_proposal" ? "government formation proposals" : j.phase === "formation_vote" ? "government formation votes" : "";
+    const phase = j.phase === "session" ? "council session" : j.phase === "decision" ? "decisions" : j.phase === "simulate" ? "simulating the month" : j.phase === "foreign_cabinets" ? "waiting for foreign cabinet models" : j.phase === "survey" ? "questionnaire" : j.phase === "founding_diagnosis" ? "independent founding diagnoses" : j.phase === "formation_proposal" ? "government formation proposals" : j.phase === "formation_vote" ? "government formation votes" : "";
     const facts = [
       ["founding_diagnosis", "formation_proposal", "formation_vote"].includes(j.phase) ? el("span", null, "Before Month 1 of ", el("b", { text: String(total) })) :
         el("span", null, "Month ", el("b", { text: j.month !== null && j.month !== undefined && j.active ? String(j.month + 1) : String(done) }), " of ", el("b", { text: String(total) })),
       phase && j.active ? el("span", null, "Now: ", el("b", { text: phase })) : null,
       j.active ? Object.entries(j.calls || {}).filter(([, c]) => ["session", "founding_diagnosis", "formation_proposal", "formation_vote"].includes(c.phase)).map(([l, c]) => el("span", null, c.phase === "session" ? "Speaking: " : c.phase === "founding_diagnosis" ? "Diagnosing: " : "Forming government: ", el("b", { text: "Delegate " + l + " · " + labelOf(l) }))) : null,
+      j.active ? Object.entries(j.foreign_calls || {}).map(([actor, c]) => el("span", null, "Waiting for ", el("b", { text: actor[0].toUpperCase() + actor.slice(1) + " cabinet · " + (c.seat || c.model || "model") }), " · ", dur(c.elapsed))) : null,
       el("span", null, "Time ", el("b", { text: dur(j.elapsed) })),
       el("span", null, "Calls ", el("b", { text: int(j.done_calls) })),
       j.spend > 0 ? el("span", null, "Spend ", el("b", { text: money(j.spend) })) : null,
@@ -1253,6 +1258,12 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         const d = it.diagnosis || {};
         if (d.status && d.status !== "submitted") return [el("p", { class: "err", text:
           "Delegate " + it.member + " · diagnosis " + d.status + (d.error ? ": " + d.error : "") })];
+        const required = ["cause_assessment", "preferred_first_policy", "policy_to_avoid", "biggest_risk",
+          "information_needed", "what_other_offices_may_be_underestimating"];
+        const missing = required.filter(k => typeof d[k] !== "string" || !d[k].trim());
+        if (!d.main_problem || missing.length) return [el("p", { class: "err", text:
+          "Delegate " + it.member + " · incomplete diagnosis; missing: " +
+          [!d.main_problem ? "main_problem" : "", ...missing].filter(Boolean).join(", ") })];
         const p = ((it.profile || {}).problems || []).find(x => x.id === d.main_problem);
         const main = p ? p.title : String(d.main_problem || "issue not identified").replace(/_/g, " ");
         S.lastSaid = S.lastSaid || {};
@@ -1263,7 +1274,10 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
           el("p", { class: "quote", text: main }),
           el("p", { text: "Cause assessment: " + d.cause_assessment }),
           el("p", { class: "muted small", text: "First policy: " + d.preferred_first_policy }),
-          el("p", { class: "muted small", text: "Information needed: " + d.information_needed })) )];
+          el("p", { class: "muted small", text: "Policy to avoid: " + d.policy_to_avoid }),
+          el("p", { class: "muted small", text: "Biggest risk: " + d.biggest_risk }),
+          el("p", { class: "muted small", text: "Information needed: " + d.information_needed }),
+          el("p", { class: "muted small", text: "What other offices may be underestimating: " + d.what_other_offices_may_be_underestimating })) )];
       }
       case "government_formation": {
         const f = it.formation || {}, offices = f.offices || {};
@@ -1297,6 +1311,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         else if (it.error) body.push(el("p", { class: "err", text: "No answer: " + it.error }));
         if (it.text) body.push(el("p", { text: it.text }));
         if ((it.withdrawn || []).length) body.push(el("div", { class: "muted small", text: "Withdrew " + it.withdrawn.join(", ") }));
+        for (const rejected of it.rejected_withdrawals || []) body.push(el("div", { class: "err small", text: "Attempted to withdraw " + rejected.motion + " in favour of " + rejected.target + ". Rejected: " + rejected.explanation }));
         if ((it.amended || []).length) body.push(el("div", { class: "muted small", text: "Amended " + it.amended.join(", ") }));
         for (const d of it.demands || []) body.push(el("div", { class: "muted small", text: "Demands: " + d }));
         for (const dm of it.dms || []) body.push(el("div", { class: "dm" }, el("b", { text: "Private to " + dm.to + (dm.kind && dm.kind !== "message" ? " [" + dm.kind + "]" : "") + ": " }), el("span", { text: dm.text })));
@@ -1304,16 +1319,38 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         return [el("div", { class: "say" }, dot(it.member), el("div", { class: "body" }, body))];
       }
       case "problem": return [el("p", { class: "err" }, "Delegate " + it.member + " (" + labelOf(it.member) + "), " + it.phase + ": " + (it.refusal ? "refused" : "failed") + (it.error ? " – " + it.error : ""))];
+      case "external_problem": return [el("p", { class: "err" }, (it.actor || "Foreign") + " cabinet (" + (it.seat || it.model || "model") + (it.provider ? " · " + it.provider : "") + ") failed" + (it.error ? " – " + it.error : ""))];
       case "resolved": {
         const rows = [];
+        const officeValue = v => v === null || v === undefined ? "unset"
+          : typeof v === "boolean" ? (v ? "on" : "off")
+          : typeof v === "number" ? (Number.isInteger(v) ? v.toLocaleString() : String(Number(v.toFixed(4))))
+          : String(v);
         for (const c of it.coups || []) rows.push(el("div", { class: "coup" }, "Coup by Delegate " + c.leader + " against " + ((c.targets || []).join(", ") || "the Assembly") + ": " + (c.success ? "it succeeded" : "it failed") + " (odds " + Math.round((c.p_success || 0) * 100) + "%)."));
+        for (const o of it.office_orders || []) {
+          if (o.previous_value === o.actual_value || o.status === "invalid" || o.status === "unauthorized") continue;
+          rows.push(el("div", { class: "note", text:
+            "Office order — Delegate " + o.member + " / " + o.office.replace(/_/g, " ") + ": " + o.lever.replace(/_/g, " ") +
+            " changed from " + officeValue(o.previous_value) + " to " + officeValue(o.actual_value) +
+            (o.status === "violated_directive" ? " against the council directive." : ".") }));
+        }
         for (const m of it.motions || []) rows.push(el("div", { class: "mo" },
-          el("span", { class: "tag " + (m.passed ? "yes" : "no"), text: m.passed ? "passed" : m.void ? "void" : m.withdrawn ? "withdrawn" : "failed" }),
+          el("span", { class: "tag " + (m.passed ? "yes" : "no"), text: motionStatus(m) }),
           el("span", null, el("b", { text: m.id + " " }), el("span", { text: m.summary }), el("span", { class: "muted", text: " " + (m.tally || "") })),
-          m.result && !m.passed ? el("span", { class: "res", text: m.result }) : null));
-        for (const l of it.leaks || []) rows.push(el("div", { class: "note", text: "Leak: " + l }));
+          (m.execution_status && m.execution_status !== "EXECUTED") || (!m.passed && m.result)
+            ? el("span", { class: "res", text: m.blocking_reason || m.result }) : null,
+          m.type === "disaster_relief" && m.authorized_action ? el("div", { class: "muted small", text: "Authorized relief: " + JSON.stringify(m.authorized_action) }) : null,
+          m.implementation ? el("div", { class: "muted small", text: "Implementation: authorized " + money(m.implementation.approved_amount) + ", raised " + money(m.implementation.executed_amount) + ", shortfall " + money(m.implementation.remaining_amount) + (m.implementation.funding_plan ? " · " + m.implementation.funding_plan.map(x => x.source + " " + money(x.executed_amount) + "/" + money(x.requested_amount)).join(", ") : "") }) : null));
+        for (const l of it.leaks || []) rows.push(el("div", { class: "note", text: "Leak " + (l.message_id ? l.message_id + ": " : "") + (l.headline || "") +
+          ((l.from || l.to) ? " · " + (l.from || "unknown") + " → " + (l.to || "public") : "") +
+          (l.text ? " · published text: “" + l.text + "”" : "") }));
         if (it.resigned && it.resigned.length) rows.push(el("div", { class: "note", text: "Resigned: " + it.resigned.map(r => "Delegate " + r).join(", ") }));
-        if (it.defiance) rows.push(el("div", { class: "note", text: it.defiance + " order(s) went against a council directive." }));
+        for (const d of it.defiance_details || []) rows.push(el("div", { class: "alert warn", text:
+          "Directive violation — Delegate " + d.member + " acting as " + (d.office || "an office") +
+          " ordered " + d.lever + " = " + String(d.value) + " against the council directive " + String(d.directive) +
+          ". The office order took effect." }));
+        if (it.defiance && !(it.defiance_details || []).length)
+          rows.push(el("div", { class: "note", text: it.defiance + " order(s) went against a council directive." }));
         if (!rows.length) rows.push(el("div", { class: "muted small", text: "No motions this month." }));
         return [el("div", { class: "votes" }, el("h3", { text: "Votes and force" }), rows)];
       }
@@ -1321,7 +1358,8 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         const st = it.stats || {};
         const out = [];
         if (it.events && it.events.length) out.push(el("ul", { class: "eventlist" }, it.events.map(e => el("li", { text: e }))));
-        out.push(el("p", { class: "statline", text: "Approval " + pct(st.approval) + " · inflation " + pct(st.infl_yoy) + " a year · food " + pct(st.food_ratio) + " of need · army " + int(st.army) + (st.war ? " · AT WAR" : "") }));
+        const inflationPeriod = it.month < 12 ? " annualized over " + (it.month + 1) + " mo" : " over 12 mo";
+        out.push(el("p", { class: "statline", text: "Approval " + pct(st.approval) + " · inflation " + pct(st.infl_yoy) + inflationPeriod + " · food " + pct(st.food_ratio) + " of need · army " + int(st.army) + (st.war ? " · AT WAR" : "") }));
         if (it.outcome && it.outcome.type) out.push(outcomeBox(it.outcome));
         if (S.job && S.job.run_id) out.push(monthDetailHolder(S.job.run_id, (it.months_done || 1) - 1));
         return out;
@@ -1561,9 +1599,10 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     const out = [el("h3", { text: "Right now" })];
     if (isLiveRun()) {
       const calls = Object.entries(j.calls || {});
-      const phase = j.phase === "session" ? "council session" : j.phase === "decision" ? "decisions (all at once)" : j.phase === "simulate" ? "simulating the month" : j.phase === "survey" ? "questionnaire" : "between months";
+      const phase = j.phase === "session" ? "council session" : j.phase === "decision" ? "decisions (all at once)" : j.phase === "simulate" ? "simulating the month" : j.phase === "foreign_cabinets" ? "waiting for foreign cabinet models" : j.phase === "survey" ? "questionnaire" : "between months";
       out.push(el("div", { class: "nowline" }, pill("running"), el("span", null, (j.month !== null && j.month !== undefined ? monthLabel(j.month) + " · " : "") + phase)));
       for (const [l, c] of calls) out.push(el("div", { class: "nowline" }, mapDot(l), el("span", null, "Delegate " + l + " (" + mapLabel(l) + ") is " + (c.phase === "session" ? "speaking" : c.phase === "decision" ? "deciding" : "answering") + " · " + dur(c.elapsed))));
+      for (const [actor, c] of Object.entries(j.foreign_calls || {})) out.push(el("div", { class: "nowline" }, el("span", { class: "tag" }, "Foreign"), el("span", null, (actor[0].toUpperCase() + actor.slice(1)) + " cabinet is waiting for " + (c.seat || c.model || "a model") + (c.provider ? " · " + c.provider : "") + " · " + dur(c.elapsed))));
       if (M.lastStatement && M.lastStatement.text) out.push(el("div", { class: "nowline muted small" }, "Last said, by Delegate " + M.lastStatement.member + ":"), el("p", { class: "nowquote", text: M.lastStatement.text }));
     } else {
       const r = S.runs.find(x => x.id === M.run);
@@ -1597,13 +1636,16 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     const tiles = [
       tile("Approval", pct(row.approval), row.approval, P.approval, 1, "pt"),
       tile("For independence", pct(row.indep), row.indep, P.indep, 0, "pt"),
-      tile("Inflation, 12 mo", pct(row.infl_yoy), row.infl_yoy, P.infl_yoy, -1, "pt"),
+      tile(row.month < 12 ? `Inflation, annualized (${row.month + 1} mo)` : "Inflation, 12 mo",
+        pct(row.infl_yoy), row.infl_yoy, row.month < 12 ? null : P.infl_yoy, -1, "pt"),
       tile("Food vs need", pct(row.food_ratio), row.food_ratio, P.food_ratio, 1, "pt"),
       tile("Output", pct(row.gdp_idx), row.gdp_idx, P.gdp_idx, 1, "pt"),
       tile("Unemployment", pct(row.unemployment, 1), row.unemployment, P.unemployment, -1, "pt"),
       tile("Hunger", pct(row.hunger, 1), row.hunger, P.hunger, -1, "pt"),
       tile("Unrest", pct(row.unrest), row.unrest, P.unrest, -1, "pt"),
-      tile("Our army", int(row.army), row.army, P.army, 1),
+      tile("Standing army", int(row.army), row.army, P.army, 1),
+      ...(row.army_mobilized !== undefined && row.army_mobilized !== null
+        ? [tile("Mobilized reserves", int(row.army_mobilized), row.army_mobilized, P.army_mobilized, 1)] : []),
       tile("Union army", int(row.union_army), row.union_army, P.union_army, -1),
       tile("Army morale", pct(row.army_morale), row.army_morale, P.army_morale, 1, "pt"),
       tile("Army loyalty", pct(row.army_loyalty), row.army_loyalty, P.army_loyalty, 1, "pt"),
@@ -1615,8 +1657,15 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     const c = row.constitution || {};
     const status = [row.war ? (row.ceasefire ? "ceasefire" : "AT WAR") : "at peace", "currency: " + (row.currency || "crown"),
       c.emergency ? "emergency powers" : "", "press " + (c.press || "–"), c.election_month >= 0 ? "election " + monthLabel(c.election_month) : "no election set"].filter(Boolean);
-    const frontLine = ["north", "east"].filter(f => fronts[f] && fronts[f].union > 0).map(f => f + " front: " + int(fronts[f].ours) + " vs " + int(fronts[f].union) + (fronts[f].combat ? " (fighting)" : ""));
+    const frontLine = ["north", "east"].filter(f => fronts[f] && fronts[f].union > 0).map(f => f + " front: " + int(fronts[f].ours_effective ?? fronts[f].ours) + " effective field strength vs " + int(fronts[f].union) + (fronts[f].combat ? " (fighting)" : ""));
+    const inflationNote = row.month < 12
+      ? "During the first 12 months, inflation is annualized from the CPI change since the simulation began. Treasury forecasts look forward and use a different horizon."
+      : "Inflation is the observed CPI change over the latest 12 months. Treasury forecasts refer to future inflation and use a different horizon.";
+    const mobilizationNote = row.army_mobilized !== undefined && row.army_mobilized !== null && row.army_mobilized > 0
+      ? `The standing army count excludes ${int(row.army_mobilized)} called-up reservists; ${int(row.army_mobilized_effective || 0)} currently count as effective field strength.` : "";
     return [el("h3", { text: "The country · " + (c.regime_name || "") + " · " + monthLabel(row.month) }), el("div", { class: "dash" }, tiles),
+      el("p", { class: "note", text: inflationNote }),
+      mobilizationNote ? el("p", { class: "note", text: mobilizationNote }) : null,
       el("p", { class: "note", text: status.join(" · ") }), frontLine.length ? el("p", { class: "note", text: frontLine.join(" · ") }) : null];
   }
   function renderMapRegion() {
@@ -1760,6 +1809,13 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     if (x.traits) out.push(el("details", {}, el("summary", { text: "Traits (0–100; office drift in brackets)" }),
       bars(Object.fromEntries(Object.entries(x.traits).map(([k, v]) => [k + (x.role_shift && x.role_shift[k] ? " (" + (x.role_shift[k] > 0 ? "+" : "") + x.role_shift[k] + ")" : ""), v])), 100)));
     if (x.stress) out.push(el("div", { class: "k", text: "Stress" }), bars(x.stress, 100));
+    if ((x.stress_trace || []).length) out.push(el("details", {},
+      el("summary", { text: "Stress trace · engine inputs, not an inferred emotion" }),
+      el("ul", {}, x.stress_trace.map(t => el("li", { text: "Month " + (t.month + 1) + ": " +
+        Object.entries(t.after || {}).filter(([k]) => k !== "general").map(([k, v]) => k + " " +
+          Math.round((t.before || {})[k] || 0) + "→" + Math.round(v)).join(" · ") +
+        " · targets " + Object.entries(t.targets || {}).map(([k, v]) => k + " " + Math.round(v)).join(", ") +
+        " · inputs " + JSON.stringify(t.inputs || {}) })))));
     if (x.stress_profile) out.push(el("details", {}, el("summary", { text: "Coping tendencies under stress" }), bars(x.stress_profile, 100)));
     if ((x.priorities || []).length) out.push(el("div", { class: "k", text: "Priorities (weight)" }), el("ul", null, x.priorities.map(p => el("li", { text: p.goal + " · " + p.weight }))));
     if (x.secret_goal && x.secret_goal.text) out.push(el("div", { class: "k", text: "Private goal" }), el("p", { class: "quote", text: x.secret_goal.text }));
@@ -1769,6 +1825,20 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       el("div", { class: "tablewrap" }, el("table", null, el("thead", null, el("tr", null, ["Toward", "trust", "respect", "fear", "resentment", "rivalry", "dependency", "reliability"].map(h => el("th", { text: h })))),
         el("tbody", null, Object.entries(x.relationships).map(([o, r]) => el("tr", null, el("td", { text: o }),
           ...["trust", "respect", "fear", "resentment", "rivalry", "dependency", "perceived_reliability"].map(k => el("td", { class: "n", text: Math.round(r[k] || 0) }))))))) ));
+    const relationEvents = Object.entries(x.relationships || {}).flatMap(([other, rel]) =>
+      (rel.events || []).map(event => ({ other, ...event }))).sort((a, b) => (a.month ?? -1) - (b.month ?? -1)).slice(-30);
+    if (relationEvents.length) {
+      const rows = relationEvents.map(event => {
+        const changes = Object.entries(event.changes || {}).map(([key, v]) =>
+          key.replace(/_/g, " ") + " " + v.from + "→" + v.to + " (" + (v.delta > 0 ? "+" : "") + v.delta + ")").join(", ");
+        return el("li", { text: "Month " + (event.month == null ? "?" : event.month + 1) +
+          " · Delegate " + event.other + " (" + ((I.index && I.index.mapping && I.index.mapping[event.other]) || "") + ") · " +
+          (event.reason || "cause unspecified") + " · " + changes });
+      });
+      out.push(el("details", {},
+        el("summary", { text: "Relationship change ledger · engine-recorded cause and deltas" }),
+        el("ul", {}, rows)));
+    }
     if ((x.grievances || []).length) out.push(el("div", { class: "k", text: "Grievances" }), el("ul", null, x.grievances.map(g => el("li", { text: g.against + ": " + g.reason + " (" + Math.round(g.strength) + (g.major ? ", major" : "") + ")" }))));
     if ((x.favor_debts || []).length) out.push(el("div", { class: "k", text: "Political debts" }), el("ul", null, x.favor_debts.map(g => el("li", { text: "owes " + g.to + " · " + g.motion + " · " + g.status }))));
     if ((x.promises || []).length) out.push(el("details", {}, el("summary", { text: "All promises" }), el("ul", null, x.promises.map(p => el("li", { text: p.status + " · " + (p.to || "public") + " · " + p.text })))));
@@ -1835,15 +1905,24 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         el("ul", { class: "eventlist" }, f.strengths.map(s => el("li", { text: s.description })))));
       if (f.commitments && f.commitments.length) out.push(el("div", { class: "card" }, el("h4", { text: "Inherited commitments" }),
         el("ul", { class: "eventlist" }, f.commitments.map(s => el("li", { text: s })))));
-      for (const [letter, d] of list) out.push(el("div", { class: "card" },
-        el("div", { class: "k", text: "Delegate " + letter + " · " + (d.dossier || "evidence") + " dossier" }),
-        el("h4", { text: (f.problems.find(p => p.id === d.main_problem) || {}).title || d.main_problem || "No readable diagnosis" }),
-        d.status && d.status !== "submitted" ? el("p", { class: "err", text: "Diagnosis " + d.status + (d.error ? ": " + d.error : "") }) : [
-          el("p", { class: "quote", text: "First policy: " + d.preferred_first_policy }),
-          el("p", { text: "Cause assessment: " + d.cause_assessment }),
-          el("p", { class: "muted small", text: "Second issue: " + (((f.problems.find(p => p.id === d.second_problem) || {}).title) || d.second_problem) + " · Biggest risk: " + d.biggest_risk }),
-          d.information_needed ? el("p", { class: "muted small", text: "Information needed: " + d.information_needed }) : null,
-          el("p", { class: "muted small", text: "May be underestimating: " + (d.what_other_offices_may_be_underestimating || "") })]));
+      for (const [letter, d] of list) {
+        const required = ["cause_assessment", "preferred_first_policy", "policy_to_avoid", "biggest_risk",
+          "information_needed", "what_other_offices_may_be_underestimating"];
+        const missing = required.filter(k => typeof d[k] !== "string" || !d[k].trim());
+        out.push(el("div", { class: "card" },
+          el("div", { class: "k", text: "Delegate " + letter + " · " + (d.dossier || "evidence") + " dossier" }),
+          el("h4", { text: (f.problems.find(p => p.id === d.main_problem) || {}).title || d.main_problem || "No readable diagnosis" }),
+          d.status && d.status !== "submitted" ? el("p", { class: "err", text: "Diagnosis " + d.status + (d.error ? ": " + d.error : "") }) :
+            !d.main_problem || missing.length ? el("p", { class: "err", text: "Incomplete diagnosis; missing: " +
+              [!d.main_problem ? "main_problem" : "", ...missing].filter(Boolean).join(", ") }) : [
+              el("p", { class: "quote", text: "First policy: " + d.preferred_first_policy }),
+              el("p", { text: "Cause assessment: " + d.cause_assessment }),
+              el("p", { class: "muted small", text: "Policy to avoid: " + d.policy_to_avoid }),
+              el("p", { class: "muted small", text: "Second issue: " + (((f.problems.find(p => p.id === d.second_problem) || {}).title) || d.second_problem) }),
+              el("p", { class: "muted small", text: "Biggest risk: " + d.biggest_risk }),
+              el("p", { class: "muted small", text: "Information needed: " + d.information_needed }),
+              el("p", { class: "muted small", text: "What other offices may be underestimating: " + d.what_other_offices_may_be_underestimating })]));
+      }
       out.push(el("h4", { text: "Inherited problems and plausible explanations" }), el("ul", { class: "eventlist" }, f.problems.map(p => el("li", null,
         el("b", { text: p.title + " · " + p.severity + "/100 · " + p.trend + (p.neglect_months ? " · " + p.neglect_months + " months without improvement" : "") }), " — " + p.public_description,
         p.possible_causes && p.possible_causes.length ? el("div", { class: "muted small", text: "Possible causes: " + p.possible_causes.join("; ") }) : null))));
@@ -2009,7 +2088,8 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
           el("td", { text: olabel || "–" }),
           el("td", { class: "n", text: r.spend > 0 ? money(r.spend) : "–" }),
           el("td", null, el("div", { class: "actions-cell" },
-            r.has_report ? el("a", { class: "btn small", href: "/runs/" + encodeURIComponent(r.id) + "/report.html", target: "_blank", rel: "noopener" }, "Report") : null,
+            r.has_report ? el("a", { class: "btn small", title: r.report_stale ? "Saved report covers " + r.report_months + " months; checkpoint has " + r.months_done : "Open saved report", href: "/runs/" + encodeURIComponent(r.id) + "/report.html", target: "_blank", rel: "noopener" },
+              r.report_stale ? "Report · stale (" + r.report_months + "/" + r.months_done + " months)" : "Report") : null,
             r.months_done > 0 || r.status === "paused" ? el("button", { class: "btn small", onclick: () => openInspect(r.id) }, "Inspect") : null,
             r.status === "running" ? el("button", { class: "btn small", onclick: () => showTab("live") }, "Watch") : null,
             resumable ? el("button", { class: "btn small primary", disabled: busy, onclick: () => resume(r.id) }, "Resume") : null)));

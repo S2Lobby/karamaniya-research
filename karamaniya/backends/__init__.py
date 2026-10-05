@@ -4,9 +4,9 @@ from __future__ import annotations
 from .base import Backend, CallResult, FatalError, QuotaError, TransientError
 
 # Command-line AIs first: they run on subscriptions you are already logged into.
-PROVIDERS = ("claude_cli", "codex_cli", "cline_cli", "antigravity_cli", "copilot_cli", "deepseek", "anthropic", "openai",
+PROVIDERS = ("claude_cli", "codex_cli", "cline_cli", "antigravity_cli", "copilot_cli", "qoder_cli", "deepseek", "anthropic", "openai",
              "openrouter", "openai_compat", "lmstudio", "llamacpp", "ollama", "scripted")
-CLI_PROVIDERS = ("claude_cli", "codex_cli", "cline_cli", "antigravity_cli", "copilot_cli")
+CLI_PROVIDERS = ("claude_cli", "codex_cli", "cline_cli", "antigravity_cli", "copilot_cli", "qoder_cli")
 
 
 def make_backend(cfg: dict) -> Backend:
@@ -26,6 +26,9 @@ def make_backend(cfg: dict) -> Backend:
     if provider in ("copilot_cli", "copilot"):
         from .copilot_cli import CopilotCLIBackend
         return CopilotCLIBackend(cfg)
+    if provider in ("qoder_cli", "qoder", "qodercli"):
+        from .qoder_cli import QoderCLIBackend
+        return QoderCLIBackend(cfg)
     if provider in ("antigravity_cli", "agy"):
         from .antigravity_cli import AntigravityCLIBackend
         return AntigravityCLIBackend(cfg)

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
+import math
 import random
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -41,6 +43,39 @@ def _emit(observer, **event) -> None:
             pass
 
 
+def _call_spend_after(store: RunStore, mark: dict) -> float:
+    """Cost of call records appended after a checkpoint's log mark."""
+    path = store.path / "log.jsonl"
+    if not path.exists():
+        return 0.0
+    try:
+        offset = max(0, int(mark.get("log.jsonl", 0)))
+        with path.open("rb") as f:
+            f.seek(offset)
+            tail = f.read()
+    except (OSError, TypeError, ValueError):
+        return 0.0
+    total = 0.0
+    for line in tail.splitlines():
+        try:
+            record = json.loads(line)
+            amount = float(record.get("cost_usd") or 0.0) if record.get("type") == "call" else 0.0
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if math.isfinite(amount) and amount > 0:
+            total += amount
+    return total
+
+
+def _stage_spend_recovery(store: RunStore, meta: dict, amount: float) -> dict:
+    """Persist recovered spend before truncating its source call records."""
+    if amount <= 0:
+        return meta
+    pending = float(meta.get("_pending_call_spend_recovery", 0.0) or 0.0) + amount
+    store.set_meta({"_pending_call_spend_recovery": pending})
+    return {**meta, "_pending_call_spend_recovery": pending}
+
+
 def preflight(cfg: dict) -> list:
     """Seats that cannot answer a tiny call. A run refuses to start while any seat is broken."""
     return [r for r in check_seats(cfg) if not r["ok"]]
@@ -50,9 +85,19 @@ def _require_seats(cfg: dict, observer, what: str) -> None:
     _emit(observer, type="checking")
     broken = preflight(cfg)
     if broken:
-        lines = [f"  {b['label']} ({b['provider']} {b['model']}): {b['error'][:200]}" for b in broken]
+        lines = []
+        for b in broken:
+            why = "provider usage limit" if b.get("quota") else "seat error"
+            lines.append(f"  {b['label']} ({b['provider']} {b['model']}; {why}): {b['error'][:200]}")
+        if all(b.get("quota") for b in broken):
+            hint = "The saved checkpoint is unchanged. Retry after the provider's limit resets."
+        elif any(b.get("quota") for b in broken):
+            hint = ("The saved checkpoint is unchanged. Usage limits reset later; fix any other seat errors "
+                    "before retrying.")
+        else:
+            hint = "Check the login, key or model id with `python -m karamaniya check`, then try again."
         raise SystemExit(f"These seats cannot answer, so the run was not {what}:\n" + "\n".join(lines)
-                         + "\nFix the login, key or model id (see `python -m karamaniya check`), then try again.")
+                         + "\n" + hint)
 
 
 def _survey(store: RunStore, council: Council, observer, quiet: bool) -> str:
@@ -132,6 +177,12 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
     for key, val in (("months", months), ("seed", seed), ("framing", framing), ("survey", survey)):
         if val is not None:
             run[key] = val
+    try:
+        run["months"] = int(run["months"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("months must be between 1 and 120") from exc
+    if not 1 <= run["months"] <= 120:
+        raise ValueError("months must be between 1 and 120")
     labels = [s["label"] for s in cfg["seats"]]
     order = list(range(len(labels)))
     if run["shuffle_seats"]:
@@ -206,6 +257,30 @@ def resume_run(run_dir, quiet=False, observer=None, stop_event=None, live_report
     if check:
         _require_seats(cfg, observer, "resumed")
     world, council_state, meta = store.load_checkpoint()
+    # If a month was interrupted by a crash rather than by a clean pause, its log lines are still
+    # there and the replay would write a second copy of them. Cut back to where the logs stood when
+    # the last month actually finished. Preserve any logged call cost before truncating those
+    # records, so replaying an abandoned month cannot make the spending cap forget paid calls.
+    # A checkpoint written before this mark existed has none, and is left alone.
+    meta = dict(meta or {})
+    log_mark = meta.get("log_mark")
+    pending_spend = meta.get("_pending_call_spend_recovery")
+    if pending_spend is not None:
+        try:
+            orphaned_spend = max(0.0, float(pending_spend))
+        except (TypeError, ValueError):
+            orphaned_spend = 0.0
+    else:
+        orphaned_spend = _call_spend_after(store, log_mark) if log_mark else 0.0
+        meta = _stage_spend_recovery(store, meta, orphaned_spend)
+    if log_mark:
+        store.rollback(log_mark)
+    if orphaned_spend > 0:
+        council_state = dict(council_state)
+        council_state["spend"] = float(council_state.get("spend", 0.0) or 0.0) + orphaned_spend
+        meta.pop("_pending_call_spend_recovery", None)
+        meta["log_mark"] = store.mark()
+        store.save_checkpoint(world, council_state, meta)
     upgraded = _maybe_upgrade(store, cfg, world, quiet)
     council = Council(world, _seats(cfg, cfg["mapping"]), cfg["run"], store, observer=observer)
     prompt_path = store.path / "system_prompt.txt"
@@ -214,13 +289,6 @@ def resume_run(run_dir, quiet=False, observer=None, stop_event=None, live_report
     elif upgraded:
         prompt_path.write_text(council.system, encoding="utf-8")
     council.load_state(council_state)
-    # If a month was interrupted by a crash rather than by a clean pause, its log lines are still
-    # there and the replay would write a second copy of them. Cut back to where the logs stood when
-    # the last month actually finished. A checkpoint written before this mark existed has none, and
-    # is left alone.
-    log_mark = (meta or {}).get("log_mark")
-    if log_mark:
-        store.rollback(log_mark)
     _emit(observer, type="started", run_id=store.path.name, mapping=cfg["mapping"],
           months_total=world.months_total, months_done=len(world.history))
     if not quiet:
@@ -228,23 +296,31 @@ def resume_run(run_dir, quiet=False, observer=None, stop_event=None, live_report
     if meta.get("survey_pending"):
         paused = _survey(store, council, observer, quiet)
         if paused:
-            store.set_meta({"stopped": paused})
+            meta.update({"stopped": paused})
+            store.save_checkpoint(world, council.state(), meta)
             return _end(store, world, council, paused, quiet, observer)
-        store.set_meta({"survey_pending": False, "stopped": ""})
+        meta.update({"survey_pending": False, "stopped": "", "log_mark": store.mark()})
+        store.save_checkpoint(world, council.state(), meta)
     if meta.get("founding_diagnosis_pending") or (world.founding and not world.founding.get("diagnoses")):
         paused = _diagnose(store, council, observer, quiet)
         if paused:
-            store.save_checkpoint(world, council.state(), {"stopped": paused, "founding_diagnosis_pending": True})
+            meta.update({"stopped": paused, "founding_diagnosis_pending": True})
+            store.save_checkpoint(world, council.state(), meta)
             return _end(store, world, council, paused, quiet, observer)
-        store.set_meta({"founding_diagnosis_pending": False, "stopped": ""})
+        meta.update({"founding_diagnosis_pending": False, "stopped": "", "log_mark": store.mark()})
+        store.save_checkpoint(world, council.state(), meta)
     if world.month == 0 and world.founding and (meta.get("government_formation_pending") or not world.founding.get("formation")):
         paused = _form_government(store, council, observer, quiet)
         if paused:
-            store.save_checkpoint(world, council.state(), {"stopped": paused, "government_formation_pending": True})
+            meta.update({"stopped": paused, "government_formation_pending": True})
+            store.save_checkpoint(world, council.state(), meta)
             return _end(store, world, council, paused, quiet, observer)
-        store.set_meta({"government_formation_pending": False, "stopped": ""})
+        meta.update({"government_formation_pending": False, "stopped": "", "log_mark": store.mark()})
+        store.save_checkpoint(world, council.state(), meta)
     if not world.history:
         _apply_scenario(world, cfg["run"])
+        meta.update({"stopped": "", "log_mark": store.mark()})
+        store.save_checkpoint(world, council.state(), meta)
     return _loop(store, world, council, cfg["run"], quiet, observer, stop_event, live_report)
 
 
@@ -284,6 +360,9 @@ def _loop(store: RunStore, world, council: Council, run: dict, quiet: bool, obse
     if live_report and world.history:
         build_report(store)
     while not world.ended():
+        if cap and council.spend >= cap:
+            stopped = f"spending cap of ${cap:.2f} reached"
+            break
         if stop_event is not None and stop_event.is_set():
             stopped = "stopped from the control room"
             break
@@ -293,10 +372,20 @@ def _loop(store: RunStore, world, council: Council, run: dict, quiet: bool, obse
         except RunPaused as exc:
             # Nothing of the unfinished month is kept: its log lines go, the checkpoint stays at the
             # last finished month, and resuming replays the month from the start.
-            store.rollback(mark)
             stopped = (f"paused in {month_label(world.month)}: {exc}. Resume when the limit resets; "
                        "the month will be replayed.")
             paused = True
+            saved_world, saved_council_state, saved_meta = store.load_checkpoint()
+            saved_council_state = dict(saved_council_state)
+            saved_meta = dict(saved_meta or {})
+            saved_spend = float(saved_council_state.get("spend", 0.0) or 0.0)
+            attempt_spend = max(0.0, float(council.spend) - saved_spend)
+            saved_meta = _stage_spend_recovery(store, saved_meta, attempt_spend)
+            store.rollback(mark)
+            saved_council_state["spend"] = saved_spend + attempt_spend
+            saved_meta.pop("_pending_call_spend_recovery", None)
+            saved_meta.update({"stopped": stopped, "log_mark": store.mark()})
+            store.save_checkpoint(saved_world, saved_council_state, saved_meta)
             break
         # Record where the logs stand now that the month is finished. A clean pause rolls the
         # unfinished month out of the logs, but a crash cannot — nothing runs — so the partial
@@ -340,11 +429,12 @@ def check_seats(config) -> list:
                                    'Reply with {"ok": true, "note": "ready"}.', schema, {"phase": "survey"})
             return {"label": s["label"], "provider": s["provider"], "model": s.get("model", ""),
                     "served_model": res.served_model, "ok": res.data is not None,
-                    "error": res.error, "latency_s": res.latency_s, "cost_usd": res.cost_usd}
+                    "error": res.error, "quota": res.quota,
+                    "latency_s": res.latency_s, "cost_usd": res.cost_usd}
         except Exception as exc:  # report every seat, even if one is misconfigured
             return {"label": s["label"], "provider": s["provider"], "model": s.get("model", ""),
                     "served_model": "", "ok": False, "error": f"{type(exc).__name__}: {exc}",
-                    "latency_s": 0, "cost_usd": 0}
+                    "quota": False, "latency_s": 0, "cost_usd": 0}
 
     with ThreadPoolExecutor(max_workers=max(1, len(cfg["seats"]))) as ex:
         return list(ex.map(one, cfg["seats"]))

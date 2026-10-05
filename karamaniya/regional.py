@@ -105,7 +105,10 @@ def effects(w: World, add) -> None:
         add("grievance", rid, -.005 * share)
         done = gains.get(rid, 0.0)
         if done < FUND_INDUSTRY_CAP:
-            step = FUND_INDUSTRY_STEP * share
+            # A fractional payment can leave `done` just below the cap by less than a full
+            # monthly step. Apply only the remaining amount so the accumulated development
+            # cannot overshoot the stated cap by one month.
+            step = min(FUND_INDUSTRY_STEP * share, FUND_INDUSTRY_CAP - done)
             w.region(rid).industry *= 1 + step
             gains[rid] = round(done + step, 5)
 

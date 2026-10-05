@@ -36,6 +36,22 @@ class Taxonomy(unittest.TestCase):
             with self.subTest(code=code):
                 self.assertTrue(errors.is_registered(code), f"{code} missing from the taxonomy")
 
+    def test_literal_rejection_codes_in_engine_are_registered(self):
+        # Includes outcomes that did not occur in the deterministic long-run fixture, but were
+        # emitted by real council runs before this list was cross-checked with TAXONOMY.
+        emitted = ["ACTION_NOT_VALID_FOR_TARGET", "ALREADY_SCHEDULED", "ALREADY_SET", "BAD_AMOUNT",
+                   "COSPONSORED_CARRIED", "DEAL_ALREADY_EXISTS", "DEFERRAL_MONTH_PAST",
+                   "DIRECTIVE_ORDER_MISMATCH", "DUPLICATE_ACTION", "ELECTION_MONTH_INVALID",
+                   "EMPTY_AMENDMENT", "EMPTY_MOTION_TEXT", "MOTION_NOT_HEARD", "MOTION_WITHDRAWN", "NAME_IN_USE",
+                   "SAME_MOTION_TABLED",
+                   "NO_ARREARS", "NO_ARREARS_IN_CATEGORY", "NO_DEFERRAL_TARGET", "NO_EXISTING_DEAL",
+                   "NO_FUNDING_CAPACITY", "NO_STRUCTURED_ACTION", "NO_TARGET", "RECENTLY_AUDITED",
+                   "RENEWED_CARRIED", "SESSION_VOID", "SUBSTANTIALLY_DUPLICATES", "TOO_MANY_OPEN",
+                   "UNKNOWN_ACTION_TYPE", "UNKNOWN_ARREARS_CATEGORY", "UNKNOWN_DEAL_INTENT",
+                   "UNKNOWN_DIPLOMACY", "UNKNOWN_FIELD", "UNKNOWN_REGION", "UNKNOWN_SCOPE", "UNKNOWN_TARGET"]
+        missing = [code for code in emitted if not errors.is_registered(code)]
+        self.assertEqual(missing, [], f"unregistered engine outcomes: {missing}")
+
     def test_descriptions_are_complete(self):
         for entry in errors.taxonomy():
             with self.subTest(code=entry["code"]):
@@ -50,6 +66,13 @@ class Taxonomy(unittest.TestCase):
 
 
 class Recording(unittest.TestCase):
+    def test_same_motion_tabled_is_recorded_as_its_own_code(self):
+        w = new_world(1, 3)
+        entry = errors.record(w, "SAME_MOTION_TABLED", "equivalent motion already tabled")
+        self.assertTrue(entry["registered"])
+        self.assertEqual(entry["code"], "SAME_MOTION_TABLED")
+        self.assertEqual(errors.summary(w)["unregistered"], 0)
+
     def test_record_adds_one_entry_and_summarises_it(self):
         w = new_world(1, 3)
         before = errors.summary(w)["total"]

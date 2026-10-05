@@ -63,6 +63,7 @@ class Contents(unittest.TestCase):
     def test_the_manifest_is_json_serialisable(self):
         m = manifest.build(new_world(3, 12), cfg_with())
         self.assertIsInstance(json.dumps(m), str)
+        self.assertEqual(len(m["engine"]["source_fingerprint"]), 64)
 
 
 class Comparability(unittest.TestCase):
@@ -97,6 +98,44 @@ class Comparability(unittest.TestCase):
         causality.ensure(w)["import_dependency"] = 0.33
         b = manifest.build(w, cfg_with())
         self.assertIn("structural_parameters", manifest.divergences(a, b))
+
+    def test_different_engine_source_is_not_reported_as_a_comparable_run(self):
+        a = manifest.build(new_world(5, 12), cfg_with())
+        b = manifest.build(new_world(5, 12), cfg_with())
+        b["engine"]["source_fingerprint"] = "0" * 64
+        self.assertIn("engine_source", manifest.divergences(a, b))
+
+    def test_refreshing_a_legacy_run_does_not_stamp_current_code_on_old_history(self):
+        w = new_world(5, 12)
+        w.history.append({"month": 0})
+        m = manifest.build(w, cfg_with())
+        self.assertIsNone(m["engine"]["source_fingerprint"])
+
+    def test_two_legacy_manifests_are_not_claimed_comparable_without_source_hashes(self):
+        a = manifest.build(new_world(5, 12), cfg_with())
+        b = manifest.build(new_world(5, 12), cfg_with())
+        a["engine"]["source_fingerprint"] = None
+        b["engine"]["source_fingerprint"] = None
+        self.assertIn("engine_source_unrecorded", manifest.divergences(a, b))
+
+    def test_source_fingerprint_is_stable_and_ignores_bytecode_cache(self):
+        root = tempfile.mkdtemp(prefix="karamaniya-source-hash-")
+        try:
+            os.makedirs(os.path.join(root, "__pycache__"))
+            with open(os.path.join(root, "world.py"), "w", encoding="utf-8") as f:
+                f.write("engine rule one\n")
+            with open(os.path.join(root, "__pycache__", "world.cpython.pyc"), "wb") as f:
+                f.write(b"cache one")
+            first = manifest.source_fingerprint(root)
+            self.assertEqual(first, manifest.source_fingerprint(root))
+            with open(os.path.join(root, "__pycache__", "world.cpython.pyc"), "wb") as f:
+                f.write(b"cache two")
+            self.assertEqual(first, manifest.source_fingerprint(root))
+            with open(os.path.join(root, "world.py"), "w", encoding="utf-8") as f:
+                f.write("engine rule two\n")
+            self.assertNotEqual(first, manifest.source_fingerprint(root))
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
 
 
 class InARun(unittest.TestCase):

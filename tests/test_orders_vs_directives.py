@@ -11,7 +11,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from karamaniya import politics  # noqa: E402
-from karamaniya.council import Council  # noqa: E402
+from karamaniya.council import Council, _keep_month_outcome  # noqa: E402
 from karamaniya.world import new_world  # noqa: E402
 
 OFFICES = {"head": "A", "treasury": "D", "interior": "E", "army": "B", "navy": "C"}
@@ -24,6 +24,21 @@ def world():
 
 
 class OrdersAgainstFreshDirectives(unittest.TestCase):
+    def test_office_orders_and_their_effective_state_survive_in_checkpoint_outcomes(self):
+        w = world()
+        w.policy.mobilization = "partial"
+        order_history = []
+
+        politics.apply_orders(w, "B", {"army": {"mobilization": "none"}},
+                              order_history=order_history)
+
+        self.assertEqual(order_history, [{"member": "B", "office": "army", "lever": "mobilization",
+                                          "order": "none", "directive": None,
+                                          "previous_value": "partial", "actual_value": "none",
+                                          "status": "applied"}])
+        _keep_month_outcome(w, {"month": 0, "motions": [], "office_orders": order_history})
+        self.assertEqual(w.month_outcomes[-1]["office_orders"], order_history)
+
     def test_an_order_for_a_setting_directed_this_month_is_set_aside_not_defiance(self):
         w = world()
         politics.apply_motion(w, {"type": "set_policy", "subject": "police", "value": "0.025", "proposer": "E"})
@@ -40,6 +55,61 @@ class OrdersAgainstFreshDirectives(unittest.TestCase):
         superseded = []
         self.assertEqual(politics.apply_orders(w, "D", {"treasury": {"police": 0.025}}, {"police"}, superseded), [])
         self.assertEqual(superseded, [])
+
+    def test_new_numeric_directive_replaces_the_old_bound_before_compliance_is_judged(self):
+        w = world()
+        w.const.directives["rate"] = 0.09
+        w.const.directive_bounds["rate"] = {"min": 0.09, "max": 0.09}
+        prior_directives = dict(w.const.directives)
+        prior_bounds = dict(w.const.directive_bounds)
+        politics.apply_motion(w, {"type": "set_policy", "subject": "rate", "value": "0.10", "proposer": "E"})
+        compliance = []
+
+        defiance = politics.apply_orders(
+            w, "D", {"treasury": {"rate": 0.10}}, {"rate"}, [], [], compliance,
+            prior_directives, prior_bounds,
+        )
+
+        self.assertEqual(defiance, [])
+        self.assertEqual(compliance[-1]["compliance_status"], politics.COMPLIANT)
+        self.assertEqual(w.policy.rate, 0.10)
+
+    def test_old_order_is_superseded_when_a_new_directive_changes_the_value(self):
+        w = world()
+        w.const.directives["rate"] = 0.10
+        w.const.directive_bounds["rate"] = {"min": 0.10, "max": 0.10}
+        prior_directives = dict(w.const.directives)
+        prior_bounds = dict(w.const.directive_bounds)
+        politics.apply_motion(w, {"type": "set_policy", "subject": "rate", "value": "0.12", "proposer": "E"})
+        superseded, compliance = [], []
+
+        defiance = politics.apply_orders(
+            w, "D", {"treasury": {"rate": 0.10}}, {"rate"}, superseded, [], compliance,
+            prior_directives, prior_bounds,
+        )
+
+        self.assertEqual(defiance, [])
+        self.assertEqual(compliance[-1]["compliance_status"], politics.SUPERSEDED_ORDER)
+        self.assertEqual(w.policy.rate, 0.12)
+        self.assertEqual(superseded[-1]["directive"], 0.12)
+
+    def test_new_enum_directive_does_not_mislabel_its_matching_order_as_defiance(self):
+        w = world()
+        w.const.directives["shipbuilding"] = True
+        w.const.directive_bounds["shipbuilding"] = {"min": True, "max": True}
+        prior_directives = dict(w.const.directives)
+        prior_bounds = dict(w.const.directive_bounds)
+        politics.apply_motion(w, {"type": "set_policy", "subject": "shipbuilding", "value": "off", "proposer": "E"})
+        compliance = []
+
+        defiance = politics.apply_orders(
+            w, "C", {"navy": {"shipbuilding": False}}, {"shipbuilding"}, [], [], compliance,
+            prior_directives, prior_bounds,
+        )
+
+        self.assertEqual(defiance, [])
+        self.assertEqual(compliance[-1]["compliance_status"], politics.COMPLIANT)
+        self.assertFalse(w.policy.shipbuilding)
 
     def test_a_directive_already_in_force_is_still_defied_knowingly(self):
         w = world()
@@ -145,6 +215,84 @@ class TheRecordedCase(unittest.TestCase):
         self.assertEqual(record["superseded_orders"], [])
         self.assertAlmostEqual(w.policy.police, 0.03)                 # no directive, so the holder's order applies
         self.assertNotEqual(w.policy.police, before)
+        change = next(x for x in record["office_orders"] if x["lever"] == "police")
+        self.assertEqual((change["member"], change["office"], change["status"]),
+                         ("D", "treasury", "applied"))
+        self.assertEqual((change["previous_value"], change["actual_value"]), (before, 0.03))
+
+    def test_program_measure_supersedes_a_pre_vote_office_order(self):
+        w = world()
+        motion = {"id": "M1", "proposer": "D", "type": "program", "subject": "fiscal_stabilization",
+                  "value": "package", "text": "Temporarily pause shipbuilding.",
+                  "action": {"measures": [{"lever": "shipbuilding", "value": "off"}]},
+                  "summary": "fiscal package"}
+        record = resolve(w, motion, dict.fromkeys("ABCDE", "yes"),
+                         {"C": {"navy": {"shipbuilding": True}}})
+        self.assertFalse(w.policy.shipbuilding)
+        self.assertEqual(w.const.directives["shipbuilding"], False)
+        self.assertEqual(record["defiance"], [])
+        self.assertEqual([(row["lever"], row["order"], row["directive"])
+                          for row in record["superseded_orders"]], [("shipbuilding", True, False)])
+        package = next(row for row in record["motions"] if row["id"] == "M1")
+        self.assertEqual(package["final_structured_action"]["measures"],
+                         [{"lever": "shipbuilding", "value": False}])
+
+    def test_program_measure_can_be_deliberately_defied_next_month(self):
+        w = world()
+        package = {"id": "P1", "proposer": "D", "type": "program", "subject": "fiscal_stabilization",
+                   "value": "package", "text": "Pause shipbuilding.",
+                   "action": {"measures": [{"lever": "shipbuilding", "value": "off"}]},
+                   "summary": "fiscal package"}
+        resolve(w, package, dict.fromkeys("ABCDE", "yes"), {})
+        w.month += 1
+        unrelated = {"id": "M1", "proposer": "D", "type": "set_policy", "subject": "tax",
+                     "value": "0.22", "text": "", "summary": "directive tax = 0.22"}
+        record = resolve(w, unrelated, dict.fromkeys("ABCDE", "yes"),
+                         {"C": {"navy": {"shipbuilding": True}}})
+        self.assertEqual([(d["member"], d["lever"], d["directive"], d["value"])
+                          for d in record["defiance"]], [("C", "shipbuilding", False, True)])
+
+    def test_program_replaces_an_older_numeric_directive_bound(self):
+        w = world()
+        politics.apply_motion(w, {"type": "set_policy", "subject": "tax", "value": "0.20", "proposer": "D"})
+        politics.apply_motion(w, {"type": "program", "subject": "fiscal_stabilization", "value": "package",
+                                  "action": {"measures": [{"lever": "tax", "value": "0.22"}]},
+                                  "proposer": "D"})
+
+        defiance = politics.apply_orders(w, "D", {"treasury": {"tax": 0.22}})
+
+        self.assertEqual(defiance, [])
+        self.assertEqual(w.const.directives["tax"], 0.22)
+        self.assertEqual(w.const.directive_bounds["tax"], {"min": 0.22, "max": 0.22})
+
+    def test_stale_saved_bound_cannot_mark_a_matching_order_as_defiance(self):
+        w = world()
+        w.const.directives["tax"] = 0.22
+        w.const.directive_bounds["tax"] = {"min": 0.20, "max": 0.20}
+
+        defiance = politics.apply_orders(w, "D", {"treasury": {"tax": 0.22}})
+
+        self.assertEqual(defiance, [])
+        self.assertAlmostEqual(w.policy.tax, 0.22)
+
+    def test_reaffirming_a_directive_does_not_hide_a_preexisting_defiance(self):
+        w = world()
+        package = {"id": "P1", "proposer": "D", "type": "program", "subject": "fiscal_stabilization",
+                   "value": "package", "text": "Pause shipbuilding.",
+                   "action": {"measures": [{"lever": "shipbuilding", "value": "off"}]},
+                   "summary": "fiscal package"}
+        resolve(w, package, dict.fromkeys("ABCDE", "yes"), {})
+        w.month += 1
+        reaffirmation = {**package, "id": "P2"}
+        record = resolve(w, reaffirmation, dict.fromkeys("ABCDE", "yes"),
+                         {"C": {"navy": {"shipbuilding": True}}})
+        self.assertFalse(w.policy.shipbuilding)
+        self.assertEqual([(d["member"], d["lever"], d["directive"], d["value"])
+                          for d in record["defiance"]], [("C", "shipbuilding", False, True)])
+        compliance = [row for row in record["compliance"] if row["lever"] == "shipbuilding"]
+        self.assertEqual(len(compliance), 1)
+        self.assertEqual(compliance[0]["compliance_status"], politics.EXPLICIT_VIOLATION)
+        self.assertIn("month open", compliance[0]["note"])
 
 
 if __name__ == "__main__":

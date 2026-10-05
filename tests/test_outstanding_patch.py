@@ -30,6 +30,36 @@ def grain_world():
 
 
 class CanonicalForeignActors(unittest.TestCase):
+    def test_text_and_structured_diplomatic_target_are_validated_before_vote(self):
+        w = world()
+        mo = {"type": "diplomacy", "subject": "non_aggression", "value": "",
+              "text": "Propose a non-aggression pact to the Solvaran Union.",
+              "action": {"action_type": "non_aggression_pact", "target": "VELERIA"}}
+        problem = politics.validate_motion_detail(w, mo)
+        self.assertIsNotNone(problem)
+        self.assertEqual(problem["reason_code"], "MOTION_ACTION_MISMATCH")
+
+    def test_revision_cannot_change_diplomatic_target_and_keep_stale_action(self):
+        from karamaniya import deliberation
+        w = world()
+        motion = {"id": "M1", "type": "diplomacy", "subject": "trade_talks", "value": "",
+                  "text": "To Veleria: open trade talks.", "proposer": "A", "summary": "talks",
+                  "action": {"action_type": "trade_talks", "target": "VELERIA"}}
+        notes = deliberation.apply_revisions(w, "A", {"amend": [{"motion_id": "M1", "value": "",
+            "text": "To the Solvaran Union: open trade talks."}]}, [motion], [motion])
+        self.assertEqual(notes["amended"], [])
+        self.assertEqual(notes["rejected"][0]["reason_code"], "MOTION_ACTION_MISMATCH")
+        self.assertEqual(motion["text"], "To Veleria: open trade talks.")
+
+    def test_diplomatic_action_with_impossible_recipient_is_rejected_before_vote(self):
+        w = world()
+        mo = {"type": "diplomacy", "subject": "grain_deal", "value": "normal_imports",
+              "text": "Propose a grain deal to the Solvaran Union.",
+              "action": {"action_type": "grain_deal", "target": "SOLVARAN_UNION"}}
+        problem = politics.validate_motion_detail(w, mo)
+        self.assertIsNotNone(problem)
+        self.assertEqual(problem["reason_code"], "ACTION_NOT_VALID_FOR_TARGET")
+
     def test_maritime_league_prose_with_union_target_is_a_named_mismatch(self):
         clash = motion_actions.conflict(world(), {
             "type": "diplomacy", "subject": "trade_deal", "value": "",

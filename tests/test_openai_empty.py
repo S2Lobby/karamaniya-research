@@ -96,6 +96,28 @@ class EmptyAndCutOffReplies(unittest.TestCase):
         self.assertEqual([b["max_tokens"] for b in server.bodies], [8000, 16000])
         self.assertEqual(res.attempts, 1)
 
+    def test_reasoning_cutoff_keeps_increasing_budget_until_the_reply_fits(self):
+        cut = completion("", 8000, finish="length")
+        backend, server = self.seat([cut, cut, completion(GOOD, 1200)],
+                                    max_tokens=8000, max_tokens_cap=32000)
+        res = backend.complete("SYS", "USER", SCHEMA)
+        self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
+        self.assertEqual([b["max_tokens"] for b in server.bodies], [8000, 16000, 32000])
+
+    def test_zero_output_budget_is_rejected_before_a_cutoff_can_loop(self):
+        with self.assertRaisesRegex(ValueError, "max_tokens must be a positive integer"):
+            self.seat([completion("", 0, finish="length")], max_tokens=0)
+
+    def test_openrouter_reasoning_cutoff_retries_from_32k_to_64k(self):
+        cut32 = completion("", 32000, finish="length")
+        cut64 = completion("", 64000, finish="length")
+        backend, server = self.seat([cut32, cut64, completion(GOOD, 1200)],
+                                    provider="openrouter", max_tokens=32000,
+                                    max_tokens_cap=65536, api_key_env="")
+        res = backend.complete("SYS", "USER", SCHEMA)
+        self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
+        self.assertEqual([b["max_tokens"] for b in server.bodies], [32000, 64000, 65536])
+
     def test_all_thinking_and_no_answer_is_the_same_case(self):
         # The recorded failure: 8,000 tokens spent, content empty, finish_reason length.
         backend, server = self.seat([completion("", 8000, finish="length"), completion(GOOD, 700)], max_tokens=8000)
@@ -136,7 +158,7 @@ class EmptyAndCutOffReplies(unittest.TestCase):
     def test_openrouter_seats_start_with_a_budget_a_reasoning_model_can_use(self):
         with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-only"}):
             seat = make_backend({"provider": "openrouter", "model": "vendor/model"})
-            self.assertEqual((seat.max_tokens, seat.max_tokens_cap), (16000, 32000))
+            self.assertEqual((seat.max_tokens, seat.max_tokens_cap), (16000, 65536))
             self.assertEqual(make_backend({"provider": "openrouter", "model": "m", "max_tokens": 4000}).max_tokens, 4000)
         self.assertEqual(make_backend({"provider": "openai", "model": "m", "api_key_env": ""}).max_tokens, 8000)
 

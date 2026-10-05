@@ -23,7 +23,7 @@ ENUMS = {
     "imports": ("normal", "max"),
     "stats": ("honest", "massaged"),
     "debt_service": ("pay", "suspend"),
-    "protest_response": ("tolerate", "disperse", "lethal"),
+    "protest_response": ("tolerate", "negotiate", "disperse", "lethal"),
     "surveillance": ("low", "medium", "high"),
     "arrests": ("none", "targeted", "mass"),
     "emigration": ("open", "restricted", "closed"),
@@ -35,6 +35,20 @@ ENUMS = {
     "training_intensity": ("neglect", "standard", "intense"),
     "mobilization": ("none", "partial", "general"),
     "regional_fund": ("none", "kessel", "highlands", "both"),
+    "ownership": ("private", "mixed", "state"),
+    "planning": ("none", "indicative", "command"),
+    "amnesty": ("none", "release"),
+}
+# A delegate who reaches for a near-synonym of a real value is understood, not refused -- but only
+# where the synonym is unambiguous for that lever and means the same act. "Appease the protesters"
+# and "open a dialogue" are both the conciliation option; nothing here bends one distinct choice
+# into another, so an unknown value still returns None and the motion is rejected with the allowed
+# list rather than a different policy being set in place of the one the delegate asked for.
+LEVER_VALUE_ALIASES = {
+    "protest_response": {"appease": "negotiate", "appeasement": "negotiate", "concede": "negotiate",
+                         "negotiate": "negotiate", "dialogue": "negotiate", "conciliate": "negotiate",
+                         "conciliation": "negotiate", "amnesty": "negotiate", "talk": "negotiate",
+                         "engage": "negotiate", "negotiation": "negotiate"},
 }
 SHARES = {"tax": (0.05, 0.60), "military": (0.005, 0.20), "police": (0.002, 0.06),
           "welfare": (0.0, 0.15), "health_edu": (0.01, 0.12), "farm_support": (0.0, 0.05),
@@ -46,9 +60,10 @@ LEVER_OFFICE = {
     **{k: "treasury" for k in ("tax", "military", "police", "welfare", "health_edu", "farm_support",
                                 "printing",
                                 "rate", "price_controls", "rationing", "requisition",
-                                "capital_controls", "imports", "stats", "debt_service", "regional_fund")},
+                                "capital_controls", "imports", "stats", "debt_service", "regional_fund",
+                                "ownership", "import_cap", "planning")},
     **{k: "interior" for k in ("protest_response", "surveillance", "arrests", "emigration",
-                                "election_conduct")},
+                                "election_conduct", "amnesty")},
     **{k: "army" for k in ("recruitment", "army_target", "posture", "purge", "deploy_north",
                             "deploy_east", "deploy_capital", "officer_pay", "training_intensity",
                             "mobilization")},
@@ -99,6 +114,7 @@ CONSTITUTION_FIELDS = {
     "assembly": ("free", "restricted", "banned"),
     "emergency": ("on", "off"),
     "minority": ("equal", "restricted", "interned"),
+    "parties": ("multi_party", "ban_opposition", "one_party"),
     "kessel_status": REGION_STATUSES,
     "highlands_status": REGION_STATUSES,
     "election_month": None,
@@ -109,10 +125,16 @@ DIPLOMACY = {"trade_talks": "union", "non_aggression": "union", "federation": "u
              "military_aid": "league", "trade_deal": "league", "grain_deal": "dorsania",
              # A protest is its own act, addressed to the Union. Without it a delegate's protest had
              # no way to execute except by masquerading as a proposal to someone else.
-             "diplomatic_protest": "union"}
+             "diplomatic_protest": "union", "renounce": "union"}
 MOTION_TYPES = ("assign_office", "vacate_office", "set_policy", "settle_arrears", "constitution", "amend",
-                "expel", "diplomacy", "referendum", "launch_currency")
+                "expel", "diplomacy", "referendum", "launch_currency", "program")
 V2_MOTION_TYPES = ("emergency_measure", "investigation", "disaster_relief", "defer_motion")  # agent architecture 2
+# A delegate who reaches for a near-synonym of a real motion type is understood, not refused: an
+# "audit" is an investigation, an "inquiry" is an investigation. Only unambiguous synonyms are here;
+# a genuinely unknown type still comes back as UNKNOWN_TYPE with the allowed list so the delegate
+# learns the vocabulary rather than having a different motion executed in place of the one they asked for.
+MOTION_TYPE_ALIASES = {"audit": "investigation", "inquiry": "investigation", "investigate": "investigation",
+                       "appoint": "assign_office", "remove": "vacate_office", "resign": "vacate_office"}
 
 
 # ---- parsing values that AIs write ----------------------------------------------------
@@ -142,6 +164,7 @@ def parse_lever(lever: str, raw):
     """Return the typed value for a policy lever, or None if the value makes no sense."""
     if lever in ENUMS:
         s = str(raw).strip().lower()
+        s = LEVER_VALUE_ALIASES.get(lever, {}).get(s, s)
         return s if s in ENUMS[lever] else None
     if lever in SHARES:
         return parse_share(raw, *SHARES[lever])
@@ -150,6 +173,11 @@ def parse_lever(lever: str, raw):
     if lever == "army_target":
         try:
             return clamp(float(str(raw).replace(",", "").strip()), 5000, 400000)
+        except ValueError:
+            return None
+    if lever == "import_cap":
+        try:
+            return max(0.0, min(float(str(raw).replace(",", "").strip()), 1e11))
         except ValueError:
             return None
     if lever.startswith("deploy_"):
@@ -304,7 +332,8 @@ def relief_funding_capacity(w: World, source: str) -> float:
 def _region_of(w: World, raw):
     """One of Karamaniya's own regions. The council directs Karamaniya's spending, so relief abroad
     is not a relief package; it is foreign aid, which is a different act with a different target."""
-    key = str(raw or "").strip().lower().replace(" ", "_")
+    text = re.sub(r"[_-]+", " ", str(raw or "").strip().lower())
+    key = text.replace(" ", "_")
     own = w.k_regions()
     for r in own:
         if r.id == key:
@@ -312,7 +341,27 @@ def _region_of(w: World, raw):
     for r in own:
         if str(r.name).strip().lower() == str(raw or "").strip().lower():
             return r
-    return None
+    matches = [r for r in own if re.search(r"\b" + re.escape(r.id) + r"\b", text)
+               or re.search(r"\b" + re.escape(str(r.name).strip().lower()) + r"\b", text)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _regions_of(w: World, raw):
+    """Resolve one or more explicitly named domestic regions without choosing between them."""
+    own = w.k_regions()
+    if isinstance(raw, (list, tuple)):
+        resolved = [_region_of(w, item) for item in raw]
+        if not resolved or any(region is None for region in resolved):
+            return None
+        return list({region.id: region for region in resolved}.values())
+    text = re.sub(r"[_-]+", " ", str(raw or "").strip().lower())
+    matches = [region for region in own
+               if re.search(r"\b" + re.escape(region.id) + r"\b", text)
+               or re.search(r"\b" + re.escape(str(region.name).strip().lower()) + r"\b", text)]
+    if matches:
+        return matches
+    exact = _region_of(w, raw)
+    return [exact] if exact is not None else None
 
 
 def _spend_relief(w: World, source: str, amount: float) -> None:
@@ -345,12 +394,30 @@ def _reject(code: str, explanation: str, **related) -> dict:
 # what the army trains *for*, and silently redirecting it would change a different thing.
 LEVER_ALIASES = {
     "army_training_focus": "training_intensity",
+    "army_training_intensity": "training_intensity",
     "training_intensity_focus": "training_intensity",
     "army_recruitment_focus": "recruitment",
     "recruitment_focus": "recruitment",
     "army_pay": "officer_pay",
     "officers_pay": "officer_pay",
     "conscription": "recruitment",
+    # Synonyms a delegate reaches for when they mean an existing setting by another name. Each maps
+    # to one lever with no change of meaning; ambiguous or novel doctrines are left to the rejection
+    # note rather than guessed at, so the harness understands intent without ever inventing policy.
+    "police_response": "protest_response",
+    "protest": "protest_response",
+    "protest_handling": "protest_response",
+    "money_printing": "printing",
+    "print_money": "printing",
+    "interest_rate": "rate",
+    "policy_rate": "rate",
+    "import_controls": "imports",
+    "trade_policy": "imports",
+    "austerity": "welfare",
+    "taxes": "tax",
+    "taxation": "tax",
+    "army_recruitment": "recruitment",
+    "inflation_rate": "rate",
 }
 
 
@@ -361,8 +428,149 @@ def canonical_lever(subj) -> str:
     understood rather than rejected — the engine's vocabulary should not be narrower than the
     governed world's institutions.
     """
-    text = re.sub(r"[\s\-]+", "_", str(subj).strip().lower())
-    return LEVER_ALIASES.get(text, str(subj).strip())
+    raw = str(subj).strip()
+    text = re.sub(r"[\s\-]+", "_", raw.lower())
+    if text in LEVER_ALIASES:
+        return LEVER_ALIASES[text]
+    if text in LEVER_OFFICE:
+        return raw
+    # Delegates sometimes qualify a setting with its office (`interior:arrests`,
+    # `army/recruitment`, or `interior.protest_response`). These are unambiguous when the
+    # prefix names the office that owns the setting. The previous intake path treated each
+    # qualified form as a brand-new lever, so valid responses to unrest and military threats
+    # were discarded as UNKNOWN_LEVER.
+    parts = re.split(r"[:./]", raw)
+    if len(parts) > 1:
+        prefix = ":".join(parts[:-1]).strip()
+        tail = re.sub(r"[\s\-]+", "_", parts[-1].strip().lower())
+        candidate = LEVER_ALIASES.get(tail, tail)
+        if candidate in LEVER_OFFICE and canonical_office(prefix) == LEVER_OFFICE[candidate]:
+            return candidate
+        # A qualified but mismatched/unknown namespace is meaningful evidence against a
+        # suffix-only fuzzy match (e.g. army:protest_response must not become protest_response).
+        return raw
+    # A near-miss that is unmistakably one lever is resolved rather than rejected: a high similarity
+    # threshold keeps this to slips of wording (a hyphen, a stray word) and never bends a genuinely
+    # different or invented setting onto a lever it did not mean.
+    near = get_close_matches(text, list(LEVER_OFFICE), n=1, cutoff=0.86)
+    return near[0] if near else str(subj).strip()
+
+
+OFFICE_NAME_ALIASES = {
+    "head of government": "head", "head government": "head", "prime minister": "head",
+    "premier": "head", "chief executive": "head", "head of state": "head",
+    "treasury": "treasury", "finance": "treasury", "finance ministry": "treasury",
+    "central bank": "treasury", "treasury and central bank": "treasury", "ministry of finance": "treasury",
+    "interior": "interior", "interior and police": "interior", "police": "interior",
+    "interior ministry": "interior", "home affairs": "interior", "ministry of interior": "interior",
+    "army": "army", "army command": "army", "defence": "army", "defense": "army",
+    "war ministry": "army", "military command": "army", "ministry of defence": "army",
+    "navy": "navy", "navy command": "navy", "naval command": "navy", "maritime command": "navy",
+}
+
+
+def canonical_office(subj) -> str:
+    """The office id a delegate means, from a title, a display name, or a near-miss.
+
+    Delegates name offices the way people do -- 'Head of Government', 'the Treasury', 'Army Command'
+    -- not by the engine's lowercase id. Resolving the words they used to the one office they mean is
+    understanding, not guessing: a phrase naming several offices is left as written, so the motion is
+    rejected with the office list rather than a random office being assigned.
+    """
+    text = re.sub(r"[\s\-]+", " ", str(subj or "").strip().lower()).strip(" .;:,")
+    if text in OFFICES:
+        return text
+    if text in OFFICE_NAME_ALIASES:
+        return OFFICE_NAME_ALIASES[text]
+    hits = {oid for oid, title in OFFICE_TITLES.items() if title.lower() in text}
+    if len(hits) == 1:
+        return next(iter(hits))
+    words = {oid for oid in OFFICES if re.search(r"\b" + oid + r"\b", text)}
+    if len(words) == 1:
+        return next(iter(words))
+    near = get_close_matches(text, list(OFFICES), n=1, cutoff=0.82)
+    return near[0] if near else str(subj).strip()
+
+
+# Phrases a delegate uses for a foreign act, mapped to the engine's diplomatic subject, most specific
+# first so "trade talks" is not read as "trade deal".
+_DIPLOMACY_PHRASES = (
+    ("non aggression pact", "non_aggression"), ("non aggression", "non_aggression"),
+    ("trade talks", "trade_talks"), ("trade deal", "trade_deal"), ("trade agreement", "trade_deal"),
+    ("grain deal", "grain_deal"), ("grain agreement", "grain_deal"), ("grain", "grain_deal"),
+    ("join union", "join_union"), ("reunification", "join_union"), ("rejoin", "join_union"),
+    ("federation", "federation"), ("ceasefire", "ceasefire"), ("armistice", "ceasefire"),
+    ("alliance", "alliance"), ("defensive pact", "alliance"),
+    ("military aid", "military_aid"), ("military equipment", "military_aid"), ("arms shipment", "military_aid"),
+    ("loan", "loan"), ("credit facility", "loan"), ("line of credit", "loan"),
+    ("protest", "diplomatic_protest"),
+)
+
+
+def canonical_diplomacy_subject(subj) -> str:
+    """The diplomatic act a delegate means, stripped of the prose wrapped around it.
+
+    'trade_talks with Dorsania', 'a grain deal (imports)' and 'non_aggression_pact' each name one act
+    the engine routes on; only the engine's own spelling routes correctly. When the words name two
+    different acts the phrase is left as written -- that is two motions, and guessing which one the
+    council voted on would execute something nobody chose.
+    """
+    key = re.sub(r"[\"'`\u2018\u2019\u201c\u201d]+", " ", str(subj or "").strip().lower())
+    if key.replace(" ", "_") in DIPLOMACY:
+        return key.replace(" ", "_")
+    flat = " " + re.sub(r"\s+", " ", re.sub(r"[_\-]+", " ", key)).strip() + " "
+    acts = []
+    for phrase, canon in _DIPLOMACY_PHRASES:
+        if (" " + phrase + " " in flat) or phrase in flat:
+            if canon not in acts:
+                acts.append(canon)
+    return acts[0] if len(acts) == 1 else str(subj).strip()
+
+
+def canonical_funding(subj) -> str:
+    """The settlement source a delegate means: 'Reserves', 'gold', 'the Treasury' all mean reserves.
+
+    'reserves or domestic_bonds' names both, which is a real choice the council must make, so it is
+    left as written rather than one being picked for them.
+    """
+    key = re.sub(r"[\s\-]+", " ", str(subj or "").strip().lower()).strip(" .;:,")
+    if key.replace(" ", "_") in ("reserves", "domestic_bonds"):
+        return key.replace(" ", "_")
+    if key in ("gold", "treasury", "the treasury", "treasury reserves", "foreign reserves", "state reserves"):
+        return "reserves"
+    if key in ("bonds", "domestic bonds", "debt", "credit", "borrowing", "issuance"):
+        return "domestic_bonds"
+    return str(subj).strip()
+
+
+def _program_measures(w, mo):
+    """The (lever, value) pairs a program motion sets, each lever resolved to the engine's name.
+
+    A delegate who reaches for a package -- 'an austerity programme', or naming a whole office as
+    their subject -- is asking for several settings at once, which is how a cabinet actually
+    resolves policy. A program carries that package in one motion. The whole list is validated
+    before any of it is applied, so a package with one bad lever sets nothing rather than half a
+    programme the council never voted for. Returns (measures, None) or (None, structured_rejection).
+    """
+    raw = (mo.get("action") or {}).get("measures") if isinstance(mo.get("action"), dict) else None
+    if not isinstance(raw, list) or not raw:
+        return None, _reject("NO_STRUCTURED_ACTION",
+                             "a program must carry a list of measures, each {lever, value}")
+    measures = []
+    for item in raw:
+        if not isinstance(item, dict):
+            return None, _reject("BAD_VALUE", "each program measure must name a lever and a value")
+        lever = canonical_lever(str(item.get("lever", "")).strip())
+        value = _bare(item.get("value", ""))
+        if lever not in LEVER_OFFICE:
+            return None, _reject("UNKNOWN_LEVER", _unknown_lever(lever))
+        parsed = parse_lever(lever, value)
+        if parsed is None:
+            return None, _reject("BAD_VALUE", f"bad value '{value}' for {lever}"
+                                 + (f"; allowed: {', '.join(ENUMS[lever])}" if lever in ENUMS else ""),
+                                 lever=lever)
+        measures.append((lever, parsed))
+    return measures, None
 
 
 def patronage_subject(subj) -> str:
@@ -417,6 +625,18 @@ def _bare(raw):
 def validate_motion_detail(w: World, mo: dict) -> dict | None:
     """None if the motion is well formed; otherwise a structured rejection the model can act on."""
     t, subj, val = mo.get("type"), str(mo.get("subject", "")).strip(), _bare(mo.get("value", ""))
+    if t in MOTION_TYPE_ALIASES:
+        t = mo["type"] = MOTION_TYPE_ALIASES[t]
+    # Resolve the words a delegate used for an office, a foreign act, or a funding source to the
+    # engine's own id, and write it back so validation and execution agree on the same target. This
+    # is understanding intent, not guessing it: an ambiguous phrase is left as written and rejected
+    # with the allowed list rather than a coin-flip being made on the council's behalf.
+    if t in ("assign_office", "vacate_office", "investigation"):
+        subj = mo["subject"] = canonical_office(subj)
+    elif t == "diplomacy":
+        subj = mo["subject"] = canonical_diplomacy_subject(subj)
+    elif t == "settle_arrears":
+        subj = mo["subject"] = canonical_funding(subj)
     ids = {m.id for m in w.active_members()}
     types = MOTION_TYPES + (V2_MOTION_TYPES if w.agent_architecture_version >= 2 else ())
     if t not in types:
@@ -432,6 +652,11 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
         return _reject("ALREADY_VACANT", f"{subj} is already vacant", office=subj)
     if t == "expel" and subj.upper() not in ids:
         return _reject("NOT_A_MEMBER", f"'{subj}' is not an active member", active=sorted(ids))
+    if t == "program":
+        measures, err = _program_measures(w, mo)
+        if err:
+            return err
+        mo["measures"] = measures
     if t == "set_policy":
         subj = canonical_lever(subj)
         if subj not in LEVER_OFFICE:
@@ -496,6 +721,18 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
     if t == "diplomacy" and subj not in DIPLOMACY:
         return _reject("UNKNOWN_DIPLOMACY", f"unknown diplomatic proposal '{subj}'", allowed=list(DIPLOMACY))
     if t == "diplomacy":
+        if subj == "loan":
+            action = mo.get("action") if isinstance(mo.get("action"), dict) else {}
+            amount = parse_loan_amount(val)
+            if amount is None:
+                amount = parse_loan_amount(action.get("amount"))
+            if amount is None:
+                return _reject("BAD_LOAN_AMOUNT", "a loan needs a positive amount in millions of gold")
+            mo["value"] = format(amount, ".12g")
+        from . import motion_actions
+        action_problem = motion_actions.validate_diplomatic_action(w, mo)
+        if action_problem:
+            return _reject(action_problem["code"], action_problem["detail"])
         problem = _deal_problem(w, mo, subj, str(mo.get("text", "")))
         if problem:
             return problem
@@ -526,14 +763,30 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
             return _reject("ALREADY_SET", f"{subj} is not in force", measure=subj)
     if t == "disaster_relief":
         plan = mo.get("action") if isinstance(mo.get("action"), dict) else {}
-        region = _region_of(w, plan.get("region") or subj)
-        if region is None:
-            return _reject("UNKNOWN_REGION", f"'{plan.get('region') or subj}' is not a region of "
+        region_value = plan.get("regions") or plan.get("region") or subj or mo.get("text")
+        regions = _regions_of(w, region_value)
+        if not regions:
+            return _reject("UNKNOWN_REGION", f"'{region_value or subj}' is not a region of "
                            "Karamaniya", regions=[r.id for r in w.k_regions()])
         amount = parse_money(plan.get("amount", val))
         if amount is None or amount <= 0:
             return _reject("BAD_AMOUNT", "disaster relief needs a positive amount")
-        if str(plan.get("funding", "")).strip().lower() not in RELIEF_FUNDING:
+        funding_plan = plan.get("funding_plan")
+        if isinstance(funding_plan, list) and funding_plan:
+            parsed_allocations = []
+            for allocation in funding_plan:
+                if not isinstance(allocation, dict) or str(allocation.get("source", "")).strip().lower() \
+                        not in RELIEF_FUNDING:
+                    return _reject("UNKNOWN_FUNDING", f"funding sources must be one of {', '.join(RELIEF_FUNDING)}",
+                                   allowed=list(RELIEF_FUNDING))
+                allocation_amount = parse_money(allocation.get("amount"))
+                if allocation_amount is None or allocation_amount <= 0:
+                    return _reject("BAD_AMOUNT", "each relief funding allocation needs a positive amount")
+                parsed_allocations.append(allocation_amount)
+            if sum(parsed_allocations) > amount + 1:
+                return _reject("BAD_AMOUNT", "relief funding allocations cannot exceed the approved package amount",
+                               approved=amount, allocated=sum(parsed_allocations))
+        elif str(plan.get("funding", "")).strip().lower() not in RELIEF_FUNDING:
             return _reject("UNKNOWN_FUNDING", f"funding must be one of {', '.join(RELIEF_FUNDING)}",
                            allowed=list(RELIEF_FUNDING))
         if str(plan.get("scope", "")).strip().lower() not in RELIEF_SCOPES:
@@ -658,7 +911,14 @@ def _intervals(text: str, value, lever: str = "") -> list:
         out.append((_named_value(text, found, lever, value), None))
     if found := _BOUND_CEILING.search(text):
         out.append((None, _named_value(text, found, lever, value)))
-    if found := _BOUND_HOLD.search(text):
+    found = _BOUND_HOLD.search(text)
+    # A conditional warning such as "do not raise the rate to 11% without evidence" is
+    # not a fixed-value demand. Treating the cited threshold as the only permitted value
+    # made an amended 10% motion conflict with a request for evidence before a later hike.
+    if found and re.search(r"\b(?:do\s+not|don't|never)\s+raise\b[^.;]{0,60}\bwithout\b[^.;]{0,60}\b(?:evidence|proof|data)\b",
+                           text, re.I):
+        found = None
+    if found:
         out.append((_named_value(text, found, lever, value),) * 2)
     return out or [(value, value)]
 
@@ -697,6 +957,13 @@ def _bound_for(w: World, lever: str) -> dict:
     value, which is how it was enforced at the time."""
     recorded = (w.const.directive_bounds or {}).get(lever)
     if isinstance(recorded, dict) and ("min" in recorded or "max" in recorded):
+        # Older saves can contain a program's newer directive value alongside the fixed
+        # bound from the earlier set_policy motion it replaced. A valid bound always
+        # includes the value the Council actually directed; if it does not, recover the
+        # safe exact reading instead of accusing a matching order of defiance.
+        directive = w.const.directives.get(lever)
+        if not bound_allows(recorded, directive):
+            return {"min": directive, "max": directive}
         return recorded
     value = w.const.directives.get(lever)
     return {"min": value, "max": value}
@@ -773,6 +1040,21 @@ def apply_motion(w: World, mo: dict) -> str:
         c.offices[subj] = None
         reset_bond(w, subj)
         return f"{OFFICE_TITLES[subj]} left vacant"
+    if t == "program":
+        measures = mo.get("measures") or _program_measures(w, mo)[0] or []
+        parts = []
+        for lever, value in measures:
+            set_lever(w, lever, value)
+            # A programme is a Council vote over the settings it names, not a
+            # suggestion to the office holders. Keep those settings in the same
+            # binding directive ledger used by individual set_policy motions so
+            # a pre-vote office order cannot silently undo the package.
+            c.directives[lever] = value
+            # A program's directive is exact. Replace any bound left by an earlier
+            # set_policy vote so the compliance check reads the value this program set.
+            c.directive_bounds[lever] = {"min": value, "max": value}
+            parts.append(f"{lever}={fmt_value(value)}")
+        return "programme adopted: " + ", ".join(parts)
     if t == "set_policy":
         value = parse_lever(subj, val)
         bound, clashes = directive_bounds(w, mo)
@@ -839,7 +1121,7 @@ def apply_motion(w: World, mo: dict) -> str:
     if t == "diplomacy":
         from . import motion_actions
         action = mo.get("final_executable_action") or motion_actions.structured_action(w, mo)
-        amount = float(str(val).strip().rstrip("%")) if subj == "loan" and _num(val) else 0.0
+        amount = parse_loan_amount(val) if subj == "loan" else 0.0
         # An explicit structured target governs the routing, and is recorded. The motion's own
         # words and that target have already been checked against each other, so a motion that
         # reaches here addressed Veleria goes to Veleria — it is not quietly answered by whoever
@@ -966,60 +1248,93 @@ def _apply_relief(w: World, mo: dict, subj, val) -> str:
     """
     e = w.econ
     plan = mo.get("action") if isinstance(mo.get("action"), dict) else {}
-    region = _region_of(w, plan.get("region") or subj)
+    regions = _regions_of(w, plan.get("regions") or plan.get("region") or subj or mo.get("text"))
     source = str(plan.get("funding", "")).strip().lower()
     scope = str(plan.get("scope", "")).strip().lower()
     engineers = bool(plan.get("military_engineers"))
     approved = parse_money(plan.get("amount", val)) or 0.0
-    available = relief_funding_capacity(w, source)
-    executed = max(0.0, min(approved, available))
-    _spend_relief(w, source, executed)
+    requested_plan = plan.get("funding_plan") if isinstance(plan.get("funding_plan"), list) else []
+    executed_plan = []
+    executed = 0.0
+    if requested_plan:
+        sources = []
+        for allocation in requested_plan:
+            allocation_source = str(allocation.get("source", "")).strip().lower()
+            requested = parse_money(allocation.get("amount")) or 0.0
+            available = relief_funding_capacity(w, allocation_source)
+            drawn = min(requested, available, max(0.0, approved - executed))
+            _spend_relief(w, allocation_source, drawn)
+            executed += drawn
+            if allocation_source not in sources:
+                sources.append(allocation_source)
+            executed_plan.append({"source": allocation_source, "requested_amount": round(requested, 2),
+                                  "executed_amount": round(drawn, 2)})
+        source = ", ".join(sources)
+    else:
+        available = relief_funding_capacity(w, source)
+        executed = max(0.0, min(approved, available))
+        _spend_relief(w, source, executed)
+        if source:
+            executed_plan.append({"source": source, "requested_amount": round(approved, 2),
+                                  "executed_amount": round(executed, 2)})
     # Army engineers add labour rather than money: the same appropriation repairs more with them.
     labour = 1.0 + (RELIEF_ENGINEER_BONUS if engineers else 0.0)
-    monthly_output = e.gdp_nominal * _region_output_share(w, region)
     weights = {"ports": {"logistics": 1.0, "damage": .5},
                "roads": {"logistics": .8, "damage": .4},
                "fields": {"damage": .6, "food": .6},
                "housing": {"damage": .3, "unrest": .7},
                "food": {"food": 1.0},
                "mixed": {"logistics": .5, "damage": .5, "food": .4, "unrest": .3}}.get(scope, {})
-    before = {"damage": region.damage, "logistics": region.logistics}
-    # Two different jobs, priced apart: throughput comes back quickly, capital does not. Sizing both
-    # off one figure would either make reconstruction instant or make clearing the roads worthless.
-    if "damage" in weights and monthly_output > 0:
-        repaired = min(1.0, executed / (RELIEF_DAMAGE_MONTHS * monthly_output)) * labour
-        region.damage = max(0.0, region.damage - repaired * weights["damage"])
-    if "logistics" in weights and monthly_output > 0:
-        restored = min(1.0, executed / (RELIEF_LOGISTICS_MONTHS * monthly_output)) * labour
-        region.logistics = min(1.0, region.logistics + restored * weights["logistics"] *
-                               max(0.0, 1.0 - region.logistics))
-    done = 0.0 if monthly_output <= 0 else min(1.0, executed / (RELIEF_DAMAGE_MONTHS * monthly_output)) * labour
-    if "food" in weights:
-        w.mil.food_stock = getattr(w.mil, "food_stock", 0.0) + executed / max(1e-9, w.zone_of(
-            "karamaniya").price) * weights["food"]
-    if "unrest" in weights:
-        region.unrest = max(0.0, region.unrest - done * weights["unrest"])
-        for pop in w.pops:
-            if pop.region == region.id:
-                pop.approval = min(1.0, pop.approval + done * weights["unrest"] * .5)
-    relief = {"region": region.id, "scope": scope, "funding": source, "engineers": engineers,
+    per_region = executed / len(regions)
+    regional_effects = []
+    for region in regions:
+        monthly_output = e.gdp_nominal * _region_output_share(w, region)
+        before = {"damage": region.damage, "logistics": region.logistics}
+        if "damage" in weights and monthly_output > 0:
+            repaired = min(1.0, per_region / (RELIEF_DAMAGE_MONTHS * monthly_output)) * labour
+            region.damage = max(0.0, region.damage - repaired * weights["damage"])
+        if "logistics" in weights and monthly_output > 0:
+            restored = min(1.0, per_region / (RELIEF_LOGISTICS_MONTHS * monthly_output)) * labour
+            region.logistics = min(1.0, region.logistics + restored * weights["logistics"] *
+                                   max(0.0, 1.0 - region.logistics))
+        done = 0.0 if monthly_output <= 0 else min(1.0, per_region / (RELIEF_DAMAGE_MONTHS * monthly_output)) * labour
+        if "food" in weights:
+            w.mil.food_stock = getattr(w.mil, "food_stock", 0.0) + per_region / max(1e-9, w.zone_of(
+                "karamaniya").price) * weights["food"]
+        if "unrest" in weights:
+            region.unrest = max(0.0, region.unrest - done * weights["unrest"])
+            for pop in w.pops:
+                if pop.region == region.id:
+                    pop.approval = min(1.0, pop.approval + done * weights["unrest"] * .5)
+        regional_effects.append({"region": region.id, "damage_before": round(before["damage"], 4),
+                                 "damage_after": round(region.damage, 4),
+                                 "logistics_before": round(before["logistics"], 4),
+                                 "logistics_after": round(region.logistics, 4)})
+    primary = regions[0]
+    before = regional_effects[0]
+    names = ", ".join(region.name for region in regions)
+    relief = {"motion_id": mo.get("id"), "proposer": mo.get("proposer"),
+              "region": primary.id, "regions": [region.id for region in regions],
+              "regional_effects": regional_effects, "scope": scope, "funding": source, "engineers": engineers,
               "approved_amount": round(approved, 2), "executed_amount": round(executed, 2),
               "remaining_amount": round(max(0.0, approved - executed), 2),
-              "damage_before": round(before["damage"], 4), "damage_after": round(region.damage, 4),
-              "logistics_before": round(before["logistics"], 4),
-              "logistics_after": round(region.logistics, 4)}
+              "damage_before": before["damage_before"], "damage_after": before["damage_after"],
+              "logistics_before": before["logistics_before"],
+              "logistics_after": before["logistics_after"]}
+    if executed_plan:
+        relief["funding_plan"] = executed_plan
     w.institutions.setdefault("relief", []).append({"month": w.month, **relief})
     w.institutions["relief"] = w.institutions["relief"][-24:]
     if relief["remaining_amount"] > 0:
         w.event("relief_underfunded",
-                f"relief for {region.name} was authorised at {fmt_value(approved)} but only "
+                f"relief for {names} was authorised at {fmt_value(approved)} but only "
                 f"{fmt_value(executed)} could be raised from {source}; {fmt_value(relief['remaining_amount'])} "
                 f"of the package was never carried out.", importance=2, lean=-1, **relief)
     else:
-        w.event("relief", f"relief for {region.name}: {fmt_value(executed)} from {source}, "
-                f"{scope} works, damage {before['damage']:.1%} to {region.damage:.1%}.",
+        w.event("relief", f"relief for {names}: {fmt_value(executed)} from {source}, "
+                f"{scope} works, damage {before['damage_before']:.1%} to {before['damage_after']:.1%}.",
                 importance=2, **relief)
-    return (f"disaster relief: {region.name} {scope} funded from {source} — authorised "
+    return (f"disaster relief: {names} {scope} funded from {source} — authorised "
             f"{fmt_value(approved)}, carried out {fmt_value(executed)}, outstanding "
             f"{fmt_value(relief['remaining_amount'])}")
 
@@ -1030,6 +1345,33 @@ def _num(val) -> bool:
         return True
     except ValueError:
         return False
+
+
+def parse_loan_amount(value) -> float | None:
+    """Read a positive loan request as millions of gold, the unit used by diplomacy motions.
+
+    Accept a bare number (the prompt's default unit), or explicit million/billion/thousand units.
+    Structured providers sometimes serialize the amount as a one-item list; the brackets and
+    quotes are harmless, while a target enum such as ``[MARITIME_LEAGUE]`` is not a number.
+    """
+    text = str(value or "").strip().strip("[](){}'\" ")
+    match = re.fullmatch(
+        r"(?P<number>\d[\d,]*(?:\.\d+)?)\s*(?P<unit>million|mn|m|billion|bn|thousand|k)?"
+        r"(?:\s+gold)?", text, re.I)
+    if not match:
+        return None
+    try:
+        amount = float(match.group("number").replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+    unit = (match.group("unit") or "million").lower()
+    if unit in ("billion", "bn"):
+        amount *= 1000
+    elif unit in ("thousand", "k"):
+        amount /= 1000
+    if not amount > 0:
+        return None
+    return amount
 
 
 def settle_arrears_cost(w, motion: dict) -> float:
@@ -1168,10 +1510,15 @@ def _arrears_scope(mo: dict, raw) -> tuple:
     # same grammar as a known one.
     unknown = {tokens[i] for i in range(len(tokens))
                if i not in consumed and tokens[i] not in ARREARS_CATEGORY_ALIASES
+               and tokens[i] != "pay"
                and _categorical(tokens[i])}
     for i in range(len(tokens) - 1):
-        if tokens[i + 1] == "related" and i not in consumed and (i + 1) not in consumed:
-            unknown.add(tokens[i] + "_related")
+        suffix = tokens[i + 1]
+        candidate = tokens[i] + "_" + suffix
+        if suffix in ("related", "pay", "payroll", "service", "debt", "supplier", "suppliers") \
+                and i not in consumed and (i + 1) not in consumed \
+                and candidate not in ARREARS_CATEGORY_ALIASES:
+            unknown.add(candidate)
     if fraction is None and not categories and not unknown:
         return None, [], set()
     return (fraction if fraction is not None else 1.0), categories, unknown
@@ -1206,19 +1553,26 @@ def _constitution(w: World, field: str, raw: str, proposer: str) -> str:
         c.press = raw.lower()
     elif field == "assembly":
         c.assembly = raw.lower()
+    elif field == "parties":
+        c.parties = raw.lower()
+        if c.parties == "ban_opposition":
+            w.event("parties", "Opposition parties are banned; only the government's own may field candidates.",
+                    importance=2)
+        elif c.parties == "one_party":
+            w.event("parties", "A single-party state is declared; no other party may organise.", importance=3)
     elif field == "emergency":
         c.emergency = raw.lower() == "on"
     elif field == "minority":
         c.minority = raw.lower()
         if c.minority != "equal":
-            w.dip.league_trust -= 0.3 if c.minority == "interned" else 0.1
+            w.adjust_league_trust(-0.3 if c.minority == "interned" else -0.1)
     elif field == "election_month":
         mi = parse_month(raw)
         old = c.election_month
         c.election_month = mi
         if mi < 0 or mi > 17:
             if old <= 17 and old >= 0:
-                w.dip.league_trust -= 0.15
+                w.adjust_league_trust(-0.15)
         return ("elections cancelled" if mi < 0 else
                 f"elections set for {month_label(mi)}")
     elif field == "regime_name":
@@ -1229,6 +1583,20 @@ def _constitution(w: World, field: str, raw: str, proposer: str) -> str:
     return f"constitution: {field} = {raw}"
 
 
+def _apply_amnesty(w: World) -> None:
+    """A general pardon for political prisoners: grievance and fear fall among the repressed and
+    their approval rises, at a small cost to the loyalty of the security forces made to let them go.
+    A one-shot act fired on the transition to `release`; the default `none` never reaches here."""
+    for p in w.k_pops():
+        relief = 0.12 if p.ident in ("vell", "imperial") else 0.06
+        p.grievance = max(0.0, p.grievance - relief)
+        p.fear = max(0.0, p.fear - 0.05)
+        p.approval = min(0.99, max(0.01, p.approval + 0.03))
+    w.mil.police.loyalty = min(0.95, max(0.05, w.mil.police.loyalty - 0.05))
+    w.event("amnesty", "Political prisoners are released under a general amnesty; the security "
+            "forces grumble at being made to let go of them.", importance=2)
+
+
 def set_lever(w: World, lever: str, value) -> None:
     pol, m = w.policy, w.mil
     if lever.startswith("deploy_"):
@@ -1236,8 +1604,32 @@ def set_lever(w: World, lever: str, value) -> None:
         total = sum(m.deploy.values()) or 1.0
         for k in m.deploy:
             m.deploy[k] /= total
+    elif lever == "ownership":
+        # Moving toward state ownership is expropriation, and capital leaves when it is: the firms'
+        # owners and the managers who ran them take their savings and know-how with them. The shock
+        # lands once, on the transition, so it is the cost of the seizure rather than of holding it.
+        order = {"private": 0, "mixed": 1, "state": 2}
+        jump = order.get(str(value), 0) - order.get(str(getattr(pol, "ownership", "private")), 0)
+        if jump > 0:
+            w.econ.gold = max(0.0, w.econ.gold * (1.0 - 0.09 * jump))
+            w.econ.productivity *= (1.0 - 0.05 * jump)
+        setattr(pol, lever, value)
+    elif lever == "amnesty":
+        if str(value) == "release" and str(getattr(pol, "amnesty", "none")) != "release":
+            _apply_amnesty(w)
+        setattr(pol, lever, value)
     else:
         setattr(pol, lever, value)
+
+
+def _current_order_value(w: World, office: str, lever: str):
+    if lever == "patronage":
+        return (w.policy.patronage or {}).get(office)
+    if lever.startswith("patronage_"):
+        return (w.policy.patronage or {}).get(lever[len("patronage_"):])
+    if lever.startswith("deploy_"):
+        return w.mil.deploy.get(lever[len("deploy_"):])
+    return getattr(w.policy, lever, None)
 
 
 def fmt_value(v) -> str:
@@ -1290,16 +1682,30 @@ def _compliance(w: World, office: str, lever: str, mid: str, ordered, note: str,
 
 
 def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, superseded: list | None = None,
-                 unauthorized: list | None = None, compliance: list | None = None) -> list:
+                 unauthorized: list | None = None, compliance: list | None = None,
+                 prior_directives: dict | None = None, prior_bounds: dict | None = None,
+                 order_history: list | None = None) -> list:
     """Apply one member's orders for the offices they hold. Returns any defiance records.
 
-    `fresh` names the settings a motion has just made a directive in this same resolution. Votes and
-    orders travel in one answer, so an order for such a setting was written before its vote could be
-    counted, and usually repeats the old value as the instructions ask. The directive stands, the
-    order is set aside (noted in `superseded`), and it is not defiance. Defiance is acting against a
-    directive that was already in force: from the month after it passes."""
+    `fresh` names settings a motion has just made directives in this resolution. Those directives
+    take precedence over the old setting: an order allowed by the new directive is compliant, and
+    an old order the new vote replaces is superseded. An order that violates both the new
+    directive and the directive in force at month open remains defiance of the earlier directive."""
     defiance = []
     directives = w.const.directives
+    prior_directives = prior_directives or {}
+    prior_bounds = prior_bounds or {}
+
+    def track_order(office: str, lever: str, ordered, status: str, *, directive_key: str | None = None,
+                    previous=None, reason: str = "") -> None:
+        if order_history is None:
+            return
+        key = directive_key or lever
+        order_history.append({"member": mid, "office": office, "lever": lever, "order": ordered,
+                              "directive": directives.get(key), "previous_value": previous,
+                              "actual_value": _current_order_value(w, office, lever),
+                              "status": status, **({"reason": reason} if reason else {})})
+
     for office, levers in orders.items():
         if w.const.offices.get(office) != mid or not isinstance(levers, dict):
             continue
@@ -1310,16 +1716,29 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                     continue
                 key = f"patronage_{office}"          # the council's directive on this office's patronage
                 if fresh and key in fresh:
-                    if superseded is not None and directives.get(key) != flag:
+                    fresh_allows = bound_allows(_bound_for(w, key), flag)
+                    if superseded is not None and not fresh_allows:
                         superseded.append({"member": mid, "office": office, "lever": key,
                                            "order": flag, "directive": directives.get(key)})
-                    if compliance is not None and directives.get(key) != flag:
-                        compliance.append(_compliance(w, office, key, mid, flag,
-                                                      "the directive passed this month; the order was "
-                                                      "written before its vote was counted", SUPERSEDED_ORDER))
-                    elif compliance is not None:
-                        compliance.append(_compliance(w, office, key, mid, flag, "in line", COMPLIANT))
+                    prior_bound = prior_bounds.get(key, {"min": prior_directives.get(key),
+                                                          "max": prior_directives.get(key)})
+                    against_prior = (key in prior_directives and not fresh_allows
+                                     and not bound_allows(prior_bound, flag))
+                    if against_prior:
+                        defiance.append({"member": mid, "office": office, "lever": key,
+                                         "directive": prior_directives[key], "value": flag})
+                    if compliance is not None:
+                        clash = not fresh_allows
+                        note = ("in line with this month's directive" if fresh_allows else
+                                "the order contradicted a directive already in force at month open" if against_prior else
+                                "the directive passed this month; the order was written before its vote was counted")
+                        status = EXPLICIT_VIOLATION if against_prior else SUPERSEDED_ORDER if clash else COMPLIANT
+                        compliance.append(_compliance(w, office, key, mid, flag, note, status))
+                    track_order(office, key, flag,
+                                "covered_by_council_directive" if fresh_allows else "superseded_by_council_directive",
+                                directive_key=key, previous=_current_order_value(w, office, key))
                     continue
+                previous = _current_order_value(w, office, key)
                 if key in directives and directives[key] != flag:
                     defiance.append({"member": mid, "office": office, "lever": key,
                                      "directive": directives[key], "value": flag})
@@ -1328,6 +1747,8 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                                                       "ordered against a directive already in force",
                                                       EXPLICIT_VIOLATION))
                 w.policy.patronage[office] = flag
+                track_order(office, key, flag, "violated_directive" if key in directives and directives[key] != flag
+                            else "applied", directive_key=key, previous=previous)
                 if compliance is not None and (key not in directives or directives[key] == flag):
                     compliance.append(_compliance(w, office, key, mid, flag, "in line", COMPLIANT))
                 continue
@@ -1339,26 +1760,40 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                 # a fact about the month instead of a silence.
                 if unauthorized is not None:
                     unauthorized.append({**refusal, "order": raw})
-                    w.event("unauthorized_order",
-                            f"{w.member(mid).name} ({OFFICE_TITLES[office]}) ordered {lever}, which is not "
-                            f"{office}'s to set: {refusal['detail']}.", importance=1, member=mid,
-                            lever=lever, office=office, reason=refusal["reason"])
+                track_order(office, lever, raw, "unauthorized", reason=refusal["reason"])
+                w.event("unauthorized_order",
+                        f"{w.member(mid).name} ({OFFICE_TITLES[office]}) ordered {lever}, which is not "
+                        f"{office}'s to set: {refusal['detail']}.", importance=1, member=mid,
+                        lever=lever, office=office, reason=refusal["reason"])
                 continue
             value = parse_lever(lever, raw)
             if value is None:
+                track_order(office, lever, raw, "invalid")
                 continue
             if fresh and lever in fresh:
-                if superseded is not None and not _same(directives.get(lever), value):
+                fresh_allows = bound_allows(_bound_for(w, lever), value)
+                if superseded is not None and not fresh_allows:
                     superseded.append({"member": mid, "office": office, "lever": lever,
                                        "order": value, "directive": directives.get(lever)})
+                had_prior = lever in prior_directives
+                prior_bound = prior_bounds.get(lever, {"min": prior_directives.get(lever),
+                                                       "max": prior_directives.get(lever)})
+                against_prior = had_prior and not fresh_allows and not bound_allows(prior_bound, value)
+                if against_prior:
+                    defiance.append({"member": mid, "office": office, "lever": lever,
+                                     "directive": prior_directives[lever], "value": value})
                 if compliance is not None:
-                    clash = not _same(directives.get(lever), value)
                     compliance.append(_compliance(
                         w, office, lever, mid, value,
-                        "the directive passed this month; the order was written before its vote was counted"
-                        if clash else "in line",
-                        SUPERSEDED_ORDER if clash else COMPLIANT))
+                        "in line with this month's directive" if fresh_allows else
+                        "the order contradicted a directive already in force at month open" if against_prior else
+                        "the directive passed this month; the order was written before its vote was counted",
+                        EXPLICIT_VIOLATION if against_prior else SUPERSEDED_ORDER if not fresh_allows else COMPLIANT))
+                track_order(office, lever, value,
+                            "covered_by_council_directive" if fresh_allows else "superseded_by_council_directive",
+                            previous=_current_order_value(w, office, lever))
                 continue
+            previous = _current_order_value(w, office, lever)
             fiscal_authority = (office == "treasury" and w.agent_architecture_version >= 2
                                 and "fiscal_authority" in (w.institutions.get("emergency_measures") or {}))
             # Against the bound, not against the number. Reading only the number treated every
@@ -1372,6 +1807,8 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                 defiance.append({"member": mid, "office": office, "lever": lever,
                                  "directive": directives[lever], "value": value})
             set_lever(w, lever, value)
+            track_order(office, lever, value, "violated_directive" if against else "applied",
+                        previous=previous)
             if compliance is not None and lever in directives:
                 # The order stands and the state moves, which is the existing behaviour: a directive
                 # binds the office, and an office that moves against one is recorded acting against
@@ -1426,9 +1863,13 @@ def resolve_coups(w: World, coups: dict, stances: dict) -> list:
     for leader, coup in order:
         if w.member(leader).status != "active":
             continue
+        action = str(coup.get("action", "")).strip().lower()
+        # The schema explicitly defines "none" as no coup. It must not fall through to the
+        # historical default of "remove" just because the model also supplied stale members.
+        if action not in ("remove", "take_over"):
+            continue
         plotters = {leader} | {mid for mid, s in stances.items()
                                if s == "join" and w.member(mid).status == "active"}
-        action = coup.get("action", "remove")
         targets = [t for t in coup.get("members", []) if t in {m.id for m in w.active_members()}
                    and t not in plotters]
         if action == "take_over":
@@ -1495,7 +1936,7 @@ def resolve_coups(w: World, coups: dict, stances: dict) -> list:
                 w.const.handover_month = -1
                 w.const.election_month = -1
                 w.const.elected = False
-            w.dip.league_trust -= 0.35
+            w.adjust_league_trust(-0.35)
             w.dip.propaganda = min(1.0, w.dip.propaganda + 0.1)
             for p_ in w.k_pops():
                 p_.approval = clamp(p_.approval + (0.02 if approval < 0.3 else -0.08), 0.01, 0.99)
@@ -1609,7 +2050,7 @@ def _election(w: World, rng) -> None:
     table = ", ".join(f"{k} {v:.0%}" for k, v in sorted(shares.items(), key=lambda kv: -kv[1]))
     w.event("election", f"Constituent Assembly election results: {table}.", importance=3, detail=result)
     if exposed:
-        w.dip.league_trust -= 0.4
+        w.adjust_league_trust(-0.4)
         for p in w.k_pops():
             p.grievance = min(1.2, p.grievance + 0.2)
             p.approval = clamp(p.approval - 0.12, 0.01, 0.99)
@@ -1674,7 +2115,7 @@ def _revolution(w: World, rng) -> None:
         for x in w.k_pops():
             x.grievance = min(1.2, x.grievance + 0.15)
             x.fear = clamp(x.fear + 0.2)
-        w.dip.league_trust -= 0.3
+        w.adjust_league_trust(-0.3)
         w.event("massacre", f"A nationwide uprising was crushed by force. About {dead:,.0f} people were "
                 "killed.", importance=3)
         return

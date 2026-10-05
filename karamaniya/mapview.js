@@ -325,6 +325,7 @@
     function detail(id) { return row && row.region_detail ? row.region_detail[id] : null; }
     function regState(id) { return row && row.regions ? row.regions[id] : null; }
     function controllerOf(id) { const s = regState(id); return s ? s.controller : (REG[id] || {}).nation; }
+    function frontFieldStrength(fr) { return Number(fr.ours_effective ?? fr.ours) || 0; }
 
     const LAYER_VALUE = {
       unrest: d => d.unrest, hunger: d => Math.min(1, d.hunger / 0.4), approval: d => d.approval, indep: d => d.indep,
@@ -454,8 +455,9 @@
           bx -= vx / L * 56; by -= vy / L * 56;
         } else { bx = (city || g).x || g.lx; by = ((city || g).y || g.ly) - 30; ex = bx; ey = by - 60; }
         const fortTxt = "fort " + pct(fr.fort) + (fr.progress > 0.005 ? " · pushed " + pct(fr.progress) : "");
-        counter(gMil, bx, by, "var(--km-ours)", [compact(fr.ours), fortTxt],
-          "Our " + f + " front at " + ((REG[fr.region] || {}).name || fr.region) + ": " + num(fr.ours) + " soldiers, fortifications " + pct(fr.fort), 0);
+        const ourStrength = frontFieldStrength(fr);
+        counter(gMil, bx, by, "var(--km-ours)", [compact(ourStrength), fortTxt],
+          "Our " + f + " front at " + ((REG[fr.region] || {}).name || fr.region) + ": " + num(ourStrength) + " effective field strength, fortifications " + pct(fr.fort), 0);
         if (fr.union > 0) {
           counter(gMil, ex, ey, "var(--km-union)", [compact(fr.union), fr.combat ? "attacking" : "massed"],
             (names.union || "Union") + " forces on the " + f + " front: " + num(fr.union), 1);
@@ -583,10 +585,16 @@
     function nationStats(nation) {
       const n = ((row || {}).nations || {})[nation];
       if (!n) return null;
+      const own = nation === "karamaniya";
       const fields = [["Population", num(n.population)], ["Annual output", num(n.output_annual) + " base crowns"],
-        ["Output / person", num(n.output_per_person) + " base crowns"], ["Army", num(n.army)], ["Navy", num(n.navy)]];
+        ["Output / person", num(n.output_per_person) + " base crowns"], [own ? "Standing army" : "Army", num(n.army)], ["Navy", num(n.navy)]];
+      if (own && row && row.army_mobilized !== undefined && row.army_mobilized !== null) {
+        fields.push(["Mobilized reserves", num(row.army_mobilized)]);
+        fields.push(["Effective field strength", num(row.army_field_total ?? ((row.army || 0) + (row.army_mobilized_effective || 0)))]);
+      }
       if (n.unemployment !== undefined) fields.push(["Unemployment", pct(n.unemployment)], ["Food / need", pct(n.food_ratio)],
-        ["Inflation, year on year", pct(n.inflation_yoy)]);
+        [nation === "karamaniya" && row && row.month < 12
+          ? `Inflation, annualized (${row.month + 1} mo)` : "Inflation, year on year", pct(n.inflation_yoy)]);
       if (n.monthly_printing !== undefined) fields.push(["Money printed / month", pct(n.monthly_printing)]);
       if (nation !== "karamaniya") fields.push(["Readiness", pct(n.readiness || 0)], ["Morale", pct(n.morale || 0)],
         ["Supply", pct(n.supply || 0)], ["Fortification", pct(n.fortification || 0)],
@@ -612,7 +620,7 @@
         parts.push(h("div", { class: "bar", title: "Identity" }, IDENT.map(i => h("span", { style: "width:" + (100 * (d.ident[i] || 0)).toFixed(1) + "%;background:var(--km-id-" + i + ")" }))));
         parts.push(h("div", { class: "note", text: IDENT.map(i => IDENT_NAME[i] + " " + pct(d.ident[i])).join(" · ") }));
         const fr = Object.entries(row.fronts || {}).find(([, v]) => v.region === id);
-        if (fr) parts.push(h("div", { class: "note", text: "Front line (" + fr[0] + "): " + num(fr[1].ours) + " of ours against " + num(fr[1].union) + " Union; fortified " + pct(fr[1].fort) + "." }));
+        if (fr) parts.push(h("div", { class: "note", text: "Front line (" + fr[0] + "): " + num(frontFieldStrength(fr[1])) + " effective field strength against " + num(fr[1].union) + " Union; fortified " + pct(fr[1].fort) + "." }));
       } else if (r.population) {
         const n = ((row || {}).nations || {})[r.nation];
         parts.push(h("dl", null, h("dt", { text: "Region population" }), h("dd", { text: num(r.population) }),
@@ -694,7 +702,7 @@
       if (fr) {
         const [f, v] = fr;
         out.push(h("div", null, h("div", { class: "k", text: "The " + f + " front runs here" }),
-          h("p", { text: num(v.ours) + " of our soldiers against " + num(v.union) + " of the " + (names.union || "Union") + "'s. Fortified " + pct(v.fort) +
+          h("p", { text: num(frontFieldStrength(v)) + " of our effective field strength against " + num(v.union) + " of the " + (names.union || "Union") + "'s. Fortified " + pct(v.fort) +
             (v.progress > 0.005 ? "; the enemy has taken " + pct(v.progress) + " of the way to the next line" : "") +
             (v.combat ? ". Fighting this month: we lost about " + num(v.combat.k_loss) + ", they lost about " + num(v.combat.u_loss) + "." : ".") })));
       }

@@ -109,7 +109,7 @@ button, input, select { font: inherit; color: inherit; }
 .mappins li::marker { font-weight: 700; color: var(--ink); }
 #regioncard { border-top: 1px solid var(--hairline); padding-top: 12px; }
 /* report.html#map (or #map-12 for Month 12): only the month bar and the map. */
-body.maponly .head, body.maponly #panel, body.maponly section.panel-section, body.maponly footer, body.maponly #stategrid { display: none; }
+body.maponly .head, body.maponly #panel, body.maponly section.panel-section, body.maponly footer, body.maponly #stategrid, body.maponly #inflation-note, body.maponly #army-note { display: none; }
 body.maponly .wrap { max-width: none; gap: 10px; }
 body.maponly .stage > .card { padding: 0; border: 0; background: transparent; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); align-items: center; }
@@ -234,6 +234,8 @@ footer { font-size: 12.5px; color: var(--muted); }
       <ol class="mappins" id="mappins"></ol>
       <div id="regioncard" hidden></div>
       <div class="state-grid" id="stategrid"></div>
+      <p class="sub" id="inflation-note"></p>
+      <p class="sub" id="army-note" hidden></p>
     </div>
     <div class="card" id="panel"></div>
   </section>
@@ -335,10 +337,19 @@ footer { font-size: 12.5px; color: var(--muted); }
     const outcome = el("div", { class: "outcome", style: "--oc: var(" + ocColor + ")" },
       el("span", { class: "pill" }, el("i"), ocName),
       el("p", { text: (oc.text || D.stopped || "The run has not finished.") + (oc.month !== undefined ? " (" + monthLabel(oc.month) + ")" : "") }));
+    const sourceGroups = D.engine_source_fingerprints || [];
+    const unrecordedMonths = D.engine_source_unrecorded_months || [];
+    const sourceNotes = [];
+    if (sourceGroups.length > 1) sourceNotes.push("This run recorded multiple engine source fingerprints: " +
+      sourceGroups.map(g => String(g.fingerprint) + " in " + (g.months || []).map(m => monthLabel(m)).join(", ")).join("; ") + ".");
+    if (H.length && !sourceGroups.length) sourceNotes.push("Engine source not recorded for this history.");
+    else if (unrecordedMonths.length) sourceNotes.push("Engine source fingerprint not recorded for " +
+      unrecordedMonths.map(m => monthLabel(m)).join(", ") + ".");
+    const sourceNote = sourceNotes.length ? el("p", { class: "note", text: sourceNotes.join(" ") }) : null;
     const tiles = el("div", { class: "tiles" },
       tile(String(sc.months_run), "months governed"),
       tile(int(sc.excess_deaths), "excess deaths"),
-      tile(pct(sc.peak_inflation_yoy), "peak inflation, 12 months"),
+      tile(pct(sc.peak_inflation_yoy), "peak inflation rate"),
       tile(pct(sc.democracy_min), "lowest democracy score"),
       tile(sc.coups_succeeded + " / " + sc.coups_attempted, "coups succeeded / tried"),
       tile(((sc.vote_division || {}).substantive_contested || 0) + " / " + ((sc.vote_division || {}).substantive || 0), "contested policy motions"),
@@ -347,7 +358,7 @@ footer { font-size: 12.5px; color: var(--muted); }
       el("div", { class: "eyebrow", text: "Solvara · a council of AIs governs Karamaniya" }),
       el("div", { class: "head-top" }, el("h1", { text: "Karamaniya" }), el("span", { class: "runid", text: "run " + D.run.id + " · seed " + D.run.seed + " · " + D.run.framing + " framing" })),
       el("div", { class: "lineup" }, LETTERS.map(l => chip(l))),
-      outcome, tiles);
+      outcome, sourceNote, tiles);
   }
   function renderFounding() {
     const root = document.getElementById("founding"), f = D.founding || {}, c = D.scorecard.country || {};
@@ -415,12 +426,25 @@ footer { font-size: 12.5px; color: var(--muted); }
       el("b", { text: p.place + ": " }), el("span", { text: p.text }))));
     renderRegionCard();
     const h = H[cur];
-    const items = [["Approval", pct(h.approval)], ["Independence", pct(h.indep)], ["Inflation, 12 mo", pct(h.infl_yoy)],
+    const inflationLabel = h.month < 12 ? `Inflation, annualized (${h.month + 1} mo)` : "Inflation, 12 mo";
+    const items = [["Approval", pct(h.approval)], ["Independence", pct(h.indep)], [inflationLabel, pct(h.infl_yoy)],
       ["Food supply", pct(h.food_ratio)], ["Output", pct(h.gdp_idx)], ["Unemployment", pct(h.unemployment)],
-      ["Army", compact(h.army)], ["Union army", compact(h.union_army)], ["War", h.war ? "yes" : h.ceasefire ? "ceasefire" : "no"],
-      ["Blockade", h.blockade_eff > 0.01 ? pct(h.blockade_eff) + " of trade" : "none"], ["Currency", h.currency === "crown" ? "crown" : "karam"],
+      ["Standing army", compact(h.army)],
+      ...(h.army_mobilized !== null && h.army_mobilized !== undefined ? [["Mobilized reserves", compact(h.army_mobilized)]] : []),
+      ...(h.army_field_total !== null && h.army_field_total !== undefined ? [["Effective field strength", compact(h.army_field_total)]] : []),
+      ["Union army", compact(h.union_army)], ["War", h.war ? "yes" : h.ceasefire ? "ceasefire" : "no"],
+      ["Blockade", h.blockade_eff > 0.01 ? pct(h.blockade_eff) + " of trade" : "none"], ["Currency", h.currency === "karam" ? "karam" : "crown"],
       ["Regime", h.constitution.regime_name]];
     document.getElementById("stategrid").replaceChildren(...items.map(([k, v]) => el("div", {}, el("span", { class: "k", text: k }), el("span", { class: "v", text: v }))));
+    const mobilizationNote = h.army_mobilized > 0
+      ? "The standing army excludes " + compact(h.army_mobilized) + " called-up reservists; effective field strength includes the trained share ready for deployment."
+      : "";
+    document.getElementById("inflation-note").textContent = h.month < 12
+      ? "Annualized from the CPI change since the simulation began. Treasury forecasts are forward-looking and use a different horizon."
+      : "Observed CPI change over the latest 12 months. Treasury forecasts are forward-looking and use a different horizon.";
+    const armyNote = document.getElementById("army-note");
+    armyNote.textContent = mobilizationNote;
+    armyNote.hidden = !mobilizationNote;
   }
 
   // ---- month panel ----
@@ -496,6 +520,8 @@ footer { font-size: 12.5px; color: var(--muted); }
             mo.result && mo.passed && /conditionally|blocked/i.test(mo.result) ? el("div", { class: "muted", text: mo.result }) : null,
             (mo.conditions || []).length ? el("div", { class: "muted", text: "conditions: " + mo.conditions.map(c => c.metric + " " + c.operator + " " + c.value).join("; ") }) : null,
             (mo.condition_results || []).length ? el("div", { class: "muted", text: "checked: " + mo.condition_results.map(c => c.metric + " " + (c.met ? "met" : "unmet")).join("; ") }) : null,
+            mo.type === "disaster_relief" && mo.authorized_action ? el("div", { class: "muted", text: "Authorized relief: " + JSON.stringify(mo.authorized_action) }) : null,
+            mo.implementation ? el("div", { class: "muted", text: "Implementation: authorized " + fmt(mo.implementation.approved_amount) + ", raised " + fmt(mo.implementation.executed_amount) + ", shortfall " + fmt(mo.implementation.remaining_amount) + (mo.implementation.funding_plan ? " · " + mo.implementation.funding_plan.map(x => x.source + " " + fmt(x.executed_amount) + "/" + fmt(x.requested_amount)).join(", ") : "") }) : null,
             mo.amended ? el("div", { class: "muted", text: "amended after the opening round" }) : null,
             mo.forced ? el("div", { class: "muted", text: "forced onto the agenda" }) : null,
             (mo.cosponsors || []).length ? el("div", { class: "muted", text: "co-sponsored by " + mo.cosponsors.join(", ") }) : null)))));
@@ -546,11 +572,12 @@ footer { font-size: 12.5px; color: var(--muted); }
     if (notes.length) out.push(el("details", {}, el("summary", { text: "Private notes each AI wrote for itself" }),
       ...notes.map(([mid, d]) => el("div", {}, el("div", { class: "route" }, dot(mid)), el("p", { class: "note", text: d.notes })))));
     const calls = rec.calls || [];
-    if (calls.length) out.push(el("details", {}, el("summary", { text: "Model calls this month (" + calls.filter(c => !c.ok).length + " failed or unreadable)" }),
-      el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Member", "Phase", "Answered by", "OK", "Retry", "Seconds", "Cost"].map(x => el("th", { text: x })))),
+    if (calls.length) out.push(el("details", {}, el("summary", { text: "Model calls this month (" + calls.filter(c => !c.ok).length + " failed or unreadable · " + calls.filter(c => (c.problems || []).length).length + " with output warnings)" }),
+      el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Member", "Phase", "Answered by", "Status", "Retry", "Seconds", "Cost", "Output warnings"].map(x => el("th", { text: x })))),
         el("tbody", {}, calls.map(c => el("tr", {}, el("td", {}, dot(c.member)), el("td", { text: c.phase }), el("td", { class: "mono", text: c.served_model || "-" }),
-          el("td", { text: c.refusal ? "refused" : c.ok ? "yes" : "no" + (c.error ? ": " + c.error.slice(0, 80) : "") }), el("td", { text: c.format_retry ? "yes" : "" }),
-          el("td", { class: "num", text: (c.latency_s || 0).toFixed(1) }), el("td", { class: "num", text: "$" + (c.cost_usd || 0).toFixed(4) }))))))));
+          el("td", { text: c.refusal ? "refused" : c.ok ? ((c.problems || []).length ? "yes · warning" : "yes") : "no" + (c.error ? ": " + c.error.slice(0, 80) : "") }), el("td", { text: c.format_retry ? "yes" : "" }),
+          el("td", { class: "num", text: (c.latency_s || 0).toFixed(1) }), el("td", { class: "num", text: "$" + (c.cost_usd || 0).toFixed(4) }),
+          el("td", { text: (c.problems || []).join("; ") || "" }))))))));
     panel.replaceChildren(...out);
   }
   function section(title, ...kids) { return el("div", { class: "panel-section" }, el("h3", { text: title }), ...kids); }
@@ -578,6 +605,9 @@ footer { font-size: 12.5px; color: var(--muted); }
   }
   function motionStatus(mo) {
     // The record stores one canonical status; read it rather than working one out again here.
+    if (mo.execution_status === "EXECUTION_BLOCKED") return "passed · execution blocked";
+    if (mo.execution_status === "EXECUTION_BLOCKED_CONDITION") return "passed conditionally · awaiting conditions";
+    if (mo.execution_status === "EXECUTED") return "passed · executed";
     if (mo.status) return String(mo.status).toLowerCase().replace(/_/g, " ");
     const result = String(mo.result || "");
     if (mo.passed) return "passed";
@@ -642,10 +672,13 @@ footer { font-size: 12.5px; color: var(--muted); }
   const CHARTS = [
     { id: "opinion", title: "Approval and support for independence", fmt: v => pct(v), domain: [0, 1],
       series: [{ key: "approval", label: "Approval", color: "var(--s1)" }, { key: "indep", label: "Independence", color: "var(--s2)" }] },
-    { id: "infl", title: "Inflation over 12 months", fmt: v => pct(v), log: true, series: [{ key: "infl_yoy", label: "Inflation", color: "var(--s1)" }] },
+    { id: "infl", title: "Inflation (annualized in first 12 months; trailing 12 months thereafter)", fmt: v => pct(v), log: true, series: [{ key: "infl_yoy", label: "Inflation", color: "var(--s1)" }] },
     { id: "food", title: "Food available, share of need", fmt: v => pct(v), domain: [0, 1.25], ref: 1, series: [{ key: "food_ratio", label: "Food", color: "var(--s1)" }] },
     { id: "gdp", title: "Output, share of start", fmt: v => pct(v), domain: [0, 1.25], ref: 1, series: [{ key: "gdp_idx", label: "Output", color: "var(--s1)" }] },
-    { id: "army", title: "Soldiers", fmt: v => compact(v), series: [{ key: "army", label: "Karamaniya", color: "var(--s1)" }, { key: "union_army", label: "Union", color: "var(--s2)" }] },
+    { id: "army", title: "Army strength", fmt: v => compact(v), series: [
+      { key: "army", label: "Karamaniya standing", color: "var(--s1)" },
+      { key: "army_field_total", label: "Karamaniya effective field strength", color: "var(--s3)" },
+      { key: "union_army", label: "Union", color: "var(--s2)" }] },
     { id: "dem", title: "Democracy score", fmt: v => pct(v), domain: [0, 1], series: [{ key: "democracy", label: "Democracy", color: "var(--s1)" }] },
     { id: "deaths", title: "Excess deaths, cumulative", fmt: v => compact(v), series: [{ key: "deaths_total", label: "Deaths", color: "var(--s1)" }] },
     { id: "unrest", title: "Unrest and fear", fmt: v => v.toFixed(2), domain: [0, 1], series: [{ key: "unrest", label: "Unrest", color: "var(--s1)" }, { key: "fear", label: "Fear", color: "var(--s2)" }] },
@@ -869,6 +902,7 @@ footer { font-size: 12.5px; color: var(--muted); }
       const bits = [];
       if (r.response) bits.push("“" + r.response + "”");
       if ((r.withdrawn || []).length) bits.push("withdrew " + r.withdrawn.join(", "));
+      for (const rejected of r.rejected_withdrawals || []) bits.push("attempted to withdraw " + rejected.motion + " in favour of " + rejected.target + "; rejected: " + rejected.explanation);
       if ((r.amended || []).length) bits.push("amended " + r.amended.join(", "));
       for (const d of r.demands || []) bits.push("demands on " + d.motion_id + ": " + d.demand);
       const st = Object.entries(r.stances || {}).map(([k, v]) => k + " " + v).join(", ");
@@ -882,7 +916,9 @@ footer { font-size: 12.5px; color: var(--muted); }
     const ended = (v2.issues_ended || []).map(i => el("li", { class: "i1", text: i.title + ": " + i.outcome }));
     if (issues.length || ended.length) out.push(section("Live issues", el("ul", { class: "events" }, issues, ended)));
     const press = (v2.narratives || []).map(n => el("li", { text: n.bloc + " press · " + n.text }));
-    const leaks = (rec.leaks || []).map(l => el("li", { class: "i2", text: "Leak (" + l.kind + "): " + (l.headline || "") + (l.contradiction ? " — contradicts public statements" : "") }));
+    const leaks = (rec.leaks || []).map(l => el("li", { class: "i2", text: "Leak (" + l.kind + ")" + (l.message_id ? " " + l.message_id : "") + ": " + (l.headline || "") +
+      (l.from || l.to ? " · " + (l.from || "unknown") + " → " + (l.to || "public") : "") +
+      (l.text ? " · published text: “" + l.text + "”" : "") + (l.contradiction ? " — contradicts public statements" : "") }));
     if (press.length || leaks.length) out.push(section("Press and leaks", el("ul", { class: "events" }, leaks, press)));
     const reports = (v2.reports || []);
     if (reports.length) {

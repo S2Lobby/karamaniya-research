@@ -183,6 +183,72 @@ _RESULT_CLAIM = re.compile(
 _CLEAN_WORDS = ("clean", "clear", "no findings", "nothing", "ended", "closed", "settled", "fine",
                 "sound", "healthy", "no evidence", "exonerat")
 
+# Whose deployment plans leaked. A leak of plans is a fact about a document, and a delegate may draw
+# any inference it likes from it ("because our plans leaked, I worry the Union may exploit them"). What
+# it may not do is state the wrong document as its source: evidence about the Union offered as coming
+# from plans that are not the Union's.
+OWN_DEPLOYMENT_PLAN = "OWN_DEPLOYMENT_PLAN"
+FOREIGN_DEPLOYMENT_PLAN = "FOREIGN_DEPLOYMENT_PLAN"
+
+
+def deployment_plan_provenance(w: World) -> set:
+    """Whose deployment plans the record says have leaked: own, foreign, both, or neither.
+
+    The engine has one plan-leak event, `leaked_plan`, and it is the state's own army's plans: its
+    effects fall on Karamaniya's training and on how a neighbour reads Karamaniya. An issue can say
+    otherwise by carrying `plan_owner`, which is what a record of a foreign actor's plans would have to
+    do before a delegate is entitled to speak of them. Live and past issues both count: a leak that
+    happened has happened.
+    """
+    state = getattr(w, "dilemmas", None) or {}
+    tags = set()
+    for issue in list(state.get("active", [])) + list(state.get("history", [])):
+        if not isinstance(issue, dict):
+            continue
+        owner = issue.get("plan_owner")
+        if owner in (OWN_DEPLOYMENT_PLAN, FOREIGN_DEPLOYMENT_PLAN):
+            tags.add(owner)
+        elif issue.get("kind") == "leaked_plan":
+            tags.add(OWN_DEPLOYMENT_PLAN)
+    return tags
+
+
+_LEAKED_PLANS = re.compile(
+    r"\b(?:leak(?:ed|s)?|published|exposed|stolen|captured|intercepted|obtained)\b(?:\s+\w+){0,3}?\s+plans?\b"
+    r"|\bplans?\b(?:\s+\w+){0,3}?\s+(?:(?:were|was|been|got)\s+)?(?:leak(?:ed|s)?|published|exposed)\b", re.I)
+_PLAN_EVIDENCE = re.compile(r"\b(?:indicates?|indicating|shows?|showing|reveals?|revealing|proves?|proving|"
+                            r"confirms?|confirming|demonstrates?|establish(?:es)?|documents?)\b", re.I)
+_PLAN_FOREIGN_ACT = re.compile(
+    r"\b(?:they|their|the\s+union|union|solvaran|veleria|velerian|dorsania|dorsanian|the\s+enemy|enemy|"
+    r"the\s+adversary|adversary|foreign)\b[^.;!?]{0,60}?\b(?:prepar\w*|plann?(?:ing|ed|s)?|intend\w*|mass\w*|"
+    r"mobili[sz]\w*|attack\w*|invad\w*|invasion|strik\w*|annex\w*|advanc\w*|launch\w*|escalat\w*|offensive)\b",
+    re.I)
+_OWN_PLAN = re.compile(
+    r"\b(?:our|my|own|karamaniya'?s?|the\s+army'?s|army'?s)\s+(?:\w+\s+){0,3}?(?:plans?|deployments?)\b"
+    r"|\bplans?\s+of\s+(?:ours|our|the\s+army)\b|\b(?:leaked|published|exposed)\s+(?:our|my|own)\b", re.I)
+# A sentence that marks itself as a worry, an estimate or a condition is an inference and is left alone.
+_PLAN_HEDGE = re.compile(
+    r"\b(?:may|might|could|perhaps|possibly|probably|likely|worry|worried|fear\w*|suspect\w*|believe\w*|think|"
+    r"thought|estimate\w*|assume\w*|appears?|seems?|suggest\w*|risk|if|would|hope|wonder)\b", re.I)
+
+
+def _plan_claims(text: str) -> list:
+    """Sentences that state, without qualification, that leaked plans show a foreign actor's intent.
+
+    Only the plain assertion is read: a leaked-plans phrase, then an evidence verb ("indicate",
+    "show", "prove"), then a foreign actor doing something hostile. A sentence that says the plans are
+    the delegate's own, or hedges, or asks, is an inference or a condition and is not a claim.
+    """
+    out = []
+    for sentence in re.split(r"(?<=[.;!?])\s+|\n", text or ""):
+        leak = _LEAKED_PLANS.search(sentence)
+        if not leak or _OWN_PLAN.search(sentence) or _PLAN_HEDGE.search(sentence):
+            continue
+        said = _PLAN_EVIDENCE.search(sentence, leak.end())
+        if said and _PLAN_FOREIGN_ACT.search(sentence[said.end():said.end() + 100]):
+            out.append(sentence.strip())
+    return out
+
 
 def unsupported_facts(w: World, mid: str, notes: str) -> list:
     """Results a delegate remembers that the engine has no record of producing.
@@ -207,6 +273,14 @@ def unsupported_facts(w: World, mid: str, notes: str) -> list:
         out.append({"code": "UNSUPPORTED_MEMORY_FACT", "member": mid, "office": office,
                     "claim": sentence.strip()[:200],
                     "note": "no audit or report for this office exists in the record"})
+    # Leaked plans that show a foreign actor's intent, when no deployment-plan leak exists at all: a
+    # memory of an event that did not happen. (When one exists and is the wrong document, that is a
+    # reference error, below.)
+    if not deployment_plan_provenance(w):
+        for claim in _plan_claims(notes):
+            out.append({"code": "UNSUPPORTED_MEMORY_FACT", "member": mid, "subject": "deployment_plan_leak",
+                        "claim": claim[:200],
+                        "note": "no deployment-plan leak exists in the record"})
     return out
 
 
@@ -267,6 +341,17 @@ def fact_reference_errors(w: World, mid: str, text: str) -> list:
                             "claim": sentence.strip()[:200],
                             "note": "no audit of this region exists in the record; an audit examines "
                                     "an office"})
+    # Evidence about a foreign actor attributed to plans that are not that actor's. The record shows the
+    # plans that leaked were the army's own; a delegate may worry what the Union will do with them, but
+    # cannot cite them as the Union's.
+    provenance = deployment_plan_provenance(w)
+    if provenance and FOREIGN_DEPLOYMENT_PLAN not in provenance:
+        for claim in _plan_claims(text):
+            out.append({"code": "FACT_REFERENCE_ERROR", "member": mid,
+                        "referred_to": FOREIGN_DEPLOYMENT_PLAN, "canonical": sorted(provenance),
+                        "claim": claim[:200],
+                        "note": "the statement is kept as written; the only plans the record shows "
+                                "leaked are the state's own, and no foreign plans are recorded"})
     return out
 
 

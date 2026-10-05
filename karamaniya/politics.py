@@ -147,7 +147,8 @@ def parse_bool(raw) -> bool | None:
     return None
 
 
-def parse_share(raw, lo: float, hi: float) -> float | None:
+def _share_value(raw) -> float | None:
+    """A share as written ('0.05', '5%', '5'), before it is held to any bound."""
     s = str(raw).strip().lower().replace(",", ".")
     pct = s.endswith("%")
     s = s.rstrip("%").strip()
@@ -157,7 +158,17 @@ def parse_share(raw, lo: float, hi: float) -> float | None:
         return None
     if pct or x > 1.0:
         x /= 100.0
-    return clamp(x, lo, hi)
+    return x
+
+
+def parse_share(raw, lo: float, hi: float) -> float | None:
+    x = _share_value(raw)
+    return None if x is None else clamp(x, lo, hi)
+
+
+#: The army's size target is held to this range. It is a bound of the lever, not a judgement about what a
+#: sensible army looks like: an order below it is applied as the floor, and is reported as adjusted.
+ARMY_TARGET_BOUNDS = (5000, 400000)
 
 
 def parse_lever(lever: str, raw):
@@ -172,7 +183,7 @@ def parse_lever(lever: str, raw):
         return parse_bool(raw)
     if lever == "army_target":
         try:
-            return clamp(float(str(raw).replace(",", "").strip()), 5000, 400000)
+            return clamp(float(str(raw).replace(",", "").strip()), *ARMY_TARGET_BOUNDS)
         except ValueError:
             return None
     if lever == "import_cap":
@@ -182,6 +193,45 @@ def parse_lever(lever: str, raw):
             return None
     if lever.startswith("deploy_"):
         return parse_share(raw, 0.0, 1.0)
+    return None
+
+
+def lever_bounds(lever: str):
+    """The (low, high) an order for this setting is held to, or None for a setting with no range."""
+    if lever == "army_target":
+        return ARMY_TARGET_BOUNDS
+    if lever in SHARES:
+        return SHARES[lever]
+    if lever.startswith("deploy_"):
+        return (0.0, 1.0)
+    return None
+
+
+def lever_adjustment(lever: str, raw, value) -> dict | None:
+    """What an order asked for when the engine applied something else, or None when it did what was asked.
+
+    `parse_lever` holds a number to its setting's bounds, and nothing said so: the month's record showed
+    the order as written (army_target 3100) while the state moved to the nearest bound (5000), and the
+    two read as one fact. The order is left exactly as the delegate wrote it; this names the gap. It is
+    not a new rule, and it does not question what was asked — it only says what was done about it.
+    """
+    if value is None:
+        return {"requested": raw, "applied": None,
+                "reason": "not a value this setting takes; the order was not applied"}
+    bounds = lever_bounds(lever)
+    if bounds is None:
+        return None
+    try:
+        asked = float(str(raw).replace(",", "").strip()) if lever == "army_target" else _share_value(raw)
+    except ValueError:
+        asked = None
+    if asked is None:
+        return None
+    lo, hi = bounds
+    if asked < lo or asked > hi:
+        return {"requested": raw, "applied": value,
+                "reason": f"outside the setting's bounds ({fmt_value(float(lo))} to {fmt_value(float(hi))}); "
+                          "the nearest bound was applied"}
     return None
 
 
@@ -1077,7 +1127,12 @@ def apply_motion(w: World, mo: dict) -> str:
         scope, categories, _ = _arrears_scope(mo, val)
         owed = (sum(max(0.0, e.arrears_by.get(c, 0.0)) for c in categories) if categories else e.arrears)
         intended = owed * (scope if scope is not None else 1.0)
-        paid = min(intended, _arrears_funding_capacity(w, subj))
+        # A reserve floor the motion carries limits the payment: what is paid is what reserves can
+        # cover above the floor, never more than was asked. The same figure the execution gate reports.
+        floor = payment_floor(mo) if subj == "reserves" else 0.0
+        capacity = _arrears_funding_capacity(w, subj, floor)
+        unfloored = _arrears_funding_capacity(w, subj) if floor else capacity
+        paid = min(intended, capacity)
         if subj == "reserves":
             rate = w.zone_of("karamaniya").price / (e.fx_conf if e.currency == "karam" else 1.0)
             e.gold = max(0.0, e.gold - paid / max(rate, .01))
@@ -1095,10 +1150,15 @@ def apply_motion(w: World, mo: dict) -> str:
         scope_text = f" to {', '.join(categories)}" if categories else ""
         result = f"paid {paid / 1e6:.1f}M crowns in inherited bills{scope_text} using {subj.replace('_', ' ')}"
         if paid + 1 < intended:
-            result += f"; {intended / 1e6:.1f}M was requested but funding was limited"
+            if floor and unfloored > capacity + 1:
+                result += (f"; {intended / 1e6:.1f}M was requested but the payment was limited to keep reserves "
+                           f"at the reserve floor of {floor / 1e6:.1f}M")
+            else:
+                result += f"; {intended / 1e6:.1f}M was requested but funding was limited"
         w.event("arrears_settlement", result, importance=2, categories=list(categories),
                 requested=round(intended, 2), executed=round(paid, 2),
-                remaining=round(max(0.0, intended - paid), 2))
+                remaining=round(max(0.0, intended - paid), 2),
+                **({"reserve_floor": round(floor, 2)} if floor else {}))
         return result
     if t == "constitution":
         return _constitution(w, subj, str(val).strip(), mo.get("proposer", ""))
@@ -1374,8 +1434,22 @@ def parse_loan_amount(value) -> float | None:
     return amount
 
 
-def settle_arrears_cost(w, motion: dict) -> float:
-    """Gold the engine would actually spend on this arrears motion (reserves only)."""
+def payment_floor(mo: dict) -> float:
+    """The strictest reserve floor a motion executes under, in the gold reserves are held in (0 if none).
+
+    Read through `motion_conditions`, as the execution gate reads it, so the gate and the payment
+    cannot disagree about what the floor is or what units it is in."""
+    from . import motion_actions
+    floors = [float(c["value"]) for c in motion_actions.motion_conditions(mo)
+              if c.get("metric") == "reserves_after_payment" and c.get("operator") == ">="]
+    return max(floors) if floors else 0.0
+
+
+def settle_arrears_cost(w, motion: dict, floor: float | None = None) -> float:
+    """Gold the engine would actually spend on this arrears motion (reserves only).
+
+    `floor` is the reserve floor the payment is sized to: None reads it from the motion, 0.0 asks what
+    the payment would cost with none."""
     e = w.econ
     if str(motion.get("type", "")) != "settle_arrears" or str(motion.get("subject", "")) != "reserves":
         return 0.0
@@ -1386,7 +1460,9 @@ def settle_arrears_cost(w, motion: dict) -> float:
     if scope is None:
         scope = {"quarter": .25, "half": .5, "all": 1.0}.get(str(motion.get("value", "")).strip().lower(), .25)
     intended = owed * scope
-    paid = min(intended, _arrears_funding_capacity(w, "reserves"))
+    if floor is None:
+        floor = payment_floor(motion)
+    paid = min(intended, _arrears_funding_capacity(w, "reserves", floor))
     rate = w.zone_of("karamaniya").price / (e.fx_conf if e.currency == "karam" else 1.0)
     return paid / max(rate, .01)
 
@@ -1531,11 +1607,12 @@ def _categorical(word: str) -> bool:
                                            "police", "army", "food", "civil"))
 
 
-def _arrears_funding_capacity(w: World, source: str) -> float:
+def _arrears_funding_capacity(w: World, source: str, floor: float = 0.0) -> float:
+    """Crowns a source can fund. From reserves, that is what they hold above `floor` (gold), in crowns."""
     e = w.econ
     if source == "reserves":
         rate = w.zone_of("karamaniya").price / (e.fx_conf if e.currency == "karam" else 1.0)
-        return max(0.0, e.gold * rate)
+        return max(0.0, (e.gold - floor) * rate)
     if source == "domestic_bonds":
         issued = w.institutions.get("arrears_bonds") or {}
         already = issued.get("amount", 0.0) if issued.get("month") == w.month else 0.0
@@ -1684,8 +1761,11 @@ def _compliance(w: World, office: str, lever: str, mid: str, ordered, note: str,
 def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, superseded: list | None = None,
                  unauthorized: list | None = None, compliance: list | None = None,
                  prior_directives: dict | None = None, prior_bounds: dict | None = None,
-                 order_history: list | None = None) -> list:
+                 order_history: list | None = None, adjusted: list | None = None) -> list:
     """Apply one member's orders for the offices they hold. Returns any defiance records.
+
+    `adjusted`, when given, collects an entry for every order where what was applied is not what was
+    asked: a number outside its setting's bounds, or a value the setting does not take.
 
     `fresh` names settings a motion has just made directives in this resolution. Those directives
     take precedence over the old setting: an order allowed by the new directive is compliant, and
@@ -1713,6 +1793,9 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
             if lever == "patronage":
                 flag = parse_bool(raw)
                 if flag is None:
+                    if adjusted is not None:
+                        adjusted.append({"member": mid, "office": office, "lever": lever, **lever_adjustment(
+                            lever, raw, None)})
                     continue
                 key = f"patronage_{office}"          # the council's directive on this office's patronage
                 if fresh and key in fresh:
@@ -1767,6 +1850,9 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                         lever=lever, office=office, reason=refusal["reason"])
                 continue
             value = parse_lever(lever, raw)
+            gap = lever_adjustment(lever, raw, value)
+            if gap is not None and adjusted is not None:
+                adjusted.append({"member": mid, "office": office, "lever": lever, **gap})
             if value is None:
                 track_order(office, lever, raw, "invalid")
                 continue

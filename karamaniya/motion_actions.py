@@ -359,12 +359,47 @@ def condition_values(w, motion: dict | None = None) -> dict:
             "league_credit_received": credit, "audited_register": audited}
 
 
+def _reserve_floor_result(w, cond: dict, motion: dict, values: dict) -> dict:
+    """A floor on reserves after a payment, tested the way it will be enforced: by sizing the payment.
+
+    "Reserves stay at or above 50M" on a payment from reserves means pay what leaves them there. So the
+    floor is met whenever some payment can be made above it, and the payment is limited to
+    min(requested, reserves - floor); it fails only when there is no room at all (reserves already at
+    or under the floor), and then nothing is paid. Reserves are gold and payments are crowns, so room
+    and cost are both in gold here, the unit reserves are held in.
+    """
+    from .politics import settle_arrears_cost
+    try:
+        floor = float(cond.get("value"))
+        reserves = float(values.get("reserves", 0))
+        full = float(settle_arrears_cost(w, motion, floor=0.0))
+    except (TypeError, ValueError):
+        return {**cond, "met": False, "observed": None, "reason": "no canonical reading for reserves_after_payment"}
+    allowed = min(full, max(0.0, reserves - floor))
+    after = reserves - allowed
+    no_room = full > 0 and allowed <= 0
+    met = after >= floor and not no_room
+    row = {**cond, "met": bool(met), "observed": after, "requested_cost": full, "allowed_cost": allowed,
+           "capped": bool(met and full > 0 and allowed + 1e-6 < full)}
+    if not met:
+        row["reason"] = (f"reserves {reserves:,.0f} are already below the reserve floor of {floor:,.0f}"
+                         if reserves < floor else
+                         f"reserves {reserves:,.0f} leave no room for a payment above the reserve floor of {floor:,.0f}")
+    return row
+
+
 def evaluate_conditions(w, conditions: list, motion: dict | None = None) -> list:
     """Test every binding condition against current canonical state. Pure: no mutation."""
     values = condition_values(w, motion)
     results = []
     for cond in conditions or []:
         metric = cond.get("metric")
+        # A floor on an arrears payment from reserves limits the payment. A floor on any other motion
+        # (disaster relief drawing on reserves, say) is a test of the balance the motion would leave.
+        if (metric == "reserves_after_payment" and motion is not None and cond.get("operator") == ">="
+                and motion.get("type") == "settle_arrears"):
+            results.append(_reserve_floor_result(w, cond, motion, values))
+            continue
         observed = values.get(metric)
         detail = ""
         if metric == "reserves_after_payment" and motion is not None:
@@ -435,6 +470,204 @@ def condition_mismatch(w, motion: dict) -> dict | None:
             "final_conditions": text_conds, "stored_conditions": stored}
 
 
+# ---- what the council accepted ----------------------------------------------------------------------
+# A condition is binding when it is among the motion's executable conditions, and those come from its
+# proposer: the structured `conditions` it filed, or a safeguard its own words state. But a motion is
+# also shaped after it is tabled, by the delegates who vote it through: a co-sponsor who attached a
+# safeguard of its own, and the demands the response round exists to collect ("cap the payment at the
+# 50M reserve floor"). When the votes that carried a motion are votes that asked for the same floor,
+# that floor is what the council agreed, and it has to reach execution whoever happened to table it.
+#
+# One kind of term is read back from free text: a floor on reserves, for a payment made from reserves.
+# It is the one the record showed being lost, it is what such a vote is about (a payment the treasury
+# cannot afford), and the constructions that state it are few. A demand that does not plainly state a
+# floor states none; under-reading is the safe direction, because an unread demand leaves the engine
+# exactly as it was.
+_FIGURE = (r"(?P<num>\d[\d,]*(?:\.\d+)?)(?:\s*(?P<unit>bn|billion|mn|million|thousand|m|k)\b)?"
+           r"(?!\s*(?:%|(?:percent|months?|weeks?|days?|years?|quarters?|troops?|soldiers?|men|people|persons?|"
+           r"workers?|tonnes?|tons?|ships?|vessels?|units?|points?|hectares?)\b))")
+_AROUND = r"(?:about\s+|roughly\s+|around\s+)?"
+_UNIT_SCALE = {"bn": 1e9, "billion": 1e9, "mn": 1e6, "million": 1e6, "m": 1e6, "thousand": 1e3, "k": 1e3}
+_RESERVE_WORD = re.compile(r"\b(?:reserves?|gold|treasury)\b", re.I)
+_FLOOR_PATTERNS = tuple(re.compile(p, re.I) for p in (
+    # "do not let reserves fall below 60M", "reserves never fall below 50,000,000", "should not drop under 1.5bn",
+    # "no payment that reduces reserves below 55M", "must not push reserves below roughly 50M"
+    r"\b(?:not|never|n't|no|without|avoid\w*|prevent\w*|prohibit\w*|forbid\w*)\b[^.;]{0,40}?"
+    r"\b(?:fall\w*|fell|drop\w*|dip\w*|sink\w*|slip\w*|go(?:es|ing)?|declin\w*|reduc\w*|push\w*|pull\w*|tak\w*|"
+    r"bring\w*|draw\w*|drain\w*|deplet\w*)\b[^.;]{0,15}?"
+    r"\b(?:below|under|beneath)\s+" + _AROUND + _FIGURE,
+    # "reserves remain at or above 50M", "hold reserves at least 55 million", "stay >= 50M"
+    r"\b(?:stay|stays|staying|remain|remains|remaining|keep|keeps|keeping|kept|hold|holds|holding|held|"
+    r"maintain\w*|preserv\w*|retain\w*|leave|leaves|leaving|be)\b[^.;]{0,50}?"
+    r"(?:>=|≥|\bat\s+or\s+above\b|\bat\s+least\b|\bno\s+(?:less|lower)\s+than\b|\bnot\s+below\b|\babove\b|"
+    r"\bover\b|\bminimum\s+of\b)\s*" + _AROUND + _FIGURE,
+    # "the 50M reserve floor", "a 45M reserve floor", "50M minimum"
+    _FIGURE + r"\s*(?:gold\s+|crowns?\s+)?(?:(?:reserve|reserves)\s+)?(?:floor|minimum|buffer|threshold)\b",
+    # "reserve floor of 50M", "a floor at 50M"
+    r"\b(?:floor|minimum|buffer|threshold)\s+(?:of|at|to)\s+" + _AROUND + _FIGURE,
+    # "at least 50M in reserves", ">= 50M of gold"
+    r"(?:>=|≥|\bat\s+least\b|\bno\s+less\s+than\b)\s*" + _FIGURE +
+    r"\s*(?:gold\s+|crowns?\s+)?(?:in|of)\s+(?:the\s+)?(?:foreign\s+)?(?:reserves?|gold)\b",
+))
+
+
+_MONEY_TAIL = re.compile(r"\s*(?:gold|crowns?|karams?)\b|\s*(?:gold\s+|crowns?\s+)?(?:reserves?\s+)?"
+                         r"(?:floor|minimum|buffer|threshold)\b", re.I)
+
+
+def _figure_value(match, clause: str) -> float | None:
+    """The amount a figure names, in the units reserves are held in, or None if it is not money.
+
+    "50M", "50 million" and "1.5bn" say what they are. A bare figure is money only when it is already
+    a full amount (50,000,000) or is written as one ("50 gold", "a 50 reserve floor"): "28,000" in the
+    same sentence as "reserves" is a troop count."""
+    try:
+        number = float(match.group("num").replace(",", ""))
+    except ValueError:
+        return None
+    unit = (match.group("unit") or "").lower()
+    if unit:
+        return number * _UNIT_SCALE[unit]
+    if number >= 1e5:
+        return number
+    return canonical_metric_value("reserves_after_payment", number) if _MONEY_TAIL.match(clause, match.end("num")) else None
+
+
+def floor_from_demand(text: str) -> float | None:
+    """The reserve floor a piece of response-round prose states, or None.
+
+    "Ensure reserves do not fall below 50M gold" and "cap payment at the 50M reserve floor" state one.
+    "Reserves are above 97M", "pay 47M now" and "cap payment at 47M" state a fact or an amount, not a
+    floor, and a figure that is not next to floor wording is never read as one. Where one demand states
+    several, the highest is taken: a delegate who asks for 60M and for not going under 50M has asked
+    for 60M.
+    """
+    found = []
+    for clause in re.split(r";|(?<=[A-Za-z0-9)])\.(?=\s)", str(text or "")):
+        for pattern in _FLOOR_PATTERNS:
+            for match in pattern.finditer(clause):
+                # The floor has to be about reserves: the word is in the phrase, just before it, or
+                # straight after the figure ("55M gold").
+                if not _RESERVE_WORD.search(clause[max(0, match.start() - 60):match.end() + 12]):
+                    continue
+                value = _figure_value(match, clause)
+                if value and value > 0:
+                    found.append(value)
+    return max(found) if found else None
+
+
+def _is_reserve_floor(cond) -> bool:
+    return isinstance(cond, dict) and cond.get("metric") == "reserves_after_payment" and cond.get("operator") == ">="
+
+
+def _says_at_least(have: dict, want: dict) -> bool:
+    """Whether a condition the motion already carries says everything `want` says."""
+    if have.get("metric") != want.get("metric") or have.get("operator") != want.get("operator"):
+        return False
+    try:
+        held, asked = float(have["value"]), float(want["value"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    op = want["operator"]
+    return held >= asked if op == ">=" else (held <= asked if op == "<=" else held == asked)
+
+
+def accepted_conditions(w, motion: dict, votes: dict) -> list:
+    """The reserve floor the coalition that carried an arrears payment from reserves asked for.
+
+    Each yes-voter's stated floor is the highest one it put on the table: a demand in the response
+    round, or a safeguard it attached as a co-sponsor. The floor the council accepted is the highest
+    F for which the yes-voters who asked for at least F would, alone, carry the motion under the
+    decision rule in force: a floor one delegate wants is that delegate's, and a floor a winning
+    coalition wants is the council's. Nothing is invented: no stated floor, or none with a winning
+    coalition behind it, yields [].
+    """
+    if str(motion.get("type", "")) != "settle_arrears" or str(motion.get("subject", "")) != "reserves":
+        return []
+    from .politics import passes
+    asked: dict = {}
+    for demand in motion.get("demands") or []:
+        if isinstance(demand, dict) and demand.get("member"):
+            floor = floor_from_demand(str(demand.get("demand", "")))
+            if floor:
+                asked[demand["member"]] = max(asked.get(demand["member"], 0.0), floor)
+    for member, conds in (motion.get("sponsor_conditions") or {}).items():
+        for cond in conds or []:
+            if _is_reserve_floor(cond):
+                try:
+                    asked[member] = max(asked.get(member, 0.0), float(cond["value"]))
+                except (KeyError, TypeError, ValueError):
+                    continue
+    yes = {member for member, vote in votes.items() if vote == "yes"}
+    for floor in sorted({f for member, f in asked.items() if member in yes}, reverse=True):
+        backers = sorted(member for member, f in asked.items() if member in yes and f >= floor)
+        if passes(w, {member: ("yes" if member in backers else "abstain") for member in votes}):
+            return [{"metric": "reserves_after_payment", "operator": ">=", "value": floor,
+                     "source": f"accepted by {', '.join(backers)}: a reserve floor stated in the response "
+                               f"round or as a co-sponsor's safeguard",
+                     "accepted_by": backers}]
+    return []
+
+
+def bind_conditions(stored: list, accepted: list) -> list:
+    """The conditions a motion executes under: what it carries, plus what the council accepted that it
+    does not already carry. A stricter condition already carried is kept as it is."""
+    bound = [c for c in (stored or [])]
+    for want in accepted or []:
+        if not any(_says_at_least(have, want) for have in bound):
+            bound.append(dict(want))
+    return bound
+
+
+def condition_execution_mismatch(w, motion: dict, accepted: list, stored: list) -> dict | None:
+    """An accepted condition the motion did not carry, and whether executing it as recorded breaks it.
+
+    None when everything the council accepted was already among the motion's own conditions. The cost
+    is what the motion would have spent under the conditions it DID carry (none, for the motion that
+    was lost on run 20260930-173547-seed1), so `would_violate` is an honest answer to "what would the
+    engine have done before this was attached".
+    """
+    stored = [c for c in (stored or []) if isinstance(c, dict)]
+    missing = [c for c in (accepted or []) if not any(_says_at_least(have, c) for have in stored)]
+    if not missing:
+        return None
+    from .politics import settle_arrears_cost
+    carried_floor = max((float(c["value"]) for c in stored if _is_reserve_floor(c)), default=0.0)
+    reserves = float(w.econ.gold)
+    cost = float(settle_arrears_cost(w, motion, floor=carried_floor))
+    after = reserves - cost
+    violations = [{"metric": c["metric"], "operator": c["operator"], "value": c["value"],
+                   "reserves_before": reserves, "requested_cost": cost, "reserves_after_unconstrained": after,
+                   "short_by": float(c["value"]) - after}
+                  for c in missing if _is_reserve_floor(c) and after < float(c["value"]) - 1e-6]
+    asked = "; ".join(f"{c['metric']} {c['operator']} {c['value']:,.0f} (accepted by {', '.join(c.get('accepted_by', []))})"
+                      for c in missing)
+    return {"code": "CONDITION_EXECUTION_MISMATCH",
+            "detail": (f"the council accepted {asked}, but the motion it voted on did not carry it; executed as "
+                       + (f"recorded it would have left reserves at {after:,.0f}" if violations else
+                          "recorded it would still have respected it")),
+            "accepted_conditions": list(accepted), "stored_conditions": stored, "missing": missing,
+            "would_violate": bool(violations), "violations": violations}
+
+
+def condition_execution_violation(w, conditions: list) -> list:
+    """Reserve floors the state is under once a payment has run. Empty when every floor held.
+
+    Execution sizes the payment to the floor, so this should always be empty; it is here so a path
+    that does not (a payment made some other way) is recorded instead of trusted."""
+    reserves = float(w.econ.gold)
+    out = []
+    for cond in conditions or []:
+        if _is_reserve_floor(cond):
+            try:
+                floor = float(cond["value"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if reserves < floor - 1e-3:
+                out.append({**cond, "observed": reserves})
+    return out
+
+
 def _canonical_actor(w, raw: str) -> str | None:
     """Map a delegate's spelling of an actor onto the canonical ids the engine knows.
 
@@ -464,7 +697,12 @@ def validate_diplomatic_action(w, motion: dict) -> dict | None:
         return None
     mismatch = conflict(w, motion)
     if mismatch:
-        details = "; ".join(reason["detail"] for reason in mismatch.get("reasons", []))
+        reasons = mismatch.get("reasons", [])
+        details = "; ".join(reason["detail"] for reason in reasons)
+        if all(reason["code"] == "ACTION_NOT_VALID_FOR_TARGET" for reason in reasons):
+            # The words and the action agree; the act simply cannot go to that actor, and is refused
+            # under that name rather than as a disagreement.
+            return {"code": "ACTION_NOT_VALID_FOR_TARGET", "detail": details}
         return {"code": mismatch["code"],
                 "detail": "the diplomatic motion's text and executable action disagree: " + details}
     if not action.get("target"):
@@ -484,15 +722,49 @@ def validate_diplomatic_action(w, motion: dict) -> dict | None:
     return None
 
 
+# An actor named as the pressure a motion answers ("against Union pressure", "despite Union threats")
+# is not the actor the motion is addressed to. Only these cues count, and only next to the name:
+# "from" is deliberately absent, because "a loan from the League" names the counterparty and
+# "protection from the Union" names the adversary, and the words alone cannot tell them apart.
+_CONTEXT_BEFORE = re.compile(
+    r"(?:against|despite|amid|versus|vs\.?|facing|about|regarding|concerning|because\s+of|countering|"
+    r"counter|deter(?:ring)?|resist(?:ing)?|pressure\s+from|threats?\s+from)\s+(?:the\s+|a\s+|an\s+)?(?:\w+\s+){0,2}$",
+    re.I)
+_CONTEXT_AFTER = re.compile(
+    r"^\W{0,2}(?:'s\s+)?(?:pressure|threats?|aggression|invasion|annexation|ultimatums?|blockade|embargo|"
+    r"sanctions|ambitions?|demands?)\b", re.I)
+
+
+def _mention_spans(w, text: str) -> dict:
+    """actor -> the (start, end) of every place the text names it."""
+    out = {}
+    for actor, patterns in _actor_patterns(w).items():
+        spans = [(m.start(), m.end()) for p in patterns for m in re.finditer(p, text, re.I)]
+        if spans:
+            out[actor] = spans
+    return out
+
+
+def _as_context(text: str, start: int, end: int) -> bool:
+    return bool(_CONTEXT_BEFORE.search(text[max(0, start - 40):start]) or _CONTEXT_AFTER.match(text[end:end + 30]))
+
+
 def prose_intent(w, text: str) -> dict:
     """What a motion's words say it does: which foreign actors it names, and which act.
 
     A high-precision read. It reports what the prose names, and nothing about what it might imply.
+    `actors` is every actor named. `addressed` is the ones the motion is aimed at: where several are
+    named, an actor that appears only as the pressure being answered ("against Union pressure") is
+    left out, so a text that names the Union as its adversary is not mistaken for one addressed to it.
+    Where only one actor is named it is the addressee whatever its context, as it always was.
     """
     body = str(text or "")
-    actors = sorted(a for a, pats in _actor_patterns(w).items() if _hits(body, pats))
+    mentions = _mention_spans(w, body)
+    actors = sorted(mentions)
     actions = [a for a, pats in PROSE_ACTIONS if _hits(body, pats)]
-    return {"actors": actors, "actions": actions,
+    addressed = actors if len(actors) <= 1 else sorted(
+        a for a, spans in mentions.items() if any(not _as_context(body, s, e) for s, e in spans))
+    return {"actors": actors, "addressed": addressed, "actions": actions,
             "negates_force": bool(re.search(r"\brenounce\s+force|no\s+recourse\s+to\s+force", body, re.I))}
 
 
@@ -501,8 +773,10 @@ def conflict(w, motion: dict) -> dict | None:
     """Where a motion's words and its executable payload disagree, or None.
 
     Only foreign actions are judged this way, and only on evidence the prose actually states: an
-    actor it names that the payload does not address, or an act it names that the payload is not.
-    A motion whose words name several actors, or none, is left alone.
+    actor it addresses that the payload does not, an act it names that the payload is not, or an act
+    that the payload's own target does not receive. A motion whose words address several actors, or
+    none, is left alone. The actor a text is aimed at is judged, not every actor it mentions: one named
+    only as the pressure being answered is context.
     """
     action = structured_action(w, motion)
     if action["kind"] != "diplomacy":
@@ -510,12 +784,30 @@ def conflict(w, motion: dict) -> dict | None:
     text = str(motion.get("text", ""))
     intent = prose_intent(w, text)
     reasons = []
-    named = intent["actors"]
+    named = intent["addressed"]
     if len(named) == 1 and action.get("target") and named[0] != action["target"]:
         reasons.append({"code": "FOREIGN_TARGET_MISMATCH", "prose_actor": named[0],
                         "action_actor": action["target"],
                         "detail": f"the text addresses the {ACTOR_NAMES[named[0]]}, but the structured "
                                   f"action is sent to the {ACTOR_NAMES.get(action['target'], action['target'])}"})
+    # The motion's value is a second place the counterparty can be named ("DORSANIA, 2.0M gold ...").
+    valued = prose_intent(w, str(motion.get("value") or ""))["actors"]
+    if len(valued) == 1 and action.get("target") and valued[0] != action["target"] \
+            and not any(r["prose_actor"] == valued[0] for r in reasons):
+        reasons.append({"code": "FOREIGN_TARGET_MISMATCH", "prose_actor": valued[0],
+                        "action_actor": action["target"], "source": "value",
+                        "detail": f"the motion's value names the {ACTOR_NAMES[valued[0]]}, but the structured "
+                                  f"action is sent to the {ACTOR_NAMES.get(action['target'], action['target'])}"})
+    # An act goes to an actor that receives it. This was checked only when the motion tried to
+    # execute, so the council voted on a trade deal "with Dorsania" that could never run.
+    expected = DIPLOMATIC_ACTIONS.get(action["action_type"])
+    allowed = DIPLOMATIC_TARGETS.get(action["action_type"], {expected}) if expected else None
+    if allowed and action.get("target") in ACTORS and action["target"] not in allowed:
+        names = ", ".join(ACTOR_NAMES[a] for a in sorted(allowed))
+        reasons.append({"code": "ACTION_NOT_VALID_FOR_TARGET", "action_type": action["action_type"],
+                        "action_actor": action["target"], "expected_actor": expected,
+                        "detail": f"a {action['action_type']} can be addressed to {names}, "
+                                  f"not the {ACTOR_NAMES[action['target']]}"})
     declared = motion.get("declared_subject")
     if declared and motion.get("subject"):
         # Only a subject that names a *different act* contradicts the payload. A subject that is a
@@ -567,6 +859,13 @@ def repair_request(w, c: dict) -> str:
                  + (f" to the {ACTOR_NAMES.get(target, target)}" if target else "")
                  + (f", policy {action['policy']} = {action['value']}" if action.get("policy") else ""))
     lines.append(f"Detected conflict: {described}.")
+    # Say what the actor can actually receive, so the one repair is not spent guessing. Only actors the
+    # conflict itself names are listed, and only from the engine's own action vocabulary.
+    for actor in dict.fromkeys(r.get(key) for r in c["reasons"] for key in ("prose_actor", "action_actor")
+                               if r.get(key) in ACTORS):
+        acts = [act for act, receiver in DIPLOMATIC_ACTIONS.items() if receiver == actor]
+        if acts:
+            lines.append(f"Acts the engine can address to the {ACTOR_NAMES[actor]}: {', '.join(acts)}.")
     lines.append("Correct either the structured action or the motion text so they describe the same motion, "
                  "then resubmit that motion only. The rest of your answer stands.")
     return "\n".join(lines)
@@ -860,25 +1159,9 @@ def validate_execution(w, motion: dict, executed: dict | None = None) -> dict | 
     if not action.get("action_type"):
         return {"code": "NO_STRUCTURED_ACTION", "detail": "the motion carries no executable action"}
     if action["kind"] == "diplomacy":
-        mismatch = conflict(w, motion)
-        if mismatch:
-            details = "; ".join(reason["detail"] for reason in mismatch.get("reasons", []))
-            return {"code": mismatch["code"],
-                    "detail": "the diplomatic motion's text and executable action disagree: " + details}
-        if not action.get("target"):
-            return {"code": "NO_TARGET",
-                    "detail": f"a {action['action_type']} does not name a country or institution to address"}
-        if action["target"] not in ACTORS:
-            return {"code": "UNKNOWN_TARGET", "detail": f"unknown target {action['target']!r}"}
-        expected = DIPLOMATIC_ACTIONS.get(action["action_type"])
-        if expected is None:
-            return {"code": "UNKNOWN_ACTION_TYPE", "detail": f"unknown diplomatic action {action['action_type']!r}"}
-        allowed = DIPLOMATIC_TARGETS.get(action["action_type"], {expected})
-        if action["target"] not in allowed:
-            names = ", ".join(ACTOR_NAMES[a] for a in sorted(allowed))
-            return {"code": "ACTION_NOT_VALID_FOR_TARGET",
-                    "detail": f"a {action['action_type']} can be addressed to {names}, "
-                              f"not the {ACTOR_NAMES[action['target']]}"}
+        problem = validate_diplomatic_action(w, motion)
+        if problem:
+            return problem
     if executed is not None:
         key = execution_key(w, motion)
         if key in executed:

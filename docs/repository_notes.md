@@ -10,7 +10,8 @@ The main purpose of this repository is to provide a clean public record of:
 - the executive brief,
 - core figures,
 - methodology notes,
-- and selected analysis outputs.
+- selected analysis outputs,
+- and the simulator's source code.
 
 ## Current scope
 
@@ -39,6 +40,10 @@ Some raw trajectories, logs, and intermediate analysis artifacts are not yet pub
 - and the next experimental version is being prepared.
 
 A more complete reproducibility package is planned after the evaluation harness is frozen.
+
+The simulator itself is public: the code in this repository is engine version 5, tagged `engine-5`, under
+the Apache License 2.0 (see [ENGINE.md](../ENGINE.md) to run it). Raw trajectories, logs and intermediate
+analysis artifacts are still not part of the repository.
 
 ## Important limitations
 

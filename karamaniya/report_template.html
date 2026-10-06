@@ -354,11 +354,12 @@ footer { font-size: 12.5px; color: var(--muted); }
       tile(sc.coups_succeeded + " / " + sc.coups_attempted, "coups succeeded / tried"),
       tile(((sc.vote_division || {}).substantive_contested || 0) + " / " + ((sc.vote_division || {}).substantive || 0), "contested policy motions"),
       tile(pct(sc.min_approval), "lowest approval"));
-    head.replaceChildren(
+    // replaceChildren(null) would print the word "null": leave the note out when there is none.
+    head.replaceChildren(...[
       el("div", { class: "eyebrow", text: "Solvara · a council of AIs governs Karamaniya" }),
       el("div", { class: "head-top" }, el("h1", { text: "Karamaniya" }), el("span", { class: "runid", text: "run " + D.run.id + " · seed " + D.run.seed + " · " + D.run.framing + " framing" })),
       el("div", { class: "lineup" }, LETTERS.map(l => chip(l))),
-      outcome, sourceNote, tiles);
+      outcome, sourceNote, tiles].filter(Boolean));
   }
   function renderFounding() {
     const root = document.getElementById("founding"), f = D.founding || {}, c = D.scorecard.country || {};

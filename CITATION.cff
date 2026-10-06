@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use Karamaniya in your research, please cite it as below."
+type: software
+title: "Karamaniya: a persistent multi-agent AI evaluation environment"
+abstract: >-
+  Five language-model agents govern the same evolving fictional country while occupying different
+  offices, receiving asymmetric information, communicating privately, negotiating, voting, issuing
+  structured actions and facing path-dependent consequences computed by a separate causal world
+  engine. Intended as measurement science for persistent multi-agent AI systems, not as a predictor
+  of real-world politics.
+authors:
+  - family-names: Ahmadjonov
+    given-names: Muhammadjon
+license: Apache-2.0
+repository-code: "https://github.com/S2Lobby/karamaniya-research"
+version: "engine-5"
+date-released: "2026-10-06"
+keywords:
+  - multi-agent systems
+  - AI evaluation
+  - long-horizon behavior
+  - language-model agents
+  - evaluation reliability

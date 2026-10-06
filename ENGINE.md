@@ -388,7 +388,38 @@ A 36-month five-seat run can make roughly 375–555 council calls: five members 
 phases, plus founding diagnoses, government formation and an optional questionnaire. Targeted diagnosis
 repairs and the default foreign cabinets add calls. CLI seats can take several minutes per month, especially
 when a connector serializes its requests. A long run can take hours and count against subscription limits.
-Only pay-per-token seats cost money: set their `price_in` and `price_out` so `max_cost_usd` can stop the run.
+Only pay-per-token seats cost money: set their `price_in` and `price_out` so `max_cost_usd` can stop the run
+(and `price_cache_read` / `price_cache_write` to bill cached input at its own price).
+
+### Spending fewer tokens
+
+`python -m karamaniya tokens runs/<name>` shows where a run's tokens went, by phase, seat and prompt section,
+with the counts the providers reported and how much a prompt cache could reuse. It makes no calls. In a
+12-month scripted run the system prompt alone is a third of all input, and the canonical state and the
+briefing are the same for every delegate in a month.
+
+Opt-in features, all off by default (a default run sends exactly what engine 5 sent, which
+`tests/test_prompt_freeze.py` checks):
+
+```toml
+[run.tokens]
+layout = "cache_friendly"   # shared parts first, so a cache can reuse them: 21% -> 41% of input within a month
+schema_hint = "auto"        # the answer shape written compactly where the connector enforces it: -2% input
+briefing = "on_demand"      # headlines plus the sections a delegate asked for: up to -4% input
+wakeups = "on_events"       # the council may skip a month when every delegate stands by: up to -57% calls
+max_quiet_months = 3
+
+[run]
+foreign_cabinet_backend = { provider = "ollama", model = "qwen3.5:9b" }   # the foreign cabinets off the seats
+
+[[seat]]
+effort_by_phase = { decision = "high", session = "low", revision = "low" }
+```
+
+Each one changes what a delegate is sent or when it is asked, so it is recorded in the manifest and
+treated as a condition when runs are compared. What each does, how it was measured and its limits:
+[docs/TOKEN_EFFICIENCY.md](docs/TOKEN_EFFICIENCY.md). `python tools/token_benchmark.py` reproduces the
+numbers on one deterministic world.
 
 ## Files
 
@@ -407,6 +438,11 @@ Only pay-per-token seats cost money: set their `price_in` and `price_out` so `ma
 - `docs/ENGINEERING_BACKLOG.md`: the live task register and what was inspected versus rebuilt.
 - `tools/scan_runs.py`: scans saved runs for engine faults (NaN, negative stocks, counters running
   backwards, unstatused motions) separately from signals the engine records deliberately.
+- `karamaniya/tokens.py` (the token ledger and prefix-cache simulation behind `python -m karamaniya tokens`)
+  and `karamaniya/token_saving.py` (the opt-in features and their settings); `tools/token_benchmark.py`
+  measures every feature on one deterministic world, and `tools/prompt_freeze.py` checks, or deliberately
+  regenerates, the fingerprints that hold a default run to engine 5's prompts.
+- `docs/TOKEN_EFFICIENCY.md`: where the tokens go, what each feature saves, and the limits of those numbers.
 
 ### Is a run reproducible?
 

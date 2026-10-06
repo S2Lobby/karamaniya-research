@@ -227,6 +227,7 @@ The final experimental grid will then be sized from measured compute requirement
 - [Study design](methodology/study_design.md)
 - [Repository notes](docs/repository_notes.md)
 - [Causal world model](docs/CAUSAL_WORLD_MODEL.md): every equation, unit, parameter range and lag in the world engine
+- [Token efficiency](docs/TOKEN_EFFICIENCY.md): where a run's tokens go, and opt-in ways to send fewer of them
 - [Engineering backlog](docs/ENGINEERING_BACKLOG.md)
 
 ### Code
@@ -246,6 +247,18 @@ adds the `anthropic` package, which only seats calling the Anthropic API directl
 The code here is engine version 5 (see `karamaniya/versions.py`), tagged
 [`engine-5`](https://github.com/S2Lobby/karamaniya-research/tree/engine-5). Every run folder records the
 engine, prompt and psychology versions that produced it.
+
+### Compute
+
+Long trajectories are expensive, and the planned frontier study starts by measuring what a run costs.
+`python -m karamaniya tokens runs/<name>` breaks a run's input and output down by phase, seat and prompt
+section, with the counts the providers reported and a deterministic simulation of how much a prompt
+cache could reuse. In a 12-month scripted run the system prompt alone is a third of all input. Opt-in
+features, all off by default and recorded in each run's manifest when on, cut that: a cache-friendly
+prompt layout doubles the share of input a cache can reuse (21% to 41% within a month), and a council
+that may skip months when every delegate chooses to stand by makes up to 57% fewer calls. Details,
+measurements and limits are in [docs/TOKEN_EFFICIENCY.md](docs/TOKEN_EFFICIENCY.md). A default run still
+sends exactly the prompts engine 5 sent; a test holds it to them.
 
 ---
 
@@ -279,6 +292,7 @@ karamaniya-research/
 └── docs/
     ├── repository_notes.md
     ├── CAUSAL_WORLD_MODEL.md
+    ├── TOKEN_EFFICIENCY.md
     └── ENGINEERING_BACKLOG.md
 ```
 

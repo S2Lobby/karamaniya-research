@@ -7,6 +7,7 @@ tested without logins or cost.
 FAKE_CLI_RECORD=<file>        write the arguments, stdin and selected environment there
 FAKE_CLI_LIMIT_AFTER=<n>      answer n calls, then report the plan's usage limit
 FAKE_CLI_COUNTER=<file>       where the call count is kept between calls
+FAKE_CLI_USAGE=<json>         extra usage fields to report (Codex, Claude Code, Copilot): cache and reasoning counts
 """
 import json
 import os
@@ -27,6 +28,10 @@ def over_limit() -> bool:
     with open(path, "w") as f:
         f.write(str(n))
     return n > int(limit)
+
+
+def extra_usage() -> dict:
+    return json.loads(os.environ.get("FAKE_CLI_USAGE") or "{}")
 
 
 def answer(schema_text: str) -> dict:
@@ -67,7 +72,7 @@ def main():
             f.write(text)
         print(json.dumps({"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": text}}), file=out)
         print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 6717, "cached_input_tokens": 0,
-                                                             "output_tokens": 19}}), file=out)
+                                                             "output_tokens": 19, **extra_usage()}}), file=out)
         return 0
 
     if kind == "cline":
@@ -106,7 +111,7 @@ def main():
         if usage:
             with open(usage, "w", encoding="utf-8") as f:
                 json.dump({"totalPremiumRequestCost": 1, "tokenDetails": {"input": {"tokenCount": 10202},
-                           "output": {"tokenCount": 139}}, "modelMetrics": {model: {"requests": {"count": 1, "cost": 1},
+                           "output": {"tokenCount": 139}, **extra_usage()}, "modelMetrics": {model: {"requests": {"count": 1, "cost": 1},
                            "usage": {"inputTokens": 10202, "outputTokens": 139}}}}, f)
         events = [{"type": "session.auto_mode_resolved", "data": {"chosenModel": model}},
                   {"type": "user.message", "data": {"content": stdin}},
@@ -147,7 +152,7 @@ def main():
                                   "delta": {"type": "text_delta", "text": chunk}}}), file=out, flush=True)
                 time.sleep(0.25)
         print(json.dumps({"type": "result", "is_error": False, "result": json.dumps(data), "structured_output": data,
-                          "stop_reason": "end_turn", "usage": {"input_tokens": 120, "output_tokens": 12},
+                          "stop_reason": "end_turn", "usage": {"input_tokens": 120, "output_tokens": 12, **extra_usage()},
                           "modelUsage": {model: {}}, "total_cost_usd": 0.01}), file=out)
         return 0
     return 2

@@ -7,6 +7,8 @@ token-saving features in karamaniya/token_saving.py are all off by default; this
 them to it. A deliberate prompt change bumps versions.AGENT_PROMPT and regenerates the fixture with
 `python tools/prompt_freeze.py --write`.
 """
+import contextlib
+import io
 import json
 import os
 import re
@@ -36,7 +38,8 @@ def scripted_run(tmp: str, months: int, tokens: dict | None = None, prefix: str 
         config = os.path.join(tmp, f"{prefix}.toml")
         with open(config, "w", encoding="utf-8") as f:
             f.write(text)
-    simulate(config, runs=1, months=months, first_seed=1, runs_dir=tmp, prefix=prefix, check=False)
+    with contextlib.redirect_stdout(io.StringIO()):
+        simulate(config, runs=1, months=months, first_seed=1, runs_dir=tmp, prefix=prefix, check=False)
     return os.path.join(tmp, f"{prefix}-seed1")
 
 
@@ -78,7 +81,8 @@ class TheCacheFriendlyLayoutOnlyMovesThings(unittest.TestCase):
         cls.friendly = scripted_run(cls.tmp, 3, {"layout": "cache_friendly"}, prefix="friendly")
 
         def load(run):
-            rows = [json.loads(line) for line in open(os.path.join(run, "prompts.jsonl"), encoding="utf-8")]
+            with open(os.path.join(run, "prompts.jsonl"), encoding="utf-8") as f:
+                rows = [json.loads(line) for line in f]
             keyed, counts = {}, {}
             for r in rows:
                 key = (r["month"], r["phase"], r.get("member") or r.get("actor"))

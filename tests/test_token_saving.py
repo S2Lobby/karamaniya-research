@@ -290,6 +290,56 @@ class QuietMonths(unittest.TestCase):
             self.assertIn("The council did not meet", nxt[0]["prompt"])
 
 
+class WhatAlwaysWakesTheCouncil(unittest.TestCase):
+    """The quiet-month rule on its own: every delegate stands by, then one reason to meet at a time."""
+    TOKENS = {**token_saving.DEFAULTS, "wakeups": "on_events"}
+
+    def setUp(self):
+        self.w = new_world(1, 12, member_ids=list("ABCDE"))
+        c = self.w.const
+        self.w.month = next(m for m in range(2, 12) if m not in (c.election_month, c.handover_month))
+        self.w.last_events, self.w.dilemmas["active"] = [], []
+        for m in self.w.members:
+            m.agent_state = {**(m.agent_state or {}), "stand_by": {"months_left": 2, "wake_if": []}}
+
+    def due(self, carried=(), pending_dms=False, last_record=None):
+        return token_saving.quiet_month_due(self.w, [m.id for m in self.w.members], list(carried), pending_dms,
+                                            last_record or {"coups": []}, self.TOKENS)
+
+    def test_with_nothing_happening_the_month_is_quiet(self):
+        self.assertTrue(self.due())
+        self.assertIsNone(token_saving.quiet_month_due(self.w, [m.id for m in self.w.members], [], False, None,
+                                                       token_saving.DEFAULTS), "off unless a run turns it on")
+
+    def test_a_new_issue_on_the_agenda(self):
+        self.w.dilemmas["active"].append({"id": "I5-storm", "kind": "storm", "month": self.w.month})
+        self.assertIsNone(self.due())
+
+    def test_an_issue_the_council_already_met_over_does_not(self):
+        self.w.dilemmas["active"].append({"id": "I4-storm", "kind": "storm", "month": self.w.month - 1})
+        self.assertTrue(self.due())
+
+    def test_a_major_public_event_last_month(self):
+        self.w.last_events = [{"kind": "protest", "text": "People were killed.", "public": True, "importance": 3}]
+        self.assertIsNone(self.due())
+
+    def test_minor_or_unpublished_events_do_not(self):
+        self.w.last_events = [{"kind": "issue_resolved", "public": True, "importance": 1},
+                              {"kind": "plot", "public": False, "importance": 3}]
+        self.assertTrue(self.due())
+
+    def test_deferred_motions_private_messages_coups_and_war(self):
+        self.assertIsNone(self.due(carried=[{"id": "D1"}]))
+        self.assertIsNone(self.due(pending_dms=True))
+        self.assertIsNone(self.due(last_record={"coups": [{"by": "A"}]}))
+        self.w.dip.war = True
+        self.assertIsNone(self.due())
+
+    def test_a_delegate_whose_stand_by_ran_out(self):
+        self.w.members[2].agent_state["stand_by"]["months_left"] = 0
+        self.assertIsNone(self.due())
+
+
 class BriefingOnDemand(unittest.TestCase):
     def test_only_the_delegate_that_asked_gets_the_full_section(self):
         tmp = tempfile.mkdtemp(prefix="karamaniya-brief-")

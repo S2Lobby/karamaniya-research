@@ -277,8 +277,10 @@ def render(report: dict) -> str:
                  f"{v['output_chars']:14,} {v['retries']:8}")
     L.append("")
     L.append("By prompt section (the system prompt is sent with every call)")
-    for name, n in list(report["by_section"].items())[:20]:
-        L.append(f"  {name:28} {n:13,}  {n / total:6.1%}")
+    shown = list(report["by_section"].items())[:20]
+    width = max([28] + [len(name) for name, _ in shown])
+    for name, n in shown:
+        L.append(f"  {name:{width}} {n:13,}  {n / total:6.1%}")
     L.append("")
     L.append("Prefix a cache could reuse (same model, recent calls), by cache lifetime")
     for scope, sim in report["cache"].items():

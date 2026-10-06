@@ -12,6 +12,7 @@ class StubState:
         self.reply = {"ok": True, "note": "ready"}
         self.reject_json_schema = False
         self.refuse = False
+        self.usage = {}             # extra usage fields, e.g. the cache counts a provider reports
 
 
 def _handler(state: StubState):
@@ -42,7 +43,7 @@ def _handler(state: StubState):
                                  "stop_reason": stop, "stop_sequence": None,
                                  "usage": {"input_tokens": 1200, "output_tokens": 80,
                                            "cache_read_input_tokens": 0,
-                                           "cache_creation_input_tokens": 0}})
+                                           "cache_creation_input_tokens": 0, **state.usage}})
             elif self.path.endswith("/chat/completions"):
                 fmt = (body.get("response_format") or {}).get("type")
                 if state.reject_json_schema and fmt == "json_schema":
@@ -53,7 +54,7 @@ def _handler(state: StubState):
                     msg = {"role": "assistant", "content": None, "refusal": "I can't help with that."}
                 self._send(200, {"id": "c1", "model": body.get("model", "?") + "-2026",
                                  "choices": [{"index": 0, "message": msg, "finish_reason": "stop"}],
-                                 "usage": {"prompt_tokens": 900, "completion_tokens": 60}})
+                                 "usage": {"prompt_tokens": 900, "completion_tokens": 60, **state.usage}})
             elif self.path.endswith("/api/chat"):
                 self._send(200, {"model": body.get("model", "?"), "done": True,
                                  "message": {"role": "assistant", "content": text},

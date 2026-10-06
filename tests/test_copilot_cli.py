@@ -17,7 +17,7 @@ SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}, "note": {"
           "required": ["ok", "note"], "additionalProperties": False}
 SYSTEM = "STANDING INSTRUCTIONS FOR THE TEST"
 USER = 'Reply with {"ok": true, "note": "ready"}.'
-KEYS = ("FAKE_CLI_RECORD", "FAKE_CLI_LIMIT_AFTER", "FAKE_CLI_COUNTER", "FAKE_CLI_NO_LOGIN")
+KEYS = ("FAKE_CLI_RECORD", "FAKE_CLI_LIMIT_AFTER", "FAKE_CLI_COUNTER", "FAKE_CLI_NO_LOGIN", "FAKE_CLI_USAGE")
 
 
 class CopilotSeat(unittest.TestCase):
@@ -69,6 +69,18 @@ class CopilotSeat(unittest.TestCase):
         self.assertEqual(argv[argv.index("--reasoning-effort") + 1], "low")
         workdir = argv[argv.index("-C") + 1]
         self.assertEqual(os.listdir(workdir), [])                 # an empty scratch folder
+
+    def test_cache_hits_count_as_input_and_are_recorded_apart(self):
+        os.environ["FAKE_CLI_USAGE"] = json.dumps({"cache_read": {"tokenCount": 9000}, "cache_write": {"tokenCount": 300}})
+        res = self.backend().complete(SYSTEM, USER, SCHEMA)
+        self.assertEqual((res.input_tokens, res.cache_read_tokens, res.cache_write_tokens), (19502, 9000, 300))
+
+    def test_effort_by_phase_overrides_the_seat_effort(self):
+        b = self.backend(effort="medium", effort_by_phase={"decision": "high"})
+        for phase, expected in (("decision", "high"), ("session", "medium")):
+            b.complete(SYSTEM, USER, SCHEMA, {"phase": phase})
+            argv = self.sent()["argv"]
+            self.assertEqual(argv[argv.index("--reasoning-effort") + 1], expected, phase)
 
     def test_non_ascii_and_long_prompts_arrive_intact(self):
         user = "Grain — the delegates’ “duty”, Привет. " + "pad " * 9000 + USER

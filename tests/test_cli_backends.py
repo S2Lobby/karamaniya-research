@@ -36,7 +36,8 @@ class CliSeats(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="karamaniya-cli-test-")
         self.record = os.path.join(self.tmp, "record.json")
         self.saved = {k: os.environ.get(k) for k in ("FAKE_CLI_RECORD", "FAKE_CLI_LIMIT_AFTER", "FAKE_CLI_COUNTER", "FAKE_CLI_STREAM",
-                                                     "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "KARAMANIYA_DS_TEST")}
+                                                     "FAKE_CLI_USAGE", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN",
+                                                     "KARAMANIYA_DS_TEST")}
         os.environ["FAKE_CLI_RECORD"] = self.record
         os.environ.pop("FAKE_CLI_LIMIT_AFTER", None)
         os.environ["FAKE_CLI_COUNTER"] = os.path.join(self.tmp, "count")
@@ -113,6 +114,28 @@ class CliSeats(unittest.TestCase):
         del os.environ["KARAMANIYA_DS_TEST"]
         with self.assertRaises(ValueError):
             make_backend(seat("claude", "claude_cli", base_url="https://api.deepseek.com/anthropic", api_key_env="KARAMANIYA_DS_TEST"))
+
+    def test_cache_and_reasoning_counts_are_read_back(self):
+        os.environ["FAKE_CLI_USAGE"] = json.dumps({"cache_read_input_tokens": 9000, "cache_creation_input_tokens": 400})
+        res = make_backend(seat("claude", "claude_cli")).complete(SYSTEM, USER, SCHEMA)
+        self.assertEqual((res.input_tokens, res.cache_read_tokens, res.cache_write_tokens), (9520, 9000, 400))
+        os.environ["FAKE_CLI_USAGE"] = json.dumps({"cached_input_tokens": 6000, "reasoning_output_tokens": 64})
+        res = make_backend(seat("codex", "codex_cli")).complete(SYSTEM, USER, SCHEMA)
+        self.assertEqual((res.input_tokens, res.cache_read_tokens, res.reasoning_tokens), (6717, 6000, 64))
+        self.assertEqual(res.output_tokens, 19 + 64)     # engine 5 already counted reasoning as output
+
+    def test_effort_by_phase_reaches_the_command_line(self):
+        table = {"decision": "high", "session": "low"}
+        for kind, provider, flag in (("claude", "claude_cli", "--effort"), ("cline", "cline_cli", "--thinking")):
+            b = make_backend(seat(kind, provider, effort="medium", effort_by_phase=table))
+            for phase, expected in (("decision", "high"), ("session", "low"), ("survey", "medium")):
+                res = b.complete(SYSTEM, USER, SCHEMA, {"phase": phase})
+                self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
+                argv = self.sent()["argv"]
+                self.assertEqual(argv[argv.index(flag) + 1], expected, f"{provider}, {phase}")
+        b = make_backend(seat("codex", "codex_cli", effort="medium", effort_by_phase=table))
+        b.complete(SYSTEM, USER, SCHEMA, {"phase": "decision"})
+        self.assertIn("model_reasoning_effort=" + json.dumps("high"), self.sent()["argv"])
 
     def test_usage_limits_are_recognised(self):
         os.environ["FAKE_CLI_LIMIT_AFTER"] = "0"

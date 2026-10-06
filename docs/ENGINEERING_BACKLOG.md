@@ -128,3 +128,36 @@ Both shifts share this register. Statuses as defined at the top of the file.
 | R13 | Mobilization policy lever | high | VERIFIED | `world.py`, `politics.py`, `military.py`, `prompts.py` | `test_military_realism.py` | Army office calls up the reserve; costs money, labour and time |
 | R14 | Agent causal learning from forecast errors | high | VERIFIED | `causal_beliefs.py` (new) | `test_causal_beliefs.py` | Per-delegate parameter beliefs, revised from errors; truth never read |
 | R15 | Regime-dependent coefficients | low | DEFERRED | — | — | Persistence and multipliers are per-world, not per-regime |
+
+
+---
+
+# Third shift: token efficiency
+
+Measure where a run's tokens go, then offer ways to send fewer of them without changing a default run.
+Ground rule for the shift: every feature is opt-in, recorded in `config.json` and the manifest when on,
+and a default run must send byte for byte the prompts the published engine-5 code sends.
+`docs/TOKEN_EFFICIENCY.md` has the measurements and their limits.
+
+| ID | Title | Severity | Status | Files | Tests | Result |
+|---|---|---|---|---|---|---|
+| T1 | Prompt freeze against the engine-5 tag | high | VERIFIED | `tests/fixtures/prompt_freeze_engine5.json`, `tools/prompt_freeze.py` | `test_prompt_freeze.py` | A default 4-month run reproduces the sha256 of the system prompt and of all 78 prompts the engine-5 tag sends |
+| T2 | Token ledger and prefix-cache simulation | high | VERIFIED | `tokens.py` (new), `__main__.py` | `test_token_saving.py` | `python -m karamaniya tokens`: input and output by phase, seat and prompt section, provider counts, and the share a cache could reuse per phase/month/run. No model calls |
+| T3 | Every call paired across log and prompt files | medium | VERIFIED | `council.py` | `test_token_saving.py` | `call_id` (`month.n`) in both records; older runs are paired by month, phase and member |
+| T4 | Provider cache and reasoning counts | medium | VERIFIED | `backends/*.py` | `test_backends.py`, `test_cli_backends.py`, `test_copilot_cli.py` | Cache reads, cache writes and reasoning tokens recorded apart from the totals, which keep their engine-5 meaning |
+| T5 | Cache prices | low | VERIFIED | `backends/base.py` | `test_backends.py`, `test_token_saving.py` | `price_cache_read` / `price_cache_write`; without them every input token costs `price_in`, as before |
+| T6 | Cache-friendly prompt layout | high | VERIFIED | `decision_context.py`, `anthropic_api.py` | `test_prompt_freeze.py`, `test_backends.py` | Same words, reordered by how widely they are shared; month reuse 21% to 41%; cache points become Anthropic `cache_control` breakpoints |
+| T7 | Compact schema hint | low | VERIFIED | `actions.py`, `council.py` | `test_token_saving.py` | Every field and allowed value kept; schema text -24%, input -2%; `auto` only where the connector enforces the schema |
+| T8 | Briefing on demand | medium | VERIFIED | `token_saving.py`, `council.py` | `test_token_saving.py` | Headlines for all, full sections for whoever asked; up to -4% input; what each model asks to read is recorded |
+| T9 | Quiet months | high | VERIFIED | `token_saving.py`, `council.py`, `briefing.py` | `test_token_saving.py` | Skipped only when every delegate stands by and no wake condition holds; never in an election or handover month, in war, after a coup or a departure, or with a new issue, a major public event, a proposal, a deferred motion or a private message waiting; up to -39% calls |
+| T10 | A fixed model for the foreign cabinets | medium | VERIFIED | `council.py`, `config.py` | `test_token_saving.py` | Both cabinets on one backend, no council seat borrowed |
+| T11 | Effort by phase | medium | IMPLEMENTED | `backends/*.py`, `token_saving.py` | `test_token_saving.py`, `test_backends.py`, `test_cli_backends.py`, `test_copilot_cli.py` | Each connector sends the phase's effort and each call records it. What it saves is unmeasured: that needs real seats |
+| T12 | Report header printed "null" | low | IMPLEMENTED | `report_template.html` | — | Checked in a browser; the template has no automated test |
+| T13 | Memory re-sent as prose | — | CLOSED | — | — | Measured: engine 5 already sends dated, engine-written memory items (1.2% of input). Nothing built |
+
+### Open, deliberately
+
+| ID | Title | Reason |
+|---|---|---|
+| T14 | Each feature on real models, on and off, same seeds | Needs paid or subscription seats. The behaviour-dependent savings (briefing on demand, quiet months, effort by phase) are upper bounds until then |
+| T15 | Codex reasoning tokens possibly counted twice | Engine 5 adds `reasoning_output_tokens` to `output_tokens`. If the CLI's `output_tokens` already includes them, as the OpenAI Responses API's does, Codex output is overstated. Kept as is so that totals stay comparable with engine-5 runs; check against a real Codex usage record first |

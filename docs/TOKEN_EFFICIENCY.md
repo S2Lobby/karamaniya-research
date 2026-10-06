@@ -114,16 +114,20 @@ again there. It is worth running as a research condition, less as an optimisatio
 A decision may say `stand_by`: how many coming months the delegate is content for the council not to
 meet, and up to three `wake_if` conditions (for example unemployment above 12% or reserves below 50M)
 that would bring it back. The council skips a month only when **every** delegate stands by and none of
-their conditions holds, and never for an election, a handover, war, a coup, a resignation, a pending
-diplomatic proposal, a deferred motion or an unread private message; never more than
-`max_quiet_months` in a row. In a quiet month no council member is called: policy and office orders stay
-as they are, the world moves on, the foreign cabinets still play their month (with their own model if
-you give them one, see 5), and the next briefing says the council did not meet.
+their conditions holds. It always meets in an election or handover month, in war, the month after a
+coup or after anyone left the government, and whenever a diplomatic proposal, a deferred motion or an
+unread private message is waiting, a new issue reaches the agenda, or last month brought a public event
+of the engine's top importance (deaths at a protest, an uprising, a court annulling an election, a
+region lost). Never more than `max_quiet_months` in a row. In a quiet month no council member is called:
+policy and office orders stay as they are, the world moves on, the foreign cabinets still play their
+month (with their own model if you give them one, see 5), and the next briefing says the council did
+not meet.
 
-Measured: when every delegate stands by for the maximum, **57% fewer calls** (84 instead of 194 in 12
-months) and 66% less input. That is an upper bound: whether models choose to stand by, and for how long,
-is behaviour, and measuring it is part of the point: a council that hands the country to standing
-policy for a quarter is telling you something.
+Measured: when every delegate stands by for the maximum, **39% fewer calls** (119 instead of 194 in 12
+months) and 44% less input; the rest of the months something happened that the council had to meet
+over. That is an upper bound: whether models choose to stand by, and for how long, is behaviour, and
+measuring it is part of the point: a council that hands the country to standing policy for a quarter is
+telling you something.
 
 ### 5. One fixed model for the foreign cabinets (`foreign_cabinet_backend`)
 
@@ -163,8 +167,8 @@ only the prompts differ):
 | cache-friendly layout | 194 | 1.00 | 41.3% | 51.8% | 0.63 |
 | compact schema hint | 194 | 0.98 | 21.3% | 31.9% | 0.80 |
 | briefing on demand, nothing requested | 194 | 0.96 | 21.8% | 32.7% | 0.77 |
-| quiet months, everyone stands by | 84 | 0.34 | 25.0% | 30.6% | 0.27 |
-| all of the above | 84 | 0.32 | 40.4% | 46.3% | 0.21 |
+| quiet months, everyone stands by | 119 | 0.56 | 22.2% | 30.8% | 0.45 |
+| all of the above | 119 | 0.53 | 39.8% | 48.9% | 0.34 |
 
 \* Input cost relative to engine 5 with no cache, when a cache serves the reusable prefix within a month
 at a tenth of the price (about what Anthropic charges for a cache read; check current prices).

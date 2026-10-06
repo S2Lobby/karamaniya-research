@@ -205,8 +205,9 @@ def decision_addendum(tokens: dict) -> str:
             "stand_by: how many coming months you are content for the council not to meet, if nothing in your "
             "wake_if list happens (\"0\" = meet next month as usual). The council skips a month only when every "
             "delegate stands by and no one's wake_if condition holds; it always meets for an election, a "
-            "handover, war, a coup, a resignation, a diplomatic proposal, a deferred motion or an unread "
-            "private message. In a month it does not meet, policy and office orders stay as they are.")
+            "handover, war, a coup, a resignation, a diplomatic proposal, a deferred motion, an unread "
+            "private message, a new issue or a major public event. In a month it does not meet, policy and "
+            "office orders stay as they are.")
     if tokens.get("briefing") == "on_demand":
         parts.append(
             "read_next_month: the briefing sections you want in full next month. The others arrive as one-line "
@@ -231,6 +232,10 @@ def quiet_month_due(w, active: list, carried: list, pending_dms: bool, last_reco
         return None
     if any(m.status != "active" and getattr(m, "removed_month", -99) == w.month - 1 for m in w.members):
         return None             # someone left the government last month
+    if any(d.get("month") == w.month for d in (w.dilemmas or {}).get("active", [])):
+        return None             # a new issue reaches the agenda this month
+    if any(ev.get("public", True) and float(ev.get("importance") or 0) >= 3 for ev in w.last_events or []):
+        return None             # last month made headlines: a public event of the engine's top importance
     if int(w.counters.get("quiet_months_in_a_row", 0)) >= int(tokens.get("max_quiet_months", 3)):
         return None
     standing_by = {}

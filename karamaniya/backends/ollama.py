@@ -47,8 +47,12 @@ class OllamaBackend(Backend):
         body = {"model": self.model, "stream": streaming, "format": schema,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
                 "options": options}
-        if self.think is not None:
-            body["think"] = bool(self.think)
+        think = self.think
+        phase_think = self.phase_setting(context, None)
+        if phase_think is not None:
+            think = parse_think(phase_think)    # effort_by_phase: "off" / "none" = no thinking, anything else = think
+        if think is not None:
+            body["think"] = bool(think)
         req = urllib.request.Request(self.base_url + "/api/chat", data=json.dumps(body).encode(),
                                      method="POST", headers={"Content-Type": "application/json"})
         try:

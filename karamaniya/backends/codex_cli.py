@@ -110,8 +110,9 @@ class CodexCLIBackend(Backend):
             cmd += ["-c", "developer_instructions=" + toml_string(system)]
             if self.model:
                 cmd += ["-m", self.model]
-            if self.effort:
-                cmd += ["-c", "model_reasoning_effort=" + toml_string(self.effort)]
+            effort = self.phase_setting(context, self.effort)
+            if effort:
+                cmd += ["-c", "model_reasoning_effort=" + toml_string(effort)]
             cmd.append("-")  # the prompt comes on stdin, so its length is not limited by the command line
             progress = context.get("on_progress")
             draft = cli_common.StreamPreview(progress) if callable(progress) else None
@@ -149,8 +150,12 @@ class CodexCLIBackend(Backend):
             detail = errors[-1] if errors else (stderr.strip() or stdout.strip() or f"exit code {code}")
             raise cli_common.classify(detail, "Codex CLI")
         tokens_in = int(usage.get("input_tokens", 0))
-        tokens_out = int(usage.get("output_tokens", 0)) + int(usage.get("reasoning_output_tokens", 0))
+        reasoning = int(usage.get("reasoning_output_tokens", 0))
+        cache_read = int(usage.get("cached_input_tokens", 0) or 0)
+        tokens_out = int(usage.get("output_tokens", 0)) + reasoning
         data = extract_json(text)
         return CallResult(data=drop_optional_nulls(data, schema) if data is not None else None, raw=text,
                           served_model=self.model or "codex default",
-                          input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=self.cost(tokens_in, tokens_out))
+                          input_tokens=tokens_in, output_tokens=tokens_out,
+                          cost_usd=self.cost(tokens_in, tokens_out, cache_read),
+                          cache_read_tokens=cache_read, reasoning_tokens=reasoning)

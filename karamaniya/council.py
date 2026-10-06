@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import (actions, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors, forecasts,
                freshness, director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations,
-               politics, prompts, provenance, psychology, slate as slate_rules, standing, tuning)
+               politics, prompts, provenance, psychology, slate as slate_rules, standing, token_saving, tuning)
 from .backends import CallResult
 from .world import OFFICES, World, month_label, rng_for
 
@@ -524,6 +524,7 @@ class Council:
         self.seats = seats
         self.settings = settings
         self.foreign_enabled = bool(self.settings.get("foreign_cabinets", False))
+        self.tokens = token_saving.settings(self.settings)
         self.store = store
         self.system = prompts.system_prompt(world.framing, world.human_factor, len(world.members))
         configured = self.settings.get("foreign_cabinet_seats") or {}
@@ -539,6 +540,7 @@ class Council:
         self.last_record = None
         self.spend = 0.0
         self._lock = threading.Lock()
+        self._call_seq = 0          # numbers the calls, so a call's log entry and its prompt pair up
 
     # ---- persistence ----------------------------------------------------------------
     def state(self) -> dict:
@@ -558,6 +560,11 @@ class Council:
                 pass
 
     # ---- calls ----------------------------------------------------------------------
+    def _next_call_id(self) -> str:
+        with self._lock:
+            self._call_seq += 1
+            return f"{self.w.month}.{self._call_seq}"
+
     def _call(self, mid: str, phase: str, user: str, schema: dict, context: dict) -> CallResult:
         seat = self.seats[mid]
         ctx = {"world": self.w, "member": mid, "phase": phase, **context}
@@ -590,12 +597,14 @@ class Council:
         # the flag the caller passed never reached the log. It does now, so a reader can tell the
         # answer that was first given from the one that was asked for afterwards.
         repair = {"repair": "vote_intent"} if ctx.get("vote_intent_repair") else {}
+        call_id = self._next_call_id()
         self.store.log({"type": "call", "month": self.w.month, "phase": phase, "member": mid,
                         "seat": seat.label, "provider": seat.cfg.get("provider"),
-                        "model": seat.cfg.get("model"), **res.to_dict(), "prompt_chars": len(user), **repair})
+                        "model": seat.cfg.get("model"), **res.to_dict(), "prompt_chars": len(user), **repair,
+                        "call_id": call_id})
         self.store.log_prompt({"month": self.w.month, "phase": phase, "member": mid, "prompt": user,
                                "schema": schema, **({"prompt_meta": ctx["prompt_meta"]} if ctx.get("prompt_meta") else {}),
-                               **repair})
+                               **repair, "call_id": call_id})
         if res.quota:
             raise RunPaused(mid, seat.label, res.error[:300])
         # A seat that could not be reached at all must stop the month, not contribute an abstention.
@@ -1152,7 +1161,7 @@ class Council:
                 w, mid, "independent opening", public_brief=brief, motions=[],
                 messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)),
                 instructions=prompts.opening_instructions_v2(w, mid, left, order, slots, carried),
-                schema_text=actions.example(schema), budget=self._budget(mid))
+                schema_text=actions.example(schema), budget=self._budget(mid), layout=self.tokens["layout"])
             res = self._call(mid, "session", prompt, schema, {"motions": [], "statements": [], "prompt_meta": meta})
             out, problems = actions.normalize_session_v2(w, mid, res.data, left)
             return mid, res, out, problems
@@ -1307,7 +1316,7 @@ class Council:
                     w, mid, "responses and revisions", public_brief=brief, motions=scheduled,
                     messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)), transcript=transcript,
                     instructions=prompts.revision_instructions(w, mid, left, scheduled),
-                    schema_text=actions.example(schema), budget=self._budget(mid))
+                    schema_text=actions.example(schema), budget=self._budget(mid), layout=self.tokens["layout"])
                 res = self._call(mid, "revision", prompt, schema, {"motions": scheduled, "statements": statements,
                                                                     "prompt_meta": meta})
                 out, problems = actions.normalize_revision(w, mid, res.data, scheduled, left)
@@ -1369,7 +1378,7 @@ class Council:
                 messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)), transcript=transcript,
                 instructions=prompts.decision_instructions_v2(w, mid, scheduled, left, election_pending,
                                                               "coup" in schema.get("properties", {})),
-                schema_text=actions.example(schema), budget=self._budget(mid))
+                schema_text=actions.example(schema), budget=self._budget(mid), layout=self.tokens["layout"])
             res = self._call(mid, "decision", prompt, schema, {"motions": final, "statements": statements,
                                                                 "prompt_meta": meta, "election_pending": election_pending})
             out, problems = actions.normalize_decision_v2(w, mid, res.data, motion_ids, left)
@@ -2234,11 +2243,13 @@ class Council:
                        provider=seat.cfg.get("provider"), model=seat.cfg.get("model"), ok=result.data is not None,
                        refusal=result.refusal, error=result.error[:200], served_model=result.served_model,
                        spend=self.spend)
+            call_id = self._next_call_id()
             self.store.log({"type": "foreign_call", "month": w.month, "actor": actor_id,
                             "seat": seat.label, "provider": seat.cfg.get("provider"),
-                            "model": seat.cfg.get("model"), **result.to_dict(), "prompt_chars": len(user)})
+                            "model": seat.cfg.get("model"), **result.to_dict(), "prompt_chars": len(user),
+                            "call_id": call_id})
             self.store.log_prompt({"month": w.month, "phase": "foreign", "actor": actor_id,
-                                   "prompt": user, "schema": schema})
+                                   "prompt": user, "schema": schema, "call_id": call_id})
             if result.quota:
                 raise RunPaused(actor_id.title(), seat.label, result.error[:300], role="Foreign cabinet")
             normalized, problems = foreign.normalize_cabinet_output(actor_id, result.data)

@@ -44,8 +44,9 @@ class ClineCLIBackend(Backend):
             cmd += ["-P", self.cline_provider]
         if self.model:
             cmd += ["-m", self.model]
-        if self.effort:
-            cmd += ["--thinking", self.effort]
+        effort = self.phase_setting(context, self.effort)
+        if effort:
+            cmd += ["--thinking", effort]
         # The council trims prompts to the budget this backend advertises, which is derived from
         # the same limit. A prompt can still arrive over it, and failing here used to abort the
         # whole run: one recorded run lost two seats at Month 1 and never recovered. Sending a cut

@@ -35,14 +35,34 @@ class AnthropicBackend(Backend):
         self.fallbacks = bool(cfg.get("fallbacks", False))
         self.max_tokens = int(cfg.get("max_tokens", 16000))
 
+    def _user_content(self, user: str, context: dict):
+        """The user turn, split at the prompt's cache points when it has any.
+
+        A prompt built with the cache-friendly layout says where its stable parts end (the shared
+        briefing, then the delegate's own standing context). Each of those ends becomes a
+        cache_control breakpoint, so the next call that starts the same way reads the prefix from
+        the cache instead of paying for it again. The text is the same either way; without cache
+        points (the classic layout) the turn is sent as one string, exactly as before."""
+        points = [p for p in ((context.get("prompt_meta") or {}).get("cache_points") or [])
+                  if isinstance(p, int) and 0 < p < len(user)]
+        if not points or not self.cfg.get("prompt_cache", True):
+            return user
+        blocks, start = [], 0
+        for p in sorted(set(points))[:2]:       # the system prompt holds one of the four breakpoints
+            blocks.append({"type": "text", "text": user[start:p], "cache_control": {"type": "ephemeral"}})
+            start = p
+        blocks.append({"type": "text", "text": user[start:]})
+        return blocks
+
     def call(self, system: str, user: str, schema: dict, context: dict) -> CallResult:
         sdk = self._sdk
         output_config = {"format": {"type": "json_schema", "schema": schema}}
-        if self.effort:
-            output_config["effort"] = self.effort
+        effort = self.phase_setting(context, self.effort)
+        if effort:
+            output_config["effort"] = effort
         kwargs = dict(model=self.model, max_tokens=self.max_tokens,
                       system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-                      messages=[{"role": "user", "content": user}],
+                      messages=[{"role": "user", "content": self._user_content(user, context)}],
                       output_config=output_config)
         progress = context.get("on_progress")
         try:
@@ -76,13 +96,15 @@ class AnthropicBackend(Backend):
             raise TransientError(f"connection error: {exc}") from exc
 
         usage = resp.usage
-        tokens_in = int((usage.input_tokens or 0) + (getattr(usage, "cache_read_input_tokens", 0) or 0)
-                        + (getattr(usage, "cache_creation_input_tokens", 0) or 0))
+        cache_read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+        cache_write = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+        tokens_in = int((usage.input_tokens or 0) + cache_read + cache_write)
         tokens_out = int(usage.output_tokens or 0)
-        cost = self.cost(tokens_in, tokens_out)
+        cost = self.cost(tokens_in, tokens_out, cache_read, cache_write)
+        cached = {"cache_read_tokens": cache_read, "cache_write_tokens": cache_write}
         if resp.stop_reason == "refusal":
             return CallResult(served_model=resp.model, input_tokens=tokens_in, output_tokens=tokens_out,
-                              cost_usd=cost, refusal=True, raw="(refused)")
+                              cost_usd=cost, refusal=True, raw="(refused)", **cached)
         text = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "")
         return CallResult(data=extract_json(text), raw=text, served_model=resp.model,
-                          input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost)
+                          input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost, **cached)

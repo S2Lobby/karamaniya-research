@@ -231,13 +231,19 @@ def role_block(w: World, mid: str, decision: bool = False) -> str:
     return "\n".join(lines)
 
 
-def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None) -> str:
+def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, split_phase: bool = False):
+    """The canonical state block. With `split_phase`, returns (month_part, phase_part): the same lines,
+    with the two that depend on the phase (the phase name, and the pending line that lists the motions
+    in this session) taken out into the second part, so the first is identical for every delegate and
+    phase of the month."""
     from . import audits, deliberation, dilemmas, freshness, regional
     from .politics import SHARES, fmt_value
     from .society import inflation_yoy
     c, e, mil, dip = w.const, w.econ, w.mil, w.dip
     offices = "; ".join(f"{o}: {w.holder(o).name if w.holder(o) else 'vacant'}" for o in OFFICES)
-    lines = ["=== CANONICAL HARD STATE ===", f"Month: {w.month + 1} / {w.months_total}. Current phase: {phase}.",
+    month_line = f"Month: {w.month + 1} / {w.months_total}."
+    phase_line = f"Current phase: {phase}."
+    lines = ["=== CANONICAL HARD STATE ===", month_line if split_phase else f"{month_line} {phase_line}",
              "Offices: " + offices + "."]
     if e.currency == "crown" and e.currency_launch < 0:
         lines.append("Currency: the shared imperial crown; no national currency is scheduled.")
@@ -343,7 +349,9 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None) -
         pending.append("motions in this session: " + "; ".join(
             f"{m.get('id')}: {m.get('summary', m.get('type', ''))}" + (" (withdrawn)" if m.get("withdrawn") else "")
             for m in motions))
-    lines.append("Pending: " + ("; ".join(pending) if pending else "nothing") + ".")
+    pending_line = "Pending: " + ("; ".join(pending) if pending else "nothing") + "."
+    if not split_phase:
+        lines.append(pending_line)
     done = [f"Month {r['month'] + 1}: {m}" for r in w.agenda.get("recent_records", [])[-3:] for m in r.get("passed", [])]
     if done:
         lines.append("Recently completed: " + "; ".join(done[-8:]) + ".")
@@ -363,6 +371,9 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None) -
     lines.append(f"Council agenda capacity this month: {deliberation.capacity(w)} substantive motions; "
                  "appointments do not count.")
     lines.append(AUTHORITY)
+    if split_phase:
+        # The pending line names this session's motions, so it travels with the phase, word for word.
+        return "\n".join(lines), phase_line + "\n" + pending_line
     return "\n".join(lines)
 
 
@@ -534,14 +545,63 @@ def compose(sections: list, budget: int) -> tuple[str, list]:
     return text, trimmed
 
 
+#: The cache-friendly layout (run setting tokens.layout = "cache_friendly"). The same sections as the
+#: classic layout, nothing added or removed, in the order in which they stop being shared: first what
+#: every delegate is sent this month, then what this delegate is sent in all three phases of the month,
+#: then what depends on the motions on the table, then this phase, and the instructions last as always.
+#: A provider's prefix cache can serve a call everything up to the first part that differs from an
+#: earlier call, so the longer the shared start, the less of each prompt is paid for again.
+CACHE_GROUPS = (
+    # The canonical state, less its phase line and this session's motions, and the public briefing:
+    # the same for every delegate in every phase of the month.
+    ("shared", ("canonical", "briefing")),
+    ("standing", ("secret_goal", "disposition", "standing", "forecast_record", "causal_reading",
+                  "operations", "forces", "notes")),
+    ("agenda", ("role", "relationships", "beliefs", "memory")),
+    ("phase", ("canonical_phase", "issues", "motions", "promises", "office", "messages", "transcript",
+               "exposure", "fresh")),
+)
+LAYOUTS = ("classic", "cache_friendly")
+
+
+def _cache_friendly(sections: list) -> tuple[list, dict]:
+    """Reorder for the cache-friendly layout. Returns the sections and the group of each key."""
+    rank, group_of = {}, {}
+    for g, (group, keys) in enumerate(CACHE_GROUPS):
+        for k, key in enumerate(keys):
+            rank[key] = (g, k)
+            group_of[key] = group
+    tail = [s for s in sections if s.key == "instructions"]
+    body = [s for s in sections if s.key != "instructions"]
+    # Sections the table does not name (a caller's extras) go just before the instructions.
+    ordered = sorted(body, key=lambda s: rank.get(s.key, (len(CACHE_GROUPS), 0)))
+    return ordered + tail, group_of
+
+
+def _cache_points(sections: list, group_of: dict, text: str) -> list:
+    """Character offsets in the composed prompt where the shared and the standing parts end."""
+    points, pos = [], 0
+    kept = [s for s in sections if s.text.strip()]
+    for i, s in enumerate(kept):
+        group = group_of.get(s.key)
+        pos += len(s.text) + (2 if i < len(kept) - 1 else 0)   # compose joins with "\n\n"
+        following = group_of.get(kept[i + 1].key) if i + 1 < len(kept) else None
+        if group in ("shared", "standing") and following != group:
+            points.append(pos)
+    return [p for p in points if 0 < p < len(text)]
+
+
 def build(w: World, mid: str, phase: str, *, public_brief: str, motions: list | None = None,
           messages: str = "", transcript: str = "", instructions: str = "", schema_text: str = "",
-          budget: int = 60000, extra: list | None = None) -> tuple[str, dict]:
+          budget: int = 60000, extra: list | None = None, layout: str = "classic") -> tuple[str, dict]:
     """Every v2 delegate prompt, in order of importance: canonical facts, role, current crisis,
     motions, promises, office information, messages, the public briefing, disposition,
     relationships, beliefs, standing, memory, notes, then actions and schema.
-    Returns (prompt, meta); meta records what had to be trimmed to fit the seat's budget."""
+    Returns (prompt, meta); meta records what had to be trimmed to fit the seat's budget.
+    `layout="cache_friendly"` sends the same sections in the order of CACHE_GROUPS instead."""
     from . import agents, beliefs, commitments, dilemmas, freshness, intelligence, memory, operations, standing
+    if layout not in LAYOUTS:
+        raise ValueError(f"unknown prompt layout {layout!r}; use one of {LAYOUTS}")
     motions = motions or []
     decision = phase == "decision"
     topics = prompt_topics(w, motions)
@@ -557,8 +617,13 @@ def build(w: World, mid: str, phase: str, *, public_brief: str, motions: list | 
     office = intelligence.office_context(w, mid, phase)
     stand = standing.context(w, mid)
     notes, since_notes = freshness.notes_parts(w, mid)
+    if layout == "cache_friendly":
+        month_part, phase_part = canonical_hard_state_v2(w, phase, motions, split_phase=True)
+        canonical = [Section("canonical", 0, month_part), Section("canonical_phase", 0, phase_part)]
+    else:
+        canonical = [Section("canonical", 0, canonical_hard_state_v2(w, phase, motions))]
     sections = [
-        Section("canonical", 0, canonical_hard_state_v2(w, phase, motions)),
+        *canonical,
         Section("role", 0, role_block(w, mid, decision)),
         # The goal is a distinct, high-priority motive. It used to be buried after several
         # disposition lines and was lost whenever that section was shortened for a small seat.
@@ -590,8 +655,22 @@ def build(w: World, mid: str, phase: str, *, public_brief: str, motions: list | 
         sections.append(Section("exposure", 2, exposure, "\n".join(exposure.splitlines()[:5])))
     sections += list(extra or [])
     sections.append(Section("instructions", 0, instructions + ("\nReply with this JSON:\n" + schema_text if schema_text else "")))
+    group_of = {}
+    if layout == "cache_friendly":
+        sections, group_of = _cache_friendly(sections)
     text, trimmed = compose(sections, budget)
-    return text, {"trimmed": trimmed, "chars": len(text), "budget": budget}
+    # What each section cost, after trimming, in the order it was sent: the token ledger reads this.
+    # Recording it changes nothing the delegate sees.
+    sizes = [[s.key, len(s.text)] for s in sections if s.text.strip()]
+    if schema_text and sizes and sizes[-1][0] == "instructions" and "\nReply with this JSON:\n" in sections[-1].text:
+        schema_chars = len(sections[-1].text) - sections[-1].text.index("\nReply with this JSON:\n")
+        sizes[-1][1] -= schema_chars
+        sizes.append(["schema", schema_chars])
+    meta = {"trimmed": trimmed, "chars": len(text), "budget": budget, "sections": sizes}
+    if layout == "cache_friendly":
+        meta["layout"] = layout
+        meta["cache_points"] = _cache_points(sections, group_of, text)
+    return text, meta
 
 
 def short_brief(brief: str) -> str:

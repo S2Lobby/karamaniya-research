@@ -52,6 +52,10 @@ def main(argv=None) -> int:
     an.add_argument("--run", help="one run id, listed in full detail")
     an.add_argument("--json", dest="json_out", help="also write machine-readable findings to this file")
 
+    tk = sub.add_parser("tokens", help="where a run's tokens went, and what a prompt cache would save")
+    tk.add_argument("run_dirs", nargs="+")
+    tk.add_argument("--json", dest="json_out", help="also write the ledger(s) as JSON to this file")
+
     batch = sub.add_parser("simulate", help="run one model-seat assignment across several seeds")
     batch.add_argument("config", nargs="?", default="council.scripted.toml")
     batch.add_argument("--runs", type=int, default=5)
@@ -127,6 +131,14 @@ def main(argv=None) -> int:
     elif args.cmd == "analyze":
         from .analyze import analyze
         analyze(args.runs_dir, recent=args.recent, run_id=args.run, json_out=args.json_out)
+    elif args.cmd == "tokens":
+        import json
+        from .tokens import ledger, render
+        reports = [ledger(run_dir) for run_dir in args.run_dirs]
+        print("\n\n".join(render(report) for report in reports))
+        if args.json_out:
+            with open(args.json_out, "w", encoding="utf-8") as f:
+                json.dump(reports if len(reports) > 1 else reports[0], f, indent=2)
     elif args.cmd == "simulate":
         from .batch import simulate
         result = simulate(args.config, runs=args.runs, months=args.months,

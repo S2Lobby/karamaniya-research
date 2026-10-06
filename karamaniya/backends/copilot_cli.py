@@ -57,6 +57,7 @@ def _usage(path: str) -> dict:
         tokens_in = sum(int(u.get("inputTokens", 0)) for u in metrics)
         tokens_out = sum(int(u.get("outputTokens", 0)) for u in metrics)
     return {"in": int(tokens_in or 0), "out": int(tokens_out or 0),
+            "cache_read": int(count("cache_read") or 0), "cache_write": int(count("cache_write") or 0),
             "premium_requests": data.get("totalPremiumRequestCost")}
 
 
@@ -88,20 +89,21 @@ class CopilotCLIBackend(Backend):
         self.effort = cfg.get("effort", "")    # none | minimal | low | medium | high | xhigh | max
         self.workdir = cli_common.scratch_dir("copilot")
 
-    def _command(self, usage_path: str) -> list:
+    def _command(self, usage_path: str, context: dict | None = None) -> list:
         cmd = self.cmd + ["--output-format", "json", "--stream", "off", "--no-auto-update",
                           "--no-custom-instructions", "--disable-builtin-mcps", "--log-level", "none",
                           "-C", self.workdir, "--usage-output-file", usage_path]
         if self.model:
             cmd += ["--model", self.model]
-        if self.effort:
-            cmd += ["--reasoning-effort", self.effort]
+        effort = self.phase_setting(context, self.effort)
+        if effort:
+            cmd += ["--reasoning-effort", effort]
         return cmd + ["--available-tools"]      # no tool at all is available to the model
 
     def call(self, system: str, user: str, schema: dict, context: dict) -> CallResult:
         with tempfile.TemporaryDirectory(prefix="karamaniya-copilot-io-") as io:
             usage_path = os.path.join(io, "usage.json")
-            code, stdout, stderr = cli_common.run(self._command(usage_path), cli_common.merged_prompt(system, user),
+            code, stdout, stderr = cli_common.run(self._command(usage_path, context), cli_common.merged_prompt(system, user),
                                                   self.timeout + 30, cwd=self.workdir)
             usage = _usage(usage_path)
         events = read_events(stdout)
@@ -117,4 +119,6 @@ class CopilotCLIBackend(Backend):
             raise cli_common.classify(text, "Copilot CLI")   # a used-up plan reported as the answer
         return CallResult(data=data, raw=text, served_model=events["model"] or self.model or "copilot default",
                           input_tokens=usage.get("in", 0), output_tokens=usage.get("out", 0),
-                          cost_usd=self.cost(usage.get("in", 0), usage.get("out", 0)))
+                          cost_usd=self.cost(usage.get("in", 0), usage.get("out", 0),
+                                             usage.get("cache_read", 0), usage.get("cache_write", 0)),
+                          cache_read_tokens=usage.get("cache_read", 0), cache_write_tokens=usage.get("cache_write", 0))

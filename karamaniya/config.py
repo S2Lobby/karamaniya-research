@@ -69,6 +69,20 @@ def normalize_config(raw: dict, source: str = "") -> dict:
     if unknown_labels:
         raise ValueError(f"foreign_cabinet_seats must use existing seat labels: {sorted(unknown_labels)}")
     run["foreign_cabinet_seats"] = foreign_seats
+    # Token-saving features (karamaniya/token_saving.py): absent unless asked for, so a config that
+    # does not mention them normalizes exactly as it always did.
+    from . import token_saving
+    if "tokens" in run:
+        run["tokens"] = token_saving.validate(run["tokens"])
+        if not run["tokens"]:
+            del run["tokens"]
+    if run.get("foreign_cabinet_backend"):
+        run["foreign_cabinet_backend"] = token_saving.validate_foreign_backend(run["foreign_cabinet_backend"])
+    elif "foreign_cabinet_backend" in run:
+        del run["foreign_cabinet_backend"]
+    for s in seats:
+        if "effort_by_phase" in s:
+            s["effort_by_phase"] = token_saving.validate_effort_by_phase(s["effort_by_phase"], f"{where}: seat {s['label']}")
     if run["framing"] not in ("simulation", "immersive"):
         raise ValueError("framing must be 'simulation' or 'immersive'")
     from .founding import SCENARIOS, TEMPLATES

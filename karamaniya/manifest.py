@@ -23,7 +23,7 @@ import sys
 import hashlib
 from pathlib import Path
 
-from . import causality, errors, versions
+from . import causality, errors, token_saving, versions
 from .world import World
 
 MANIFEST_VERSION = 2
@@ -87,7 +87,7 @@ def sampling(cfg: dict) -> dict:
     for seat in cfg.get("seats") or []:
         label = seat.get("label")
         for key in ("temperature", "top_p", "effort", "thinking", "model", "max_tokens", "max_tokens_cap",
-                    "reasoning_effort"):
+                    "reasoning_effort", "effort_by_phase"):
             if seat.get(key) is not None and label:
                 out.setdefault("by_seat", {})[label] = out.get("by_seat", {}).get(label, {})
                 out["by_seat"][label][key] = seat[key]
@@ -176,6 +176,7 @@ def build(world: World, cfg: dict, council_state: dict | None = None, store=None
         "founding": {"scenario": run.get("founding_scenario"),
                      "severity": run.get("founding_severity"),
                      "problems": run.get("founding_problems") or []},
+        **({"token_saving": token_saving.describe(cfg)} if token_saving.describe(cfg) else {}),
         "determinism_note": (
             "The world is fully determined by run_seed: world generation, structural parameters, "
             "psychology, foreign dispositions, dilemmas and every stochastic world rule replay "
@@ -215,6 +216,8 @@ def divergences(a: dict, b: dict) -> list:
         out.append("seat_lineup")
     if a.get("founding") != b.get("founding"):
         out.append("founding_conditions")
+    if (a.get("token_saving") or {}) != (b.get("token_saving") or {}):
+        out.append("token_saving")
     return out
 
 

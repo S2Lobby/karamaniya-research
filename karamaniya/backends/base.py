@@ -28,7 +28,7 @@ class CallResult:
     data: object = None
     raw: str = ""
     served_model: str = ""
-    input_tokens: int = 0
+    input_tokens: int = 0           # every input token, cached or not, as the provider reported it
     output_tokens: int = 0
     cost_usd: float = 0.0
     latency_s: float = 0.0
@@ -38,6 +38,12 @@ class CallResult:
     format_retry: bool = False
     quota: bool = False
     temperature: float | None = None
+    # Parts of the counts above, where the provider reports them (0 when it does not): input served
+    # from a prompt cache, input written to one, and output spent on hidden reasoning.
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    reasoning_tokens: int = 0
+    effort: str = ""                # the reasoning effort this call was made with, when set per phase
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -82,8 +88,32 @@ class Backend:
         self.retries = int(cfg.get("retries", 4))
         self.timeout = float(cfg.get("timeout", 600))
 
-    def cost(self, tokens_in: int, tokens_out: int) -> float:
-        return tokens_in / 1e6 * self.price_in + tokens_out / 1e6 * self.price_out
+    def cost(self, tokens_in: int, tokens_out: int, cache_read: int = 0, cache_write: int = 0) -> float:
+        """Dollars for one call. `tokens_in` counts every input token, cached ones included.
+
+        Cached tokens are priced separately only when the seat gives `price_cache_read` /
+        `price_cache_write` (per million, like price_in); otherwise every input token is charged at
+        price_in, as it always was, so a seat's `max_cost_usd` behaves exactly as before."""
+        read_price, write_price = self.cfg.get("price_cache_read"), self.cfg.get("price_cache_write")
+        if read_price is None and write_price is None:
+            return tokens_in / 1e6 * self.price_in + tokens_out / 1e6 * self.price_out
+        read_price = self.price_in if read_price is None else float(read_price)
+        write_price = self.price_in if write_price is None else float(write_price)
+        fresh = max(0, tokens_in - cache_read - cache_write)
+        return (fresh * self.price_in + cache_read * read_price + cache_write * write_price
+                + tokens_out * self.price_out) / 1e6
+
+    def phase_setting(self, context: dict | None, default):
+        """A per-phase override from the seat's `effort_by_phase` table, else `default`.
+
+        The table maps a phase (session, revision, decision, survey, founding_diagnosis,
+        formation_proposal, formation_vote, foreign, ...) to the effort the connector should use
+        for that phase: reasoning is spent where the stakes are, not on every call alike."""
+        table = self.cfg.get("effort_by_phase") or {}
+        phase = (context or {}).get("phase")
+        if isinstance(table, dict) and phase in table:
+            return str(table[phase])
+        return default
 
     supports_temperature = False
 
@@ -126,6 +156,9 @@ class Backend:
             again = self._attempt(system, user + "\n\n" + RETRY_NOTE, schema, context)
             again.input_tokens += res.input_tokens
             again.output_tokens += res.output_tokens
+            again.cache_read_tokens += res.cache_read_tokens
+            again.cache_write_tokens += res.cache_write_tokens
+            again.reasoning_tokens += res.reasoning_tokens
             again.cost_usd += res.cost_usd
             again.attempts += res.attempts
             again.format_retry = True
@@ -133,4 +166,7 @@ class Backend:
                 again.raw = res.raw
             res = again
         res.latency_s = round(time.time() - t0, 2)
+        effort = self.phase_setting(context, None)
+        if effort is not None:
+            res.effort = effort
         return res

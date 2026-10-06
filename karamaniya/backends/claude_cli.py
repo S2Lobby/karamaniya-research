@@ -62,8 +62,9 @@ class ClaudeCLIBackend(Backend):
             cmd += ["--verbose", "--include-partial-messages"]
         if self.model:
             cmd += ["--model", self.model]
-        if self.effort:
-            cmd += ["--effort", self.effort]
+        effort = self.phase_setting(context, self.effort)
+        if effort:
+            cmd += ["--effort", effort]
         draft = cli_common.StreamPreview(progress) if streaming else None
         def on_line(line):
             try:
@@ -100,8 +101,9 @@ class ClaudeCLIBackend(Backend):
         if not isinstance(out, dict):
             raise TransientError(f"Claude CLI: unexpected output (exit {code})")
         usage = out.get("usage") or {}
-        tokens_in = int(usage.get("input_tokens", 0) + usage.get("cache_read_input_tokens", 0)
-                        + usage.get("cache_creation_input_tokens", 0))
+        cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
+        cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
+        tokens_in = int(usage.get("input_tokens", 0) + cache_read + cache_write)
         tokens_out = int(usage.get("output_tokens", 0))
         served = ",".join(sorted((out.get("modelUsage") or {}).keys()))
         text = out.get("result") or ""
@@ -119,4 +121,5 @@ class ClaudeCLIBackend(Backend):
         refusal = out.get("stop_reason") == "refusal"
         return CallResult(data=data if isinstance(data, dict) else None, raw=text, served_model=served,
                           input_tokens=tokens_in, output_tokens=tokens_out,
-                          cost_usd=self.cost(tokens_in, tokens_out), refusal=refusal)
+                          cost_usd=self.cost(tokens_in, tokens_out, cache_read, cache_write), refusal=refusal,
+                          cache_read_tokens=cache_read, cache_write_tokens=cache_write)

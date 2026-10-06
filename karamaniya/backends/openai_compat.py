@@ -54,23 +54,31 @@ class OpenAICompatBackend(Backend):
             raise ValueError("max_tokens must be a positive integer")
         self.max_tokens_cap = max(self.max_tokens, int(cfg.get("max_tokens_cap", d.get("max_tokens_cap", 32000))))
         self.reasoning_effort = cfg.get("reasoning_effort", "")
+        self._effort_rejected = False      # the provider refused reasoning_effort once: stop sending it
         self.extra = cfg.get("extra_body", {}) or {}
 
     supports_temperature = True
 
-    def _body(self, system: str, user: str, schema: dict, temperature: float | None = None) -> dict:
+    def _effort(self, context: dict | None) -> str:
+        if self._effort_rejected:
+            return ""
+        return self.phase_setting(context, self.reasoning_effort) or ""
+
+    def _body(self, system: str, user: str, schema: dict, temperature: float | None = None,
+              effort: str | None = None) -> dict:
+        effort = self.reasoning_effort if effort is None else effort
         body = {"model": self.model,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
                 self.token_param: self.max_tokens}
-        if temperature is not None and not self.reasoning_effort:
+        if temperature is not None and not effort:
             body["temperature"] = temperature
         if self.json_mode == "json_schema":
             body["response_format"] = {"type": "json_schema",
                                        "json_schema": {"name": "answer", "schema": schema, "strict": True}}
         elif self.json_mode == "json_object":
             body["response_format"] = {"type": "json_object"}
-        if self.reasoning_effort:
-            body["reasoning_effort"] = self.reasoning_effort
+        if effort:
+            body["reasoning_effort"] = effort
         body.update(self.extra)
         return body
 
@@ -110,7 +118,8 @@ class OpenAICompatBackend(Backend):
             try:
                 # No `break` here: control has to fall through to the in-body error check below,
                 # which is where a provider that reports its failure inside a 200 reply is handled.
-                out = self._post(self._body(system, user, schema, context.get("temperature")))
+                effort = self._effort(context)
+                out = self._post(self._body(system, user, schema, context.get("temperature"), effort))
             except _Http4xx as exc:
                 text = exc.detail.lower()
                 if "response_format" in text or "json_schema" in text or "json_object" in text:
@@ -123,8 +132,9 @@ class OpenAICompatBackend(Backend):
                 if "max_tokens" in text and self.token_param == "max_completion_tokens":
                     self.token_param = "max_tokens"
                     continue
-                if "reasoning_effort" in text and self.reasoning_effort:
+                if "reasoning_effort" in text and effort:
                     self.reasoning_effort = ""
+                    self._effort_rejected = True
                     continue
                 raise FatalError(f"HTTP {exc.code}: {exc.detail}") from exc
             except TransientError as exc:
@@ -164,12 +174,20 @@ class OpenAICompatBackend(Backend):
         usage = out.get("usage") or {}
         tokens_in = int(usage.get("prompt_tokens", 0))
         tokens_out = int(usage.get("completion_tokens", 0))
+        # Cached input: OpenAI and OpenRouter report prompt_tokens_details.cached_tokens, DeepSeek
+        # prompt_cache_hit_tokens. Hidden reasoning: completion_tokens_details.reasoning_tokens.
+        details = usage.get("prompt_tokens_details") or {}
+        cache_read = int((details.get("cached_tokens") if isinstance(details, dict) else 0)
+                         or usage.get("prompt_cache_hit_tokens") or 0)
+        out_details = usage.get("completion_tokens_details") or {}
+        reasoning = int((out_details.get("reasoning_tokens") if isinstance(out_details, dict) else 0) or 0)
         served = out.get("model", self.model)
-        cost = self.cost(tokens_in, tokens_out)
+        cost = self.cost(tokens_in, tokens_out, cache_read)
+        counted = {"cache_read_tokens": cache_read, "reasoning_tokens": reasoning}
         finish = str(choice.get("finish_reason") or "")
         if msg.get("refusal"):
             return (CallResult(served_model=served, raw=str(msg["refusal"]), refusal=True,
-                               input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost), False)
+                               input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost, **counted), False)
         text = msg.get("content") or ""
         if isinstance(text, list):
             text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
@@ -180,7 +198,7 @@ class OpenAICompatBackend(Backend):
             raise TransientError(f"empty completion: 0 tokens, finish_reason={finish or 'none'}, "
                                  f"provider={out.get('provider') or served}")
         return (CallResult(data=extract_json(text), raw=text, served_model=served,
-                           input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost),
+                           input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost, **counted),
                 finish == "length")     # "length": the token limit ended the answer before it was finished
 
 

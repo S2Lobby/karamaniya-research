@@ -85,6 +85,166 @@ def validate_foreign_backend(raw) -> dict:
     return out
 
 
+# ---- briefing on demand -----------------------------------------------------------------------------
+#: Sections sent in full every month whatever a delegate asked for: what the council itself decided
+#: is the record a delegate acts on, not background reading.
+ALWAYS_FULL = ("last_months_council_decisions",)
+
+
+def _slug(heading: str) -> str:
+    head = heading.split(":")[0].split("(")[0].replace("'", "").replace("’", "")
+    words = "".join(ch.lower() if ch.isalnum() else " " for ch in head)
+    return "_".join(words.split())[:48] or "section"
+
+
+def briefing_sections(brief: str) -> list:
+    """The public briefing as [(id, heading, text)]. The first block (the title, declared principles,
+    who has left the government) is the header and has the id "header"."""
+    out, seen = [], set()
+    for i, block in enumerate(b for b in brief.split("\n\n") if b.strip()):
+        heading = block.strip().splitlines()[0]
+        sid = "header" if i == 0 else _slug(heading)
+        while sid in seen:
+            sid += "_2"
+        seen.add(sid)
+        out.append((sid, heading, block))
+    return out
+
+
+def requestable(brief: str) -> list:
+    """The section ids a delegate can ask to read in full next month."""
+    return [sid for sid, _, _ in briefing_sections(brief) if sid != "header" and sid not in ALWAYS_FULL]
+
+
+def briefing_for(brief: str, requested) -> tuple[str, str]:
+    """(shared part, this delegate's part) of an on-demand briefing.
+
+    The shared part is the same for every delegate: the header, the sections always sent in full, and
+    one headline line for each of the others. The delegate's own part is the full text of the sections
+    it asked for last month. Nothing is summarised by a model: a headline is the section's own first
+    line, cut short."""
+    requested = set(requested or ())
+    shared, own = [], []
+    index = []
+    for sid, heading, text in briefing_sections(brief):
+        if sid == "header" or sid in ALWAYS_FULL:
+            shared.append(text)
+            continue
+        lines = text.strip().splitlines()
+        teaser = (" | " + lines[1].strip()) if len(lines) > 1 else ""
+        index.append(f"- [{sid}] {heading[:90]}{teaser[:110]} ({len(lines)} lines)")
+        if sid in requested:
+            own.append(text)
+    if index:
+        shared.append("OTHER BRIEFING SECTIONS (headlines only: name any in read_next_month to receive them in full "
+                      "next month)\n" + "\n".join(index))
+    return "\n\n".join(shared), ("THE BRIEFING SECTIONS YOU ASKED FOR\n\n" + "\n\n".join(own)) if own else ""
+
+
+def read_requests(data, options) -> list:
+    """The section ids a decision asked for, kept only if they exist."""
+    raw = (data or {}).get("read_next_month") if isinstance(data, dict) else None
+    return [x for x in dict.fromkeys(raw or []) if x in set(options or ())] if isinstance(raw, list) else []
+
+
+# ---- quiet months -------------------------------------------------------------------------------------
+#: What a delegate may name as a reason to be woken: the state readings conditions already test.
+WAKE_METRICS = ("food_ratio", "reserves", "arrears", "unemployment", "army_morale", "inflation", "approval",
+                "deficit")
+
+
+def read_stand_by(data, tokens: dict) -> dict:
+    """A decision's stand_by answer, checked: {"months": n, "wake_if": [canonical conditions]}."""
+    from .motion_actions import canonical_metric_value
+    raw = (data or {}).get("stand_by") if isinstance(data, dict) else None
+    if not isinstance(raw, dict):
+        return {"months": 0, "wake_if": []}
+    try:
+        months = int(str(raw.get("months", "0")).strip())
+    except ValueError:
+        months = 0
+    months = max(0, min(months, int(tokens.get("max_quiet_months", 3))))
+    wake = []
+    for cond in raw.get("wake_if") or []:
+        if not isinstance(cond, dict) or cond.get("metric") not in WAKE_METRICS or cond.get("operator") not in (">=", "<="):
+            continue
+        try:
+            value = canonical_metric_value(cond["metric"], float(cond.get("value")))
+        except (TypeError, ValueError):
+            continue
+        wake.append({"metric": cond["metric"], "operator": cond["operator"], "value": value})
+    return {"months": months, "wake_if": wake[:3]}
+
+
+def extend_decision_schema(schema: dict, tokens: dict, read_options) -> dict:
+    """The decision schema with the fields the switched-on features need, and nothing otherwise."""
+    from .actions import _arr, _obj
+    added = {}
+    if tokens.get("wakeups") == "on_events":
+        added["stand_by"] = _obj({
+            "months": {"type": "string", "enum": [str(i) for i in range(int(tokens.get("max_quiet_months", 3)) + 1)]},
+            "wake_if": _arr(_obj({"metric": {"type": "string", "enum": list(WAKE_METRICS)},
+                                  "operator": {"type": "string", "enum": [">=", "<="]},
+                                  "value": {"type": "number"}}), 3)})
+    if tokens.get("briefing") == "on_demand" and read_options:
+        added["read_next_month"] = _arr({"type": "string", "enum": list(read_options)}, len(read_options))
+    if not added:
+        return schema
+    out = dict(schema)
+    out["properties"] = {**(schema.get("properties") or {}), **added}
+    if "required" in schema:
+        out["required"] = list(schema["required"]) + [k for k in added if k not in schema["required"]]
+    return out
+
+
+def decision_addendum(tokens: dict) -> str:
+    """What the decision instructions add for the switched-on features ("" when none is on)."""
+    parts = []
+    if tokens.get("wakeups") == "on_events":
+        parts.append(
+            "stand_by: how many coming months you are content for the council not to meet, if nothing in your "
+            "wake_if list happens (\"0\" = meet next month as usual). The council skips a month only when every "
+            "delegate stands by and no one's wake_if condition holds; it always meets for an election, a "
+            "handover, war, a coup, a resignation, a diplomatic proposal, a deferred motion or an unread "
+            "private message. In a month it does not meet, policy and office orders stay as they are.")
+    if tokens.get("briefing") == "on_demand":
+        parts.append(
+            "read_next_month: the briefing sections you want in full next month. The others arrive as one-line "
+            "headlines; your council's own decisions always arrive in full.")
+    return ("\n" + "\n".join(parts)) if parts else ""
+
+
+def quiet_month_due(w, active: list, carried: list, pending_dms: bool, last_record: dict | None,
+                    tokens: dict) -> dict | None:
+    """Whether the council may skip this month: every reason it must meet, checked. None means meet.
+
+    Returns the record of who stood by and what was checked, for the month's log, when it may skip."""
+    from .motion_actions import evaluate_conditions
+    if tokens.get("wakeups") != "on_events" or w.month < 1 or not active:
+        return None
+    c = w.const
+    if c.election_month == w.month or c.handover_month == w.month or w.dip.war or w.dip.proposals:
+        return None
+    if carried or pending_dms:
+        return None
+    if last_record and last_record.get("coups"):
+        return None
+    if any(m.status != "active" and getattr(m, "removed_month", -99) == w.month - 1 for m in w.members):
+        return None             # someone left the government last month
+    if int(w.counters.get("quiet_months_in_a_row", 0)) >= int(tokens.get("max_quiet_months", 3)):
+        return None
+    standing_by = {}
+    for mid in active:
+        plan = (w.member(mid).agent_state or {}).get("stand_by") or {}
+        if int(plan.get("months_left", 0)) < 1:
+            return None
+        wake = plan.get("wake_if") or []
+        if wake and any(r.get("met") for r in evaluate_conditions(w, wake)):
+            return None
+        standing_by[mid] = {"months_left": int(plan["months_left"]), "wake_if": wake}
+    return {"standing_by": standing_by, "in_a_row": int(w.counters.get("quiet_months_in_a_row", 0)) + 1}
+
+
 def describe(cfg: dict) -> dict:
     """What a run changed from the default, for the manifest. Empty for a default run."""
     run = cfg.get("run") or {}

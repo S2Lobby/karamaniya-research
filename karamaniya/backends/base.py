@@ -116,6 +116,9 @@ class Backend:
         return default
 
     supports_temperature = False
+    #: Whether the connector makes the answer follow the JSON schema (constrained decoding or a
+    #: validated structured-output mode), so the prompt need not spell the shape out in full.
+    enforces_schema = False
 
     def prompt_budget(self, system_chars: int) -> int:
         """How many characters of user prompt this seat can take (the council trims to fit)."""

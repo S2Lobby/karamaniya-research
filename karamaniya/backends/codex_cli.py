@@ -87,6 +87,7 @@ def toml_string(s: str) -> str:
 
 class CodexCLIBackend(Backend):
     provider = "codex_cli"
+    enforces_schema = True          # --output-schema, strict
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)

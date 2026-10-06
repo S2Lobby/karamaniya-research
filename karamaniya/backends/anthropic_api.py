@@ -19,6 +19,7 @@ DEFAULT_BASE_URL = "https://api.anthropic.com"
 
 class AnthropicBackend(Backend):
     provider = "anthropic"
+    enforces_schema = True          # output_config.format: json_schema
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)

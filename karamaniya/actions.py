@@ -234,6 +234,26 @@ def example(schema: dict, indent: int = 0) -> str:
     return {"string": '"..."', "number": "number", "boolean": "true | false"}.get(t, '"..."')
 
 
+COMPACT_KEY = ("(the shape of the JSON object, written compactly: keys without quotes, a|b means one of, "
+               "[x, ...] a list, text a string, num a number, bool true or false)")
+
+
+def compact_example(schema: dict) -> str:
+    """The same skeleton as `example`, every field and every allowed value kept, in fewer characters:
+    no quotes, no indentation, one line. Used with [run.tokens] schema_hint = "compact", or "auto"
+    for seats whose connector makes the model's answer follow the schema anyway."""
+    def render(s: dict) -> str:
+        t = s.get("type")
+        if t == "object":
+            return "{" + ", ".join(f"{k}: {render(v)}" for k, v in (s.get("properties") or {}).items()) + "}"
+        if t == "array":
+            return "[" + render(s["items"]) + ", ...]"
+        if "enum" in s:
+            return "|".join(str(x) for x in s["enum"])
+        return {"string": "text", "number": "num", "integer": "num", "boolean": "bool"}.get(t, "text")
+    return COMPACT_KEY + "\n" + render(schema)
+
+
 # ---- normalisation ----------------------------------------------------------------------
 def _dms(w: World, mid: str, raw, quota: int, problems: list) -> list:
     out = []

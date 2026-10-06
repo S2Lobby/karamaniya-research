@@ -556,7 +556,7 @@ CACHE_GROUPS = (
     # the same for every delegate in every phase of the month.
     ("shared", ("canonical", "briefing")),
     ("standing", ("secret_goal", "disposition", "standing", "forecast_record", "causal_reading",
-                  "operations", "forces", "notes")),
+                  "operations", "forces", "notes", "briefing_requested")),
     ("agenda", ("role", "relationships", "beliefs", "memory")),
     ("phase", ("canonical_phase", "issues", "motions", "promises", "office", "messages", "transcript",
                "exposure", "fresh")),

@@ -59,6 +59,10 @@ class OpenAICompatBackend(Backend):
 
     supports_temperature = True
 
+    @property
+    def enforces_schema(self) -> bool:
+        return self.json_mode == "json_schema"       # strict structured outputs; json_object only promises JSON
+
     def _effort(self, context: dict | None) -> str:
         if self._effort_rejected:
             return ""

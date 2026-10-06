@@ -365,6 +365,10 @@ def public_v2(w: World, council_record: dict | None = None) -> str:
     out.append("")
     if council_record:
         out.append("LAST MONTH'S COUNCIL DECISIONS")
+        if council_record.get("quiet_month"):
+            # Only in a run with [run.tokens] wakeups = "on_events": the council chose not to meet.
+            out.append("- The council did not meet: every delegate had chosen to stand by, and nothing any of "
+                       "them named as a reason to meet had happened. Policy and office orders stayed as they were.")
         for r in council_record.get("motions", []):
             from . import convergence as _convergence
             stored = r.get("status")

@@ -31,6 +31,7 @@ class OllamaBackend(Backend):
         self.options = dict(cfg.get("options", {}) or {})
 
     supports_temperature = True
+    enforces_schema = True          # "format": the schema constrains decoding
 
     def prompt_budget(self, system_chars: int) -> int:
         """Keep system prompt, user prompt and room for the answer inside the context window."""

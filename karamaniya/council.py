@@ -531,7 +531,21 @@ class Council:
         by_label = {seat.label: seat for seat in seats.values()}
         ordered_seats = list(seats.values())
         self.foreign_seats = {}
+        dedicated = self.settings.get("foreign_cabinet_backend")
+        if dedicated and self.foreign_enabled:
+            # One fixed model plays both foreign cabinets, outside the council. Veleria and Dorsania
+            # are the environment, not the subjects: by default they borrow the first two seats, so
+            # the models under study also write the foreign moves they then respond to, and spend
+            # two extra calls a month doing it. A dedicated model keeps the environment the same for
+            # every council it is compared across.
+            from .backends import make_backend
+            label = dedicated.get("label") or dedicated["provider"]
+            # One connector each: the two cabinets are called in parallel.
+            self.foreign_seats = {actor: Seat("foreign", label, dedicated, make_backend(dedicated))
+                                  for actor in ("veleria", "dorsania")}
         for index, actor_id in enumerate(("veleria", "dorsania")):
+            if actor_id in self.foreign_seats:
+                continue
             label = configured.get(actor_id) if isinstance(configured, dict) else None
             self.foreign_seats[actor_id] = by_label.get(label) or ordered_seats[min(index, len(ordered_seats)-1)]
         if world.human_factor and world.agent_architecture_version >= 1:
@@ -560,6 +574,15 @@ class Council:
                 pass
 
     # ---- calls ----------------------------------------------------------------------
+    def _schema_text(self, mid: str, schema: dict) -> str:
+        """The answer's shape as the prompt spells it out: in full (engine 5), or compactly when the
+        run asks for it ([run.tokens] schema_hint = "compact", or "auto" for a seat whose connector
+        holds the answer to the schema anyway). Every field and allowed value is in both."""
+        mode = self.tokens["schema_hint"]
+        if mode == "compact" or (mode == "auto" and getattr(self.seats[mid].backend, "enforces_schema", False)):
+            return actions.compact_example(schema)
+        return actions.example(schema)
+
     def _next_call_id(self) -> str:
         with self._lock:
             self._call_seq += 1
@@ -1134,6 +1157,18 @@ class Council:
         intelligence.generate(w)
         intelligence.answer_requests(w, capacity, [], "carry")
         brief = briefing.public_v2(w, self.last_record)
+        # Briefing on demand ([run.tokens] briefing = "on_demand"): every delegate gets the same
+        # headlines-and-essentials part, plus the full sections it asked for last month.
+        full_brief, read_options = brief, []
+        if self.tokens["briefing"] == "on_demand":
+            read_options = token_saving.requestable(full_brief)
+            brief, _ = token_saving.briefing_for(full_brief, ())
+
+        def own_brief(mid) -> list:
+            if self.tokens["briefing"] != "on_demand":
+                return []
+            _, own = token_saving.briefing_for(full_brief, (w.member(mid).agent_state or {}).get("read_requests"))
+            return [decision_context.Section("briefing_requested", 3, own)] if own else []
         order = active[:]
         rng.shuffle(order)
         quota = int(self.settings.get("dm_per_turn", 3))
@@ -1141,6 +1176,7 @@ class Council:
         intercepted = {mid: [] for mid in active}
         used = {mid: 0 for mid in active}
         self._month_intercepts = []
+        pending_before = bool([dm for dm in self.pending_dms if dm["to"] in inbox and dm["from"] in inbox])
         self._deliver([dm for dm in self.pending_dms if dm["to"] in inbox and dm["from"] in inbox], inbox, intercepted, rng)
         carried_dms = [dm for dm in self.pending_dms if dm["to"] in inbox and dm["from"] in inbox]
         self.pending_dms = []
@@ -1150,6 +1186,13 @@ class Council:
         carried = deliberation.carried_over(w)
         for i, motion in enumerate(carried, 1):
             motion["id"] = f"D{i}"
+        # A quiet month ([run.tokens] wakeups = "on_events"): every delegate chose to stand by and
+        # nothing any of them named has happened, so the council does not meet and no delegate is called.
+        # The foreign cabinets still play their month.
+        quiet = token_saving.quiet_month_due(w, active, carried, pending_before, self.last_record, self.tokens)
+        if quiet:
+            self.store.log({"type": "quiet_month", "month": w.month, **quiet})
+            self._emit(type="quiet_month", month=w.month, **quiet)
 
         # Phase 2-4: independent openings, published together in the seeded order.
         def speak(mid):
@@ -1161,13 +1204,17 @@ class Council:
                 w, mid, "independent opening", public_brief=brief, motions=[],
                 messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)),
                 instructions=prompts.opening_instructions_v2(w, mid, left, order, slots, carried),
-                schema_text=actions.example(schema), budget=self._budget(mid), layout=self.tokens["layout"])
+                schema_text=self._schema_text(mid, schema), budget=self._budget(mid),
+                extra=own_brief(mid), layout=self.tokens["layout"])
             res = self._call(mid, "session", prompt, schema, {"motions": [], "statements": [], "prompt_meta": meta})
             out, problems = actions.normalize_session_v2(w, mid, res.data, left)
             return mid, res, out, problems
 
-        with ThreadPoolExecutor(max_workers=max(1, len(order))) as ex:
-            opening = list(ex.map(speak, order))
+        if quiet:
+            opening = []
+        else:
+            with ThreadPoolExecutor(max_workers=max(1, len(order))) as ex:
+                opening = list(ex.map(speak, order))
         statements, tabled, pre_positions, commitments_added = [], [], {}, []
         opening = self._repair_duplicate_principles(opening, calls)
         sent_messages, rejected, head_priorities, forced, comm_log, carry_notes = [], [], [], set(), [], []
@@ -1304,7 +1351,7 @@ class Council:
         revisions, revision_dms = {}, []
         mode = self.settings.get("revision_round") or tuning.get(w, "revision.mode")
         substantive = [m for m in scheduled if m["type"] not in deliberation.PROCEDURAL]
-        run_revision = mode == "always" or (mode == "auto" and bool(substantive))
+        run_revision = not quiet and (mode == "always" or (mode == "auto" and bool(substantive)))
         if run_revision:
             def revise(mid):
                 left = quota - used[mid]
@@ -1316,7 +1363,8 @@ class Council:
                     w, mid, "responses and revisions", public_brief=brief, motions=scheduled,
                     messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)), transcript=transcript,
                     instructions=prompts.revision_instructions(w, mid, left, scheduled),
-                    schema_text=actions.example(schema), budget=self._budget(mid), layout=self.tokens["layout"])
+                    schema_text=self._schema_text(mid, schema), budget=self._budget(mid),
+                    extra=own_brief(mid), layout=self.tokens["layout"])
                 res = self._call(mid, "revision", prompt, schema, {"motions": scheduled, "statements": statements,
                                                                     "prompt_meta": meta})
                 out, problems = actions.normalize_revision(w, mid, res.data, scheduled, left)
@@ -1372,13 +1420,22 @@ class Council:
 
         def decide(mid):
             left = quota - used[mid]
-            schema = actions.decision_schema_v2(w, mid, motion_ids, election_pending, left)
+            if quiet:
+                # The council does not meet: no call, no vote, no new order. The delegate's notes are
+                # kept as they were (an empty decision would otherwise blank them).
+                out, _ = actions.normalize_decision_v2(w, mid, None, [], left)
+                out["notes"] = w.member(mid).notebook
+                return mid, None, out, []
+            schema = token_saving.extend_decision_schema(
+                actions.decision_schema_v2(w, mid, motion_ids, election_pending, left), self.tokens, read_options)
             prompt, meta = decision_context.build(
                 w, mid, "decision", public_brief=brief, motions=scheduled,
                 messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)), transcript=transcript,
                 instructions=prompts.decision_instructions_v2(w, mid, scheduled, left, election_pending,
-                                                              "coup" in schema.get("properties", {})),
-                schema_text=actions.example(schema), budget=self._budget(mid), layout=self.tokens["layout"])
+                                                              "coup" in schema.get("properties", {}))
+                + token_saving.decision_addendum(self.tokens),
+                schema_text=self._schema_text(mid, schema), budget=self._budget(mid),
+                extra=own_brief(mid), layout=self.tokens["layout"])
             res = self._call(mid, "decision", prompt, schema, {"motions": final, "statements": statements,
                                                                 "prompt_meta": meta, "election_pending": election_pending})
             out, problems = actions.normalize_decision_v2(w, mid, res.data, motion_ids, left)
@@ -1490,6 +1547,10 @@ class Council:
             out["vote_intent_clashes"] = clashes
             if repair:
                 out["vote_intent_repair"] = repair
+            if self.tokens["wakeups"] == "on_events":
+                out["stand_by"] = token_saving.read_stand_by(res.data, self.tokens)
+            if self.tokens["briefing"] == "on_demand":
+                out["read_next_month"] = token_saving.read_requests(res.data, read_options)
             return mid, res, out, problems
 
         workers = len(active) if self.settings.get("parallel_decisions", True) else 1
@@ -1498,7 +1559,9 @@ class Council:
         decisions = {}
         for mid, res, out, problems in results:
             decisions[mid] = out
-            calls.append(self._call_summary(mid, "decision", res, problems))
+            if res is not None:                 # a quiet month makes no call to summarise
+                calls.append(self._call_summary(mid, "decision", res, problems))
+        self._remember_token_choices(decisions, quiet)
 
         pre_resolution = {"election_month": w.const.election_month, "currency": w.econ.currency,
                           "offices": dict(w.const.offices), "war": w.dip.war}
@@ -1607,9 +1670,33 @@ class Council:
         record["issues"] = [{k: d.get(k) for k in ("id", "kind", "title", "month", "status")} for d in w.dilemmas.get("active", [])]
         self.last_record = {"motions": record["motions"], "defiance": record["defiance"], "coups": record["coups"],
                             "deferred": record["deferred"], "office_orders": record["office_orders"]}
+        if quiet:
+            record["quiet_month"] = quiet
+            self.last_record["quiet_month"] = True
         _keep_month_outcome(w, record)
         self.store.log({"type": "month", **record})
         return record
+
+    def _remember_token_choices(self, decisions: dict, quiet: dict | None) -> None:
+        """Carry the switched-on token features' answers into next month: who stands by, and for how
+        long, and which briefing sections each delegate asked to read. Nothing when both are off."""
+        w = self.w
+        if self.tokens["wakeups"] == "on_events":
+            if quiet:
+                w.counters["quiet_months_in_a_row"] = int(w.counters.get("quiet_months_in_a_row", 0)) + 1
+                w.counters["quiet_months_total"] = int(w.counters.get("quiet_months_total", 0)) + 1
+                for mid in decisions:
+                    plan = (w.member(mid).agent_state or {}).get("stand_by") or {}
+                    plan["months_left"] = max(0, int(plan.get("months_left", 0)) - 1)
+            else:
+                w.counters["quiet_months_in_a_row"] = 0
+                for mid, d in decisions.items():
+                    choice = d.get("stand_by") or {"months": 0, "wake_if": []}
+                    w.member(mid).agent_state["stand_by"] = {"months_left": choice["months"],
+                                                             "wake_if": choice["wake_if"], "declared_month": w.month}
+        if self.tokens["briefing"] == "on_demand" and not quiet:
+            for mid, d in decisions.items():
+                w.member(mid).agent_state["read_requests"] = list(d.get("read_next_month") or [])
 
     def _repair_structured_action(self, mid: str, motion: dict, rejection: dict, calls: list):
         """Give the author one format-only retry for a motion with no executable action."""

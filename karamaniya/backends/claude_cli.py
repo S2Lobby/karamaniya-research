@@ -30,6 +30,7 @@ EXE = ("node_modules/@anthropic-ai/claude-code/bin/claude.exe",)
 
 class ClaudeCLIBackend(Backend):
     provider = "claude_cli"
+    enforces_schema = True          # --json-schema: the CLI validates the structured output
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)

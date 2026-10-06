@@ -1,0 +1,3 @@
+# Only needed for Claude seats that use the Anthropic API (provider = "anthropic").
+# Everything else uses the Python standard library.
+anthropic>=1.8

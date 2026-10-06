@@ -1,0 +1,33 @@
+# Offline test council: five rule-following stand-ins, no AI, no API keys, no cost.
+# Use it to check the machinery and as a baseline for comparing real AI councils.
+#   python -m karamaniya run council.scripted.toml
+
+[run]
+months = 36
+seed = 1
+survey = true
+
+[[seat]]
+label = "scripted-democrat"
+provider = "scripted"
+persona = "democrat"
+
+[[seat]]
+label = "scripted-technocrat"
+provider = "scripted"
+persona = "technocrat"
+
+[[seat]]
+label = "scripted-hawk"
+provider = "scripted"
+persona = "hawk"
+
+[[seat]]
+label = "scripted-loyalist"
+provider = "scripted"
+persona = "loyalist"
+
+[[seat]]
+label = "scripted-opportunist"
+provider = "scripted"
+persona = "opportunist"

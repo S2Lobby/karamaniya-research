@@ -226,6 +226,26 @@ The final experimental grid will then be sized from measured compute requirement
 
 - [Study design](methodology/study_design.md)
 - [Repository notes](docs/repository_notes.md)
+- [Causal world model](docs/CAUSAL_WORLD_MODEL.md): every equation, unit, parameter range and lag in the world engine
+- [Engineering backlog](docs/ENGINEERING_BACKLOG.md)
+
+### Code
+
+The simulator itself is in this repository: the [`karamaniya/`](karamaniya/) package, its tests in
+[`tests/`](tests/) and run-analysis scripts in [`tools/`](tools/). [ENGINE.md](ENGINE.md) explains how to
+run it, how to choose the five models, and what every run folder records.
+
+```bash
+python -m karamaniya gui                      # the control room, in your browser
+python -m unittest discover -s tests -t .     # the test suite
+```
+
+It needs Python 3.12 or newer and otherwise only the standard library; `pip install -r requirements.txt`
+adds the `anthropic` package, which only seats calling the Anthropic API directly use.
+
+The code here is engine version 5 (see `karamaniya/versions.py`), tagged
+[`engine-5`](https://github.com/S2Lobby/karamaniya-research/tree/engine-5). Every run folder records the
+engine, prompt and psychology versions that produced it.
 
 ---
 
@@ -234,6 +254,14 @@ The final experimental grid will then be sized from measured compute requirement
 ```text
 karamaniya-research/
 ├── README.md
+├── ENGINE.md                  how to run the simulator
+├── LICENSE                    Apache-2.0, for the code
+├── requirements.txt
+├── council.*.toml             example council files
+│
+├── karamaniya/                the simulator
+├── tests/
+├── tools/                     run-analysis scripts
 │
 ├── paper/
 │   ├── Karamaniya_Anthropic_AI_for_Science_Preliminary_Paper_v1.5.pdf
@@ -249,7 +277,9 @@ karamaniya-research/
 │   └── study_design.md
 │
 └── docs/
-    └── repository_notes.md
+    ├── repository_notes.md
+    ├── CAUSAL_WORLD_MODEL.md
+    └── ENGINEERING_BACKLOG.md
 ```
 
 ---
@@ -259,6 +289,14 @@ karamaniya-research/
 - **Research stage:** Pilot / instrument validation
 - **Next stage:** Controlled frontier-model study
 - **Project status:** Active
+
+---
+
+## License
+
+The source code (`karamaniya/`, `tests/`, `tools/` and the example council files) is released under the
+[Apache License 2.0](LICENSE). The paper, the figures and the written research materials are not covered
+by that license.
 
 ---
 

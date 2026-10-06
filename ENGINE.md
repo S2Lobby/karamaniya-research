@@ -15,6 +15,10 @@ and whether soldiers obey a coup.
 
 ## Quick start
 
+You need Python 3.12 or newer. Nothing else is required to start: the engine uses only the standard
+library, and `pip install -r requirements.txt` only adds the package for Claude seats that call the
+Anthropic API directly.
+
 ```bash
 python -m karamaniya gui
 ```

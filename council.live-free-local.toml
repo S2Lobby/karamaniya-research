@@ -1,0 +1,41 @@
+[run]
+months = 2
+seed = 1
+framing = "simulation"
+dm_per_turn = 3
+survey = false
+shuffle_seats = false
+parallel_decisions = true
+human_factor = true
+foreign_cabinets = false
+
+[[seat]]
+label = "mimo-v2.5-pro"
+provider = "cline_cli"
+cline_provider = "cline-pass"
+model = "cline-pass/mimo-v2.5-pro"
+
+[[seat]]
+label = "kimi-k3"
+provider = "cline_cli"
+cline_provider = "cline-pass"
+model = "cline-pass/kimi-k3"
+
+[[seat]]
+label = "gpt-5.6-luna"
+provider = "codex_cli"
+model = "gpt-5.6-luna"
+effort = "medium"
+
+[[seat]]
+label = "qwen3.5-9b-local"
+provider = "ollama"
+model = "qwen3.5:9b"
+think = false
+options = { num_predict = 2500 }
+
+[[seat]]
+label = "glm-5.3"
+provider = "cline_cli"
+cline_provider = "cline-pass"
+model = "cline-pass/glm-5.3"

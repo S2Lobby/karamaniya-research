@@ -1,0 +1,1112 @@
+<title>Karamaniya Chronicle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f2f4f3;
+  --surface: #fcfcfb;
+  --surface-2: #eaeeec;
+  --ink: #10202a;
+  --ink-2: #47575f;
+  --muted: #76838a;
+  --hairline: #dde3e1;
+  --axis: #c1c9c6;
+  --accent: #0d6b67;
+  --accent-ink: #ffffff;
+  --sea: #e3eaec;
+  --land-foreign: #d3d9d7;
+  --land-foreign-ink: #4c5a5f;
+  --border: rgba(16, 32, 42, 0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008b8b; --s7: #7652a5; --s8: #d94f4f;
+  --s9: #587a38; --s10: #a55b32; --s11: #3979a8; --s12: #9a4e79;
+  --ramp-0: #b7d3f6; --ramp-1: #86b6ef; --ramp-2: #5598e7; --ramp-3: #2a78d6; --ramp-4: #1c5cab;
+  --occupied: #eb6834;
+  --rebels: #e87ba4;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-ink: #006300; --critical-ink: #b42828;
+  --font-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Big Shoulders Display", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0e1312; --surface: #161b1a; --surface-2: #1f2624; --ink: #edf2f0; --ink-2: #b5c1bd;
+    --muted: #88938f; --hairline: #29312f; --axis: #3b4542; --accent: #3fb3aa; --accent-ink: #062320;
+    --sea: #111a1c; --land-foreign: #2a3230; --land-foreign-ink: #aeb9b5; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #23a5a5; --s7: #9880cf; --s8: #ed6969;
+    --s9: #85ad5b; --s10: #d18458; --s11: #61a1ce; --s12: #ca72a2;
+    --ramp-0: #184f95; --ramp-1: #1c5cab; --ramp-2: #2a78d6; --ramp-3: #5598e7; --ramp-4: #86b6ef;
+    --occupied: #d95926; --rebels: #d55181; --good-ink: #0ca30c; --critical-ink: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0e1312; --surface: #161b1a; --surface-2: #1f2624; --ink: #edf2f0; --ink-2: #b5c1bd;
+  --muted: #88938f; --hairline: #29312f; --axis: #3b4542; --accent: #3fb3aa; --accent-ink: #062320;
+  --sea: #111a1c; --land-foreign: #2a3230; --land-foreign-ink: #aeb9b5; --border: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  --ramp-0: #184f95; --ramp-1: #1c5cab; --ramp-2: #2a78d6; --ramp-3: #5598e7; --ramp-4: #86b6ef;
+  --occupied: #d95926; --rebels: #d55181; --good-ink: #0ca30c; --critical-ink: #e66767;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink); font: 400 15px/1.5 var(--font-body);
+  padding-inline: 16px; padding-block: 20px 48px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h2 { font: 800 26px/1.1 var(--font-display); letter-spacing: 0.02em; text-transform: uppercase; }
+h3 { font-size: 15px; font-weight: 600; }
+.eyebrow { font: 500 11px/1.3 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.muted { color: var(--muted); }
+.mono { font-family: var(--font-mono); }
+.num { font-variant-numeric: tabular-nums; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Header */
+.head { display: grid; gap: 14px; }
+.head-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 18px; }
+.head h1 { font: 800 clamp(36px, 7vw, 64px)/0.95 var(--font-display); letter-spacing: 0.01em; text-transform: uppercase; }
+.head .runid { font-family: var(--font-mono); font-size: 13px; color: var(--ink-2); }
+.outcome { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--oc, var(--muted)); border-radius: 6px; }
+.outcome .pill { display: inline-flex; align-items: center; gap: 6px; font: 600 12px/1 var(--font-body); letter-spacing: 0.04em;
+  text-transform: uppercase; padding: 5px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink); }
+.outcome .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--oc, var(--muted)); display: inline-block; }
+.outcome p { margin: 0; flex: 1 1 320px; }
+.lineup { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 9px 4px 5px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--border); font-size: 13px; white-space: nowrap; }
+.chip b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: #fff;
+  font: 600 11px/1 var(--font-body); background: var(--dc); }
+.chip .model { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; display: grid; gap: 4px; }
+.tile .v { font: 600 26px/1.1 var(--font-body); }
+.tile .l { font-size: 12.5px; color: var(--ink-2); }
+
+/* Time bar */
+.timebar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; display: flex; flex-wrap: wrap; align-items: center;
+  gap: 8px 14px; padding: 10px 12px; background: color-mix(in srgb, var(--page) 88%, transparent);
+  backdrop-filter: blur(6px); border-bottom: 1px solid var(--hairline); margin-inline: -16px; padding-inline: 16px; }
+.timebar .label { font: 800 22px/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.02em; min-width: 7.5em; }
+.timebar .sub { font-size: 13px; color: var(--ink-2); }
+.timebar input[type=range] { flex: 1 1 220px; accent-color: var(--accent); }
+.btn { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+
+/* Two-column stage */
+.stage { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.mappins { margin: 0; padding-left: 22px; display: grid; gap: 3px; font-size: 13px; color: var(--ink-2); }
+.mappins:empty { display: none; }
+.mappins li.big { color: var(--ink); }
+.mappins li::marker { font-weight: 700; color: var(--ink); }
+#regioncard { border-top: 1px solid var(--hairline); padding-top: 12px; }
+/* report.html#map (or #map-12 for Month 12): only the month bar and the map. */
+body.maponly .head, body.maponly #panel, body.maponly section.panel-section, body.maponly footer, body.maponly #stategrid, body.maponly #inflation-note, body.maponly #army-note { display: none; }
+body.maponly .wrap { max-width: none; gap: 10px; }
+body.maponly .stage > .card { padding: 0; border: 0; background: transparent; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); align-items: center; }
+.legend .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; vertical-align: -2px; margin-right: 6px; }
+.legend .ramp { display: inline-flex; vertical-align: -2px; margin-right: 6px; }
+.legend .ramp span { width: 12px; height: 12px; display: inline-block; }
+.legend .ramp span:first-child { border-radius: 3px 0 0 3px; } .legend .ramp span:last-child { border-radius: 0 3px 3px 0; }
+.legend .lk { width: 16px; height: 2px; display: inline-block; vertical-align: 3px; margin-right: 6px; border-radius: 2px; }
+.state-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px 14px; font-size: 13px; }
+.state-grid div { display: grid; gap: 1px; }
+.state-grid .k { color: var(--muted); font-size: 11.5px; letter-spacing: 0.03em; text-transform: uppercase; }
+.state-grid .v { font-weight: 600; }
+
+/* Month panel */
+.panel-section { display: grid; gap: 8px; }
+.panel-section + .panel-section { border-top: 1px solid var(--hairline); padding-top: 12px; }
+.events { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.events li { display: grid; grid-template-columns: 8px 1fr; gap: 10px; font-size: 14px; }
+.events li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; margin-top: 7px; background: var(--axis); }
+.events li.i2::before { background: var(--serious); }
+.events li.i3::before { background: var(--critical); }
+.events li.secret { color: var(--ink-2); font-style: italic; }
+.speech { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: start; }
+.speech .who { padding-top: 1px; }
+.speech p { margin: 0; font-size: 14.5px; max-width: 68ch; }
+.speech .bad { grid-column: 2; font-size: 12.5px; color: var(--critical-ink); }
+.dot { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff;
+  font: 600 11px/1 var(--font-body); background: var(--dc); flex: none; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+th { font-weight: 600; color: var(--ink-2); font-size: 12px; letter-spacing: 0.02em; }
+td.c, th.c { text-align: center; }
+.vote-yes { color: var(--good-ink); font-weight: 600; }
+.vote-no { color: var(--critical-ink); font-weight: 600; }
+.vote-abs { color: var(--muted); }
+.res { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); white-space: nowrap; }
+.res.pass { background: color-mix(in srgb, var(--good) 18%, var(--surface)); }
+.res.fail { background: color-mix(in srgb, var(--critical) 14%, var(--surface)); }
+.alert { border-left: 3px solid var(--critical); background: color-mix(in srgb, var(--critical) 7%, var(--surface)); padding: 8px 12px; border-radius: 4px; font-size: 14px; }
+.alert.warn { border-left-color: var(--serious); background: color-mix(in srgb, var(--serious) 8%, var(--surface)); }
+.orders { display: grid; gap: 6px; font-size: 13.5px; }
+.orders div { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; }
+.change { font-family: var(--font-mono); font-size: 12.5px; }
+.change s { color: var(--muted); }
+.dm { display: grid; gap: 4px; padding: 8px 10px; border-radius: 6px; background: var(--surface-2); }
+.dm .route { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+.dm .txt { font: 400 13px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.flag { font-size: 11px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px;
+  background: color-mix(in srgb, var(--warning) 30%, var(--surface)); color: var(--ink); }
+details { border-radius: 6px; }
+details > summary { cursor: pointer; color: var(--ink-2); font-size: 13.5px; }
+details[open] > summary { margin-bottom: 8px; }
+.note { font: 400 13px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 8px; }
+
+/* Charts */
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.chart { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 12px 6px; display: grid; gap: 6px; min-width: 0; }
+.chart .ttl { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+.chart .ttl h3 { font-size: 13.5px; }
+.chart svg { width: 100%; height: 190px; display: block; overflow: hidden; }
+.chart svg text { fill: var(--muted); font: 400 11px var(--font-body); font-variant-numeric: tabular-nums; }
+.chart svg text.end { fill: var(--ink); font-weight: 600; }
+.tooltip { position: fixed; z-index: 20; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--border);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12); border-radius: 6px; padding: 8px 10px; font-size: 12.5px; min-width: 140px; display: grid; gap: 3px; }
+.tooltip .t { color: var(--muted); font-size: 11.5px; }
+.tooltip .row { display: grid; grid-template-columns: 14px auto 1fr; gap: 6px; align-items: center; }
+.tooltip .row strong { font-variant-numeric: tabular-nums; }
+.tooltip .row span:last-child { color: var(--ink-2); }
+.tooltip .key { width: 12px; height: 2px; border-radius: 2px; }
+
+/* Power grid */
+.power { overflow-x: auto; }
+.power-grid { display: grid; gap: 2px; min-width: 560px; }
+.power-grid .rowlabel { font-size: 12.5px; color: var(--ink-2); padding-right: 8px; white-space: nowrap; align-self: center; }
+.pcell { height: 22px; border-radius: 3px; display: grid; place-items: center; font: 600 10.5px/1 var(--font-body); color: #fff; }
+.pcell.empty { background: var(--surface-2); color: transparent; }
+.pcell.sel { outline: 2px solid var(--ink); outline-offset: 0; }
+.pmonth { font: 400 10px/1 var(--font-mono); color: var(--muted); text-align: center; padding-top: 2px; }
+.pmark { height: 10px; display: grid; place-items: center; }
+.pmark span { width: 8px; height: 8px; border-radius: 50%; }
+
+/* Scorecard */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.member { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; display: grid; gap: 10px; align-content: start; }
+.member header { display: flex; gap: 10px; align-items: center; }
+.member header div { display: grid; gap: 1px; min-width: 0; }
+.member header .model { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; }
+.member dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 13px; }
+.member dt { color: var(--ink-2); }
+.member dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.status { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); justify-self: start; }
+.said-did td { font-size: 12.5px; }
+.match { font-weight: 700; }
+.match.y { color: var(--good-ink); } .match.n { color: var(--critical-ink); }
+.relgraph svg { width: 100%; max-width: 640px; height: auto; display: block; margin: 0 auto; }
+.relgraph .modes { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.relgraph .modes .btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.metrics dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font-size: 13px; }
+.metrics dt { color: var(--ink-2); } .metrics dd { margin: 0; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.why { border-left: 3px solid var(--accent); padding: 6px 12px; margin: 8px 0; background: var(--surface); border-radius: 0 6px 6px 0; }
+.why ul { margin: 4px 0 0 18px; padding: 0; font-size: 13px; }
+.tag { display: inline-block; font-size: 11.5px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); margin-right: 4px; }
+footer { font-size: 12.5px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="head" id="head"></header>
+  <section class="panel-section" style="border:0;padding:0" id="founding"></section>
+  <div class="timebar" id="timebar">
+    <button class="btn" id="prev" type="button" aria-label="Previous month">&#9664;</button>
+    <button class="btn primary" id="play" type="button" aria-label="Play months">Play</button>
+    <button class="btn" id="next" type="button" aria-label="Next month">&#9654;</button>
+    <div><div class="label" id="mlabel">Month 1</div><div class="sub" id="msub"></div></div>
+    <input type="range" id="scrub" min="1" max="1" value="1" aria-label="Month">
+  </div>
+  <section class="stage">
+    <div class="card">
+      <div id="kmap"></div>
+      <ol class="mappins" id="mappins"></ol>
+      <div id="regioncard" hidden></div>
+      <div class="state-grid" id="stategrid"></div>
+      <p class="sub" id="inflation-note"></p>
+      <p class="sub" id="army-note" hidden></p>
+    </div>
+    <div class="card" id="panel"></div>
+  </section>
+  <section class="panel-section" style="border:0;padding:0">
+    <div class="eyebrow">The country over time</div>
+    <h2>What happened</h2>
+    <div class="charts" id="charts"></div>
+    <details><summary>Show the numbers as a table</summary><div class="tablewrap" id="datatable"></div></details>
+  </section>
+  <section class="panel-section" style="border:0;padding:0">
+    <div class="eyebrow">Offices month by month</div>
+    <h2>Who held power</h2>
+    <div class="card power"><div class="power-grid" id="power"></div><div class="legend" id="powerlegend"></div></div>
+  </section>
+  <section class="panel-section" style="border:0;padding:0" id="geopolitics"></section>
+  <section class="panel-section" style="border:0;padding:0">
+    <div class="eyebrow">Hidden from the AIs during the run</div>
+    <h2>What each AI did</h2>
+    <div class="cards" id="members"></div>
+    <div class="card"><h3>Said before the run, did during it</h3><div class="tablewrap" id="saiddid"></div></div>
+  </section>
+  <section class="panel-section" style="border:0;padding:0" id="relations-section">
+    <div class="eyebrow">Engine-tracked, directional · follows the month control above</div>
+    <h2>Relationships over time</h2>
+    <div class="card relgraph">
+      <div class="modes" id="relmodes"></div>
+      <svg id="relgraph" role="img" aria-label="Directed relationship graph between delegates"></svg>
+      <p class="muted" id="rellegend"></p>
+    </div>
+  </section>
+  <section class="panel-section" style="border:0;padding:0" id="analysis"></section>
+  <footer id="foot"></footer>
+</div>
+<div class="tooltip" id="tip" hidden></div>
+<script type="application/json" id="run-data">/*__DATA__*/</script>
+<script>/*__MAPVIEW__*/</script>
+<script>/*__RELGRAPH__*/</script>
+<script>
+(function () {
+  "use strict";
+  const D = JSON.parse(document.getElementById("run-data").textContent);
+  const H = D.history, MONTHS = D.months || [], N = H.length;
+  const LETTERS = Object.keys(D.mapping);
+  const SLOT = {}; LETTERS.forEach((l, i) => SLOT[l] = "var(--s" + (i + 1) + ")");
+  const OFFICES = ["head", "treasury", "interior", "army", "navy"];
+  const OFFICE_NAME = { head: "Head of Government", treasury: "Treasury", interior: "Interior", army: "Army", navy: "Navy" };
+  const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  let cur = 0;
+
+  // ---- helpers (all AI-written text goes through textContent) ----
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "class") n.className = v; else if (k === "style") n.style.cssText = v;
+      else if (k === "text") n.textContent = v; else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat(Infinity)) if (kid !== null && kid !== undefined && kid !== false)
+      n.appendChild(typeof kid === "string" || typeof kid === "number" ? document.createTextNode(String(kid)) : kid);
+    return n;
+  }
+  const svgNS = "http://www.w3.org/2000/svg";
+  function sv(tag, attrs) { const n = document.createElementNS(svgNS, tag); for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v); return n; }
+  const pct = (x, d = 0) => (x * 100).toFixed(d) + "%";
+  const int = x => Math.round(x).toLocaleString("en-US");
+  const compact = x => { const a = Math.abs(x); return a >= 1e6 ? (x / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M" : a >= 1e4 ? (x / 1e3).toFixed(0) + "K" : int(x); };
+  const monthLabel = m => "Month " + (m + 1);
+  const monthSub = m => MONTH_NAMES[m % 12] + ", Year " + (Math.floor(m / 12) + 1);
+  const memberName = id => "Delegate " + id;
+  function chip(id, withModel = true) {
+    return el("span", { class: "chip", style: "--dc:" + SLOT[id] }, el("b", { text: id }),
+      el("span", { text: memberName(id) }), withModel ? el("span", { class: "model", text: D.mapping[id] }) : null);
+  }
+  function dot(id) { return el("span", { class: "dot", style: "--dc:" + (SLOT[id] || "var(--muted)"), title: memberName(id) + " (" + (D.mapping[id] || "") + ")", text: id }); }
+  const tip = document.getElementById("tip");
+  function showTip(x, y, nodes) {
+    tip.replaceChildren(...nodes); tip.hidden = false;
+    const r = tip.getBoundingClientRect(); let left = x + 14, top = y + 14;
+    if (left + r.width > innerWidth - 8) left = x - r.width - 14;
+    if (top + r.height > innerHeight - 8) top = y - r.height - 14;
+    tip.style.left = Math.max(8, left) + "px"; tip.style.top = Math.max(8, top) + "px";
+  }
+  const hideTip = () => { tip.hidden = true; };
+  const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  // ---- outcome ----
+  const OUTCOMES = {
+    survived: ["Survived", "--good"], federation: ["Federation", "--warning"], voted_out: ["Voted out", "--muted"],
+    joined_union: ["Joined the Union", "--serious"], reunified_by_vote: ["Reunified by vote", "--serious"],
+    reunified_by_referendum: ["Reunified by referendum", "--serious"], conquered: ["Conquered", "--critical"],
+    revolution: ["Overthrown by revolution", "--critical"], revolution_union: ["Pro-Union revolution", "--critical"],
+    officers_coup: ["Officers' coup", "--critical"], no_government: ["No government left", "--critical"],
+  };
+  function renderHead() {
+    const head = document.getElementById("head");
+    const oc = D.outcome || {};
+    const [ocName, ocColor] = OUTCOMES[oc.type] || [D.stopped ? "Stopped early" : "In progress", "--muted"];
+    const sc = D.scorecard.country;
+    const outcome = el("div", { class: "outcome", style: "--oc: var(" + ocColor + ")" },
+      el("span", { class: "pill" }, el("i"), ocName),
+      el("p", { text: (oc.text || D.stopped || "The run has not finished.") + (oc.month !== undefined ? " (" + monthLabel(oc.month) + ")" : "") }));
+    const sourceGroups = D.engine_source_fingerprints || [];
+    const unrecordedMonths = D.engine_source_unrecorded_months || [];
+    const sourceNotes = [];
+    if (sourceGroups.length > 1) sourceNotes.push("This run recorded multiple engine source fingerprints: " +
+      sourceGroups.map(g => String(g.fingerprint) + " in " + (g.months || []).map(m => monthLabel(m)).join(", ")).join("; ") + ".");
+    if (H.length && !sourceGroups.length) sourceNotes.push("Engine source not recorded for this history.");
+    else if (unrecordedMonths.length) sourceNotes.push("Engine source fingerprint not recorded for " +
+      unrecordedMonths.map(m => monthLabel(m)).join(", ") + ".");
+    const sourceNote = sourceNotes.length ? el("p", { class: "note", text: sourceNotes.join(" ") }) : null;
+    const tiles = el("div", { class: "tiles" },
+      tile(String(sc.months_run), "months governed"),
+      tile(int(sc.excess_deaths), "excess deaths"),
+      tile(pct(sc.peak_inflation_yoy), "peak inflation rate"),
+      tile(pct(sc.democracy_min), "lowest democracy score"),
+      tile(sc.coups_succeeded + " / " + sc.coups_attempted, "coups succeeded / tried"),
+      tile(((sc.vote_division || {}).substantive_contested || 0) + " / " + ((sc.vote_division || {}).substantive || 0), "contested policy motions"),
+      tile(pct(sc.min_approval), "lowest approval"));
+    head.replaceChildren(
+      el("div", { class: "eyebrow", text: "Solvara · a council of AIs governs Karamaniya" }),
+      el("div", { class: "head-top" }, el("h1", { text: "Karamaniya" }), el("span", { class: "runid", text: "run " + D.run.id + " · seed " + D.run.seed + " · " + D.run.framing + " framing" })),
+      el("div", { class: "lineup" }, LETTERS.map(l => chip(l))),
+      outcome, sourceNote, tiles);
+  }
+  function renderFounding() {
+    const root = document.getElementById("founding"), f = D.founding || {}, c = D.scorecard.country || {};
+    if (!f.problems || !f.problems.length) { root.remove(); return; }
+    const byId = Object.fromEntries(f.problems.map(p => [p.id, p]));
+    const issues = c.founding_issues || [];
+    const cards = issues.map(x => {
+      const p = byId[x.id] || {};
+      return el("article", { class: "member" }, el("div", { class: "k", text: p.category || "inherited issue" }),
+        el("h3", { text: x.title }), el("p", { text: (p.public_description || "") }),
+        el("dl", {}, [["Starting severity", x.starting_severity + "/100"], ["Current severity", x.final_severity + "/100"],
+          ["Trend", x.trend], ["Months without improvement", x.neglect_months], ["Progress", pct(x.resolution_progress || 0)]]
+          .flatMap(([k, v]) => [el("dt", { text: k }), el("dd", { text: String(v) })])),
+        p.policy_tradeoffs && p.policy_tradeoffs.length ? el("p", { class: "note", text: "Trade-offs: " + p.policy_tradeoffs.join(" · ") }) : null);
+    });
+    const ds = Object.entries(f.diagnoses || {}).sort(([a], [b]) => a.localeCompare(b));
+    const distinct = new Set(ds.filter(([, d]) => !d.status || d.status === "submitted").map(([, d]) => d.main_problem)).size;
+    root.replaceChildren(el("div", { class: "eyebrow", text: "The country inherited · " + (D.run.founding_scenario || "seeded random") + " · seed " + D.run.seed }),
+      el("h2", { text: "One country, several first diagnoses" }),
+      el("p", { class: "note", text: "Starting state is seeded and fictional. Problems are tied to modelled country variables; the delegates submitted these diagnoses independently before the first council discussion. Hidden causes are withheld from delegates." }),
+      el("p", { class: "note", text: "First diagnosis divergence: " + Math.round(((c.founding_diagnosis_divergence || {}).top_problem_disagreement || 0) * 100) + "% outside the most common first choice · " + distinct + " different top issue(s) · Month 1 agenda capacity " + (f.agenda_slots || 0) + " motions." }),
+      f.formation && f.formation.offices ? el("p", { class: "note", text: "Government formed before Month 1: " + Object.entries(f.formation.offices).map(([office, member]) => office + " — " + (member ? memberName(member) : "vacant")).join(" · ") + ". Procedural votes used zero policy agenda slots." }) : null,
+      f.formation && (f.formation.motions || []).length ? el("details", {},
+        el("summary", { text: "Founding appointment votes and reasons" }),
+        ...(f.formation.motions || []).map(m => el("div", { class: "speech" },
+          el("strong", { text: m.id + " · " + (m.type === "slate" ? "full slate" : m.office + " → " + m.member) + " · " + (m.selected ? "selected" : m.passed ? "passed" : "failed") }),
+          el("ul", {}, Object.entries(m.votes || {}).map(([mid, vote]) => el("li", { text:
+            memberName(mid) + ": " + vote + ((m.vote_reasons || {})[mid] ? " — " + m.vote_reasons[mid] : "") })))))) : null,
+      el("div", { class: "cards" },
+        el("article", { class: "member" }, el("h3", { text: "Inherited strengths" }), el("ul", {}, (f.strengths || []).map(s => el("li", { text: s.description })))),
+        el("article", { class: "member" }, el("h3", { text: "Inherited commitments" }), el("ul", {}, (f.commitments || []).map(s => el("li", { text: s })))),
+        el("article", { class: "member" }, el("h3", { text: "Prelude" }), el("p", { text: (f.public_history || []).join(" ") }))),
+      el("div", { class: "cards" }, ds.map(([l, d]) => {
+        const main = byId[d.main_problem] || {};
+        const second = byId[d.second_problem] || {};
+        return el("article", { class: "member" }, el("header", {}, dot(l), el("div", {}, el("strong", { text: memberName(l) }), el("span", { class: "model", text: (d.dossier || "evidence") + " dossier" }))),
+          d.status && d.status !== "submitted" ? el("p", { class: "note", text: "Diagnosis " + d.status + (d.error ? ": " + d.error : "") }) : [
+          el("h3", { text: main.title || d.main_problem }),
+          el("p", { class: "note", text: "Second concern: " + (second.title || d.second_problem) }),
+          el("p", { text: "Cause assessment: " + d.cause_assessment }),
+          el("p", { text: "First policy: " + d.preferred_first_policy }),
+          el("p", { class: "muted", text: "Policy to avoid: " + d.policy_to_avoid + " · Biggest risk: " + d.biggest_risk }),
+          d.information_needed ? el("p", { class: "muted", text: "Information needed: " + d.information_needed }) : null,
+          el("p", { class: "muted", text: "Other offices may underestimate: " + (d.what_other_offices_may_be_underestimating || "") })]);
+      })),
+      el("h2", { text: "How the inherited problems changed" }), el("div", { class: "cards" }, cards));
+  }
+  function tile(v, l) { return el("div", { class: "tile" }, el("span", { class: "v", text: v }), el("span", { class: "l", text: l })); }
+
+  // ---- map ----
+  const REG = {}; D.regions.forEach(r => REG[r.id] = r);
+  let MAP = null, selectedRegion = null;
+  function buildMap() {
+    MAP = KaramaniyaMap(document.getElementById("kmap"), { geo: D.geo, regions: D.regions, names: D.names,
+      onSelect: id => { selectedRegion = id; renderRegionCard(); } });
+  }
+  function renderRegionCard() {
+    const box = document.getElementById("regioncard");
+    box.hidden = !selectedRegion;
+    if (selectedRegion) box.replaceChildren(MAP.card(selectedRegion));
+  }
+  function paintMap() {
+    const pins = MAP.show(H[cur], cur > 0 ? H[cur - 1] : null);
+    document.getElementById("mappins").replaceChildren(...pins.map(p => el("li", { value: String(p.n), class: p.importance >= 3 ? "big" : null },
+      el("b", { text: p.place + ": " }), el("span", { text: p.text }))));
+    renderRegionCard();
+    const h = H[cur];
+    const inflationLabel = h.month < 12 ? `Inflation, annualized (${h.month + 1} mo)` : "Inflation, 12 mo";
+    const items = [["Approval", pct(h.approval)], ["Independence", pct(h.indep)], [inflationLabel, pct(h.infl_yoy)],
+      ["Food supply", pct(h.food_ratio)], ["Output", pct(h.gdp_idx)], ["Unemployment", pct(h.unemployment)],
+      ["Standing army", compact(h.army)],
+      ...(h.army_mobilized !== null && h.army_mobilized !== undefined ? [["Mobilized reserves", compact(h.army_mobilized)]] : []),
+      ...(h.army_field_total !== null && h.army_field_total !== undefined ? [["Effective field strength", compact(h.army_field_total)]] : []),
+      ["Union army", compact(h.union_army)], ["War", h.war ? "yes" : h.ceasefire ? "ceasefire" : "no"],
+      ["Blockade", h.blockade_eff > 0.01 ? pct(h.blockade_eff) + " of trade" : "none"], ["Currency", h.currency === "karam" ? "karam" : "crown"],
+      ["Regime", h.constitution.regime_name]];
+    document.getElementById("stategrid").replaceChildren(...items.map(([k, v]) => el("div", {}, el("span", { class: "k", text: k }), el("span", { class: "v", text: v }))));
+    const mobilizationNote = h.army_mobilized > 0
+      ? "The standing army excludes " + compact(h.army_mobilized) + " called-up reservists; effective field strength includes the trained share ready for deployment."
+      : "";
+    document.getElementById("inflation-note").textContent = h.month < 12
+      ? "Annualized from the CPI change since the simulation began. Treasury forecasts are forward-looking and use a different horizon."
+      : "Observed CPI change over the latest 12 months. Treasury forecasts are forward-looking and use a different horizon.";
+    const armyNote = document.getElementById("army-note");
+    armyNote.textContent = mobilizationNote;
+    armyNote.hidden = !mobilizationNote;
+  }
+
+  // ---- month panel ----
+  function prevPolicy(m) { return m > 0 ? H[m - 1].policy : D.start_policy; }
+  function fmt(v) { if (typeof v === "boolean") return v ? "on" : "off"; if (typeof v === "number") return Math.abs(v) >= 1000 ? int(v) : String(Math.round(v * 1000) / 1000); return String(v); }
+  function same(a, b) { if (typeof a === "number" || typeof b === "number") return Math.abs(Number(a) - Number(b)) < 1e-6; if (typeof a === "boolean" || typeof b === "boolean") return String(a) === String(b); return String(a).toLowerCase() === String(b).toLowerCase(); }
+  function renderPanel() {
+    const panel = document.getElementById("panel");
+    const rec = MONTHS.find(x => x.month === cur);
+    const h = H[cur];
+    const out = [el("div", { class: "eyebrow", text: monthLabel(cur) + " · " + monthSub(cur) }), el("h2", { text: "The council" })];
+    if (!rec) { out.push(el("p", { class: "muted", text: "No council record for this month (the run was driven without a council)." })); panel.replaceChildren(...out); return; }
+    if (rec.integrity && rec.integrity.status === "warnings") out.push(el("div", { class: "alert warn" },
+      el("strong", { text: "State integrity warning. " }),
+      (rec.integrity.warnings || []).map(x => x.code + ": " + x.detail).join(" ")));
+    // Force and breaks first.
+    for (const co of rec.coups || []) out.push(el("div", { class: "alert" }, el("strong", { text: "Coup " + (co.success ? "succeeded" : "failed") + ". " }),
+      memberName(co.leader) + " (" + D.mapping[co.leader] + ") used armed force" + (co.handover ? " to stay in power after losing the election" : "") +
+      (co.targets.length ? " against " + co.targets.map(memberName).join(", ") : "") + ". Estimated odds " + pct(co.p_success) +
+      (co.plotters.length > 1 ? "; joined by " + co.plotters.filter(p => p !== co.leader).map(memberName).join(", ") : "") + "."));
+    for (const d of rec.defiance || []) out.push(el("div", { class: "alert warn", text: memberName(d.member) + " defied the council on " + d.lever + ": directive " + fmt(d.directive) + ", ordered " + fmt(d.value) + "." }));
+    for (const r of rec.resigned || []) out.push(el("div", { class: "alert warn", text: memberName(r) + " resigned." }));
+    // Events.
+    const evs = (h.events || []).filter(e => e.kind !== "council" && e.kind !== "fatality_counter")
+      .sort((a, b) => (b.importance || 1) - (a.importance || 1));
+    if (evs.length) out.push(section("What happened", el("ul", { class: "events" }, evs.slice(0, 12).map(e => el("li", { class: "i" + (e.importance || 1) + (e.public === false ? " secret" : ""), text: (e.public === false ? "Confidential: " : "") + e.text })))));
+    const fcalls = rec.foreign_calls || [];
+    if (fcalls.length) out.push(section("Foreign strategic cabinets", ...fcalls.map(c => el("p", { class: "note", text:
+      (c.actor === "veleria" ? "Veleria" : "Dorsania") + " · " + (c.ok ? "decision received" : c.refusal ? "refused" : c.error || "no valid response") +
+      " · " + (c.served_model || c.seat || "model unavailable") + " · $" + (c.cost_usd || 0).toFixed(4) }))));
+    // Statements.
+    out.push(section(rec.agent_architecture_version >= 1 ? "Independent opening statements, published in speaking order" : "Council session, in speaking order", ...(rec.statements || []).map(st => el("div", { class: "speech" },
+      el("span", { class: "who" }, dot(st.member)), el("p", { text: st.statement || "(no statement)" }),
+      st.principles ? el("p", { class: "muted", text: (st.principles_changed ? "Revised principles: " : "Public principles: ") + st.principles }) : null,
+      ...(st.invalid || []).map(b => el("span", { class: "bad", text: "Invalid motion rejected: " + b }))))));
+    if (Object.keys(rec.pre_positions || {}).length) out.push(section("Private opening positions · analyst view",
+      ...Object.entries(rec.pre_positions).map(([mid, position]) => el("div", { class: "speech" },
+        el("span", { class: "who" }, dot(mid)),
+        position && typeof position === "object"
+          ? el("p", { text: [["Main problem", position.main_problem], ["Prefers", position.preferred_policy],
+              ["Unacceptable", position.unacceptable_outcome], ["Would support", position.would_support],
+              ["Would oppose", position.would_oppose]].filter(x => x[1]).map(x => x[0] + ": " + x[1]).join(" · ") || "(no position recorded)" })
+          : el("p", { text: position || "(no position recorded)" })))));
+    renderV2Month(rec, h, out);
+    if ((rec.commitments_added || []).length) {
+      const promises = rec.commitments_added.map(x => el("div", { class: "speech" },
+        el("span", { class: "who" }, dot(x.member)),
+        el("p", { text: (x.to && x.to !== "public" ? "To " + x.to + ": " : "Public: ") + x.text + (x.condition ? " · if " + x.condition : "") })));
+      out.push(section("Political promises made", ...promises));
+    }
+    const ties = [];
+    for (const [source, state] of Object.entries(rec.social || {})) for (const [target, rel] of Object.entries(state.relationships || {})) {
+      ties.push(el("tr", {}, el("td", { text: memberName(source) + " → " + memberName(target) }),
+        ...["trust", "respect", "fear", "resentment", "rivalry", "dependency", "ideological_affinity", "perceived_reliability"]
+          .map(key => el("td", { class: "num", text: Math.round(rel[key] || 0) }))));
+    }
+    if (ties.length) {
+      const relationshipTable = el("table", {},
+        el("thead", {}, el("tr", {}, ["Direction", "Trust", "Respect", "Fear", "Resentment", "Rivalry", "Dependency", "Ideological affinity", "Reliability"].map(x => el("th", { text: x })))),
+        el("tbody", {}, ties));
+      out.push(section("Directional relationship estimates · engine tracked", el("div", { class: "tablewrap" }, relationshipTable)));
+    }
+    // Motions and votes.
+    if ((rec.motions || []).length) {
+      const t = el("table", {}, el("thead", {}, el("tr", {}, el("th", { text: "Motion" }), el("th", { text: "Tabled by" }), ...LETTERS.map(l => el("th", { class: "c" }, dot(l))), el("th", { text: "Result" }))),
+        el("tbody", {}, rec.motions.map(mo => el("tr", {},
+          el("td", {}, el("strong", { text: mo.id + " " }), mo.summary, mo.text && mo.type !== "amend" ? el("div", { class: "muted", text: "“" + mo.text + "”" }) : null),
+          el("td", { text: memberName(mo.proposer) }),
+          ...LETTERS.map(l => { const v = (mo.votes || {})[l]; return el("td", { class: "c " + (v === "yes" ? "vote-yes" : v === "no" ? "vote-no" : "vote-abs"), text: v === "yes" ? "yes" : v === "no" ? "no" : v ? "–" : "" }); }),
+          el("td", {}, el("span", { class: "res " + (mo.passed ? "pass" : "fail"), text: motionStatus(mo) }),
+            motionReason(mo) ? el("div", { class: "muted", text: motionReason(mo) }) : null,
+            mo.result && !mo.passed && mo.result.startsWith("lapsed") ? el("div", { class: "muted", text: mo.result }) : null,
+            mo.result && mo.passed && /conditionally|blocked/i.test(mo.result) ? el("div", { class: "muted", text: mo.result }) : null,
+            (mo.conditions || []).length ? el("div", { class: "muted", text: "conditions: " + mo.conditions.map(c => c.metric + " " + c.operator + " " + c.value).join("; ") }) : null,
+            (mo.condition_results || []).length ? el("div", { class: "muted", text: "checked: " + mo.condition_results.map(c => c.metric + " " + (c.met ? "met" : "unmet")).join("; ") }) : null,
+            mo.type === "disaster_relief" && mo.authorized_action ? el("div", { class: "muted", text: "Authorized relief: " + JSON.stringify(mo.authorized_action) }) : null,
+            mo.implementation ? el("div", { class: "muted", text: "Implementation: authorized " + fmt(mo.implementation.approved_amount) + ", raised " + fmt(mo.implementation.executed_amount) + ", shortfall " + fmt(mo.implementation.remaining_amount) + (mo.implementation.funding_plan ? " · " + mo.implementation.funding_plan.map(x => x.source + " " + fmt(x.executed_amount) + "/" + fmt(x.requested_amount)).join(", ") : "") }) : null,
+            mo.amended ? el("div", { class: "muted", text: "amended after the opening round" }) : null,
+            mo.forced ? el("div", { class: "muted", text: "forced onto the agenda" }) : null,
+            (mo.cosponsors || []).length ? el("div", { class: "muted", text: "co-sponsored by " + mo.cosponsors.join(", ") }) : null)))));
+      out.push(section("Motions and votes", el("div", { class: "tablewrap" }, t)));
+      const conv = ((D.convergence || {}).months || []).find(x => x.month === rec.month);
+      if (conv) out.push(convergencePanel(conv));
+      const explanations = rec.motions.flatMap(mo => Object.entries(mo.vote_reasons || {})
+        .filter(([, reason]) => reason)
+        .map(([mid, reason]) => el("div", { class: "speech" },
+          el("span", { class: "who" }, dot(mid), " · " + mo.id + " · " + ((mo.votes || {})[mid] || "abstain")),
+          el("p", { text: reason }),
+          (mo.conditional_votes || {})[mid] ? el("p", { class: "muted", text:
+            "Condition " + JSON.stringify(mo.conditional_votes[mid].condition) +
+            " · observed " + mo.conditional_votes[mid].observed +
+            " · " + (mo.conditional_votes[mid].met ? "met" : "unmet") }) : null)));
+      if (explanations.length) out.push(section("Reasons for individual votes", ...explanations));
+    } else out.push(section("Motions and votes", el("p", { class: "muted", text: "No motions were tabled." })));
+    // Orders that changed a setting.
+    const prev = prevPolicy(cur) || {};
+    const rows = [];
+    for (const [mid, dec] of Object.entries(rec.decisions || {})) {
+      const changes = [];
+      for (const [office, levers] of Object.entries(dec.orders || {})) for (const [k, v] of Object.entries(levers || {})) {
+        let before = prev[k];
+        if (k === "patronage") before = (prev.patronage || {})[office];
+        if (k.startsWith("deploy_")) continue;
+        if (before === undefined || same(before, v)) continue;
+        changes.push(el("span", { class: "change" }, k + " ", el("s", { text: fmt(before) }), " → " + fmt(v)));
+      }
+      if (dec.coup) changes.push(el("span", { class: "change", text: "ordered a coup: " + dec.coup.action + (dec.coup.members && dec.coup.members.length ? " " + dec.coup.members.join(", ") : "") }));
+      if (changes.length) rows.push(el("div", {}, dot(mid), el("div", {}, changes.map((c, i) => [i ? " · " : "", c]))));
+    }
+    out.push(section("Orders that changed a setting", rows.length ? el("div", { class: "orders" }, rows) : el("p", { class: "muted", text: "No office holder changed a setting." })));
+    const factors = Object.entries(rec.decisions || {}).filter(([, d]) => (d.decision_factors || []).length)
+      .map(([mid, d]) => el("div", { class: "speech" }, el("span", { class: "who" }, dot(mid)),
+        el("p", { text: d.decision_factors.join(" · ") })));
+    if (factors.length) out.push(section("Recorded decision factors · concise evidence labels, not chain of thought", ...factors));
+    // Private messages.
+    const dms = (D.dms || []).filter(d => d.month === cur);
+    const caught = new Set((D.intercepts || []).filter(i => i.month === cur).map(i => i.from + ">" + i.to + ">" + i.text));
+    out.push(section("Private messages sent this month", dms.length ? dms.map(d => el("div", { class: "dm" },
+      el("div", { class: "route" }, dot(d.from), "→", dot(d.to), el("span", { text: d.phase === "decision" || (d.when || "").indexOf("phase 2") >= 0 || (d.when || "").indexOf("decision") >= 0 ? "after the vote, read next month" : "during the session" }),
+        d.kind && d.kind !== "message" ? el("span", { class: "tag", text: d.kind }) : null,
+        caught.has(d.from + ">" + d.to + ">" + d.text) ? el("span", { class: "flag", text: "intercepted by Interior" }) : null),
+      el("div", { class: "txt", text: d.text }))) : [el("p", { class: "muted", text: "None." })]));
+    // Notes and calls.
+    const notes = Object.entries(rec.decisions || {}).filter(([, d]) => d.notes);
+    if (notes.length) out.push(el("details", {}, el("summary", { text: "Private notes each AI wrote for itself" }),
+      ...notes.map(([mid, d]) => el("div", {}, el("div", { class: "route" }, dot(mid)), el("p", { class: "note", text: d.notes })))));
+    const calls = rec.calls || [];
+    if (calls.length) out.push(el("details", {}, el("summary", { text: "Model calls this month (" + calls.filter(c => !c.ok).length + " failed or unreadable · " + calls.filter(c => (c.problems || []).length).length + " with output warnings)" }),
+      el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Member", "Phase", "Answered by", "Status", "Retry", "Seconds", "Cost", "Output warnings"].map(x => el("th", { text: x })))),
+        el("tbody", {}, calls.map(c => el("tr", {}, el("td", {}, dot(c.member)), el("td", { text: c.phase }), el("td", { class: "mono", text: c.served_model || "-" }),
+          el("td", { text: c.refusal ? "refused" : c.ok ? ((c.problems || []).length ? "yes · warning" : "yes") : "no" + (c.error ? ": " + c.error.slice(0, 80) : "") }), el("td", { text: c.format_retry ? "yes" : "" }),
+          el("td", { class: "num", text: (c.latency_s || 0).toFixed(1) }), el("td", { class: "num", text: "$" + (c.cost_usd || 0).toFixed(4) }),
+          el("td", { text: (c.problems || []).join("; ") || "" }))))))));
+    panel.replaceChildren(...out);
+  }
+  function section(title, ...kids) { return el("div", { class: "panel-section" }, el("h3", { text: title }), ...kids); }
+  // A unanimous vote can mean five delegates agreed before anyone spoke, or that they opened on
+  // competing levels, bargained, and one withdrew. This shows which one happened, and why.
+  function integrityBanner(integ) {
+    if (!integ.findings || !integ.findings.length) return null;
+    const rows = integ.findings.map(function (f) {
+      const left = el("td", {}, el("b", { text: "Month " + (f.month + 1) + " · " + f.motion }),
+        el("div", { class: "muted", text: "proposed by " + f.proposer }));
+      const executed = f.structured_action.action_type + " → " + f.structured_action.target;
+      const right = el("td", {}, el("div", { text: "text: " + String(f.prose).slice(0, 200) }),
+        el("div", { class: "muted", text: "executed as: " + executed }),
+        el("div", { class: "muted", text: String(f.recorded_result || "") }));
+      return el("tr", {}, left, right);
+    });
+    const kids = [el("h3", { text: "Behavioural integrity · " + integ.classification }),
+      el("p", { text: integ.explanation }),
+      el("p", { class: "muted", text: "The run's statements, motions, votes and results are recorded unchanged."
+        + (integ.last_clean_month !== undefined && integ.last_clean_month !== null
+           ? " Last month with no wrongly-executed motion: Month " + (integ.last_clean_month + 1) + "." : "") }),
+      el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, rows)))];
+    if (integ.replay && integ.replay.how) kids.push(el("p", { class: "muted", text: "Replay: " + integ.replay.how }));
+    return el("div", { class: "card" }, kids);
+  }
+  function motionStatus(mo) {
+    // The record stores one canonical status; read it rather than working one out again here.
+    if (mo.execution_status === "EXECUTION_BLOCKED") return "passed · execution blocked";
+    if (mo.execution_status === "EXECUTION_BLOCKED_CONDITION") return "passed conditionally · awaiting conditions";
+    if (mo.execution_status === "EXECUTED") return "passed · executed";
+    if (mo.status) return String(mo.status).toLowerCase().replace(/_/g, " ");
+    const result = String(mo.result || "");
+    if (mo.passed) return "passed";
+    if (mo.withdrawn) return mo.replaced_by ? "superseded" : "withdrawn";
+    if (mo.void) return "void";
+    if (result.startsWith("lapsed")) return "lapsed";
+    const votes = mo.votes || {};
+    return Object.values(votes).some(v => v === "yes" || v === "no") ? "defeated" : "no decision";
+  }
+  function motionReason(mo) {
+    if (mo.withdrawn && mo.withdrawal_reason) return "withdrawn: " + mo.withdrawal_reason;
+    if (mo.withdrawn && mo.withdrawn_by) return "withdrawn by " + mo.withdrawn_by;
+    return "";
+  }
+  function convergencePanel(conv) {
+    const pct = v => v === null || v === undefined ? "–" : Math.round(v * 100) + "%";
+    const yes = conv.negotiated_convergence_count;
+    const facts = [
+      ["Final vote unanimity", pct(conv.final_vote_unanimity) + " — " + conv.unanimous_votes + " of " + conv.votes_cast + " motions that reached a vote"],
+      ["Pre-revision divergence", conv.pre_revision_divergence + " (" + conv.pre_revision_divergence_score + ")"],
+      ["Competing policy alternatives", String(conv.competing_alternatives)],
+      ["Position changes", conv.position_changes + " — " + conv.position_changes_structured + " anchored on a tabled motion or a recorded stance"],
+      ["Strategic withdrawals", String(conv.withdrawn_motions) + (conv.superseded_motions ? " (" + conv.superseded_motions + " superseded by a rival)" : "")],
+      ["Withdrawn after opposition", String(conv.motions_withdrawn_after_opposition)],
+      ["Minority positions surviving to vote", String(conv.minority_positions_maintained)],
+      ["Negotiated convergence", yes ? "YES (" + yes + " motion" + (yes > 1 ? "s" : "") + ")" : "no"]];
+    const kids = [el("dl", { class: "kv" }, facts.map(([k, v]) => [el("dt", { text: k }), el("dd", { text: v })]))];
+    const classes = Object.entries(conv.unanimity_classification || {});
+    if (classes.length) {
+      kids.push(el("h4", { text: "Why each unanimous vote was unanimous" }));
+      const rows = classes.map(function ([id, cls]) {
+        const ev = (conv.unanimity_evidence || {})[id] || {};
+        const outcome = ev.evidence ? String(ev.evidence.outcome) : "";
+        const left = el("td", {}, el("b", { text: id }), outcome ? el("div", { class: "muted", text: "outcome: " + outcome }) : null);
+        const right = el("td", {}, el("span", { class: "res", text: cls }), el("div", { class: "muted", text: ev.because || "" }));
+        return el("tr", {}, left, right);
+      });
+      kids.push(el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, rows))));
+    }
+    for (const fam of Object.values(conv.families || {})) kids.push(familyView(fam));
+    if ((conv.minority_detail || []).length) {
+      kids.push(el("h4", { text: "Minority positions held to the vote" }));
+      kids.push(...conv.minority_detail.map(x => el("div", { class: "speech" },
+        el("span", { class: "who" }, dot(x.member), " · " + x.motion),
+        el("p", { text: "Voted " + x.vote + " against the majority (" + x.majority + "). " + (x.maintained_after_negotiation
+          ? "Stated the same position in the response round." : "Response-round stance: " + x.response_round_stance + ".") }))));
+    }
+    return section("Negotiated convergence · analyst view", ...kids);
+  }
+  function familyView(fam) {
+    const rows = [el("h4", { text: fam.label + " · contested policy family" })];
+    rows.push(el("div", { class: "muted", text: "Initial" }), el("ul", { class: "eventlist" },
+      (fam.initial || []).map(x => el("li", { text: "Delegate " + x.member + " — " + String(x.preferred).slice(0, 200) + (x.motion ? " [" + x.motion + ", tabled]" : "") }))));
+    if ((fam.after_negotiation || []).length) rows.push(el("div", { class: "muted", text: "After negotiation" }), el("ul", { class: "eventlist" },
+      fam.after_negotiation.map(x => { const bits = []; if (x.withdrew.length) bits.push("withdrew " + x.withdrew.join(", ")); if (x.supports.length) bits.push("supports " + x.supports.join(", ")); if (x.opposes.length) bits.push("opposes " + x.opposes.join(", ")); return el("li", { text: "Delegate " + x.member + " — " + bits.join("; ") }); })));
+    rows.push(el("div", { class: "muted", text: "Final" }), el("ul", { class: "eventlist" },
+      [el("li", { text: fam.outcome })].concat((fam.final || []).map(x => el("li", { text: x.motion + " · " + x.tally + " · " + x.status })))));
+    return el("div", { class: "card" }, rows);
+  }
+
+  // ---- charts ----
+  const CHARTS = [
+    { id: "opinion", title: "Approval and support for independence", fmt: v => pct(v), domain: [0, 1],
+      series: [{ key: "approval", label: "Approval", color: "var(--s1)" }, { key: "indep", label: "Independence", color: "var(--s2)" }] },
+    { id: "infl", title: "Inflation (annualized in first 12 months; trailing 12 months thereafter)", fmt: v => pct(v), log: true, series: [{ key: "infl_yoy", label: "Inflation", color: "var(--s1)" }] },
+    { id: "food", title: "Food available, share of need", fmt: v => pct(v), domain: [0, 1.25], ref: 1, series: [{ key: "food_ratio", label: "Food", color: "var(--s1)" }] },
+    { id: "gdp", title: "Output, share of start", fmt: v => pct(v), domain: [0, 1.25], ref: 1, series: [{ key: "gdp_idx", label: "Output", color: "var(--s1)" }] },
+    { id: "army", title: "Army strength", fmt: v => compact(v), series: [
+      { key: "army", label: "Karamaniya standing", color: "var(--s1)" },
+      { key: "army_field_total", label: "Karamaniya effective field strength", color: "var(--s3)" },
+      { key: "union_army", label: "Union", color: "var(--s2)" }] },
+    { id: "dem", title: "Democracy score", fmt: v => pct(v), domain: [0, 1], series: [{ key: "democracy", label: "Democracy", color: "var(--s1)" }] },
+    { id: "deaths", title: "Excess deaths, cumulative", fmt: v => compact(v), series: [{ key: "deaths_total", label: "Deaths", color: "var(--s1)" }] },
+    { id: "unrest", title: "Unrest and fear", fmt: v => v.toFixed(2), domain: [0, 1], series: [{ key: "unrest", label: "Unrest", color: "var(--s1)" }, { key: "fear", label: "Fear", color: "var(--s2)" }] },
+  ];
+  function niceStep(max, count) { const raw = max / count, p = Math.pow(10, Math.floor(Math.log10(raw))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= raw) return m * p; return 10 * p; }
+  function drawChart(host, cfg) {
+    const svg = host.querySelector("svg"); svg.replaceChildren();
+    const W = Math.max(260, svg.clientWidth || host.clientWidth - 24), Hh = 190, ml = 46, mr = 50, mt = 8, mb = 22;
+    svg.setAttribute("viewBox", "0 0 " + W + " " + Hh);
+    const vals = cfg.series.map(s => H.map(h => Number(h[s.key]) || 0));
+    const tf = cfg.log ? (v => Math.log10(1 + Math.max(0, v))) : (v => v);
+    let lo = cfg.domain ? cfg.domain[0] : 0, hi = cfg.domain ? cfg.domain[1] : Math.max(1e-9, ...vals.flat()) * 1.1;
+    if (cfg.domain && !cfg.log) hi = Math.max(hi, Math.max(...vals.flat()) * 1.05);
+    if (cfg.log) { lo = 0; hi = Math.max(1, Math.pow(10, tf(Math.max(...vals.flat())) * 1.08) - 1); }
+    const x = i => ml + (N <= 1 ? 0 : i / (N - 1) * (W - ml - mr));
+    const y = v => mt + (1 - (tf(v) - tf(lo)) / (tf(hi) - tf(lo) || 1)) * (Hh - mt - mb);
+    const ticks = [];
+    if (cfg.log) { for (const t of [0, 0.1, 1, 10, 100, 1000]) if (tf(t) <= tf(hi) + 1e-9) ticks.push(t); }
+    else { const st = niceStep(hi - lo, 4); for (let t = lo; t <= hi + 1e-9; t += st) ticks.push(t); }
+    for (const t of ticks) {
+      svg.appendChild(sv("line", { x1: ml, x2: W - mr, y1: y(t), y2: y(t), stroke: "var(--hairline)", "stroke-width": 1 }));
+      const tx = sv("text", { x: ml - 6, y: y(t) + 4, "text-anchor": "end" }); tx.textContent = cfg.fmt(t); svg.appendChild(tx);
+    }
+    svg.appendChild(sv("line", { x1: ml, x2: W - mr, y1: y(lo), y2: y(lo), stroke: "var(--axis)", "stroke-width": 1 }));
+    if (cfg.ref !== undefined) svg.appendChild(sv("line", { x1: ml, x2: W - mr, y1: y(cfg.ref), y2: y(cfg.ref), stroke: "var(--axis)", "stroke-width": 1 }));
+    const step = N > 30 ? 6 : N > 12 ? 3 : 1;
+    for (let i = 0; i < N; i += step) { const tx = sv("text", { x: x(i), y: Hh - 6, "text-anchor": "middle" }); tx.textContent = String(i + 1); svg.appendChild(tx); }
+    const clipId = "clip-" + cfg.id;
+    const defs = sv("defs", {}), clip = sv("clipPath", { id: clipId });
+    clip.appendChild(sv("rect", { x: ml, y: mt - 3, width: W - ml - mr + 1, height: Hh - mt - mb + 6 }));
+    defs.appendChild(clip); svg.appendChild(defs);
+    const clipped = "url(#" + clipId + ")";
+    const single = cfg.series.length === 1;
+    cfg.series.forEach((s, si) => {
+      const d = vals[si].map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
+      if (single) svg.appendChild(sv("path", { d: d + " L" + x(N - 1).toFixed(1) + " " + y(lo) + " L" + x(0) + " " + y(lo) + " Z", fill: s.color, "fill-opacity": 0.1, stroke: "none", "clip-path": clipped }));
+      svg.appendChild(sv("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round", "clip-path": clipped }));
+    });
+    // Selected month marker and end labels.
+    svg.appendChild(sv("line", { x1: x(cur), x2: x(cur), y1: mt, y2: Hh - mb, stroke: "var(--ink)", "stroke-width": 1, "stroke-opacity": 0.45 }));
+    const labels = [];
+    cfg.series.forEach((s, si) => {
+      const v = vals[si][cur];
+      svg.appendChild(sv("circle", { cx: x(cur), cy: y(v), r: 4, fill: s.color, stroke: "var(--surface)", "stroke-width": 2 }));
+      labels.push({ y: y(v), text: cfg.fmt(v) });
+    });
+    labels.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < 13) labels[i].y = labels[i - 1].y + 13;
+    labels.forEach(l => { const onRight = x(cur) < W - mr - 40; const tx = sv("text", { x: onRight ? x(cur) + 8 : x(cur) - 8, y: l.y + 4, "text-anchor": onRight ? "start" : "end", class: "end" }); tx.textContent = l.text; svg.appendChild(tx); });
+    // Hover: crosshair snaps to the nearest month; one tooltip lists every series.
+    const hover = sv("line", { y1: mt, y2: Hh - mb, stroke: "var(--muted)", "stroke-width": 1, visibility: "hidden" });
+    svg.appendChild(hover);
+    const hit = sv("rect", { x: ml, y: mt, width: W - ml - mr, height: Hh - mt - mb, fill: "transparent" });
+    svg.appendChild(hit);
+    const showAt = (i, cx, cy) => {
+      hover.setAttribute("x1", x(i)); hover.setAttribute("x2", x(i)); hover.setAttribute("visibility", "visible");
+      showTip(cx, cy, [el("div", { class: "t", text: monthLabel(i) + " · " + monthSub(i) }), ...cfg.series.map((s, si) =>
+        el("div", { class: "row" }, el("span", { class: "key", style: "background:" + s.color }), el("strong", { text: cfg.fmt(vals[si][i]) }), el("span", { text: s.label })))]);
+    };
+    hit.addEventListener("pointermove", ev => { const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * W / r.width; const i = Math.max(0, Math.min(N - 1, Math.round((px - ml) / (W - ml - mr) * (N - 1)))); showAt(i, ev.clientX, ev.clientY); });
+    hit.addEventListener("pointerleave", () => { hover.setAttribute("visibility", "hidden"); hideTip(); });
+    hit.addEventListener("click", () => { const hx = Number(hover.getAttribute("x1")); const i = Math.round((hx - ml) / (W - ml - mr) * (N - 1)); if (i >= 0) setMonth(i); });
+    svg.onfocus = () => { const r = svg.getBoundingClientRect(); showAt(cur, r.left + r.width / 2, r.top); };
+    svg.onblur = hideTip;
+  }
+  function buildCharts() {
+    const host = document.getElementById("charts");
+    for (const cfg of CHARTS) {
+      const legend = cfg.series.length > 1 ? el("div", { class: "legend" }, cfg.series.map(s => el("span", {}, el("span", { class: "lk", style: "background:" + s.color }), s.label))) : null;
+      const box = el("div", { class: "chart", "data-id": cfg.id }, el("div", { class: "ttl" }, el("h3", { text: cfg.title }), legend));
+      const svg = document.createElementNS(svgNS, "svg"); svg.setAttribute("tabindex", "0"); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", cfg.title);
+      box.appendChild(svg); host.appendChild(box); cfg.host = box;
+    }
+    const headers = ["Month", ...CHARTS.flatMap(c => c.series.map(s => c.series.length > 1 ? s.label : c.title))];
+    const table = el("table", {}, el("thead", {}, el("tr", {}, headers.map(h => el("th", { text: h })))),
+      el("tbody", {}, H.map((h, i) => el("tr", {}, el("td", { class: "num", text: String(i + 1) }), ...CHARTS.flatMap(c => c.series.map(s => el("td", { class: "num", text: c.fmt(Number(h[s.key]) || 0) })))))));
+    document.getElementById("datatable").replaceChildren(table);
+  }
+  function drawCharts() { for (const cfg of CHARTS) drawChart(cfg.host, cfg); }
+
+  // ---- power grid ----
+  function renderPower() {
+    const g = document.getElementById("power");
+    g.style.gridTemplateColumns = "max-content repeat(" + N + ", minmax(16px, 1fr))";
+    const kids = [el("div", { class: "rowlabel", text: "" })];
+    const marks = [];
+    for (let i = 0; i < N; i++) {
+      const evs = (H[i].events || []).map(e => e.kind);
+      const color = evs.includes("coup") || evs.includes("officers_coup") ? "var(--critical)" : evs.includes("election") ? "var(--accent)" : evs.includes("war") ? "var(--serious)" : null;
+      marks.push(el("div", { class: "pmark", title: color ? evs.filter(k => ["coup", "officers_coup", "election", "war"].includes(k)).join(", ") + " in " + monthLabel(i) : "" }, color ? el("span", { style: "background:" + color }) : null));
+    }
+    kids.push(...marks);
+    for (const o of OFFICES) {
+      kids.push(el("div", { class: "rowlabel", text: OFFICE_NAME[o] }));
+      for (let i = 0; i < N; i++) {
+        const who = (H[i].offices || {})[o];
+        kids.push(el("div", { class: "pcell" + (who ? "" : " empty") + (i === cur ? " sel" : ""), "data-m": i, style: who ? "background:" + SLOT[who] : "", title: OFFICE_NAME[o] + ", " + monthLabel(i) + ": " + (who ? memberName(who) + " (" + D.mapping[who] + ")" : "vacant"), text: who || "·" }));
+      }
+    }
+    kids.push(el("div", { class: "rowlabel", text: "" }));
+    for (let i = 0; i < N; i++) kids.push(el("div", { class: "pmonth", text: (i % 3 === 0 || i === N - 1) ? String(i + 1) : "" }));
+    g.replaceChildren(...kids);
+    g.onclick = ev => { const c = ev.target.closest("[data-m]"); if (c) setMonth(Number(c.getAttribute("data-m"))); };
+    document.getElementById("powerlegend").replaceChildren(
+      ...LETTERS.map(l => el("span", {}, el("span", { class: "sw", style: "background:" + SLOT[l] }), memberName(l) + " · " + D.mapping[l])),
+      el("span", {}, el("span", { class: "sw", style: "background:var(--critical);border-radius:50%" }), "coup"),
+      el("span", {}, el("span", { class: "sw", style: "background:var(--accent);border-radius:50%" }), "election"),
+      el("span", {}, el("span", { class: "sw", style: "background:var(--serious);border-radius:50%" }), "war starts"));
+  }
+
+  function renderGeopolitics() {
+    const host = document.getElementById("geopolitics"), g = D.geopolitics || {};
+    const union = g.union || {}, actors = g.actors || {}, league = g.league || {};
+    const unionRows = (union.history || []).map(x => el("li", { text: monthLabel(x.month) + ": cohesion " + pct(x.cohesion) +
+      ", agreement " + pct(x.agreement) + " · Veleria " + x.veleria + ", Dorsania " + x.dorsania }));
+    const actorRows = Object.entries(actors).map(([id, a]) => el("article", { class: "member" },
+      el("header", {}, el("strong", { text: id === "veleria" ? "Veleria" : "Dorsania" }),
+        el("span", { class: "model", text: "Current strategy: " + (a.strategy || "not recorded") })),
+      (a.strategy_history || []).length ? el("ul", {}, a.strategy_history.map(x => el("li", { text: monthLabel(x.month) + ": " + x.from + " → " + x.to + " · trigger: " + x.trigger }))) : null,
+      (a.actions || []).length ? el("ul", {}, a.actions.map(x => el("li", { text: monthLabel(x.month) + ": " + x.type.replaceAll("_", " ") +
+        (x.decision_factors && x.decision_factors.length ? " · factors: " + x.decision_factors.join(", ") : "") }))) : null,
+      el("details", {}, el("summary", { text: "Beliefs, domestic pressures and relationships · omniscient debug" }),
+        el("p", { class: "note", text: "Subjective estimates and hidden foreign state; these were not shown to Karamaniya's delegates." }),
+        el("h4", { text: "Beliefs" }), el("ul", {}, Object.entries(a.beliefs || {}).map(([k, v]) => el("li", { text: k.replaceAll("_", " ") + ": " + pct(v.value) + " · confidence " + pct(v.confidence) }))),
+        el("h4", { text: "Domestic constituencies" }), el("ul", {}, Object.entries(a.constituencies || {}).map(([k,v]) => el("li", { text: k.replaceAll("_", " ") + ": " + pct(v) }))),
+        el("h4", { text: "Relationships" }), el("ul", {}, Object.entries(a.relations || {}).map(([k,v]) => el("li", { text: k + ": trust " + pct(v.trust) + ", hostility " + pct(v.hostility) + ", dependence " + pct(v.dependence) }))),
+        el("h4", { text: "Strategic disposition" }), el("ul", {}, Object.entries(a.disposition || {}).map(([k,v]) => el("li", { text: k.replaceAll("_", " ") + ": " + pct(v) }))))));
+    const debug = el("details", {}, el("summary", { text: "League finance, shipping and Union security chain · omniscient debug" }),
+      el("p", { class: "note", text: "This analyst view includes private estimates and state. Karamaniya received only intelligence ranges and observable evidence." }),
+      el("p", { text: "League strategy: " + (league.strategy || "not recorded") + "; exposure " + pct(league.financial_exposure || 0) +
+        "; shipping risk " + pct(league.shipping_security_concern || 0) + "; loan risk " + pct((league.loan || {}).default_risk || 0) }),
+      el("ul", {}, (g.escalation_chains || []).map(x => el("li", { text: monthLabel(x.month) + " · " + x.actor + ": " + x.signal +
+        (x.magnitude ? " (" + int(x.magnitude) + ")" : "") + "; estimated threat belief " + pct(x.threat_belief || 0) }))),
+      el("h4", { text: "Foreign memory and explainable factors" }),
+      el("ul", {}, (g.decisions || []).slice(-48).map(x => el("li", { text: monthLabel(x.month) + " · " + x.actor + ": " + x.text +
+        (x.decision_factors && x.decision_factors.length ? " · factors: " + x.decision_factors.join(", ") : "") }))),
+      el("h4", { text: "Diplomatic messages" }),
+      el("ul", {}, (g.diplomatic_messages || []).slice(-24).map(x => el("li", { text: monthLabel(x.month) + " · " + x.from + ": " + x.text }))));
+    host.replaceChildren(el("div", { class: "eyebrow", text: "Foreign strategy and Union cohesion" }),
+      el("h2", { text: "Geopolitics" }),
+      el("div", { class: "cards" },
+        el("article", { class: "member" }, el("h3", { text: "Solvaran Union" }),
+          el("p", { text: "Final cohesion " + pct(union.cohesion || 0) + "; military coordination " + pct(union.military_coordination || 0) +
+            "; economic integration " + pct(union.economic_integration || 0) + "; political trust " + pct(union.political_trust || 0) }),
+          unionRows.length ? el("ul", {}, unionRows) : el("p", { class: "muted", text: "No Union consultations were recorded." })),
+        ...actorRows),
+      el("p", { class: "note", text: "Foreign cabinet calls: " + ((D.scorecard.foreign_cabinets || {}).calls || 0) +
+        " · total cost $" + (((D.scorecard.foreign_cabinets || {}).cost_usd || 0).toFixed(4)) }), debug);
+  }
+
+  // ---- scorecard ----
+  const HOW = { expelled: "Expelled by the council", coup: "Removed in a coup", failed_coup: "Arrested after a failed coup", voted_out: "Voted out with the government",
+    revolution: "Overthrown by revolution", resigned: "Resigned", officers_coup: "Removed by the officers' coup" };
+  function renderMembers() {
+    const host = document.getElementById("members");
+    host.replaceChildren(...LETTERS.map(l => {
+      const m = D.scorecard.members[l];
+      const offices = Object.entries(m.office_months || {}).map(([o, n]) => OFFICE_NAME[o] + " " + n).join(", ") || "none";
+      const served = Object.keys(m.served_models || {}).join(", ") || "-";
+      const status = m.status === "active" ? "In office at the end" : (HOW[m.removed_how] || m.removed_how) + " in " + monthLabel(m.removed_month);
+      const rows = [["Offices (months)", offices], ["Motions tabled / passed", m.motions_tabled + " / " + m.motions_passed],
+        ["Opening principles", (m.ideology_history || [])[0]?.text || "none"],
+        ["Current principles", m.ideology || "none"],
+        ["Principles revisions", (m.ideology_history || []).length > 1 ? (m.ideology_history.length - 1) : 0],
+        ["Private opening positions recorded", m.opening_positions_recorded || 0],
+        ["Decisions with stated factors", (m.decision_factors_recorded || 0) + " · " + (m.decision_factor_items || 0) + " factors"],
+        ["Promises made / broken", (m.promises_made || 0) + " / " + (m.broken_promises || 0)],
+        ["Open political favors / grievances", (m.favor_debts || []).length + " / " + (m.grievances || []).length],
+        ["Declared principles violated", m.commitment_violations || 0],
+        ["Repressive motions tabled", m.repressive_tabled], ["Voted yes on repressive motions", m.repressive_yes + " of " + m.repressive_votes],
+        ["Election delays tabled / backed", m.election_delay_tabled + " / " + m.election_delay_yes], ["Coups led (won)", m.coups_led + " (" + m.coups_led_success + ")"],
+        ["Coups joined", m.coups_joined], ["Defied the council", m.defiance], ["Private messages sent", m.dms_sent],
+        ["Intercepts read", m.intercepts_read], ["Refusals", m.refusals], ["Failed or unreadable answers", m.bad_output],
+        ["Cost", "$" + (m.cost_usd || 0).toFixed(2)]];
+      return el("article", { class: "member" },
+        el("header", {}, dot(l), el("div", {}, el("strong", { text: memberName(l) }), el("span", { class: "model", text: m.label }))),
+        el("span", { class: "status", text: status }),
+        m.private_disposition ? el("details", {}, el("summary", { text: "Seeded private disposition · analyst view" }),
+          el("p", { class: "note", text: m.private_disposition })) : null,
+        Object.keys(m.constituency_standing || {}).length ? el("details", {},
+          el("summary", { text: "Constituency standing · final month" }),
+          el("ul", {}, Object.entries(m.constituency_standing).sort((a, b) => (b[1].political_importance || 0) - (a[1].political_importance || 0)).map(([name, x]) =>
+            el("li", { text: name + ": support " + pct(x.support_for_delegate) + ", satisfaction " + pct(x.satisfaction) + ", mobilization " + pct(x.mobilization) + " · priorities: " + (x.priorities || []).slice(0, 2).join(", ") })))) : null,
+        (m.promise_history || []).length ? el("details", {}, el("summary", { text: "Promise record" }),
+          el("ul", {}, m.promise_history.map(x => el("li", { text: "Month " + (x.month + 1) + " · " + x.status + ": " + x.text })))) : null,
+        Object.keys(m.relationships || {}).length ? el("details", {}, el("summary", { text: "Relationships and political obligations · analyst view" }),
+          el("ul", {}, Object.entries(m.relationships).map(([other, x]) => el("li", { text:
+            memberName(other) + ": trust " + Math.round(x.trust || 0) + ", respect " + Math.round(x.respect || 0) +
+            ", rivalry " + Math.round(x.rivalry || 0) + ", resentment " + Math.round(x.resentment || 0) }))),
+          el("ul", {}, (m.favor_debts || []).map(x => el("li", { text: "Owes " + memberName(x.to) + " for " + x.motion }))),
+          el("ul", {}, (m.grievances || []).map(x => el("li", { text: "Grievance toward " + memberName(x.against) + ": " + x.reason })))) : null,
+        el("dl", {}, rows.map(([k, v]) => [el("dt", { text: k }), el("dd", { text: String(v) })])),
+        el("div", { class: "muted", style: "font-size:12px", text: "Answered by: " + served }));
+    }));
+    const Q = { election: "Election during a blockade", protests: "Police response to protests", statistics: "Publishing bad statistics",
+      coup_invite: "Invited to a coup", hand_over_command: "Ordered to hand over the army", union_terms: "Union's reunification offer",
+      minority: "Minority accused of treason", food: "Harvest failure", lost_election: "Lost the election" };
+    const keys = Object.keys(Q);
+    const t = el("table", { class: "said-did" }, el("thead", {}, el("tr", {}, el("th", { text: "Situation" }), ...LETTERS.map(l => el("th", {}, dot(l))))),
+      el("tbody", {}, keys.map(k => el("tr", {}, el("td", { text: Q[k] }), ...LETTERS.map(l => {
+        const row = ((D.scorecard.members[l] || {}).survey || []).find(r => r.question === k) || {};
+        const mark = row.match === true ? el("span", { class: "match y", text: " ✓" }) : row.match === false ? el("span", { class: "match n", text: " ✗" }) : null;
+        return el("td", { title: row.reason || "" }, el("div", { text: "said " + (row.said || "-").replace(/_/g, " ") }), el("div", { class: "muted" }, row.did ? "did " + row.did.replace(/_/g, " ") : "not tested", mark));
+      })))));
+    document.getElementById("saiddid").replaceChildren(t);
+  }
+
+  // ---- version 2: agenda, revisions, issues, leaks, information, persuasion (spec 33, 37, 67, 89, 90, 93) ----
+  function renderV2Month(rec, h, out) {
+    if (!rec || (rec.agent_architecture_version || 0) < 2) return;
+    const v2 = h.v2 || {};
+    const agenda = [];
+    if (rec.agenda_capacity) agenda.push(el("p", { class: "muted", text: "Agenda capacity " + rec.agenda_capacity + " substantive motions" +
+      ((rec.agenda_priorities || []).length ? " · Head's priorities: " + rec.agenda_priorities.join(", ") : "") }));
+    for (const n of rec.agenda_notes || []) agenda.push(el("div", { class: "speech" }, el("span", { class: "tag", text: n.code }), el("p", { text: n.motion + ": " + n.explanation })));
+    for (const r of rec.rejected_motions || []) agenda.push(el("div", { class: "speech" }, el("span", { class: "who" }, dot(r.member), " ", el("span", { class: "tag", text: r.reason_code })),
+      el("p", { text: (r.motion.type + " " + (r.motion.subject || "") + " " + (r.motion.value || "")).trim() + " — " + r.explanation })));
+    for (const d of rec.deferred || []) agenda.push(el("p", { class: "muted", text: "Deferred to next month: " + d }));
+    if (agenda.length) out.push(section("Agenda and rejected motions", ...agenda));
+    const revs = Object.entries(rec.revisions || {}).map(([mid, r]) => {
+      const bits = [];
+      if (r.response) bits.push("“" + r.response + "”");
+      if ((r.withdrawn || []).length) bits.push("withdrew " + r.withdrawn.join(", "));
+      for (const rejected of r.rejected_withdrawals || []) bits.push("attempted to withdraw " + rejected.motion + " in favour of " + rejected.target + "; rejected: " + rejected.explanation);
+      if ((r.amended || []).length) bits.push("amended " + r.amended.join(", "));
+      for (const d of r.demands || []) bits.push("demands on " + d.motion_id + ": " + d.demand);
+      const st = Object.entries(r.stances || {}).map(([k, v]) => k + " " + v).join(", ");
+      return bits.length || st ? el("div", { class: "speech" }, el("span", { class: "who" }, dot(mid)), el("p", { text: bits.join(" · ") || "(no public response)" }),
+        st ? el("p", { class: "muted", text: "Provisional stances (private): " + st }) : null) : null;
+    }).filter(Boolean);
+    if (revs.length) out.push(section("Responses and revisions", ...revs));
+    const comms = (rec.communications || []).map(c => el("li", { text: memberName(c.member) + " · " + c.kind.replace(/_/g, " ") + " → " + (LETTERS.includes(c.target) ? memberName(c.target) : c.target) + (c.about ? ": " + c.about : "") }));
+    if (comms.length) out.push(section("Public political communications", el("ul", { class: "events" }, comms)));
+    const issues = (v2.issues || []).map(i => el("li", { text: i.title + " — " + (i.text || "") + (i.target ? " (" + memberName(i.target) + ")" : "") }));
+    const ended = (v2.issues_ended || []).map(i => el("li", { class: "i1", text: i.title + ": " + i.outcome }));
+    if (issues.length || ended.length) out.push(section("Live issues", el("ul", { class: "events" }, issues, ended)));
+    const press = (v2.narratives || []).map(n => el("li", { text: n.bloc + " press · " + n.text }));
+    const leaks = (rec.leaks || []).map(l => el("li", { class: "i2", text: "Leak (" + l.kind + ")" + (l.message_id ? " " + l.message_id : "") + ": " + (l.headline || "") +
+      (l.from || l.to ? " · " + (l.from || "unknown") + " → " + (l.to || "public") : "") +
+      (l.text ? " · published text: “" + l.text + "”" : "") + (l.contradiction ? " — contradicts public statements" : "") }));
+    if (press.length || leaks.length) out.push(section("Press and leaks", el("ul", { class: "events" }, leaks, press)));
+    const reports = (v2.reports || []);
+    if (reports.length) {
+      const t = el("table", {}, el("thead", {}, el("tr", {}, ["Report", "Office", "Estimate (range)", "Engine truth", "Accurate", "Error", "Shared with"].map(x => el("th", { text: x })))),
+        el("tbody", {}, reports.map(r => el("tr", {}, el("td", { class: "mono", text: r.id + " " + r.subject }), el("td", { text: r.office }),
+          el("td", { class: "num", text: fmt(r.estimate) + " (" + fmt(r.low) + "–" + fmt(r.high) + ") " + r.confidence }),
+          el("td", { class: "num", text: fmt(r.truth) }), el("td", { text: r.accurate ? "yes" : "NO" }), el("td", { text: r.error === "lens" ? "department lens" : r.error }),
+          el("td", { text: (r.shared_with || []).join(", ") || (r.alarming ? "withheld (alarming)" : "-") })))));
+      out.push(el("details", {}, el("summary", { text: "Office intelligence this month · analyst view with engine truth (" + reports.filter(r => !r.accurate).length + " wrong)" }),
+        el("div", { class: "tablewrap" }, t)));
+    }
+    const disputes = (v2.contested || []).map(c => el("li", { text: c.subject.replace(/_/g, " ") + ": " +
+      Object.entries(c.reports || {}).map(([o, r]) => o + " " + fmt(r.estimate) + " (" + fmt(r.low) + "–" + fmt(r.high) + ")").join(" vs ") +
+      " · engine truth " + fmt(c.truth) + " · closer: " + c.closer }));
+    const vindicated = (v2.vindications || []).map(x => el("li", { class: "i2", text: memberName(x.member) + " stood alone against the " +
+      x.policy + " change of Month " + (x.month_adopted + 1) + "; three months on " + x.target + " is worse (vindicated)" }));
+    const byMember = {};
+    for (const c of rec.vote_costs || []) (byMember[c.member] = byMember[c.member] || []).push(c);
+    const reactions = Object.entries(byMember).map(([mid, rows]) => el("li", { text: memberName(mid) + ": " +
+      rows.slice().sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 4)
+        .map(c => c.audience + " " + (c.delta > 0 ? "+" : "") + fmt(c.delta) + " (" + c.vote + " on " + c.motion + ")").join(", ") }));
+    if (disputes.length || vindicated.length || reactions.length) out.push(el("details", {},
+      el("summary", { text: "Disputed readings, vindicated dissent and audience reactions to votes · analyst view" }),
+      disputes.length ? el("p", { class: "muted", text: "Departments reading one subject differently (each report says only that the other reads it higher or lower):" }) : null,
+      disputes.length ? el("ul", { class: "events" }, disputes) : null,
+      vindicated.length ? el("ul", { class: "events" }, vindicated) : null,
+      reactions.length ? el("p", { class: "muted", text: "Support among each delegate's own audiences, moved by recorded votes:" }) : null,
+      reactions.length ? el("ul", { class: "events" }, reactions) : null));
+    const ev = (rec.promise_evaluations || []).map(p => el("li", { text: memberName(p.member) + " " + p.verdict + ": “" + p.text + "”" + (p.to && p.to !== "public" ? " (to " + memberName(p.to) + ")" : "") }));
+    if (ev.length) out.push(section("Promise ledger", el("ul", { class: "events" }, ev)));
+    const er = Object.entries(rec.election_responses || {}).map(([mid, r]) => el("li", { text: memberName(mid) + ": " + r.replace(/_/g, " ") }));
+    if (er.length) out.push(section("Responses to the election result", el("ul", {}, er)));
+    const an = rec.analytics || {};
+    const pers = (an.persuasion || []).map(p => el("li", { text: memberName(p.member) + " on " + p.motion + ": " + p.from + " → " + p.to + " (" + p.stage + "; likely: " + p.likely_reasons.join(", ") + ")" }));
+    const div = (an.divergence || []).map(d => el("li", { text: memberName(d.member) + (d.target ? " about " + memberName(d.target) : "") + ": " + d.category.replace(/_/g, " ") + " — " + d.evidence }));
+    const herd = an.herding || {};
+    const hs = [herd.order_effect != null ? "order effect " + herd.order_effect : null,
+      herd.independent_position_similarity != null ? "opening-position similarity " + herd.independent_position_similarity : null,
+      herd.copied_motion_topics ? herd.copied_motion_topics + " repeated motion topics" : null].filter(Boolean).join(" · ");
+    if (pers.length || div.length || hs) out.push(el("details", {}, el("summary", { text: "Persuasion, herding and public/private divergence · analyst view" }),
+      hs ? el("p", { class: "muted", text: "Herding: " + hs }) : null,
+      pers.length ? el("ul", {}, pers) : el("p", { class: "muted", text: "No position changes between opening and vote." }),
+      div.length ? el("ul", {}, div) : null));
+  }
+
+  // ---- relationships over time (spec 102) ----
+  let relMode = "trust";
+  function buildRelations() {
+    const host = document.getElementById("relmodes");
+    if (!host || !(D.graph || []).length) { const sec = document.getElementById("relations-section"); if (sec) sec.hidden = true; return; }
+    const modes = [["trust", "Trust and distrust"], ["rivalry", "Rivalry"], ["dependency", "Dependency"]];
+    host.replaceChildren(...modes.map(([k, label]) => {
+      const b = el("button", { class: "btn", type: "button", text: label, "aria-pressed": String(k === relMode) });
+      b.onclick = () => { relMode = k; host.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); drawRelations(); };
+      return b;
+    }));
+  }
+  function drawRelations() {
+    const svg = document.getElementById("relgraph");
+    if (!svg || !window.KaramaniyaRelGraph || !(D.graph || []).length) return;
+    const frame = D.graph.find(f => f.month === cur) || D.graph[Math.min(cur, D.graph.length - 1)];
+    window.KaramaniyaRelGraph.draw(svg, frame, { mode: relMode, color: id => SLOT[id] || "var(--muted)", name: memberName });
+    document.getElementById("rellegend").textContent = (relMode === "trust"
+      ? "Arrows run from the delegate who holds the view to the delegate it is about. Green: trust above neutral; red: distrust. Thicker means stronger."
+      : relMode === "rivalry" ? "Dashed arrows: rivalry, from the rival who feels it."
+      : "Arrows: dependency, from the delegate who depends on the other.") + " Node size: influence. " + monthLabel(cur) + ".";
+  }
+
+  // ---- end-of-run analysis (spec 60, 61, 44, 105) ----
+  function renderAnalysis() {
+    const host = document.getElementById("analysis");
+    const an = (D.scorecard || {}).analytics;
+    if (!host || !an) return;
+    const m = an.metrics || {};
+    const val = v => v === null || v === undefined ? "-" : typeof v === "number" ? (Math.abs(v) <= 1 && !Number.isInteger(v) ? pct(v) : fmt(v))
+      : typeof v === "boolean" ? (v ? "yes" : "no") : Array.isArray(v) ? (v.join(", ") || "-") : typeof v === "object" ? (v.final !== undefined ? fmt(v.final) + " (min " + fmt(v.min) + ", max " + fmt(v.max) + ")" : Object.entries(v).map(([k, x]) => k + " " + (typeof x === "object" ? JSON.stringify(x) : x)).join(", ")) : String(v);
+    const group = (title, obj, skip) => el("div", { class: "card" }, el("h3", { text: title }),
+      el("dl", {}, Object.entries(obj || {}).filter(([k]) => !(skip || []).includes(k)).map(([k, v]) => [el("dt", { text: k.replace(/_/g, " ") }), el("dd", { text: val(v) })])));
+    const blocks = [];
+    // A motion executed as a different act than the one the council was shown is reported at the top
+    // of the analysis, before anything that might be read as a clean result.
+    const integ = integrityBanner(D.integrity || {});
+    if (integ) blocks.push(integ);
+    const ladder = ((m.political || {}).authoritarian_drift || {});
+    blocks.push(el("div", { class: "eyebrow", text: "Hidden from the AIs · computed after the run" }), el("h2", { text: "Run analysis" }),
+      el("div", { class: "metrics" }, group("Political", m.political, ["authoritarian_drift"]), group("Council", m.council), group("Agent behaviour", m.agents),
+        group("Economy", m.economic), group("Security", m.security), group("International", m.international)));
+    blocks.push(el("div", { class: "card" }, el("h3", { text: "Authoritarian drift (stages reached, with the month)" }),
+      el("p", { text: Object.keys(ladder.reached || {}).length ? Object.entries(ladder.reached).map(([k, v]) => k.replace(/_/g, " ") + " (Month " + (v + 1) + ")").join(" → ") : "No stage reached." })));
+    const f = an.factions || {};
+    blocks.push(el("div", { class: "card" }, el("h3", { text: "Emergent alignments (last six months; inferred, never shown to the AIs)" }),
+      el("p", { text: (f.labels || []).join(" · ") || "No clear alignments." }),
+      el("p", { class: "muted", text: "Herding: mean order effect " + val((an.herding || {}).mean_order_effect) + ", opening-position similarity " + val((an.herding || {}).mean_position_similarity) +
+        " · Persuasion: " + ((an.persuasion || {}).changes || 0) + " position changes " + JSON.stringify((an.persuasion || {}).likely_reasons || {}) })));
+    const why = (an.explanations || []).map(x => el("div", { class: "why" },
+      el("strong", { text: "Month " + (x.action.month + 1) + " · " + memberName(x.action.member) + " " + x.action.summary }),
+      el("ul", {}, [...(x.world_changes || []).map(t => el("li", { text: t })), ...(x.events || []).slice(-3).map(t => el("li", { text: t })),
+        ...(x.prior_votes_on_topic || []).map(t => el("li", { text: "Earlier: " + t })),
+        (x.decision_factors || []).length ? el("li", { text: "Stated decision factors: " + x.decision_factors.join(" · ") }) : null,
+        ...(x.vote_reasons || []).map(t => el("li", { text: "Stated reason: " + t }))].filter(Boolean)),
+      el("div", { class: "muted", style: "font-size:12px", text: x.caveat })));
+    blocks.push(el("div", { class: "card" }, el("h3", { text: "Why did this happen? Surprising decisions and the stored evidence before them" }),
+      ...(why.length ? why : [el("p", { class: "muted", text: "No departures from stated positions were detected." })])));
+    const cards = Object.entries(an.report_cards || {}).map(([l, c]) => el("article", { class: "member" },
+      el("header", {}, dot(l), el("div", {}, el("strong", { text: memberName(l) }), el("span", { class: "model", text: D.mapping[l] }))),
+      el("dl", {}, [["Promises kept / broken / withdrawn / lapsed / open", [c.promises.kept, c.promises.broken, c.promises.withdrawn, c.promises.lapsed, c.promises.open].join(" / ")],
+        ["Personal approval (final)", c.personal_approval != null ? pct(c.personal_approval) : "-"], ["Influence (final)", c.influence != null ? pct(c.influence) : "-"],
+        ["Private goal (hidden)", c.secret_goal || "-"], ["Belief reversals", (c.belief_reversals || []).join(", ") || "-"],
+        ["Public/private divergence", Object.entries(c.public_private_divergence || {}).map(([k, v]) => k.replace(/_/g, " ") + " " + v).join(", ") || "-"]]
+        .map(([k, v]) => [el("dt", { text: k }), el("dd", { text: String(v) })])),
+      (c.principles || []).length ? el("details", {}, el("summary", { text: "Declared principles and their drift" }), el("ul", {}, c.principles.map(p =>
+        el("li", { text: "“" + p.text + "” — strength now " + Math.round(p.strength_now || 0) + ", violations " + p.violations +
+          ((p.drift || []).length ? " · drift: " + p.drift.map(d => "M" + (d.month + 1) + " " + Math.round(d.from) + "→" + Math.round(d.to) + " (" + (d.reasons || []).join("; ") + ")").join(" | ") : "") })))) : null,
+      (c.major_actions || []).length ? el("details", {}, el("summary", { text: "Major actions" }), el("ul", {}, c.major_actions.map(t => el("li", { text: t })))) : null,
+      (c.policy_reversals || []).length ? el("details", {}, el("summary", { text: "Policy reversals" }), el("ul", {}, c.policy_reversals.map(t => el("li", { text: t })))) : null,
+      Object.keys(c.trust_start_end || {}).length ? el("details", {}, el("summary", { text: "Trust toward colleagues, first → last month" }),
+        el("ul", {}, Object.entries(c.trust_start_end).map(([o, v]) => el("li", { text: memberName(o) + ": " + v[0] + " → " + v[1] })))) : null,
+      (c.election_behavior || []).length ? el("p", { class: "muted", text: "Election behaviour: " + c.election_behavior.join("; ") }) : null));
+    blocks.push(el("h3", { text: "Delegate report cards · evidence, not moral scores" }), el("div", { class: "cards" }, cards));
+    const hist = (an.political_history || []).map(x => el("li", { text: "Month " + (x.month + 1) + " · " + x.kind.replace(/_/g, " ") + ": " + x.text }));
+    if (hist.length) blocks.push(el("details", {}, el("summary", { text: "Political history (" + hist.length + " entries)" }), el("ul", { class: "events" }, hist)));
+    host.replaceChildren(...blocks);
+  }
+
+  // ---- time control ----
+  const scrub = document.getElementById("scrub");
+  function setMonth(m) {
+    cur = Math.max(0, Math.min(N - 1, m));
+    scrub.value = String(cur + 1);
+    document.getElementById("mlabel").textContent = monthLabel(cur);
+    document.getElementById("msub").textContent = monthSub(cur) + (H[cur].war ? " · at war" : "");
+    paintMap(); renderPanel(); drawCharts(); drawRelations();
+    document.querySelectorAll(".pcell").forEach(c => c.classList.toggle("sel", Number(c.getAttribute("data-m")) === cur));
+    try { localStorage.setItem("karamaniya-month:" + D.run.id, String(cur)); } catch (e) { /* storage may be blocked */ }
+  }
+  let timer = null;
+  function play() {
+    const btn = document.getElementById("play");
+    if (timer) { clearInterval(timer); timer = null; btn.textContent = "Play"; return; }
+    if (cur >= N - 1) setMonth(0);
+    btn.textContent = "Pause";
+    timer = setInterval(() => { if (cur >= N - 1) { play(); return; } setMonth(cur + 1); }, 1100);
+  }
+  document.getElementById("prev").onclick = () => setMonth(cur - 1);
+  document.getElementById("next").onclick = () => setMonth(cur + 1);
+  document.getElementById("play").onclick = play;
+  scrub.addEventListener("input", () => setMonth(Number(scrub.value) - 1));
+  document.addEventListener("keydown", ev => {
+    if (ev.target && (ev.target.tagName === "INPUT" || ev.target.tagName === "TEXTAREA")) return;
+    if (ev.key === "ArrowLeft") setMonth(cur - 1); else if (ev.key === "ArrowRight") setMonth(cur + 1);
+  });
+  let rt = null;
+  addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(drawCharts, 120); });
+
+  // ---- go ----
+  if (!N) { document.getElementById("head").replaceChildren(el("h1", { text: "No months simulated yet" })); return; }
+  scrub.max = String(N);
+  // "#live": opened by the control room while the run is going. Show the newest month and keep
+  // the reader's scroll position across the reloads that follow each month.
+  const live = location.hash === "#live";
+  const mapOnly = /^#map(-\d+)?$/.exec(location.hash);
+  if (mapOnly) document.body.classList.add("maponly");
+  const scrollKey = "karamaniya-scroll:" + D.run.id;
+  try { const saved = Number(localStorage.getItem("karamaniya-month:" + D.run.id)); if (saved >= 0 && saved < N) cur = saved; } catch (e) { /* ignore */ }
+  if (live) cur = N - 1;
+  if (mapOnly) cur = mapOnly[1] ? Math.max(0, Math.min(N - 1, Number(mapOnly[1].slice(1)) - 1)) : N - 1;
+  renderHead(); renderFounding(); buildMap(); buildCharts(); renderPower(); renderGeopolitics(); renderMembers();
+  buildRelations(); renderAnalysis();
+  document.getElementById("foot").textContent = "Generated " + D.generated + " from run " + D.run.id + ". Model names are shown here for the researcher; during the run the AIs only saw Delegate letters.";
+  setMonth(cur);
+  if (live) {
+    try { const y = Number(sessionStorage.getItem(scrollKey)); if (y > 0) scrollTo(0, y); } catch (e) { /* ignore */ }
+    let st = null;
+    addEventListener("scroll", () => { clearTimeout(st); st = setTimeout(() => {
+      try { sessionStorage.setItem(scrollKey, String(Math.round(scrollY))); } catch (e) { /* ignore */ } }, 150); });
+    // Served by the control room: reload when the next month has been written.
+    if (location.protocol.startsWith("http")) {
+      let seen = null;
+      const poll = async () => {
+        try {
+          const r = await fetch(location.pathname, { method: "HEAD", cache: "no-store" });
+          const stamp = r.headers.get("Last-Modified");
+          if (seen === null) seen = stamp; else if (stamp && stamp !== seen && !timer) { location.reload(); return; }
+        } catch (e) { return; }
+        setTimeout(poll, 4000);
+      };
+      poll();
+    }
+  }
+})();
+</script>

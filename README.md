@@ -285,7 +285,8 @@ section, with the counts the providers reported and a deterministic simulation o
 cache could reuse. In a 12-month scripted run the system prompt alone is a third of all input. Opt-in
 features, all off by default and recorded in each run's manifest when on, cut that: a cache-friendly
 prompt layout doubles the share of input a cache can reuse (21% to 41% within a month), and a council
-that may skip months when every delegate chooses to stand by makes up to 39% fewer calls. Replayed
+that may skip months when every delegate stands by and nothing new has arrived makes up to 24% fewer
+calls (none fewer while a foreign government writes every month). Replayed
 through a real local server (Ollama, Llama 3.2 and DeepSeek-R1 distill), the layout cut the prompt
 tokens the model had to evaluate by a quarter, matching the simulation within three points. Given a
 batch of runs, the ledger turns them into a cost per simulated month, per seat, to size a study from.

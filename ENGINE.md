@@ -406,7 +406,7 @@ Opt-in features, all off by default (a default run sends exactly what engine 5 s
 layout = "cache_friendly"   # shared parts first, so a cache can reuse them: 21% -> 41% of input within a month
 schema_hint = "auto"        # the answer shape written compactly where the connector enforces it: -2% input
 briefing = "on_demand"      # headlines plus the sections a delegate asked for: up to -4% input
-wakeups = "on_events"       # the council may skip a month when every delegate stands by: up to -39% calls
+wakeups = "on_events"       # the council may skip a month when all stand by and nothing new arrived: up to -24% calls
 max_quiet_months = 3
 
 [run]

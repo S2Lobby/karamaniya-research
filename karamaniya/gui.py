@@ -813,13 +813,13 @@ class Controller:
             return dict(self.job)
 
     def start_check(self, raw_cfg: dict) -> dict:
-        from .runner import check_seats
+        from .runner import check_seats, seats_to_check
         cfg = normalize_config(raw_cfg, "control room")
         with self.lock:
             if self.check["status"] == "running":
                 raise ApiError("A seat check is already running.", 409)
             self.check = {"status": "running", "results": [], "error": "", "started": time.time(),
-                          "finished": 0.0, "labels": [s["label"] for s in cfg["seats"]]}
+                          "finished": 0.0, "labels": [s["label"] for s in seats_to_check(cfg)]}
 
         def work():
             try:

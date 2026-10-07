@@ -65,7 +65,9 @@ def load_calls(run_dir) -> list:
     A call is a pair: its entry in log.jsonl (who, which model, what the provider reported) and its
     entry in prompts.jsonl (the prompt as sent). New runs give both the same call_id. Older runs did
     not, and their calls ran in parallel threads, so the two files can interleave differently; they
-    are then paired within (month, phase, member), where calls are always sequential.
+    are then paired within (month, phase, member), where calls are always sequential. An id is only
+    trusted when month, phase and member agree too: runs resumed before the call counter was saved
+    can repeat an id.
     """
     run = Path(run_dir)
     if not (run / "log.jsonl").exists() or not (run / "prompts.jsonl").exists():
@@ -74,19 +76,27 @@ def load_calls(run_dir) -> list:
     calls = [r for r in _jsonl(run / "log.jsonl") if r.get("type") in ("call", "foreign_call")]
     system_path = run / "system_prompt.txt"
     council_system = system_path.read_text(encoding="utf-8") if system_path.exists() else ""
-    by_id = {p["call_id"]: p for p in prompts if p.get("call_id") is not None}
-    queues = defaultdict(list)
-    for p in prompts:
-        if p.get("call_id") is None:
-            queues[(p.get("month"), p.get("phase"), _who(p))].append(p)
+    by_id, queues, used = defaultdict(list), defaultdict(list), set()
+    for i, p in enumerate(prompts):
+        if p.get("call_id") is not None:
+            by_id[p["call_id"]].append(i)
+        queues[(p.get("month"), p.get("phase"), _who(p))].append(i)
+
+    def take(candidates, key):
+        for i in candidates:
+            if i not in used and (prompts[i].get("month"), prompts[i].get("phase"), _who(prompts[i])) == key:
+                used.add(i)
+                return prompts[i]
+        return None
+
     foreign_systems = {}
     out = []
     for c in calls:
         phase = "foreign" if c.get("type") == "foreign_call" else c.get("phase")
-        p = by_id.get(c.get("call_id")) if c.get("call_id") is not None else None
+        key = (c.get("month"), phase, _who(c))
+        p = take(by_id.get(c.get("call_id"), ()), key) if c.get("call_id") is not None else None
         if p is None:
-            q = queues.get((c.get("month"), phase, _who(c)))
-            p = q.pop(0) if q else {}
+            p = take(queues.get(key, ()), key) or {}
         user = p.get("prompt", "") or ""
         if phase == "foreign":
             actor = str(c.get("actor") or "")

@@ -23,6 +23,8 @@ What each one does, and what it was measured to save, is in docs/TOKEN_EFFICIENC
 """
 from __future__ import annotations
 
+import math
+
 DEFAULTS = {
     "layout": "classic",
     "schema_hint": "example",
@@ -87,8 +89,9 @@ def validate_foreign_backend(raw) -> dict:
 
 # ---- briefing on demand -----------------------------------------------------------------------------
 #: Sections sent in full every month whatever a delegate asked for: what the council itself decided
-#: is the record a delegate acts on, not background reading.
-ALWAYS_FULL = ("last_months_council_decisions",)
+#: is the record a delegate acts on, not background reading, and the foreign governments' messages
+#: are addressed to the council and gone the month after (a request only brings next month's).
+ALWAYS_FULL = ("last_months_council_decisions", "foreign_messages")
 
 
 def _slug(heading: str) -> str:
@@ -142,9 +145,13 @@ def briefing_for(brief: str, requested) -> tuple[str, str]:
 
 
 def read_requests(data, options) -> list:
-    """The section ids a decision asked for, kept only if they exist."""
+    """The section ids a decision asked for, kept only if they exist. A seat whose connector does not
+    hold it to the schema can send anything here, so anything but a known id is dropped."""
     raw = (data or {}).get("read_next_month") if isinstance(data, dict) else None
-    return [x for x in dict.fromkeys(raw or []) if x in set(options or ())] if isinstance(raw, list) else []
+    if not isinstance(raw, list):
+        return []
+    known = set(options or ())
+    return list(dict.fromkeys(x for x in raw if isinstance(x, str) and x in known))
 
 
 # ---- quiet months -------------------------------------------------------------------------------------
@@ -165,13 +172,17 @@ def read_stand_by(data, tokens: dict) -> dict:
         months = 0
     months = max(0, min(months, int(tokens.get("max_quiet_months", 3))))
     wake = []
-    for cond in raw.get("wake_if") or []:
+    conditions = raw.get("wake_if")
+    for cond in conditions if isinstance(conditions, list) else []:
         if not isinstance(cond, dict) or cond.get("metric") not in WAKE_METRICS or cond.get("operator") not in (">=", "<="):
             continue
         try:
-            value = canonical_metric_value(cond["metric"], float(cond.get("value")))
+            number = float(cond.get("value"))
         except (TypeError, ValueError):
             continue
+        if not math.isfinite(number):
+            continue
+        value = canonical_metric_value(cond["metric"], number)
         wake.append({"metric": cond["metric"], "operator": cond["operator"], "value": value})
     return {"months": months, "wake_if": wake[:3]}
 
@@ -205,9 +216,9 @@ def decision_addendum(tokens: dict) -> str:
             "stand_by: how many coming months you are content for the council not to meet, if nothing in your "
             "wake_if list happens (\"0\" = meet next month as usual). The council skips a month only when every "
             "delegate stands by and no one's wake_if condition holds; it always meets for an election, a "
-            "handover, war, a coup, a resignation, a diplomatic proposal, a deferred motion, an unread "
-            "private message, a new issue or a major public event. In a month it does not meet, policy and "
-            "office orders stay as they are.")
+            "handover, war, a coup, a resignation, a message from abroad, a deferred motion, an unread "
+            "private message or dispatch, an answer to an information request, a new issue or a major "
+            "public event. In a month it does not meet, policy and office orders stay as they are.")
     if tokens.get("briefing") == "on_demand":
         parts.append(
             "read_next_month: the briefing sections you want in full next month. The others arrive as one-line "
@@ -227,6 +238,14 @@ def quiet_month_due(w, active: list, carried: list, pending_dms: bool, last_reco
     if c.election_month == w.month or c.handover_month == w.month or w.dip.war or w.dip.proposals:
         return None
     if carried or pending_dms:
+        return None
+    # Anything addressed to the council that only this month's meeting would read: messages from the
+    # foreign governments, private dispatches, and answers to information requests due this month.
+    # Each is cleared or past its delivery month by the next one, so a quiet month would lose it unread.
+    if w.dip.inbox or w.dip.private_inbox:
+        return None
+    from . import intelligence
+    if any(intelligence.deliveries_for(w, mid) for mid in active):
         return None
     if last_record and last_record.get("coups"):
         return None

@@ -35,6 +35,11 @@ Fixes
   includes them). In engine-5 runs a Codex seat's output, and its cost when it had a `price_out`, is
   overstated by its reasoning tokens; input counts were right.
 - The run report's header printed "null" when a run had no outcome yet.
+- From an independent review of the token features (details in the backlog, T19-T24): a quiet month
+  no longer drops foreign messages, private dispatches or answers addressed to the council, nor re-dates
+  the delegates' notebooks; malformed `read_next_month` / `wake_if` answers are dropped instead of
+  ending the run; the foreign-cabinet model is included in the seat check; call ids stay unique across a
+  resume; and foreign messages always arrive in full under briefing on demand.
 
 Measured results and their limits are in [docs/TOKEN_EFFICIENCY.md](docs/TOKEN_EFFICIENCY.md).
 

@@ -127,11 +127,13 @@ Measured: the schema text shrinks by 24%; total input by **2%**. The JSON skelet
 
 ### 3. Briefing on demand (`briefing = "on_demand"`)
 
-Every delegate gets the briefing's header, the council's own decisions of last month in full, and one
+Every delegate gets the briefing's header, two sections in full (the council's own decisions of last
+month, and the messages the foreign governments sent it, which are gone the month after), and one
 headline line for each other section, the section's own first line (no model summarises anything). A
 decision may name, in `read_next_month`, the sections it wants in full next month; those arrive in a
-part of the prompt of its own. Which sections each model chooses to read is recorded: what a model
-chooses to pay attention to is itself a measurement.
+part of the prompt of its own. A request brings next month's edition of a section, not this month's:
+what is shown as a headline this month stays a headline. Which sections each model chooses to read is
+recorded: what a model chooses to pay attention to is itself a measurement.
 
 Measured: **4% less input** if nobody asks for anything (the briefing is 9% of input, and the essentials
 stay). Under the cache-friendly layout the briefing is already in the cached prefix, so this saves less
@@ -143,19 +145,23 @@ A decision may say `stand_by`: how many coming months the delegate is content fo
 meet, and up to three `wake_if` conditions (for example unemployment above 12% or reserves below 50M)
 that would bring it back. The council skips a month only when **every** delegate stands by and none of
 their conditions holds. It always meets in an election or handover month, in war, the month after a
-coup or after anyone left the government, and whenever a diplomatic proposal, a deferred motion or an
-unread private message is waiting, a new issue reaches the agenda, or last month brought a public event
-of the engine's top importance (deaths at a protest, an uprising, a court annulling an election, a
-region lost). Never more than `max_quiet_months` in a row. In a quiet month no council member is called:
-policy and office orders stay as they are, the world moves on, the foreign cabinets still play their
-month (with their own model if you give them one, see 5), and the next briefing says the council did
-not meet.
+coup or after anyone left the government; whenever something addressed to it would otherwise go unread
+(a message from a foreign government, a private dispatch, an answer to an information request due that
+month, a deferred motion, a private message between delegates); when a new issue reaches the agenda; and
+when last month brought a public event of the engine's top importance (deaths at a protest, an uprising,
+a court annulling an election, a region lost). Never more than `max_quiet_months` in a row. In a quiet
+month no council member is called and no delegate writes anything: policy and office orders stay as
+they are, notebooks keep the month they were written in, the world moves on, the foreign cabinets still
+play their month (with their own model if you give them one, see 5), and the next briefing says the
+council did not meet.
 
-Measured: when every delegate stands by for the maximum, **39% fewer calls** (119 instead of 194 in 12
-months) and 44% less input; the rest of the months something happened that the council had to meet
-over. That is an upper bound: whether models choose to stand by, and for how long, is behaviour, and
-measuring it is part of the point: a council that hands the country to standing policy for a quarter is
-telling you something.
+Measured, with every delegate standing by for the maximum: in the scripted world with the foreign
+cabinets on, **no month is quiet**, because the scripted Dorsania proposes trade every month and the
+council meets for every message from abroad. Without the foreign cabinets, **24% fewer calls** (130
+instead of 170 in 12 months) and 24% less input; in the other months a new issue, a message from the
+Union or an expiring stand-by brought the council together. Both are upper bounds: whether models
+choose to stand by, and for how long, is behaviour, and measuring it is part of the point: a council
+that hands the country to standing policy for a quarter is telling you something.
 
 ### 5. One fixed model for the foreign cabinets (`foreign_cabinet_backend`)
 
@@ -194,12 +200,17 @@ only the prompts differ):
 | engine 5 (classic) | 194 | 1.00 | 21.0% | 31.4% | 0.81 |
 | cache-friendly layout | 194 | 1.00 | 41.3% | 51.8% | 0.63 |
 | compact schema hint | 194 | 0.98 | 21.3% | 31.9% | 0.80 |
-| briefing on demand, nothing requested | 194 | 0.96 | 21.8% | 32.7% | 0.77 |
-| quiet months, everyone stands by | 119 | 0.56 | 22.2% | 30.8% | 0.45 |
-| all of the above | 119 | 0.53 | 39.8% | 48.9% | 0.34 |
+| briefing on demand, nothing requested | 194 | 0.96 | 21.9% | 32.8% | 0.77 |
+| quiet months, everyone stands by | 194 | 1.01 | 20.8% | 31.1% | 0.82 |
+| all of the above | 194 | 0.95 | 40.6% | 51.6% | 0.60 |
+| *without the foreign cabinets:* | | | | | |
+| engine 5 | 170 | 1.00 | 21.9% | 32.9% | 0.80 |
+| quiet months, everyone stands by | 130 | 0.76 | 22.4% | 32.9% | 0.61 |
 
-\* Input cost relative to engine 5 with no cache, when a cache serves the reusable prefix within a month
-at a tenth of the price (about what Anthropic charges for a cache read; check current prices).
+\* Input cost relative to engine 5 under the same conditions with no cache, when a cache serves the
+reusable prefix within a month at a tenth of the price (about what Anthropic charges for a cache read;
+check current prices). With the foreign cabinets on, quiet months only add the stand-by field to the
+decision (1% more input): the scripted Dorsania writes every month.
 
 The behaviour-dependent rows (briefing, quiet months) are upper bounds: real models decide what to read
 and whether to stand by.
@@ -208,7 +219,10 @@ and whether to stand by.
 
 A seat's cost is `price_in` and `price_out` per million tokens, as before. Give `price_cache_read` and
 `price_cache_write` too, and cached input is billed at those prices; without them every input token is
-billed at `price_in`, exactly as engine 5 did, so `max_cost_usd` behaves the same.
+billed at `price_in`, exactly as engine 5 did, so `max_cost_usd` behaves the same. One exception, a
+correction: a Codex CLI seat's output is no longer counted with its reasoning tokens twice (Codex's own
+`output_tokens` already includes them), so a priced Codex seat costs less than engine 5 said, and
+reaches `max_cost_usd` later.
 
 ## Limits of these numbers
 

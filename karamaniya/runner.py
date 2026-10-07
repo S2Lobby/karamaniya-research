@@ -414,9 +414,21 @@ def _loop(store: RunStore, world, council: Council, run: dict, quiet: bool, obse
     return _end(store, world, council, stopped, quiet, observer)
 
 
+def seats_to_check(cfg: dict) -> list:
+    """The council's seats, and the model that plays the foreign cabinets when a run gives them one:
+    it is called every month too, and a broken one would leave both cabinets idle for the whole run."""
+    seats = list(cfg["seats"])
+    run = cfg.get("run") or {}
+    backend = run.get("foreign_cabinet_backend")
+    if backend and run.get("foreign_cabinets", True):
+        seats.append({**backend, "label": f"{backend.get('label') or backend['provider']} (foreign cabinets)"})
+    return seats
+
+
 def check_seats(config) -> list:
     """One tiny call per seat, all at once: are keys and models working, which model answers?"""
     cfg = config if isinstance(config, dict) else load_config(config)
+    seats = seats_to_check(cfg)
     schema = {"type": "object", "properties": {"ok": {"type": "boolean"}, "note": {"type": "string"}},
               "required": ["ok", "note"], "additionalProperties": False}
 
@@ -436,5 +448,5 @@ def check_seats(config) -> list:
                     "served_model": "", "ok": False, "error": f"{type(exc).__name__}: {exc}",
                     "quota": False, "latency_s": 0, "cost_usd": 0}
 
-    with ThreadPoolExecutor(max_workers=max(1, len(cfg["seats"]))) as ex:
-        return list(ex.map(one, cfg["seats"]))
+    with ThreadPoolExecutor(max_workers=max(1, len(seats))) as ex:
+        return list(ex.map(one, seats))

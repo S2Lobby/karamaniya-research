@@ -559,12 +559,15 @@ class Council:
     # ---- persistence ----------------------------------------------------------------
     def state(self) -> dict:
         return {"pending_dms": self.pending_dms, "last_record": self.last_record, "spend": self.spend,
-                "agent_architecture_version": self.w.agent_architecture_version}
+                "agent_architecture_version": self.w.agent_architecture_version, "call_seq": self._call_seq}
 
     def load_state(self, d: dict) -> None:
         self.pending_dms = d.get("pending_dms", [])
         self.last_record = d.get("last_record")
         self.spend = d.get("spend", 0.0)
+        # A resumed run goes on numbering its calls: the setup and the first council month share
+        # month 0, so starting again from 1 would give two calls the same call_id.
+        self._call_seq = int(d.get("call_seq", 0) or 0)
 
     def _emit(self, **event) -> None:
         if self.observer is not None:
@@ -1421,10 +1424,10 @@ class Council:
         def decide(mid):
             left = quota - used[mid]
             if quiet:
-                # The council does not meet: no call, no vote, no new order. The delegate's notes are
-                # kept as they were (an empty decision would otherwise blank them).
+                # The council does not meet: no call, no vote, no new order, and no new notes. The
+                # resolution keeps the notebook, and the month it was written, as they were.
                 out, _ = actions.normalize_decision_v2(w, mid, None, [], left)
-                out["notes"] = w.member(mid).notebook
+                out["quiet"] = True
                 return mid, None, out, []
             schema = token_saving.extend_decision_schema(
                 actions.decision_schema_v2(w, mid, motion_ids, election_pending, left), self.tokens, read_options)
@@ -2257,10 +2260,11 @@ class Council:
             # say a measure was agreed that the record shows did not carry. They are kept exactly as
             # written — a delegate's mistaken expectation is worth keeping — and the contradiction
             # is recorded against the month, with the canonical record shown beside them next month.
-            findings = (memory.validate_notes(w, mid, d["notes"], record)
-                        + memory.validate_note_phase(w, mid, d["notes"])
-                        + memory.unsupported_facts(w, mid, d["notes"])
-                        + memory.fact_reference_errors(w, mid, d["notes"]))
+            # A quiet month's placeholder decision wrote no notes: the notebook was checked when it was written.
+            findings = [] if d.get("quiet") else (memory.validate_notes(w, mid, d["notes"], record)
+                                                   + memory.validate_note_phase(w, mid, d["notes"])
+                                                   + memory.unsupported_facts(w, mid, d["notes"])
+                                                   + memory.fact_reference_errors(w, mid, d["notes"]))
             for clash in findings:
                 record["memory_mismatches"].append(clash)
                 if getattr(self, "store", None) is not None:
@@ -2274,9 +2278,10 @@ class Council:
                               f"{clash.get('vote')}, with no reversal stated",
                               member=mid, motion=clash.get("motion"), stance=clash.get("stance"),
                               vote=clash.get("vote"), source=clash.get("source"))
-            w.member(mid).notebook = d["notes"]
-            if w.member(mid).agent_state:
-                w.member(mid).agent_state["notes_month"] = w.month     # when they were written, to date them later
+            if not d.get("quiet"):
+                w.member(mid).notebook = d["notes"]
+                if w.member(mid).agent_state:
+                    w.member(mid).agent_state["notes_month"] = w.month     # when they were written, to date them later
         record["compliance_restored"] = freshness.track(w, record)
         active_ids = {m.id for m in w.active_members()}
         for mid, d in decisions.items():

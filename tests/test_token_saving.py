@@ -14,12 +14,12 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from karamaniya import actions, token_saving, tokens  # noqa: E402
+from karamaniya import actions, intelligence, token_saving, tokens  # noqa: E402
 from karamaniya.backends.base import Backend  # noqa: E402
 from karamaniya.backends.scripted import ScriptedBackend  # noqa: E402
 from karamaniya.config import load_config, normalize_config  # noqa: E402
 from karamaniya.council import Council  # noqa: E402
-from karamaniya.runner import _seats  # noqa: E402
+from karamaniya.runner import _seats, preflight, seats_to_check  # noqa: E402
 from karamaniya.storage import RunStore  # noqa: E402
 from karamaniya.world import new_world  # noqa: E402
 
@@ -193,6 +193,29 @@ class BriefingSections(unittest.TestCase):
         self.assertEqual(token_saving.read_requests({"read_next_month": ["the_people", "gossip", "the_people"]},
                                                     ["the_economy", "the_people"]), ["the_people"])
 
+    def test_messages_from_abroad_always_arrive_in_full(self):
+        brief = self.BRIEF + "\n\nFOREIGN MESSAGES\n- Dorsania proposes restoring grain trade."
+        shared, _ = token_saving.briefing_for(brief, [])
+        self.assertIn("Dorsania proposes restoring grain trade.", shared)
+        self.assertNotIn("foreign_messages", token_saving.requestable(brief))
+
+    def test_answers_a_seat_could_send_without_a_schema_do_not_crash_the_month(self):
+        """Connectors that do not enforce the schema can return any JSON; nothing in it may raise."""
+        options = ["the_economy", "the_people"]
+        for raw in ([{"section": "the_economy"}, ["x"], 3, None, "the_people"], "the_people", 7, {"a": 1}):
+            with self.subTest(read_next_month=raw):
+                self.assertEqual(token_saving.read_requests({"read_next_month": raw}, options),
+                                 ["the_people"] if isinstance(raw, list) else [])
+        tokens_on = {**token_saving.DEFAULTS, "wakeups": "on_events"}
+        for wake in (1, True, "unemployment", {"metric": "unemployment"}, [1, None, ["x"]],
+                     [{"metric": "unemployment", "operator": ">=", "value": "nan"}]):
+            with self.subTest(wake_if=wake):
+                plan = token_saving.read_stand_by({"stand_by": {"months": "2", "wake_if": wake}}, tokens_on)
+                self.assertEqual(plan, {"months": 2, "wake_if": []})
+        plan = token_saving.read_stand_by({"stand_by": {"months": "2", "wake_if": [
+            {"metric": "unemployment", "operator": ">=", "value": 12}]}}, tokens_on)
+        self.assertEqual(len(plan["wake_if"]), 1)
+
 
 class Hooked(ScriptedBackend):
     """The scripted stand-in, plus whatever extra fields a test wants its decisions to carry."""
@@ -245,10 +268,33 @@ class QuietMonths(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="karamaniya-quiet-")
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
-    def run_months(self, extra, n=6):
-        council, w = scripted_council(self.tmp, {"wakeups": "on_events", "max_quiet_months": 2}, extra)
+    def run_months(self, extra, n=6, foreign_cabinets=False):
+        # Without foreign cabinets: the scripted Dorsania proposes trade every month, and a message
+        # from abroad always brings the council together (test_a_message_from_abroad_...).
+        council, w = scripted_council(self.tmp, {"wakeups": "on_events", "max_quiet_months": 2}, extra,
+                                      foreign_cabinets=foreign_cabinets)
         records = [council.run_month() for _ in range(n)]
         return council, w, records
+
+    def test_a_message_from_abroad_every_month_keeps_the_council_meeting(self):
+        _, _, records = self.run_months(lambda ctx: {"stand_by": {"months": "2", "wake_if": []}}, n=5,
+                                        foreign_cabinets=True)
+        self.assertFalse([r for r in records if r.get("quiet_month")])
+
+    def test_a_quiet_month_leaves_the_notebooks_and_their_dates_as_written(self):
+        council, w = scripted_council(self.tmp, {"wakeups": "on_events", "max_quiet_months": 2},
+                                      lambda ctx: {"stand_by": {"months": "2", "wake_if": []}},
+                                      foreign_cabinets=False)
+        for _ in range(8):
+            before = {m.id: (m.notebook, (m.agent_state or {}).get("notes_month")) for m in w.active_members()}
+            record = council.run_month()
+            if record.get("quiet_month"):
+                after = {m.id: (m.notebook, (m.agent_state or {}).get("notes_month")) for m in w.active_members()}
+                self.assertEqual(after, before)
+                self.assertTrue(any(n for n, _ in before.values()), "the delegates had written notes")
+                self.assertEqual(record["memory_mismatches"], [], "old notes were checked again")
+                return
+        self.fail("no month was quiet")
 
     def test_a_council_that_stands_by_skips_months_and_calls_no_delegate(self):
         council, w, records = self.run_months(lambda ctx: {"stand_by": {"months": "2", "wake_if": []}})
@@ -299,6 +345,8 @@ class WhatAlwaysWakesTheCouncil(unittest.TestCase):
         c = self.w.const
         self.w.month = next(m for m in range(2, 12) if m not in (c.election_month, c.handover_month))
         self.w.last_events, self.w.dilemmas["active"] = [], []
+        self.w.dip.inbox, self.w.dip.private_inbox = [], []
+        intelligence.state(self.w)["deliveries"] = []
         for m in self.w.members:
             m.agent_state = {**(m.agent_state or {}), "stand_by": {"months_left": 2, "wake_if": []}}
 
@@ -327,6 +375,19 @@ class WhatAlwaysWakesTheCouncil(unittest.TestCase):
         self.w.last_events = [{"kind": "issue_resolved", "public": True, "importance": 1},
                               {"kind": "plot", "public": False, "importance": 3}]
         self.assertTrue(self.due())
+
+    def test_a_message_from_abroad_or_a_private_dispatch(self):
+        self.w.dip.inbox = [{"month": self.w.month - 1, "from": "Dorsania", "text": "Dorsania proposes grain trade."}]
+        self.assertIsNone(self.due())
+        self.w.dip.inbox, self.w.dip.private_inbox = [], [{"to": "B", "text": "A private word."}]
+        self.assertIsNone(self.due())
+
+    def test_an_answer_to_an_information_request_due_this_month(self):
+        intelligence.state(self.w)["deliveries"].append(
+            {"to": "B", "deliver_month": self.w.month, "phase_ready": "session", "text": "The figures you asked for."})
+        self.assertIsNone(self.due())
+        intelligence.state(self.w)["deliveries"][0]["deliver_month"] = self.w.month + 1
+        self.assertTrue(self.due(), "an answer due next month waits for next month")
 
     def test_deferred_motions_private_messages_coups_and_war(self):
         self.assertIsNone(self.due(carried=[{"id": "D1"}]))
@@ -377,6 +438,51 @@ class AFixedForeignCabinetModel(unittest.TestCase):
             foreign = [json.loads(line) for line in f if '"foreign_call"' in line]
         self.assertTrue(foreign)
         self.assertEqual({r["seat"] for r in foreign}, {"environment"})
+
+    def test_the_seat_check_tests_it_too(self):
+        """It is called every month: a broken one, unchecked, would leave both cabinets idle all run."""
+        def cfg(backend):
+            return normalize_config({"run": {"months": 2, "foreign_cabinet_backend": backend},
+                                     "seat": [{"provider": "scripted", "label": f"s{i}"} for i in range(5)]})
+        checked = seats_to_check(cfg({"provider": "scripted", "label": "environment"}))
+        self.assertEqual([s["label"] for s in checked][-1], "environment (foreign cabinets)")
+        broken = preflight(cfg({"provider": "ollama", "model": "missing", "base_url": "http://127.0.0.1:9",
+                                "label": "environment", "timeout": 2}))
+        self.assertEqual([b["label"] for b in broken], ["environment (foreign cabinets)"])
+        off = normalize_config({"run": {"months": 2, "foreign_cabinets": False,
+                                        "foreign_cabinet_backend": {"provider": "scripted"}},
+                                "seat": [{"provider": "scripted", "label": f"s{i}"} for i in range(5)]})
+        self.assertEqual(len(seats_to_check(off)), 5)
+
+
+class CallIds(unittest.TestCase):
+    def test_a_resumed_council_goes_on_numbering_its_calls(self):
+        tmp = tempfile.mkdtemp(prefix="karamaniya-ids-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        council, _ = scripted_council(tmp, {})
+        state = json.loads(json.dumps(council.state()))        # as the checkpoint stores it
+        self.assertGreater(state["call_seq"], 0, "the setup made calls")
+        resumed, _ = scripted_council(tempfile.mkdtemp(dir=tmp), {})
+        resumed.load_state(state)
+        self.assertEqual(resumed._next_call_id(), f"{resumed.w.month}.{state['call_seq'] + 1}")
+
+    def test_a_repeated_id_pairs_only_with_its_own_call(self):
+        """Runs resumed before the counter was saved can repeat an id across the setup and month 0."""
+        tmp = tempfile.mkdtemp(prefix="karamaniya-ids-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        run = write_run(os.path.join(tmp, "r"), [
+            {"month": 0, "phase": "survey", "member": "A", "seat": "a", "chars": 100},
+            {"month": 0, "phase": "session", "member": "B", "seat": "b", "chars": 900}])
+        for name in ("log.jsonl", "prompts.jsonl"):            # give both calls the same id
+            path = os.path.join(run, name)
+            with open(path, encoding="utf-8") as f:
+                rows = [json.loads(line) for line in f]
+            for row in rows:
+                row["call_id"] = "0.1"
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("".join(json.dumps(row) + "\n" for row in rows))
+        calls = {c["phase"]: c for c in tokens.load_calls(run)}
+        self.assertEqual((len(calls["survey"]["user"]), len(calls["session"]["user"])), (100, 900))
 
 
 class TheCacheSimulator(unittest.TestCase):

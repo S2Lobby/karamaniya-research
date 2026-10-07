@@ -257,6 +257,21 @@ python -m karamaniya audit runs/first-look     # was every motion executed as th
 That takes a few seconds and writes the same kind of run folder a real council does: the call log
 (`log.jsonl`), every prompt as sent (`prompts.jsonl`), the manifest and `report.html`.
 
+### Reproducibility checks
+
+The test suite runs on every push, on Python 3.12 and 3.13. Among what it holds the code to:
+
+- **The same seed is the same run.** Two runs from one seed with the scripted seats produce the same
+  world month by month, the same council state and the same prompts
+  (`tests/test_reproducibility.py`). Real models are not deterministic, and each run's manifest says so;
+  this is the engine's half.
+- **A default run is the engine-5 run.** It sends byte for byte the prompts of the published `engine-5`
+  code (`tests/test_prompt_freeze.py`), so anything opt-in stays opt-in.
+- **Motions do what they said.** `python -m karamaniya audit runs/<name>` checks every executed motion
+  against the act its text described.
+- **Mixed code is visible.** Every simulated month records a fingerprint of the engine source that
+  produced it, and a run resumed under different code is reported as mixed, not as one engine's run.
+
 The code here is engine version 5 (see `karamaniya/versions.py`), first released as the tag
 [`engine-5`](https://github.com/S2Lobby/karamaniya-research/tree/engine-5); what has changed since is in
 [CHANGELOG.md](CHANGELOG.md). Every run folder records the engine, prompt and psychology versions that

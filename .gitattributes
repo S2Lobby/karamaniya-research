@@ -1,0 +1,5 @@
+# LF line endings on every platform. Each run records a fingerprint of the engine's source files
+# (their bytes), so a Windows checkout that turned LF into CRLF would look like different code.
+* text=auto eol=lf
+*.png binary
+*.pdf binary

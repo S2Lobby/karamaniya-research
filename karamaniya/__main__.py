@@ -55,6 +55,8 @@ def main(argv=None) -> int:
     tk = sub.add_parser("tokens", help="where a run's tokens went, and what a prompt cache would save")
     tk.add_argument("run_dirs", nargs="+")
     tk.add_argument("--json", dest="json_out", help="also write the ledger(s) as JSON to this file")
+    tk.add_argument("--months", type=int, default=36,
+                    help="with several runs: what a run this many months long would cost at their rate")
 
     batch = sub.add_parser("simulate", help="run one model-seat assignment across several seeds")
     batch.add_argument("config", nargs="?", default="council.scripted.toml")
@@ -133,12 +135,15 @@ def main(argv=None) -> int:
         analyze(args.runs_dir, recent=args.recent, run_id=args.run, json_out=args.json_out)
     elif args.cmd == "tokens":
         import json
-        from .tokens import ledger, render
+        from .tokens import combine, ledger, render, render_combined
         reports = [ledger(run_dir) for run_dir in args.run_dirs]
         print("\n\n".join(render(report) for report in reports))
+        summary = combine(reports) if len(reports) > 1 else None
+        if summary:
+            print("\n" + render_combined(summary, args.months))
         if args.json_out:
             with open(args.json_out, "w", encoding="utf-8") as f:
-                json.dump(reports if len(reports) > 1 else reports[0], f, indent=2)
+                json.dump({"runs": reports, "summary": summary} if summary else reports[0], f, indent=2)
     elif args.cmd == "simulate":
         from .batch import simulate
         result = simulate(args.config, runs=args.runs, months=args.months,

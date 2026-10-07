@@ -16,8 +16,8 @@ few seeds with real models before using it in a study.
 ## Measure first
 
 ```bash
-python -m karamaniya tokens runs/<name>            # one run
-python -m karamaniya tokens runs/a runs/b --json ledger.json
+python -m karamaniya tokens runs/<name>                                # one run
+python -m karamaniya tokens runs/calib-* --months 36 --json ledger.json   # a batch, and its rate
 ```
 
 The ledger reads a run folder and makes no model calls. It reports input and output by phase, by seat
@@ -28,6 +28,16 @@ run. That is what an automatic prefix cache (OpenAI, DeepSeek, a llama.cpp or Ol
 reuse, and an upper bound for an explicit one (Anthropic `cache_control` breakpoints). Estimates are at
 four characters per token: the tokenizers differ, so they are for comparing prompts and layouts with
 each other, not for a bill.
+
+It also gives what a study is sized from: the cost of one simulated month, with the one-off setup calls
+(questionnaire, founding diagnoses, government formation) counted apart, and, for each seat, how many
+characters made a token by the provider's own count. Given several runs it combines them into one
+monthly rate and says what a run of `--months` months would cost at that rate. In real runs, local
+Ollama models counted 3.6 (Gemma 3) to 4.4 characters per token, close to the estimate, while the two
+Codex CLI seats of a 19-month council counted 2.5 to 2.75: about 1.6 times the tokens the prompt alone
+accounts for, consistent with the command-line tool adding several thousand tokens of its own
+instructions to every call. That overhead is invisible in the prompt files, and the per-seat column is
+where it shows.
 
 ### Where the tokens go
 
@@ -86,6 +96,24 @@ cache reads, which the ledger records); the layout is what gives all of them a l
 Measured (same 12-month world): the share of input a cache can reuse goes from **21% to 41% within a
 month** and from **31% to 52% over the run**, for a council of five different models. In a same-model
 government, 41% to 59% within a month.
+
+**On a real server.** `tools/cache_replay.py` sends a run's prompts, in the order the run sent them, to
+a local Ollama server (0.32.9, one cache slot, a 4060 laptop GPU), asks for one token back so that only
+the prompt is evaluated, and reads from the server's log how many prompt tokens it really evaluated
+(Ollama's API reports the whole prompt even when most of it came from the cache). The same 66 calls of a
+3-month scripted council, all sent to one model:
+
+| Model | Reused, classic | Reused, cache-friendly | Tokens evaluated | Prefill time |
+|---|---:|---:|---:|---:|
+| Llama 3.2 1B | 48.6% | 61.7% | -25% | 23.4 s to 18.5 s |
+| DeepSeek-R1 1.5B (Qwen2 architecture) | 48.1% | 62.3% | -27% | 36.6 s to 27.4 s |
+| Qwen3.5 0.8B (hybrid attention) | 31.1% | 38.5% | -11% | (timed only roughly) |
+
+The simulation predicted 49.0% for the classic layout and, for the cache-friendly one, 58.6% with one
+cache slot and 64.8% with twelve: the server's 62% lies between, so the simulated numbers above can be
+read as what a real cache does. Hybrid and sliding-window models (Qwen3.5, Gemma 3) gain less: llama.cpp
+can only resume them from a context checkpoint it saved earlier, not from any point of a shared prefix.
+Prefill times are one machine's and vary between runs; the token counts do not.
 
 ### 2. Compact schema hint (`schema_hint = "compact"` or `"auto"`)
 

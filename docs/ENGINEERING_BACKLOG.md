@@ -154,10 +154,12 @@ and a default run must send byte for byte the prompts the published engine-5 cod
 | T11 | Effort by phase | medium | IMPLEMENTED | `backends/*.py`, `token_saving.py` | `test_token_saving.py`, `test_backends.py`, `test_cli_backends.py`, `test_copilot_cli.py` | Each connector sends the phase's effort and each call records it. What it saves is unmeasured: that needs real seats |
 | T12 | Report header printed "null" | low | IMPLEMENTED | `report_template.html` | — | Checked in a browser; the template has no automated test |
 | T13 | Memory re-sent as prose | — | CLOSED | — | — | Measured: engine 5 already sends dated, engine-written memory items (1.2% of input). Nothing built |
+| T15 | Codex reasoning tokens counted twice | medium | VERIFIED | `backends/codex_cli.py` | `test_cli_backends.py` | Engine 5 added `reasoning_output_tokens` to `output_tokens`, which already includes them: codex-rs fills both from the Responses API usage, and its own test has output 10 with reasoning 5 and total = input + output. Codex output is now recorded once; `cache_write_input_tokens` is read too. Codex output counts in engine-5 runs are overstated by their reasoning |
+| T16 | Cost per month, per seat and across runs | medium | VERIFIED | `tokens.py`, `__main__.py` | `test_token_saving.py` | Setup calls apart from the monthly rate; each seat's characters per provider-counted token; several runs combine into a rate and a projection (`--months`). On a real 19-month council the Codex CLI seats counted 2.5-2.75 characters per token against 4.0-4.4 for local models, consistent with the CLI adding several thousand tokens of its own instructions to every call |
+| T17 | Prefix reuse measured on a real local server | medium | VERIFIED | `tools/cache_replay.py` | `test_token_saving.py` | Replays a run's prompts through Ollama and counts, from the server's log, the tokens it really evaluated (the API reports the whole prompt even when it came from the cache) |
 
 ### Open, deliberately
 
 | ID | Title | Reason |
 |---|---|---|
 | T14 | Each feature on real models, on and off, same seeds | Needs paid or subscription seats. The behaviour-dependent savings (briefing on demand, quiet months, effort by phase) are upper bounds until then |
-| T15 | Codex reasoning tokens possibly counted twice | Engine 5 adds `reasoning_output_tokens` to `output_tokens`. If the CLI's `output_tokens` already includes them, as the OpenAI Responses API's does, Codex output is overstated. Kept as is so that totals stay comparable with engine-5 runs; check against a real Codex usage record first |

@@ -440,8 +440,10 @@ numbers on one deterministic world.
   backwards, unstatused motions) separately from signals the engine records deliberately.
 - `karamaniya/tokens.py` (the token ledger and prefix-cache simulation behind `python -m karamaniya tokens`)
   and `karamaniya/token_saving.py` (the opt-in features and their settings); `tools/token_benchmark.py`
-  measures every feature on one deterministic world, and `tools/prompt_freeze.py` checks, or deliberately
-  regenerates, the fingerprints that hold a default run to engine 5's prompts.
+  measures every feature on one deterministic world, `tools/cache_replay.py` replays a run's prompts
+  through a local Ollama model and counts, from the server's log, how much of them its KV cache really
+  reused, and `tools/prompt_freeze.py` checks, or deliberately regenerates, the fingerprints that hold a
+  default run to engine 5's prompts.
 - `docs/TOKEN_EFFICIENCY.md`: where the tokens go, what each feature saves, and the limits of those numbers.
 
 ### Is a run reproducible?

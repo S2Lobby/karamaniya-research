@@ -418,5 +418,88 @@ class TheCacheSimulator(unittest.TestCase):
         self.assertIn("Token ledger", tokens.render(report))
 
 
+def write_run(path: str, calls: list, months: int | None = None, system: str = "S" * 400) -> str:
+    """A minimal run folder: a log and a prompt file that pair by call_id, and optionally a manifest."""
+    os.makedirs(path, exist_ok=True)
+    with open(os.path.join(path, "log.jsonl"), "w", encoding="utf-8") as log, \
+            open(os.path.join(path, "prompts.jsonl"), "w", encoding="utf-8") as prompts:
+        for i, c in enumerate(calls):
+            call_id = f"{c['month']}.{i}"
+            log.write(json.dumps({"type": "call", "call_id": call_id, "month": c["month"], "phase": c["phase"],
+                                  "member": c["member"], "seat": c["seat"], "provider": c.get("provider", "ollama"),
+                                  "model": c.get("model", "m"), "raw": "x" * c.get("out", 40),
+                                  "input_tokens": c.get("tokens_in", 0), "output_tokens": c.get("tokens_out", 0)}) + "\n")
+            prompts.write(json.dumps({"call_id": call_id, "month": c["month"], "phase": c["phase"],
+                                      "member": c["member"], "prompt": "u" * c["chars"]}) + "\n")
+    with open(os.path.join(path, "system_prompt.txt"), "w", encoding="utf-8") as f:
+        f.write(system)
+    if months is not None:
+        with open(os.path.join(path, "manifest.json"), "w", encoding="utf-8") as f:
+            json.dump({"months_simulated": months}, f)
+    return path
+
+
+class TheLedgerPerSeatAndPerMonth(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="karamaniya-ledger-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        calls = [{"month": 0, "phase": "survey", "member": m, "seat": s, "chars": 1600}
+                 for m, s in (("A", "a"), ("B", "b"))]
+        for month in (0, 1):
+            for m, s in (("A", "a"), ("B", "b")):
+                for phase in ("session", "decision"):
+                    calls.append({"month": month, "phase": phase, "member": m, "seat": s, "chars": 3600,
+                                  # seat a reports its tokens (one per five characters), seat b does not
+                                  "tokens_in": 800 if s == "a" else 0, "tokens_out": 10 if s == "a" else 0})
+        self.run_dir = write_run(os.path.join(self.tmp, "r1"), calls, months=2)
+
+    def test_a_month_costs_what_its_calls_cost_and_the_setup_is_counted_apart(self):
+        report = tokens.ledger(self.run_dir)
+        self.assertEqual((report["months"], report["setup"]["calls"], report["monthly"]["calls"]), (2, 2, 8))
+        self.assertEqual(report["monthly"]["input_tokens_estimated"], tokens.estimate(8 * (400 + 3600)))
+        self.assertIn("Per simulated month (2 months; the 2 setup calls are counted apart)", tokens.render(report))
+
+    def test_each_seat_compares_the_estimate_with_what_the_provider_counted(self):
+        seats = tokens.ledger(self.run_dir)["by_seat"]
+        a, b = seats["a"], seats["b"]
+        self.assertEqual((a["measured_calls"], a["measured_input_tokens"]), (4, 3200))
+        self.assertEqual(a["measured_input_chars"] / a["measured_input_tokens"], 5.0)
+        self.assertEqual((b["measured_calls"], b["measured_input_tokens"]), (0, 0))
+        self.assertIn("5.00", tokens.render(tokens.ledger(self.run_dir)))
+
+    def test_without_a_manifest_the_months_are_the_months_the_calls_name(self):
+        os.remove(os.path.join(self.run_dir, "manifest.json"))
+        self.assertEqual(tokens.ledger(self.run_dir)["months"], 2)
+
+    def test_several_runs_combine_into_a_rate_and_a_projection(self):
+        other = write_run(os.path.join(self.tmp, "r2"), [
+            {"month": m, "phase": "decision", "member": "A", "seat": "a", "chars": 3600} for m in range(4)], months=4)
+        summary = tokens.combine([tokens.ledger(self.run_dir), tokens.ledger(other)])
+        self.assertEqual((summary["runs"], summary["months"]), (2, 6))
+        self.assertEqual(summary["per_month"]["calls"], round((8 + 4) / 6, 2))
+        self.assertEqual(summary["setup_per_run"]["calls"], 2)            # only the run that had a setup
+        text = tokens.render_combined(summary, months=10)
+        self.assertIn("a 10-month run at this rate: ~22 calls", text)
+
+
+class TheReplayReadsTheServerLog(unittest.TestCase):
+    """tools/cache_replay.py counts what the server evaluated from its log, not from the API's count."""
+    LOG = "\n".join([
+        "slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 16384, n_keep = 4, task.n_tokens = 7397",
+        "slot   operator(): id  0 | task 0 | cached n_tokens = 0, memory_seq_rm [0, end)",
+        "slot print_timing: id  0 | task 0 | prompt eval time =    1144.65 ms /  7397 tokens (    0.15 ms per token)",
+        "[GIN] 2026/10/07 - 21:18:29 | 200 |    6.9048551s |       127.0.0.1 | POST     \"/api/chat\"",
+        "slot   operator(): id  0 | task 10 | new prompt, n_ctx_slot = 16384, n_keep = 4, task.n_tokens = 7397",
+        "slot   operator(): id  0 | task 10 | cached n_tokens = 7393, memory_seq_rm [7393, end)",
+        "slot print_timing: id  0 | task 10 | prompt eval time =      41.39 ms /     4 tokens (   10.35 ms per token)",
+        "slot print_timing: id  0 | task 10 |        eval time =       0.00 ms /     1 tokens"])
+
+    def test_prompt_size_and_tokens_evaluated_per_request(self):
+        spec = importlib.util.spec_from_file_location("cache_replay", os.path.join(ROOT, "tools", "cache_replay.py"))
+        replay = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(replay)
+        self.assertEqual(replay.server_tasks(self.LOG), [(7397, 7397), (7397, 4)])
+
+
 if __name__ == "__main__":
     unittest.main()

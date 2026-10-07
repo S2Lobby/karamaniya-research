@@ -150,13 +150,17 @@ class CodexCLIBackend(Backend):
         if not text:
             detail = errors[-1] if errors else (stderr.strip() or stdout.strip() or f"exit code {code}")
             raise cli_common.classify(detail, "Codex CLI")
-        tokens_in = int(usage.get("input_tokens", 0))
-        reasoning = int(usage.get("reasoning_output_tokens", 0))
+        # Codex fills these from the Responses API usage (codex-rs TokenUsage): input_tokens includes
+        # the cached and cache-written input, and output_tokens includes the reasoning tokens, which
+        # reasoning_output_tokens breaks out. Engine 5 added the reasoning to the output a second time.
+        tokens_in = int(usage.get("input_tokens", 0) or 0)
+        tokens_out = int(usage.get("output_tokens", 0) or 0)
+        reasoning = int(usage.get("reasoning_output_tokens", 0) or 0)
         cache_read = int(usage.get("cached_input_tokens", 0) or 0)
-        tokens_out = int(usage.get("output_tokens", 0)) + reasoning
+        cache_write = int(usage.get("cache_write_input_tokens", 0) or 0)
         data = extract_json(text)
         return CallResult(data=drop_optional_nulls(data, schema) if data is not None else None, raw=text,
                           served_model=self.model or "codex default",
                           input_tokens=tokens_in, output_tokens=tokens_out,
-                          cost_usd=self.cost(tokens_in, tokens_out, cache_read),
-                          cache_read_tokens=cache_read, reasoning_tokens=reasoning)
+                          cost_usd=self.cost(tokens_in, tokens_out, cache_read, cache_write),
+                          cache_read_tokens=cache_read, cache_write_tokens=cache_write, reasoning_tokens=reasoning)

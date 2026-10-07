@@ -119,10 +119,15 @@ class CliSeats(unittest.TestCase):
         os.environ["FAKE_CLI_USAGE"] = json.dumps({"cache_read_input_tokens": 9000, "cache_creation_input_tokens": 400})
         res = make_backend(seat("claude", "claude_cli")).complete(SYSTEM, USER, SCHEMA)
         self.assertEqual((res.input_tokens, res.cache_read_tokens, res.cache_write_tokens), (9520, 9000, 400))
-        os.environ["FAKE_CLI_USAGE"] = json.dumps({"cached_input_tokens": 6000, "reasoning_output_tokens": 64})
-        res = make_backend(seat("codex", "codex_cli")).complete(SYSTEM, USER, SCHEMA)
-        self.assertEqual((res.input_tokens, res.cache_read_tokens, res.reasoning_tokens), (6717, 6000, 64))
-        self.assertEqual(res.output_tokens, 19 + 64)     # engine 5 already counted reasoning as output
+        # As codex-rs reports them: the cached and cache-written input are part of input_tokens, the
+        # reasoning is part of output_tokens.
+        os.environ["FAKE_CLI_USAGE"] = json.dumps({"cached_input_tokens": 6000, "cache_write_input_tokens": 500,
+                                                   "output_tokens": 83, "reasoning_output_tokens": 64})
+        res = make_backend(seat("codex", "codex_cli", price_in=1.0, price_out=10.0, price_cache_read=0.1,
+                                price_cache_write=1.25)).complete(SYSTEM, USER, SCHEMA)
+        self.assertEqual((res.input_tokens, res.cache_read_tokens, res.cache_write_tokens), (6717, 6000, 500))
+        self.assertEqual((res.output_tokens, res.reasoning_tokens), (83, 64))     # not 83 + 64
+        self.assertAlmostEqual(res.cost_usd, (217 * 1.0 + 6000 * 0.1 + 500 * 1.25 + 83 * 10.0) / 1e6)
 
     def test_effort_by_phase_reaches_the_command_line(self):
         table = {"decision": "high", "session": "low"}

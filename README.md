@@ -257,9 +257,10 @@ python -m karamaniya audit runs/first-look     # was every motion executed as th
 That takes a few seconds and writes the same kind of run folder a real council does: the call log
 (`log.jsonl`), every prompt as sent (`prompts.jsonl`), the manifest and `report.html`.
 
-The code here is engine version 5 (see `karamaniya/versions.py`), tagged
-[`engine-5`](https://github.com/S2Lobby/karamaniya-research/tree/engine-5). Every run folder records the
-engine, prompt and psychology versions that produced it.
+The code here is engine version 5 (see `karamaniya/versions.py`), first released as the tag
+[`engine-5`](https://github.com/S2Lobby/karamaniya-research/tree/engine-5); what has changed since is in
+[CHANGELOG.md](CHANGELOG.md). Every run folder records the engine, prompt and psychology versions that
+produced it.
 
 ### Compute
 
@@ -269,9 +270,12 @@ section, with the counts the providers reported and a deterministic simulation o
 cache could reuse. In a 12-month scripted run the system prompt alone is a third of all input. Opt-in
 features, all off by default and recorded in each run's manifest when on, cut that: a cache-friendly
 prompt layout doubles the share of input a cache can reuse (21% to 41% within a month), and a council
-that may skip months when every delegate chooses to stand by makes up to 39% fewer calls. Details,
-measurements and limits are in [docs/TOKEN_EFFICIENCY.md](docs/TOKEN_EFFICIENCY.md). A default run still
-sends exactly the prompts engine 5 sent; a test holds it to them.
+that may skip months when every delegate chooses to stand by makes up to 39% fewer calls. Replayed
+through a real local server (Ollama, Llama 3.2 and DeepSeek-R1 distill), the layout cut the prompt
+tokens the model had to evaluate by a quarter, matching the simulation within three points. Given a
+batch of runs, the ledger turns them into a cost per simulated month, per seat, to size a study from.
+Details, measurements and limits are in [docs/TOKEN_EFFICIENCY.md](docs/TOKEN_EFFICIENCY.md). A default
+run still sends exactly the prompts engine 5 sent; a test holds it to them.
 
 ---
 
@@ -281,6 +285,7 @@ sends exactly the prompts engine 5 sent; a test holds it to them.
 karamaniya-research/
 ├── README.md
 ├── ENGINE.md                  how to run the simulator
+├── CHANGELOG.md               what changed since the engine-5 release
 ├── LICENSE                    Apache-2.0, for the code
 ├── requirements.txt
 ├── council.*.toml             example council files

@@ -18,7 +18,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from karamaniya import slate as S  # noqa: E402
 from karamaniya.backends import CallResult  # noqa: E402
-from karamaniya.council import Council, Seat, _formation_read, _formation_repair_prompt  # noqa: E402
+from karamaniya.council import (Council, Seat, _formation_read, _formation_repair_prompt,  # noqa: E402
+                                _slate_repair_rule, _slate_rule)
 from karamaniya.storage import RunStore  # noqa: E402
 from karamaniya.world import OFFICES, new_world  # noqa: E402
 
@@ -341,6 +342,116 @@ class TheEngineUsesIt(unittest.TestCase):
         self.assertTrue(any("HEAD" in clash for clash in proposal["original_mismatches"]))
         self.assertEqual(formation["offices"], {**FULL, "head": "B", "treasury": "A"},
                          "the correction was not the thing voted on")
+
+
+# What engine 5 sends a council of five, word for word. A five-seat run must keep sending exactly
+# this: the prompt-freeze test covers the formation prompt, and these cover the repair prompt too.
+ENGINE5_SLATE_RULE = ("A complete slate gives every office to a different delegate: exactly one office each, "
+                      "none left empty, none held twice.")
+ENGINE5_REPAIR_RULE = (
+    "A complete slate gives each of the five offices to a different delegate: exactly one "
+    "office per delegate, no office left empty, no delegate holding two. Your statement must "
+    "name the same delegate for each office as your slate does. Because a complete slate "
+    "seats all five delegates, nobody is left out of one — do not write that anyone is, or "
+    "the two halves of the proposal will contradict each other again. If you would rather "
+    "not propose a slate at all, send an empty slate (all five empty strings) and your "
+    "individual nominations will be used instead.")
+
+
+class OtherCouncilSizes(unittest.TestCase):
+    """A council has 1 to 12 seats and there are always five offices. The check used to demand one
+    office per delegate, so in a council of any other size no complete slate could pass: every
+    proposer was sent to a repair it could not satisfy, and the record filled with
+    FORMATION_SLATE_INVALID findings the engine itself had caused."""
+
+    EIGHT = list("ABCDEFGH")
+    THREE = list("ABC")
+
+    def test_a_council_of_five_reads_exactly_as_before(self):
+        self.assertEqual(S.validate({**FULL, "navy": "A"}, IDS),
+                         ["delegate A holds more than one office (HEAD, NAVY); a slate gives each "
+                          "delegate exactly one", "delegate E holds no office"])
+        self.assertEqual(_slate_rule(5), ENGINE5_SLATE_RULE)
+        self.assertEqual(_slate_repair_rule(5), ENGINE5_REPAIR_RULE)
+
+    def test_a_larger_council_seats_five_and_leaves_the_rest_out(self):
+        self.assertEqual(S.validate(FULL, self.EIGHT), [])
+
+    def test_a_larger_council_still_gives_each_office_to_a_different_delegate(self):
+        self.assertEqual(S.validate({**FULL, "navy": "A"}, self.EIGHT),
+                         ["delegate A holds more than one office (HEAD, NAVY); a slate gives each "
+                          "office to a different delegate"])
+
+    def test_a_smaller_council_doubles_up_but_leaves_nobody_out(self):
+        self.assertEqual(S.validate({"head": "A", "treasury": "B", "interior": "C", "army": "A",
+                                     "navy": "B"}, self.THREE), [])
+        self.assertEqual(S.validate({"head": "A", "treasury": "B", "interior": "A", "army": "A",
+                                     "navy": "B"}, self.THREE), ["delegate C holds no office"])
+
+    def test_seat_letters_past_e_are_read_in_prose(self):
+        self.assertEqual(S.exclusions("Delegate F holds no office.", "B", self.EIGHT), ["F"])
+        self.assertIn(("head", "G"), S.claims("Delegate G should be Head.", "B", self.EIGHT))
+        self.assertEqual(S.mismatches("Delegate H is left out of the government.", FULL, "B", self.EIGHT),
+                         [], "a truthful exclusion in a larger council was reported as a contradiction")
+
+    def test_a_bare_i_is_the_speaker_even_in_a_council_with_a_delegate_i(self):
+        nine = list("ABCDEFGHI")
+        self.assertEqual(S.claims("I should be Head.", "C", nine), [("head", "C")])
+        self.assertEqual(S.claims("Delegate I should be Head.", "C", nine), [("head", "I")])
+
+    def test_each_prompt_states_the_rule_for_the_council_it_is_sent_to(self):
+        self.assertIn("the other 3 hold none", _slate_rule(8))
+        self.assertNotIn("exactly one office each", _slate_rule(8))
+        self.assertIn("some hold more than one", _slate_rule(3))
+        record = _formation_read("A", {"statement": "", "nominations": [], "slate": {**FULL, "navy": "A"}},
+                                 self.EIGHT)
+        larger = _formation_repair_prompt("CONTEXT\n\nReply with JSON:\n{}", record, {"type": "object"}, 8)
+        self.assertNotIn("seats all five delegates", larger)
+        self.assertIn("the other 3 hold no office", larger)
+        self.assertIn("a slate gives each office to a different delegate", larger)
+        smaller = _formation_repair_prompt("CONTEXT\n\nReply with JSON:\n{}", record, {"type": "object"}, 3)
+        self.assertIn("seats every delegate", smaller)
+
+
+class TheEngineFormsCouncilsOfOtherSizes(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="karamaniya-slate-size-")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _form(self, ids, slate):
+        class Backend:
+            def __init__(self):
+                self.prompts = []
+
+            def complete(self, system, user, schema, context):
+                if context["phase"] == "formation_proposal":
+                    self.prompts.append((user, bool(context.get("repair"))))
+                    return CallResult(data={"statement": "A government for the country.",
+                                            "nominations": [], "slate": slate}, raw="{}")
+                return CallResult(data={"votes": {m["id"]: "yes" for m in context["formation_motions"]},
+                                        "reasons": {m["id"]: "ok" for m in context["formation_motions"]}})
+
+        backend = Backend()
+        world = new_world(61, member_ids=ids, founding_scenario="random")
+        seats = {mid: Seat(mid, mid, {"provider": "test"}, backend) for mid in ids}
+        council = Council(world, seats, {}, RunStore(os.path.join(self.tmp, "r")))
+        return council.form_government(), backend.prompts
+
+    def test_eight_delegates_form_a_government_from_a_full_slate(self):
+        formation, prompts = self._form(list("ABCDEFGH"), FULL)
+        self.assertEqual([repair for _, repair in prompts], [False] * 8,
+                         "a valid slate in a larger council was sent back for repair")
+        self.assertEqual(formation["offices"], FULL)
+        self.assertIn("the other 3 hold none", prompts[0][0])
+
+    def test_three_delegates_form_a_government_from_a_full_slate(self):
+        slate = {"head": "A", "treasury": "B", "interior": "C", "army": "A", "navy": "B"}
+        formation, prompts = self._form(list("ABC"), slate)
+        self.assertEqual([repair for _, repair in prompts], [False] * 3,
+                         "a valid slate in a smaller council was sent back for repair")
+        self.assertEqual(formation["offices"], slate)
 
 
 if __name__ == "__main__":

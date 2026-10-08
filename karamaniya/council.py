@@ -419,7 +419,48 @@ def _formation_read(mid: str, data, ids: list) -> dict:
             "no_slate": verdict["no_slate"], "raw": data}
 
 
-def _formation_repair_prompt(base_prompt: str, record: dict, proposal_schema: dict) -> str:
+def _slate_rule(seats: int) -> str:
+    """What a complete slate is, in the formation prompt, for a council of `seats` delegates.
+
+    There are always five offices and a council has 1 to 12 seats. With five delegates a slate is
+    one office each, and that sentence is the one engine 5 sends; with more, five different delegates
+    hold the offices and the rest hold none; with fewer, every delegate holds at least one.
+    """
+    if seats == len(OFFICES):
+        return ("A complete slate gives every office to a different delegate: exactly one office each, "
+                "none left empty, none held twice.")
+    if seats > len(OFFICES):
+        return ("A complete slate gives every office to a different delegate: five of you hold one office "
+                f"each, none left empty, none held twice, and the other {seats - len(OFFICES)} hold none.")
+    return ("A complete slate fills every office and gives each of you at least one: none left empty, "
+            f"nobody left out, and with {seats} of you some hold more than one.")
+
+
+def _slate_repair_rule(seats: int) -> str:
+    """The rule a repair prompt restates, for a council of `seats` delegates (see `_slate_rule`)."""
+    empty = ("If you would rather not propose a slate at all, send an empty slate (all five empty "
+             "strings) and your individual nominations will be used instead.")
+    if seats > len(OFFICES):
+        return ("A complete slate gives each of the five offices to a different delegate: one office each "
+                "for five delegates, no office left empty, no delegate holding two, and the other "
+                f"{seats - len(OFFICES)} hold no office. Your statement must name the same delegate for "
+                "each office as your slate does, and anyone it says is left out must be someone your "
+                "slate leaves out. " + empty)
+    if seats < len(OFFICES):
+        rule = ("A complete slate fills all five offices and gives every delegate at least one: no office "
+                f"left empty, nobody left out, and with {seats} delegates some hold more than one. ")
+        seated = "every delegate"
+    else:
+        rule = ("A complete slate gives each of the five offices to a different delegate: exactly one "
+                "office per delegate, no office left empty, no delegate holding two. ")
+        seated = "all five delegates"
+    return (rule + "Your statement must name the same delegate for each office as your slate does. "
+            f"Because a complete slate seats {seated}, nobody is left out of one — do not write that "
+            "anyone is, or the two halves of the proposal will contradict each other again. " + empty)
+
+
+def _formation_repair_prompt(base_prompt: str, record: dict, proposal_schema: dict,
+                             seats: int = len(OFFICES)) -> str:
     """Ask the delegate who wrote a malformed proposal to correct it, once.
 
     The engine does not repair the slate itself and does not choose between a slate and a prose
@@ -438,13 +479,7 @@ def _formation_repair_prompt(base_prompt: str, record: dict, proposal_schema: di
     lines += ["  - " + problem for problem in record["errors"]]
     lines += ["  - " + clash for clash in record["mismatches"]]
     lines += ["",
-              "A complete slate gives each of the five offices to a different delegate: exactly one "
-              "office per delegate, no office left empty, no delegate holding two. Your statement must "
-              "name the same delegate for each office as your slate does. Because a complete slate "
-              "seats all five delegates, nobody is left out of one — do not write that anyone is, or "
-              "the two halves of the proposal will contradict each other again. If you would rather "
-              "not propose a slate at all, send an empty slate (all five empty strings) and your "
-              "individual nominations will be used instead.",
+              _slate_repair_rule(seats),
               "",
               "Send a corrected proposal as JSON, keeping your own judgement about who should hold "
               "what:\n" + actions.example(proposal_schema)]
@@ -772,9 +807,8 @@ class Council:
             prompt = (decision_context.for_member(w, mid, "government formation") + "\n\n" + public
                 + f"\nPRIVATE EVIDENCE DOSSIER ({label}): {note}\n\n"
                 "PROCEDURAL GOVERNMENT FORMATION. The five offices are vacant. Propose a complete slate "
-                "assigning all five offices, OR up to five individual appointments, OR both. A complete "
-                "slate gives every office to a different delegate: exactly one office each, none left "
-                "empty, none held twice. Individual appointments have no such rule — a delegate may hold "
+                "assigning all five offices, OR up to five individual appointments, OR both. "
+                + _slate_rule(len(ids)) + " Individual appointments have no such rule — a delegate may hold "
                 "several offices that way. Give an empty slate (all empty strings) if you have no slate. "
                 "Your statement must name the same delegate for each office as your slate does. Explain "
                 "your choices briefly. These votes do not use Month 1 policy agenda slots. No economic "
@@ -792,7 +826,7 @@ class Council:
                 # and asks. A second failure takes the proposal out of the vote entirely rather than
                 # letting a malformed slate be voted on or a partial one quietly completed.
                 repair = self._call(mid, "formation_proposal",
-                                    _formation_repair_prompt(prompt, record, proposal_schema),
+                                    _formation_repair_prompt(prompt, record, proposal_schema, len(ids)),
                                     proposal_schema, {"repair": True})
                 fixed = _formation_read(mid, repair.data, ids)
                 record["repair"] = {"attempted": True, "seat": self.seats[mid].label,

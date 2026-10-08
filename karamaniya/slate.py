@@ -7,10 +7,12 @@ to one delegate pass as a "complete government", and nothing at all compared the
 So a proposal could read "B should be Head" while its structured half appointed A, and the vote went
 ahead on whichever half the engine happened to read.
 
-Two problems, two functions. `validate` is exact: a full slate is a bijection between five offices
-and five delegates, and anything else is named precisely. `mismatches` reads the prose, but only in
-the two narrow cases where it makes an *explicit* claim: that an office goes to a named delegate, or
-that a named delegate is not in the government at all.
+Two problems, two functions. `validate` is exact: in a council of five a full slate is a bijection
+between the five offices and the five delegates, in a larger council five different delegates hold
+them and the rest hold none, in a smaller one every delegate holds at least one, and anything else
+is named precisely. `mismatches` reads the prose, but only in the two narrow cases where it makes an
+*explicit* claim: that an office goes to a named delegate, or that a named delegate is not in the
+government at all.
 
 That narrowness is deliberate and is the main design decision here. Prose in this corpus is
 rhetorically varied — real statements include "Delegate D's payments-and-harvest knowledge suits
@@ -65,9 +67,25 @@ _LINKS_BACKWARD = (
 _HEDGES = ("not ", "n't ", "never", "oppose", "against", "reject", "rather than", "instead of",
            "either", "whether", "if ", "unless", "no one", "any other")
 _MAX_GAP = 80
-_DELEGATE_RE = re.compile(r"\bdelegate\s+([A-E])\b", re.I)
-_LETTER_RE = re.compile(r"\b([A-E])\b")
 _FIRST_PERSON_RE = re.compile(r"\b(?:myself|me|i)\b", re.I)
+
+
+def _seat_letters(ids) -> str:
+    """This council's seat letters, as a character class. A council has 1 to 12 seats, and a
+    pattern fixed at A-E never read Delegate F onwards."""
+    return "".join(sorted({str(i).upper() for i in ids if len(str(i)) == 1 and str(i).isalpha()}))
+
+
+def _delegate_re(ids):
+    letters = _seat_letters(ids)
+    return re.compile(rf"\bdelegate\s+([{letters}])\b", re.I) if letters else None
+
+
+def _letter_re(ids):
+    # A bare "I" is the speaker, never Delegate I: in a council of nine or more it would otherwise
+    # turn every "I should lead" into a claim about the ninth seat. "Delegate I" still reads.
+    letters = _seat_letters(ids).replace("I", "")
+    return re.compile(rf"\b([{letters}])\b") if letters else None
 
 
 def is_empty(slate) -> bool:
@@ -80,7 +98,9 @@ def validate(slate, ids) -> list:
     """Every way a structured slate can fail to be a complete government of `ids`.
 
     Returns the errors, so the caller can hand them back to the delegate who wrote it. An empty
-    list means a valid full slate: five offices, one holder each, each delegate in exactly one.
+    list means a valid full slate: five offices, one holder each. In a council of five that is each
+    delegate in exactly one; in a larger council five different delegates hold them and the rest
+    hold none; in a smaller one every delegate holds at least one, and some hold more.
     """
     if not isinstance(slate, dict):
         return ["slate must be a JSON object mapping each office to a delegate"]
@@ -104,14 +124,18 @@ def validate(slate, ids) -> list:
             errors.append(f"office {office.upper()} names unknown delegate {value!r}")
             continue
         holders.setdefault(value, []).append(office)
-    for member, offices in sorted(holders.items()):
-        if len(offices) > 1:
-            errors.append(f"delegate {member} holds more than one office "
-                          f"({', '.join(o.upper() for o in offices)}); a slate gives each delegate "
-                          f"exactly one")
-    for member in ids:
-        if member not in holders:
-            errors.append(f"delegate {member} holds no office")
+    seats = len(ids)
+    if seats >= len(OFFICES):
+        rule = ("a slate gives each delegate exactly one" if seats == len(OFFICES)
+                else "a slate gives each office to a different delegate")
+        for member, offices in sorted(holders.items()):
+            if len(offices) > 1:
+                errors.append(f"delegate {member} holds more than one office "
+                              f"({', '.join(o.upper() for o in offices)}); {rule}")
+    if seats <= len(OFFICES):
+        for member in ids:
+            if member not in holders:
+                errors.append(f"delegate {member} holds no office")
     return errors
 
 
@@ -135,10 +159,11 @@ def _office_mentions(text: str) -> list:
 def _member_mentions(text: str, speaker: str, ids) -> list:
     """(start, end, member) for every delegate named, by "Delegate X", a bare letter, or first person."""
     found = []
-    for m in _DELEGATE_RE.finditer(text):
+    delegate_re, letter_re = _delegate_re(ids), _letter_re(ids)
+    for m in (delegate_re.finditer(text) if delegate_re else ()):
         if m.group(1).upper() in ids:
             found.append((m.start(), m.end(), m.group(1).upper()))
-    for m in _LETTER_RE.finditer(text):
+    for m in (letter_re.finditer(text) if letter_re else ()):
         letter = m.group(1)
         if letter in ids and not any(not (m.end() <= s or m.start() >= e) for s, e, _ in found):
             found.append((m.start(), m.end(), letter))

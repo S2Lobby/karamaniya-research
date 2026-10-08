@@ -35,6 +35,14 @@ Fixes
   includes them). In engine-5 runs a Codex seat's output, and its cost when it had a `price_out`, is
   overstated by its reasoning tokens; input counts were right.
 - The run report's header printed "null" when a run had no outcome yet.
+- Government formation in a council of other than five seats. The slate check demanded exactly one
+  office per delegate, and there are always five offices, so with six to twelve delegates (or fewer
+  than five) no complete slate could pass: every proposer was sent to a repair it could not satisfy,
+  and a council whose delegates all sent the same valid slate formed no government. A complete slate
+  now means five different holders in a larger council and every delegate seated in a smaller one;
+  the formation and repair prompts state the rule for the council's size; and the formation prose
+  reader recognises seat letters past E, while a bare "I" stays the speaker. A five-seat council sends
+  exactly the prompts it sent before.
 - From an independent review of the token features (details in the backlog, T19-T24): a quiet month
   no longer drops foreign messages, private dispatches or answers addressed to the council, nor re-dates
   the delegates' notebooks; malformed `read_next_month` / `wake_if` answers are dropped instead of

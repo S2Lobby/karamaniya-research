@@ -42,6 +42,18 @@ World engine 9 and agent prompt 7 (`WORLD_ENGINE` 9, `AGENT_PROMPT` 7), from Mon
   political capital, the capital needed and the cost, and a leak records the chance it had and the
   factors behind it (press, administration, the leaker, the kind of message).
 
+World engine 10 and agent prompt 8 (`WORLD_ENGINE` 10, `AGENT_PROMPT` 8), from Months 3 to 8 (T40-T42):
+
+- A standing treaty in force is not proposed again. The non-aggression pact is one agreement with the
+  Union whoever it is addressed to, and the council had sent it five times in eight months; the
+  alliance with the Maritime League is treated the same way.
+- A policy motion whose text moves a share setting "from A% to B%" while it sets another figure goes
+  back to its proposer for repair. A rate motion's text said "from 6% to 7%", Month 1's figures, while
+  it set 0.11 from 0.10, and the council voted on it as written.
+- A storm's damage is in the state when the storm is announced. The news said the damage was done, but
+  it landed at the end of the month the council first answered it, so a 20M relief package voted on the
+  news ran on 0.0% damage and repaired nothing.
+
 Connector fixes (details and tests: `docs/ENGINEERING_BACKLOG.md`, T32-T33)
 
 - A Gemini seat (`antigravity_cli`) could not take part. Gemini accepts an enum value only as a non-empty

@@ -788,6 +788,15 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
             if amount is None:
                 return _reject("BAD_LOAN_AMOUNT", "a loan needs a positive amount in millions of gold")
             mo["value"] = format(amount, ".12g")
+        # A standing treaty is one agreement, whoever it is addressed to (Veleria signs the pact for
+        # the Union). Proposing it while it is in force sent a fresh proposal every time: in the first
+        # engine-6 run with real models the council sent the non-aggression pact five times in eight months.
+        if subj == "non_aggression" and w.dip.nonaggression:
+            return _reject("ALREADY_IN_FORCE", "a non-aggression pact with the Solvaran Union is already in force; "
+                           "it ends only with a war, a repudiation or an alliance with the League", treaty=subj)
+        if subj == "alliance" and w.dip.league_alliance:
+            return _reject("ALREADY_IN_FORCE", "the alliance with the Maritime League is already in force",
+                           treaty=subj)
         from . import motion_actions
         action_problem = motion_actions.validate_diplomatic_action(w, mo)
         if action_problem:

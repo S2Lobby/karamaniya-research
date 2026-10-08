@@ -211,6 +211,15 @@ World engine 9 and agent prompt 7, from Months 3 to 7 of the same run, after a r
 | T38 | A refusal to table a motion was forgotten the next month | medium | VERIFIED | `council.py` | `test_rejection_feedback.py` | The reason was shown in the rest of that month only; A and C were refused an Interior audit inside its cooldown in Month 5 and asked again in Month 7. The opening prompt now lists the delegate's own refusals from the month before (`AGENT_PROMPT` 7) |
 | T39 | Agenda forcing and leaks were recorded without their figures | low | VERIFIED | `deliberation.py`, `intelligence.py` | `test_carried_agenda.py`, `test_rejection_feedback.py` | "Not enough political capital" now records the capital, the capital needed and the cost; a leak records its probability and factors. The prompts show only the explanation and the leak's headline, as before |
 
+World engine 10 and agent prompt 8, from a second review of Months 3-8 of the same run (again checked
+against the log and the code; its other points were model behaviour, the design, or already fixed):
+
+| ID | Title | Severity | Status | Files | Tests | Result |
+|---|---|---|---|---|---|---|
+| T40 | A standing treaty was proposed again while in force | medium | VERIFIED | `politics.py` | `test_month8_review.py` | The council sent the Union a non-aggression pact five times in eight months (twice "to Veleria", the same pact). A pact or League alliance in force is now refused at tabling as ALREADY_IN_FORCE |
+| T41 | A policy motion's text and figure disagreed unnoticed | medium | VERIFIED | `motion_actions.py` | `test_month8_review.py` | Month 8, M1: "raise the rate from 6% to 7%" (Month 1's figures) set 0.11 from 0.10. A text moving a share setting "from A% to B%" to a figure the motion does not set is sent back for repair (`AGENT_PROMPT` 8); only the target is compared, since the current figure may have moved |
+| T42 | A storm's damage landed after the council answered it | high | VERIFIED | `dilemmas.py` | `test_month8_review.py` | The storm was announced as damage done at the end of Month 3; the 3.0% reached the state only after Month 4's council had passed 20M of relief, which ran on 0.0% damage. The damage now lands when the storm is announced, once |
+
 ### Open, deliberately
 
 | ID | Title | Reason |

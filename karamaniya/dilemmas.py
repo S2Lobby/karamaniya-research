@@ -537,6 +537,12 @@ def _setup(w: World, kind: str, rng) -> dict:
 
 
 # ---- lifecycle -------------------------------------------------------------------------------
+#: Issues whose news reports damage already done: their first effect lands when they are announced, not
+#: at the end of the month the council first answers them. Only the storm: relief is the response the
+#: council votes on the news, and it can only repair damage that is in the state when it runs.
+DAMAGE_ON_ANNOUNCEMENT = {"storm"}
+
+
 def generate(w: World) -> list:
     """Possibly raise new issues for next month, from the state the month ended in."""
     if w.ended():
@@ -574,6 +580,13 @@ def generate(w: World) -> list:
             raised.append(issue)
     s["active"].extend(raised)
     for issue in raised:
+        if issue["kind"] in DAMAGE_ON_ANNOUNCEMENT:
+            # The news says the damage is done, so it is done before the council meets. It used to land
+            # at the end of the month the council first answered it, so relief voted on the news repaired
+            # nothing: in the first engine-6 run with real models a 20M package ran on 0.0% damage, and
+            # the 3.0% the storm did arrived after it.
+            _effect(w, issue, True, lambda *_: None)
+            issue["started"] = True
         w.event("issue", f"New issue: {issue['title']}. {issue['text']}", importance=2, issue=issue["id"],
                 member=issue.get("target"))
     return raised

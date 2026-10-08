@@ -795,7 +795,7 @@ def conflict(w, motion: dict) -> dict | None:
     """
     action = structured_action(w, motion)
     if action["kind"] != "diplomacy":
-        return None
+        return _policy_figures_conflict(motion, action) if str(motion.get("type", "")) == "set_policy" else None
     text = str(motion.get("text", ""))
     intent = prose_intent(w, text)
     reasons = []
@@ -849,6 +849,32 @@ def conflict(w, motion: dict) -> dict | None:
         return None
     return {"code": "MOTION_ACTION_MISMATCH", "motion": motion.get("id"), "prose": text,
             "structured_action": action, "prose_intent": intent, "reasons": reasons}
+
+
+_PERCENT_CHANGE = re.compile(r"(\d+(?:\.\d+)?)\s*%\s*(?:to|->|→)\s*(\d+(?:\.\d+)?)\s*%", re.I)
+
+
+def _policy_figures_conflict(motion: dict, action: dict) -> dict | None:
+    """A policy motion whose text moves a share setting "from A% to B%" while its value sets another.
+
+    Month 8 of the first engine-6 run with real models: the text raised the rate "from 6% to 7%", the
+    figures of Month 1, and the motion set it to 0.11 from 0.10; the council voted on one and got the
+    other. Only the target is compared: the current figure may have moved since the delegate read it."""
+    from .politics import canonical_lever, parse_lever
+    lever = canonical_lever(str(motion.get("subject", "")))
+    value = parse_lever(lever, motion.get("value")) if lever else None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
+        return None
+    text = str(motion.get("text", ""))
+    changes = list(_PERCENT_CHANGE.finditer(text))
+    if not changes or any(abs(float(m.group(2)) / 100 - value) <= 0.0005 for m in changes):
+        return None
+    reason = {"code": "POLICY_FIGURES_MISMATCH", "lever": lever, "value": value,
+              "prose_target": float(changes[0].group(2)) / 100,
+              "detail": f"the text moves {lever} {changes[0].group(0)}, but the motion sets {lever} to "
+                        f"{value:g} ({value * 100:g}%)"}
+    return {"code": "MOTION_ACTION_MISMATCH", "motion": motion.get("id"), "prose": text,
+            "structured_action": action, "prose_intent": {}, "reasons": [reason]}
 
 
 def _most_specific(actions: list) -> str:

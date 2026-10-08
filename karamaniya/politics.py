@@ -1074,7 +1074,8 @@ def directive_bounds(w: World, mo: dict):
     sources = [("the motion", str(mo.get("text") or ""))]
     for demand in mo.get("demands") or []:
         if isinstance(demand, dict) and demand.get("demand"):
-            sources.append((f"{demand.get('member', 'a delegate')}'s demand", str(demand["demand"])))
+            sources.append((f"{demand.get('member', 'a delegate')}'s demand",
+                            str(demand.get("demand_full") or demand["demand"])))
     readings = [(name, _intervals(text, value, lever)) for name, text in sources]
     bound = intersect_bounds([iv for _, ivs in readings for iv in ivs])
     if bound is not None:

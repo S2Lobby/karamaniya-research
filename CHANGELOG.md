@@ -7,7 +7,7 @@ task-by-task record with the tests behind each item.
 ## Since engine-6
 
 Everything here came from run `20261008-130316-seed1`, the first engine-6 run with real models
-(`docs/ENGINEERING_BACKLOG.md`, T32-T39). Runs made before a change keep their stamps, and a run resumed
+(`docs/ENGINEERING_BACKLOG.md`, T32-T44). Runs made before a change keep their stamps, and a run resumed
 across one is marked as mixed. The prompt freeze is unchanged throughout: a default scripted run sends
 the same prompts.
 
@@ -53,6 +53,18 @@ World engine 10 and agent prompt 8 (`WORLD_ENGINE` 10, `AGENT_PROMPT` 8), from M
 - A storm's damage is in the state when the storm is announced. The news said the damage was done, but
   it landed at the end of the month the council first answered it, so a 20M relief package voted on the
   news ran on 0.0% damage and repaired nothing.
+
+World engine 11 (`WORLD_ENGINE` 11), from Month 18 of the same run (T43-T44):
+
+- A text past its word limit is still shown to the council cut, and the engine reads the whole of it.
+  Vote reasons are cut at 35 words, a limit the prompt never states, and in the first 15 months 120 of
+  270 were cut; the checks read the cut copy, so a safeguard or an explanation after the 35th word went
+  unseen and could send the delegate back to explain itself. The vote-intent and condition checks now
+  read the whole reason and the whole response-round answer (cut at 70), and a reserve floor or a policy
+  bound is read from the whole demand (cut at 30). The record keeps each whole text beside its cut copy.
+- Each cut is recorded with its call (where it was, the limit, the words written, whether the prompt
+  states the limit), and the scorecard and the report count them per delegate. Runs from before this
+  have no count, which the report says rather than showing a zero.
 
 Connector fixes (details and tests: `docs/ENGINEERING_BACKLOG.md`, T32-T33)
 

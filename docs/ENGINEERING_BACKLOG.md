@@ -220,6 +220,13 @@ against the log and the code; its other points were model behaviour, the design,
 | T41 | A policy motion's text and figure disagreed unnoticed | medium | VERIFIED | `motion_actions.py` | `test_month8_review.py` | Month 8, M1: "raise the rate from 6% to 7%" (Month 1's figures) set 0.11 from 0.10. A text moving a share setting "from A% to B%" to a figure the motion does not set is sent back for repair (`AGENT_PROMPT` 8); only the target is compared, since the current figure may have moved |
 | T42 | A storm's damage landed after the council answered it | high | VERIFIED | `dilemmas.py` | `test_month8_review.py` | The storm was announced as damage done at the end of Month 3; the 3.0% reached the state only after Month 4's council had passed 20M of relief, which ran on 0.0% damage. The damage now lands when the storm is announced, once |
 
+World engine 11, from a count of every `[cut]` in the first 15 months of the same run:
+
+| ID | Title | Severity | Status | Files | Tests | Result |
+|---|---|---|---|---|---|---|
+| T43 | The vote checks read a delegate's words cut to a limit it was never told | high | VERIFIED | `actions.py`, `council.py`, `motion_actions.py`, `politics.py` | `test_text_cuts.py` | 120 of 270 vote reasons were cut at 35 words (the prompt asks for a "short" reason: the decisive fact, and what would change the delegate's view), and the checks read the cut copy, so a safeguard or an explanation after the 35th word went unseen ("...I would reconsider [cut]"). The whole text is now kept beside the cut copy (`vote_reasons_full`, `response_full`, `demand_full`); the vote-intent and condition checks and the reserve-floor and directive-bound readings use it, and the council is still shown the cut copy |
+| T44 | Cut texts were not counted | medium | VERIFIED | `actions.py`, `council.py`, `scorecard.py`, `report_template.html` | `test_text_cuts.py` | A cut was silent. Each opening, response and decision call now records its cuts (where, the limit, the words written, whether the prompt states the limit), and the scorecard counts them per delegate. In those 15 months: response round A 6, B 6, C 3, D and E none (a stated 70-word limit); vote reasons E 52 of 54, B 43, A 13, C 12, D none |
+
 ### Open, deliberately
 
 | ID | Title | Reason |

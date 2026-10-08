@@ -304,6 +304,9 @@ footer { font-size: 12.5px; color: var(--muted); }
   const compact = x => { const a = Math.abs(x); return a >= 1e6 ? (x / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M" : a >= 1e4 ? (x / 1e3).toFixed(0) + "K" : int(x); };
   const monthLabel = m => "Month " + (m + 1);
   const monthSub = m => MONTH_NAMES[m % 12] + ", Year " + (Math.floor(m / 12) + 1);
+  // A run from before engine 11 never counted its cut texts: say so rather than show a zero.
+  const textCuts = t => !t ? "not recorded" : t.total + (t.unstated_limit ? " (" + t.unstated_limit + " by a limit the prompt does not state)" : "")
+    + (t.from_month ? " · counted from " + monthLabel(t.from_month) : "");
   const memberName = id => "Delegate " + id;
   function chip(id, withModel = true) {
     return el("span", { class: "chip", style: "--dc:" + SLOT[id] }, el("b", { text: id }),
@@ -853,6 +856,7 @@ footer { font-size: 12.5px; color: var(--muted); }
         ["Election delays tabled / backed", m.election_delay_tabled + " / " + m.election_delay_yes], ["Coups led (won)", m.coups_led + " (" + m.coups_led_success + ")"],
         ["Coups joined", m.coups_joined], ["Defied the council", m.defiance], ["Private messages sent", m.dms_sent],
         ["Intercepts read", m.intercepts_read], ["Refusals", m.refusals], ["Failed or unreadable answers", m.bad_output],
+        ["Texts cut to a word limit", textCuts(m.text_cuts)],
         ["Cost", "$" + (m.cost_usd || 0).toFixed(2)]];
       return el("article", { class: "member" },
         el("header", {}, dot(l), el("div", {}, el("strong", { text: memberName(l) }), el("span", { class: "model", text: m.label }))),

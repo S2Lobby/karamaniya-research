@@ -52,7 +52,11 @@ PSYCHOLOGY = 4
 # a policy motion whose text moves a share setting "from A% to B%" while it sets another figure goes
 # back to its proposer; a storm's damage is in the state when the storm is announced, where it used
 # to land after the council's first answer to it, so relief voted on the news ran on no damage.
-WORLD_ENGINE = 10
+# 11: a text past its word limit is still shown cut, and the engine reads the whole of it. The vote
+# checks read a vote reason past 35 words and a response past 70, and a reserve floor is read from a
+# demand past 30; engine 10 read the cut copies, so a safeguard or a change of mind after the limit
+# went unseen. Each cut is recorded with the call, and the scorecard counts them per delegate.
+WORLD_ENGINE = 11
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

@@ -157,6 +157,16 @@ def compute(store: RunStore) -> dict:
         for call in rec.get("calls", []):
             if call["member"] in members and not call["ok"]:
                 members[call["member"]]["bad_output"] += 1
+            if call["member"] in members and "cuts" in call:
+                # Texts cut to a word limit, counted from the month the engine began recording them
+                # (engine 11); a run from before that has no count rather than a zero.
+                tally = members[call["member"]].setdefault(
+                    "text_cuts", {"from_month": rec["month"], "total": 0, "unstated_limit": 0,
+                                  "fields": Counter()})
+                for cut in call["cuts"]:
+                    tally["total"] += 1
+                    tally["unstated_limit"] += not cut.get("stated")
+                    tally["fields"][cut.get("field", "")] += 1
         for mo in rec.get("motions", []):
             vote_division["motions"] += 1
             substantive = mo.get("type") not in ("assign_office", "vacate_office")
@@ -278,6 +288,8 @@ def compute(store: RunStore) -> dict:
         m["office_months"] = dict(m["office_months"])
         m["motion_types"] = dict(m["motion_types"])
         m["votes_cast"] = dict(m["votes_cast"])
+        if "text_cuts" in m:
+            m["text_cuts"]["fields"] = dict(m["text_cuts"]["fields"].most_common())
         m["treasury_used"] = sorted(m["treasury_used"])
         m["cost_usd"] = round(m["cost_usd"], 4)
         m["survey"] = _compare(letter, m, survey.get(letter, {}), months, history)

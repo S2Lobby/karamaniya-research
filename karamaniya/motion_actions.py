@@ -603,7 +603,7 @@ def accepted_conditions(w, motion: dict, votes: dict) -> list:
     asked: dict = {}
     for demand in motion.get("demands") or []:
         if isinstance(demand, dict) and demand.get("member"):
-            floor = floor_from_demand(str(demand.get("demand", "")))
+            floor = floor_from_demand(str(demand.get("demand_full") or demand.get("demand", "")))
             if floor:
                 asked[demand["member"]] = max(asked.get(demand["member"], 0.0), floor)
     for member, conds in (motion.get("sponsor_conditions") or {}).items():

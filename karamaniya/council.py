@@ -156,6 +156,13 @@ def _prose_intents(text, motion_ids) -> dict:
     return intents
 
 
+def _said_reasons(decision: dict) -> dict:
+    """Each vote reason as the delegate wrote it. The record and the council keep a reason cut to 35
+    words; the checks read the whole of it (engine 10 read the cut copy, so an explanation or a
+    safeguard after the 35th word went unseen, and the delegate could be asked to explain again)."""
+    return {**(decision.get("vote_reasons") or {}), **(decision.get("vote_reasons_full") or {})}
+
+
 def _vote_intent_clashes(staged: dict, decision: dict) -> list:
     """Votes that contradict the delegate's own last stated position, with nothing said about it.
 
@@ -167,8 +174,8 @@ def _vote_intent_clashes(staged: dict, decision: dict) -> list:
     staged = staged or {}
     stances = staged.get("stances") or {}
     votes = decision.get("votes") or {}
-    reasons = decision.get("vote_reasons") or {}
-    said = _prose_intents(staged.get("response"), votes)
+    reasons = _said_reasons(decision)
+    said = _prose_intents(staged.get("response_full") or staged.get("response"), votes)
     out = []
     for motion_id, vote in votes.items():
         stance = stances.get(motion_id)
@@ -234,10 +241,22 @@ def _merge_vote_repair(original: dict, repaired: dict, clashes: list,
     merged = dict(original)
     merged["votes"] = dict(original.get("votes") or {})
     merged["vote_reasons"] = dict(original.get("vote_reasons") or {})
+    merged["vote_reasons_full"] = dict(original.get("vote_reasons_full") or {})
     merged["vote_conditions"] = dict(original.get("vote_conditions") or {})
     fixed_votes = repaired.get("votes") or {}
     fixed_reasons = repaired.get("vote_reasons") or {}
+    fixed_full = repaired.get("vote_reasons_full") or {}
     fixed_conditions = repaired.get("vote_conditions") or {}
+
+    def take_reason(motion_id):
+        # The reason and its whole text come from the same answer; an uncut repaired reason leaves
+        # no whole text of the first answer's behind.
+        merged["vote_reasons"][motion_id] = fixed_reasons[motion_id]
+        if motion_id in fixed_full:
+            merged["vote_reasons_full"][motion_id] = fixed_full[motion_id]
+        else:
+            merged["vote_reasons_full"].pop(motion_id, None)
+
     for clash in clashes:
         motion_id = clash.get("motion")
         if motion_id not in fixed_votes or (answered is not None and motion_id not in answered):
@@ -245,7 +264,7 @@ def _merge_vote_repair(original: dict, repaired: dict, clashes: list,
         vote = fixed_votes[motion_id]
         merged["votes"][motion_id] = vote
         if motion_id in fixed_reasons:
-            merged["vote_reasons"][motion_id] = fixed_reasons[motion_id]
+            take_reason(motion_id)
         if vote == "conditional":
             if motion_id in fixed_conditions:
                 merged["vote_conditions"][motion_id] = fixed_conditions[motion_id]
@@ -258,14 +277,14 @@ def _merge_vote_repair(original: dict, repaired: dict, clashes: list,
         if repair.get("reason"):
             reason = fixed_reasons.get(motion_id)
             if isinstance(reason, str) and reason.strip():
-                merged["vote_reasons"][motion_id] = reason
+                take_reason(motion_id)
         if (repair.get("condition") and motion_id in fixed_votes
                 and (answered is None or motion_id in answered)):
             vote = fixed_votes[motion_id]
             merged["votes"][motion_id] = vote
             reason = fixed_reasons.get(motion_id)
             if isinstance(reason, str) and reason.strip():
-                merged["vote_reasons"][motion_id] = reason
+                take_reason(motion_id)
             if vote == "conditional" and motion_id in fixed_conditions:
                 merged["vote_conditions"][motion_id] = fixed_conditions[motion_id]
             else:
@@ -291,6 +310,7 @@ def _conditional_reason_clashes(decision: dict, motions: list | None = None) -> 
     """A conditional tally must test the safeguard the public vote reason actually states."""
     out = []
     motion_by_id = {str(m.get("id")): m for m in (motions or [])}
+    reasons = _said_reasons(decision)
     for motion_id, vote in (decision.get("votes") or {}).items():
         if vote != "conditional":
             continue
@@ -300,7 +320,7 @@ def _conditional_reason_clashes(decision: dict, motions: list | None = None) -> 
         if not conds:
             continue
         metrics = {c.get("metric") for c in conds}
-        reason = str((decision.get("vote_reasons") or {}).get(motion_id, "")).casefold()
+        reason = str(reasons.get(motion_id, "")).casefold()
         cited = {name for name, terms in _CONDITION_REASON_TERMS.items()
                  if any(term in reason for term in terms)}
         if any(term in reason for term in _NONCANONICAL_CONDITION_TERMS):
@@ -1073,7 +1093,8 @@ class Council:
                 self.store.log({"type": "dm", **dm})
             used[mid] += len(sent)
             sent_messages.extend(sent)
-            calls.append(self._call_summary(mid, "session", res, problems + invalid))
+            calls.append(self._call_summary(mid, "session", res, problems + invalid,
+                                            actions.text_cuts(out, res.data)))
             self._emit(type="statement", month=w.month, member=mid, text=out["statement"],
                        principles=w.member(mid).ideology if w.human_factor else "",
                        principles_changed=principles_changed,
@@ -1123,7 +1144,7 @@ class Council:
         decisions = {}
         for mid, res, out, problems in results:
             decisions[mid] = out
-            calls.append(self._call_summary(mid, "decision", res, problems))
+            calls.append(self._call_summary(mid, "decision", res, problems, actions.text_cuts(out, res.data)))
 
         pre_resolution = {"election_month": w.const.election_month, "currency": w.econ.currency,
                           "offices": dict(w.const.offices), "war": w.dip.war}
@@ -1294,6 +1315,7 @@ class Council:
         sent_messages, rejected, head_priorities, forced, comm_log, carry_notes = [], [], [], set(), [], []
         held_back = []
         for mid, res, out, problems in opening:
+            cuts = actions.text_cuts(out, res.data)
             principles_changed = False
             if w.human_factor and out["principles"] and out["principles"] != w.member(mid).ideology:
                 member = w.member(mid)
@@ -1379,7 +1401,7 @@ class Council:
                 self._record_dm(dm, commitments_added)
             used[mid] += len(sent)
             sent_messages.extend(sent)
-            calls.append(self._call_summary(mid, "session", res, problems + invalid))
+            calls.append(self._call_summary(mid, "session", res, problems + invalid, cuts))
             self._emit(type="statement", month=w.month, member=mid, text=out["statement"],
                        principles=w.member(mid).ideology if w.human_factor else "",
                        principles_changed=principles_changed,
@@ -1448,6 +1470,7 @@ class Council:
             # an authoritative snapshot after the preceding speaker's changes.
             for mid in order:
                 mid, res, out, problems = revise(mid)
+                cuts = actions.text_cuts(out, res.data)
                 notes = deliberation.apply_revisions(w, mid, out, scheduled, carried + tabled)
                 for demand in out["demands"]:
                     target = next((m for m in scheduled if m["id"] == demand["motion_id"]), None)
@@ -1466,8 +1489,9 @@ class Council:
                                   "withdrawn": notes["withdrawn"], "amended": notes["amended"],
                                   "rejected_amendments": notes["rejected"],
                                   "rejected_withdrawals": notes["rejected_withdrawals"],
-                                  "communications": applied, "shared": shared}
-                calls.append(self._call_summary(mid, "revision", res, problems))
+                                  "communications": applied, "shared": shared,
+                                  **({"response_full": out["response_full"]} if "response_full" in out else {})}
+                calls.append(self._call_summary(mid, "revision", res, problems, cuts))
                 self._emit(type="revision", month=w.month, member=mid, text=out["response"],
                            withdrawn=notes["withdrawn"], amended=notes["amended"],
                            rejected_withdrawals=notes["rejected_withdrawals"],
@@ -1499,7 +1523,7 @@ class Council:
                 # resolution keeps the notebook, and the month it was written, as they were.
                 out, _ = actions.normalize_decision_v2(w, mid, None, [], left)
                 out["quiet"] = True
-                return mid, None, out, []
+                return mid, None, out, [], None
             schema = token_saving.extend_decision_schema(
                 actions.decision_schema_v2(w, mid, motion_ids, election_pending, left), self.tokens, read_options)
             prompt, meta = decision_context.build(
@@ -1513,6 +1537,7 @@ class Council:
             res = self._call(mid, "decision", prompt, schema, {"motions": final, "statements": statements,
                                                                 "prompt_meta": meta, "election_pending": election_pending})
             out, problems = actions.normalize_decision_v2(w, mid, res.data, motion_ids, left)
+            answers = [res.data]
             ballot_repairs = _decision_ballot_repairs(problems)
             clashes = (_vote_intent_clashes(revisions.get(mid, {}), out)
                        + _conditional_reason_clashes(out, final))
@@ -1575,6 +1600,7 @@ class Council:
                                    "vote_intent_repair": bool(asked),
                                    "ballot_validation_repair": bool(ballot_repairs)})
                 fixed, problems2 = actions.normalize_decision_v2(w, mid, res2.data, motion_ids, left)
+                answers.append(res2.data)
                 names = sorted({c["motion"] for c in asked} | {r["motion"] for r in ballot_repairs})
                 first = out
                 if fixed.get("votes"):
@@ -1609,6 +1635,8 @@ class Council:
                               "first_ballot": {m: first["votes"].get(m) for m in names}, "repair_ballot": None,
                               "first_clashes": asked,
                               "note": "the repair answer carried no ballot; the answer first given stands"}
+            # Read off the ballot as it stands, before the engine adds its own findings to it.
+            cuts = actions.text_cuts(out, *answers)
             _fallback_unresolved_conditional(out, clashes)
             for needed in ballot_repairs:
                 motion_id = needed["motion"]
@@ -1625,16 +1653,16 @@ class Council:
                 out["stand_by"] = token_saving.read_stand_by(res.data, self.tokens)
             if self.tokens["briefing"] == "on_demand":
                 out["read_next_month"] = token_saving.read_requests(res.data, read_options)
-            return mid, res, out, problems
+            return mid, res, out, problems, cuts
 
         workers = len(active) if self.settings.get("parallel_decisions", True) else 1
         with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
             results = list(ex.map(decide, active))
         decisions = {}
-        for mid, res, out, problems in results:
+        for mid, res, out, problems, cuts in results:
             decisions[mid] = out
             if res is not None:                 # a quiet month makes no call to summarise
-                calls.append(self._call_summary(mid, "decision", res, problems))
+                calls.append(self._call_summary(mid, "decision", res, problems, cuts))
         self._remember_token_choices(decisions, quiet)
 
         pre_resolution = {"election_month": w.const.election_month, "currency": w.econ.currency,
@@ -2380,10 +2408,13 @@ class Council:
                     self._month_intercepts.append(dm)
         return len(dms)
 
-    def _call_summary(self, mid: str, phase: str, res: CallResult, problems: list) -> dict:
+    def _call_summary(self, mid: str, phase: str, res: CallResult, problems: list, cuts: list | None = None) -> dict:
+        # `cuts` (actions.text_cuts) is recorded for the opening, response and decision answers from
+        # engine 11 on; a summary without it was not checked, which is not the same as nothing cut.
         return {"member": mid, "phase": phase, "served_model": res.served_model, "refusal": res.refusal,
                 "error": res.error, "ok": res.data is not None, "format_retry": res.format_retry,
-                "problems": problems, "cost_usd": round(res.cost_usd, 5), "latency_s": res.latency_s}
+                "problems": problems, "cost_usd": round(res.cost_usd, 5), "latency_s": res.latency_s,
+                **({"cuts": cuts} if cuts is not None else {})}
 
     def _foreign_cabinets(self, contexts: dict) -> tuple[dict, list]:
         """One independently scoped strategy call each for Veleria and Dorsania."""

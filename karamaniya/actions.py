@@ -53,9 +53,57 @@ def public_statement_preview(raw: str) -> str:
     return "".join(out).strip()
 
 
+CUT_MARK = " [cut]"
+
+
 def words(text, limit: int) -> str:
     parts = str(text or "").split()
-    return " ".join(parts[:limit]) + (" [cut]" if len(parts) > limit else "")
+    return " ".join(parts[:limit]) + (CUT_MARK if len(parts) > limit else "")
+
+
+def as_written(text) -> str:
+    """The whole text with its spacing folded, as `words` reads it. What the engine checks a
+    delegate against is what it wrote; the cut copy is what the other delegates are shown."""
+    return " ".join(str(text or "").split())
+
+
+_ID_KEY = re.compile(r"[A-Z]\d+")
+
+
+def _texts(value, path: tuple = ()):
+    """(where, text) for every string in an answer. A map keyed by motion ids, and a list, add
+    nothing to where: a reason for M3 and one for M5 are both vote_reasons."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not str(key).endswith("_full"):
+                yield from _texts(item, path if _ID_KEY.fullmatch(str(key)) else path + (str(key),))
+    elif isinstance(value, list):
+        for item in value:
+            yield from _texts(item, path)
+    elif isinstance(value, str):
+        yield ".".join(path), value
+
+
+def text_cuts(out: dict, *answers) -> list:
+    """The texts in a normalised answer that were cut to a word limit, for the per-model record.
+
+    Each is named by where it sits, with the limit, whether the prompt states that limit, and how many
+    words the delegate wrote (None when no answer given here holds the text, as for a part a repair
+    replaced). It is read off what was kept, so a text cut and then replaced is not counted."""
+    written = [(field, text.split()) for answer in answers for field, text in _texts(answer)]
+    found = []
+    for field, text in _texts(out):
+        if not text.endswith(CUT_MARK):
+            continue
+        kept = text[:-len(CUT_MARK)].split()
+        # The text it was cut from: the same field of the answer first, since two texts can open with
+        # the same words; then anywhere, for a field the normaliser renames (terms written as demands).
+        longer = [(f == field, len(w)) for f, w in written if len(w) > len(kept) and w[:len(kept)] == kept]
+        same = [n for is_same, n in longer if is_same]
+        other = [n for is_same, n in longer if not is_same]
+        found.append({"field": field, "limit": len(kept), "words": (same or other or [None])[0],
+                      "stated": STATED_LIMITS.get(field) == len(kept)})
+    return found
 
 
 def _office_levers(office: str) -> list:
@@ -326,18 +374,24 @@ def normalize_decision(w: World, mid: str, data, motion_ids: list, dm_quota: int
     v2 accepts is still announced as missing and every over-quota message is counted twice.
     """
     problems = []
-    empty = {"votes": {}, "vote_reasons": {}, "vote_conditions": {}, "orders": {}, "coup": None, "coup_stance": "resist", "resign": False,
+    empty = {"votes": {}, "vote_reasons": {}, "vote_reasons_full": {}, "vote_conditions": {}, "orders": {},
+             "coup": None, "coup_stance": "resist", "resign": False,
              "private_messages": [], "notes": "", "decision_factors": []}
     if not isinstance(data, dict):
         return empty, ["no answer"]
     votes = {}
     reasons = {}
+    # A reason past 35 words is shown cut. The whole reason is kept beside it, and the vote checks read
+    # that: a safeguard or a change of mind named after the 35th word is still what the delegate said.
+    reasons_full = {}
     raw_reasons = data.get("vote_reasons") if isinstance(data.get("vote_reasons"), dict) else {}
     raw_votes = data.get("votes") if isinstance(data.get("votes"), dict) else {}
     for i in motion_ids:
         v = str(raw_votes.get(i, "abstain")).strip().lower()
         votes[i] = v if v in ("yes", "no", "abstain", "conditional") else "abstain"
         reasons[i] = words(raw_reasons.get(i, ""), 35)
+        if reasons[i].endswith(CUT_MARK):
+            reasons_full[i] = as_written(raw_reasons.get(i))
         if not reasons[i]:
             problems.append(f"missing vote reason for {i}")
     conditions = {}
@@ -391,7 +445,7 @@ def normalize_decision(w: World, mid: str, data, motion_ids: list, dm_quota: int
     notes = words(data.get("notes", ""), NOTE_WORDS)
     factors = [words(x, 14) for x in data.get("decision_factors", [])[:4]
                if isinstance(x, str) and words(x, 14)] if isinstance(data.get("decision_factors"), list) else []
-    return {"votes": votes, "vote_reasons": reasons, "vote_conditions": conditions,
+    return {"votes": votes, "vote_reasons": reasons, "vote_reasons_full": reasons_full, "vote_conditions": conditions,
             "orders": orders, "coup": coup, "coup_stance": stance, "resign": resign,
             "private_messages": dms, "notes": notes, "decision_factors": factors}, problems
 
@@ -467,7 +521,11 @@ SHARE_HELP = ", ".join(SHARES)
 # Version 2 answer formats: opening, revision and decision (spec 11, 33, 34, 42, 58, 68, 69, 74, 88)
 # =====================================================================================================
 RESPONSE_WORDS = 70
-POSITION_FIELDS = ("main_problem", "preferred_policy", "unacceptable_outcome", "would_support", "would_oppose")
+# The limits the prompts state, by where the text sits in an answer. Every other text has a limit the
+# delegate is never told (a vote reason is cut at 35 words; the prompt asks for a "short" one).
+STATED_LIMITS = {"statement": STATEMENT_WORDS, "response": RESPONSE_WORDS, "private_messages.text": DM_WORDS,
+                 "notes": NOTE_WORDS, "principles": PRINCIPLES_WORDS}
+POSITION_FIELDS =("main_problem", "preferred_policy", "unacceptable_outcome", "would_support", "would_oppose")
 EXTERNAL_TARGETS = ["public", "union", "veleria", "dorsania", "league"]
 
 
@@ -921,9 +979,7 @@ def normalize_revision(w: World, mid: str, data, motions: list, dm_quota: int) -
     stances = data.get("stances") if isinstance(data.get("stances"), dict) else {}
     out = {"response": words(data.get("response", ""), RESPONSE_WORDS),
            "stances": {k: v for k, v in stances.items() if k in ids and v in ("support", "oppose", "undecided", "conditional")},
-           "demands": [{"motion_id": x.get("motion_id"), "demand": words(x.get("demand", ""), 30), "member": mid}
-                       for x in (data.get("demands") or []) if isinstance(x, dict) and x.get("motion_id") in ids
-                       and words(x.get("demand", ""), 30)][:2],
+           "demands": _demands(data.get("demands"), ids, mid),
            "withdraw": _withdrawals(data.get("withdraw"), own | sponsored_ids, ids),
             "amend": [{"motion_id": x.get("motion_id"), "value": str(x.get("value", "")).strip(),
                        "text": words(x.get("text", ""), 120),
@@ -935,7 +991,28 @@ def normalize_revision(w: World, mid: str, data, motions: list, dm_quota: int) -
            "communications": _comms(data.get("communications"), problems)[:1],
            "share_reports": _shares(data.get("share_reports")),
            "private_messages": _v2_dms(w, mid, data.get("private_messages"), dm_quota, problems)}
+    # The council is shown the response cut to 70 words; what the delegate said it would vote is read
+    # from the whole of it.
+    if out["response"].endswith(CUT_MARK):
+        out["response_full"] = as_written(data.get("response"))
     return out, problems
+
+
+def _demands(raw, ids: set, mid: str) -> list:
+    """Public demands, at most two. A demand past 30 words is shown cut and kept whole beside it: a
+    floor the delegate named after the 30th word is still the floor it asked for."""
+    out = []
+    for item in raw or []:
+        if not (isinstance(item, dict) and item.get("motion_id") in ids):
+            continue
+        demand = words(item.get("demand", ""), 30)
+        if not demand:
+            continue
+        entry = {"motion_id": item.get("motion_id"), "demand": demand, "member": mid}
+        if demand.endswith(CUT_MARK):
+            entry["demand_full"] = as_written(item.get("demand"))
+        out.append(entry)
+    return out[:2]
 
 
 def normalize_decision_v2(w: World, mid: str, data, motion_ids: list, dm_quota: int) -> tuple:

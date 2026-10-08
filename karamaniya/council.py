@@ -354,6 +354,23 @@ def _fallback_unresolved_conditional(decision: dict, clashes: list) -> None:
             "condition still did not match the reason it gave")
 
 
+def _rejected_last_month(last_record: dict | None, mid: str) -> list:
+    """The delegate's own motions the engine could not table last month, with the reason it gave.
+
+    The reason was shown for the rest of that month only. The next month it was gone, and delegates
+    moved the same unknown lever, or asked for the same audit inside its cooldown, again."""
+    mine = [r for r in (last_record or {}).get("rejected_motions") or []
+            if isinstance(r, dict) and r.get("member") == mid and isinstance(r.get("motion"), dict)]
+    if not mine:
+        return []
+    lines = ["YOUR MOTIONS NOT TABLED LAST MONTH (the reason each was refused):"]
+    for r in mine[:4]:
+        m = r["motion"]
+        what = " ".join(str(m.get(k, "")) for k in ("type", "subject", "value") if m.get(k))
+        lines.append(f"- {what}: {r.get('reason_code', '')} - {str(r.get('explanation', ''))[:300]}")
+    return [decision_context.Section("rejected_last_month", 2, "\n".join(lines))]
+
+
 MONTH_OUTCOMES_KEPT = 6
 
 
@@ -1262,7 +1279,7 @@ class Council:
                 messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)),
                 instructions=prompts.opening_instructions_v2(w, mid, left, order, slots, carried),
                 schema_text=self._schema_text(mid, schema), budget=self._budget(mid),
-                extra=own_brief(mid), layout=self.tokens["layout"])
+                extra=own_brief(mid) + _rejected_last_month(self.last_record, mid), layout=self.tokens["layout"])
             res = self._call(mid, "session", prompt, schema, {"motions": [], "statements": [], "prompt_meta": meta})
             out, problems = actions.normalize_session_v2(w, mid, res.data, left)
             return mid, res, out, problems
@@ -1726,7 +1743,8 @@ class Council:
         record["outcome"] = dict(w.outcome)
         record["issues"] = [{k: d.get(k) for k in ("id", "kind", "title", "month", "status")} for d in w.dilemmas.get("active", [])]
         self.last_record = {"motions": record["motions"], "defiance": record["defiance"], "coups": record["coups"],
-                            "deferred": record["deferred"], "office_orders": record["office_orders"]}
+                            "deferred": record["deferred"], "office_orders": record["office_orders"],
+                            "rejected_motions": record.get("rejected_motions", [])}
         if quiet:
             record["quiet_month"] = quiet
             self.last_record["quiet_month"] = True
@@ -2177,11 +2195,12 @@ class Council:
                                       motion=mo["id"], would_violate=mismatch["would_violate"],
                                       accepted=[{k: c[k] for k in ("metric", "operator", "value", "accepted_by")}
                                                 for c in mismatch["missing"]])
-                if motion_actions.condition_mismatch(w, {**mo, "conditions": entry["conditions"]}):
-                    # Belt and braces: the gate below re-checks this, but recording the
-                    # final-conditions triple on the entry keeps vote vs execution auditable
-                    # even for paths that never reach validate_execution.
-                    pass
+                # A safeguard the voted text states and the conditions omit binds too (engine 8 refused
+                # to run such a motion at all: in Month 3 of the first engine-6 run a payment that
+                # passed 3-2, with a 70M floor in its text and 60M in its conditions, never ran).
+                entry["conditions"], text_bound = motion_actions.bind_text_conditions(w, mo, entry["conditions"])
+                if text_bound:
+                    entry["text_conditions_bound"] = text_bound
                 entry["final_conditions"] = list(entry["conditions"])
                 gate = motion_actions.validate_execution(
                     w, {**mo, "passed": True, "conditions": entry["conditions"]}, executed)

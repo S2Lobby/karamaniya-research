@@ -35,6 +35,21 @@ class CarriedAgendaTests(unittest.TestCase):
         self.assertEqual(deferred, [])
         self.assertIn("D1 by B", prompts.opening_instructions_v2(self.w, "A", 3, list("ABCDE"), 4, carried))
 
+    def test_forcing_records_the_capital_it_was_judged_on(self):
+        from karamaniya import standing, tuning
+        # Carried-over motions take every place first; the forced one has to buy its way in.
+        carried = [{"id": f"D{i}", "type": "set_policy", "subject": "tax", "value": f"0.2{i}", "text": "tax",
+                    "proposer": "A", "summary": f"tax 0.2{i}", "carried_over": True}
+                   for i in range(deliberation.capacity(self.w))]
+        forced = {"id": "M1", "type": "set_policy", "subject": "welfare", "value": "0.05", "text": "welfare",
+                  "proposer": "E", "summary": "welfare 0.05"}
+        standing.ensure(self.w, "E")["capital"] = 0.0
+        _, _, notes = deliberation.allocate(self.w, carried + [forced], [], {"M1"}, carried)
+        failed = next(n for n in notes if n["code"] == "FORCE_FAILED")
+        self.assertEqual(failed["capital"], 0.0)
+        self.assertEqual(failed["capital_needed"], float(tuning.get(self.w, "agenda.force_capital")))
+        self.assertEqual(failed["cost"], float(tuning.get(self.w, "agenda.force_cost")))
+
     def test_renewal_updates_diplomatic_text_and_executable_target_together(self):
         w = self.w
         w.agenda["deferred"] = [{

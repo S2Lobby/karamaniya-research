@@ -6,10 +6,13 @@ task-by-task record with the tests behind each item.
 
 ## Since engine-6
 
-World engine 7 (`WORLD_ENGINE` 7). The prompts are engine 6's (`AGENT_PROMPT` 6; the prompt freeze is
-unchanged), but the engine does two things differently with the same answers, so runs made before keep
-their engine-6 stamp and a run resumed across the change is marked as mixed. Both came from Month 1 of
-the first engine-6 run with real models (`docs/ENGINEERING_BACKLOG.md`, T34-T35):
+Everything here came from run `20261008-130316-seed1`, the first engine-6 run with real models
+(`docs/ENGINEERING_BACKLOG.md`, T32-T39). Runs made before a change keep their stamps, and a run resumed
+across one is marked as mixed. The prompt freeze is unchanged throughout: a default scripted run sends
+the same prompts.
+
+World engine 7 (`WORLD_ENGINE` 7): two things the engine does differently with the same answers, from
+Month 1 (T34-T35):
 
 - A setting written with its office run in front (`treasury_imports`, `Treasury imports`) is that
   office's setting, as `treasury:imports` already was. It was an unknown lever, and a motion setting
@@ -25,6 +28,19 @@ World engine 8 (`WORLD_ENGINE` 8), from Month 6 of the same run (T36):
 - A constitution setting moved as a policy (`set_policy highlands_status = cultural`) is the
   constitution motion it can only mean. The prompt lists the regional statuses among the levers; such a
   motion was an unknown lever and was discarded.
+
+World engine 9 and agent prompt 7 (`WORLD_ENGINE` 9, `AGENT_PROMPT` 7), from Months 3 to 7 (T37-T39):
+
+- A safeguard the voted text states and the motion's conditions omit binds as well: the motion runs when
+  its own conditions and the text's are all met, and a payment is sized to the stricter floor. An
+  amendment had rewritten a payment's text to require reserves of at least 70M after it and left its
+  condition at 60M; it passed 3-2 with reserves at 74M and the gate refused to run it at all.
+- A delegate's opening prompt lists its own motions the engine refused to table the month before, with
+  the reason. The reason was shown for the rest of that month only, and delegates asked for an audit
+  inside its cooldown again two months later.
+- Records, with no change in behaviour: forcing a motion onto a full agenda records the proposer's
+  political capital, the capital needed and the cost, and a leak records the chance it had and the
+  factors behind it (press, administration, the leaker, the kind of message).
 
 Connector fixes (details and tests: `docs/ENGINEERING_BACKLOG.md`, T32-T33)
 

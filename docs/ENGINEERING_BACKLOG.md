@@ -202,6 +202,15 @@ Each fix was checked by replaying the recorded answer through the new code:
 | T35 | A conditional vote abstained when its repair failed, whatever its fallback | medium | VERIFIED | `council.py` | `test_vote_accountability.py` | A's M5 ballot tested reserves and the deficit, and its reason never named the deficit; after one repair the vote was counted as an abstention, reported as an "untestable" safeguard, though A had set no as its fallback and opposed M5 in public. It now takes the delegate's own fallback (no before abstain), and the message says the condition did not match the reason |
 | T36 | A constitution setting moved as a policy was an unknown lever | medium | VERIFIED | `actions.py` | `test_intake_normalization.py` | Delegate C (gpt-6-luna) moved `set_policy highlands_status = cultural`, the exact field and value for cultural status; the prompt lists the regional statuses among the levers. It is now read as the constitution motion; a real lever stays a policy |
 
+World engine 9 and agent prompt 7, from Months 3 to 7 of the same run, after a review of the run log
+(the review's other points were checked against the log and the code and were not engine faults):
+
+| ID | Title | Severity | Status | Files | Tests | Result |
+|---|---|---|---|---|---|---|
+| T37 | A passed motion whose amended text added a safeguard never ran | high | VERIFIED | `motion_actions.py`, `council.py` | `test_text_safeguards.py` | Month 3, D1: an amendment wrote "reserves at least 70M after payment" into the text and left the condition at 60M; it passed 3-2 with reserves at 74M and the gate refused it outright, because under 60M it would run too early. The text's safeguard now binds with the motion's own: it runs when all are met, sized to the stricter floor, and is blocked when the text's floor fails |
+| T38 | A refusal to table a motion was forgotten the next month | medium | VERIFIED | `council.py` | `test_rejection_feedback.py` | The reason was shown in the rest of that month only; A and C were refused an Interior audit inside its cooldown in Month 5 and asked again in Month 7. The opening prompt now lists the delegate's own refusals from the month before (`AGENT_PROMPT` 7) |
+| T39 | Agenda forcing and leaks were recorded without their figures | low | VERIFIED | `deliberation.py`, `intelligence.py` | `test_carried_agenda.py`, `test_rejection_feedback.py` | "Not enough political capital" now records the capital, the capital needed and the cost; a leak records its probability and factors. The prompts show only the explanation and the leak's headline, as before |
+
 ### Open, deliberately
 
 | ID | Title | Reason |

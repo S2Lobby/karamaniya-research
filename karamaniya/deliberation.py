@@ -229,13 +229,17 @@ def allocate(w: World, motions: list, head_priorities: list, forced: set, carrie
         if m["id"] in forced:
             cost = float(tuning.get(w, "agenda.force_cost"))
             need = float(tuning.get(w, "agenda.force_capital"))
-            if standing.ensure(w, m["proposer"])["capital"] >= need and standing.spend_capital(w, m["proposer"], cost):
+            # The figures go in the record so the rule can be audited; the prompt shows only the
+            # explanation, as before.
+            capital = float(standing.ensure(w, m["proposer"])["capital"])
+            figures = {"proposer": m["proposer"], "capital": round(capital, 2), "capital_needed": need, "cost": cost}
+            if capital >= need and standing.spend_capital(w, m["proposer"], cost):
                 scheduled.append(m)
                 m["forced"] = True
-                notes.append({"motion": m["id"], "code": "FORCED_ONTO_AGENDA",
+                notes.append({"motion": m["id"], "code": "FORCED_ONTO_AGENDA", **figures,
                               "explanation": f"{m['proposer']} spent political capital to force {m['id']} onto a full agenda"})
                 continue
-            notes.append({"motion": m["id"], "code": "FORCE_FAILED",
+            notes.append({"motion": m["id"], "code": "FORCE_FAILED", **figures,
                           "explanation": "not enough political capital to force this motion onto the agenda"})
         deferred.append(m)
         notes.append({"motion": m["id"], "code": "AGENDA_FULL",

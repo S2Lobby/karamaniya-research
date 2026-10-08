@@ -10,7 +10,10 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # were offered without being explained; one prompt printed two different figures for output; and a
 # forecast confidence written in percent was recorded as certainty. The "unobserved" framing is new,
 # and "immersive" no longer says "simulation" in the survey, the rules or the briefing.
-AGENT_PROMPT = 6
+# 7: a delegate's opening prompt lists its own motions the engine refused to table the month before,
+# with the reason. The reason was shown for the rest of that month only, and delegates moved the same
+# unknown lever, or asked for an audit inside its cooldown, again the next month.
+AGENT_PROMPT = 7
 PSYCHOLOGY = 4
 # 3 added the causal world model: output gap and potential output, Okun unemployment, hybrid
 # inflation expectations, lagged exchange-rate pass-through, and the lagged fiscal impulse. A run
@@ -40,7 +43,10 @@ PSYCHOLOGY = 4
 # where engine 6 counted it as an abstention whatever the delegate had asked for.
 # 8: a constitution setting moved as a policy (`set_policy highlands_status = cultural`) is the
 # constitution motion it can only mean; it was an unknown lever, and the motion was discarded.
-WORLD_ENGINE = 8
+# 9: a safeguard the voted text states and the motion's conditions omit (an amendment rewrote the
+# text and left the conditions) binds as well: the motion runs when its own conditions and the
+# text's are all met. Engine 8 refused to run it at all, even with the text's safeguard met.
+WORLD_ENGINE = 9
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

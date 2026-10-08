@@ -637,28 +637,34 @@ def leaks(w: World, dms: list, intercepts: list) -> list:
     admin = 1 + (1 - w.econ.admin_capacity)
     cap = int(tuning.get(w, "leaks.max_per_month"))
     candidates = []
+    # Each leak records the chance it had and what made it: the record only said that it happened.
+    common = {"base": base, "press": press, "admin": round(admin, 4)}
     for dm in dms:
         leaker = w.member(dm["to"]) if dm["to"] in {m.id for m in w.members} else None
         if leaker is None:
             continue
-        p = base * press * admin * _person_factor(w, leaker.id, dm["from"])
-        if dm.get("kind") == "confidential":
-            p *= 1.3
-        candidates.append((p, {"kind": "dm", "item": dm, "suspect": leaker.id}))
+        person = _person_factor(w, leaker.id, dm["from"])
+        kind = 1.3 if dm.get("kind") == "confidential" else 1.0
+        p = base * press * admin * person * kind
+        candidates.append((p, {"kind": "dm", "item": dm, "suspect": leaker.id},
+                           {**common, "person": round(person, 4), "kind": kind}))
     for dm in intercepts:
         interior = w.holder("interior")
-        p = base * press * admin * 1.4 * (_person_factor(w, interior.id, dm["from"]) if interior else 1)
-        candidates.append((p, {"kind": "intercept", "item": dm, "suspect": interior.id if interior else None}))
+        person = _person_factor(w, interior.id, dm["from"]) if interior else 1
+        p = base * press * admin * 1.4 * person
+        candidates.append((p, {"kind": "intercept", "item": dm, "suspect": interior.id if interior else None},
+                           {**common, "person": round(person, 4), "kind": 1.4}))
     for item in s["withheld"]:
         if item["month"] == w.month and not item["revealed"]:
             p = base * press * admin * 1.6
-            candidates.append((p, {"kind": "withheld_report", "item": item, "suspect": None}))
+            candidates.append((p, {"kind": "withheld_report", "item": item, "suspect": None}, {**common, "kind": 1.6}))
     out = []
-    for p, cand in candidates:
+    for p, cand, factors in candidates:
         if len(out) >= cap:
             break
         if rng.random() < clamp(p, 0, .5):
-            record = {"month": w.month, "kind": cand["kind"], "suspect": cand["suspect"], **_leak_payload(w, cand)}
+            record = {"month": w.month, "kind": cand["kind"], "suspect": cand["suspect"], **_leak_payload(w, cand),
+                      "probability": round(clamp(p, 0, .5), 4), "factors": factors}
             s["leaks"].append(record)
             out.append(record)
             if cand["kind"] == "withheld_report":

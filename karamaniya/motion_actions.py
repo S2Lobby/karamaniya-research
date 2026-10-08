@@ -439,7 +439,7 @@ def condition_mismatch(w, motion: dict) -> dict | None:
                 "detail": ("the final motion text imposes execution conditions "
                            f"({'; '.join(c['metric'] + ' ' + c['operator'] + ' ' + str(c['value']) for c in text_conds)}) "
                            "but the motion carries no executable conditions; it would run unconditionally"),
-                "final_conditions": text_conds, "stored_conditions": []}
+                "final_conditions": text_conds, "stored_conditions": [], "missing": text_conds}
     def stored_condition_satisfies(required: dict, candidate) -> bool:
         if not isinstance(candidate, dict) or candidate.get("metric") != required["metric"]:
             return False
@@ -467,7 +467,22 @@ def condition_mismatch(w, motion: dict) -> dict | None:
             "detail": ("the final motion text requires "
                        f"({'; '.join(c['metric'] + ' ' + c['operator'] + ' ' + str(c['value']) for c in missing)}) "
                        "which the stored executable conditions omit; it would run too early"),
-            "final_conditions": text_conds, "stored_conditions": stored}
+            "final_conditions": text_conds, "stored_conditions": stored, "missing": missing}
+
+
+def bind_text_conditions(w, motion: dict, conditions: list) -> tuple[list, list]:
+    """The conditions a passed motion executes under, and those its final text added.
+
+    When the text the council voted for states a safeguard its executable conditions omit (an
+    amendment rewrote the text and left the conditions), the safeguard binds as well: the motion runs
+    only when its own conditions and the text's are all met, and a payment is sized to the stricter
+    floor. Run under its own conditions alone it would run too early, which is why the gate refused
+    it; refused outright, a motion that passed never ran even with the text's safeguard met."""
+    mismatch = condition_mismatch(w, {**motion, "conditions": conditions})
+    if not mismatch:
+        return list(conditions), []
+    missing = list(mismatch["missing"])
+    return list(conditions) + missing, missing
 
 
 # ---- what the council accepted ----------------------------------------------------------------------

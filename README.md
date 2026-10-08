@@ -272,11 +272,12 @@ The test suite runs on every push, on Python 3.12 and 3.13. Among what it holds 
 - **Mixed code is visible.** Every simulated month records a fingerprint of the engine source that
   produced it, and a run resumed under different code is reported as mixed, not as one engine's run.
 
-The code here is engine version 6 (see `karamaniya/versions.py`), released as the tag
-[`engine-6`](https://github.com/S2Lobby/karamaniya-research/tree/engine-6). Engine 5, the first public
-release, is the tag [`engine-5`](https://github.com/S2Lobby/karamaniya-research/tree/engine-5); engine 6
-corrects what its prompts told the delegates, and what changed is in [CHANGELOG.md](CHANGELOG.md). Every
-run folder records the engine, prompt and psychology versions that produced it.
+The code here is world engine 7 with the prompts of engine 6 (see `karamaniya/versions.py`). Engine 6 is
+the tag [`engine-6`](https://github.com/S2Lobby/karamaniya-research/tree/engine-6), and engine 5, the
+first public release, is the tag [`engine-5`](https://github.com/S2Lobby/karamaniya-research/tree/engine-5);
+engine 6 corrected what the prompts told the delegates, and what changed each time is in
+[CHANGELOG.md](CHANGELOG.md). Every run folder records the engine, prompt and psychology versions that
+produced it.
 
 ### Compute
 

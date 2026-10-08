@@ -333,18 +333,25 @@ def _conditional_reason_clashes(decision: dict, motions: list | None = None) -> 
     return out
 
 
-def _abstain_unresolved_conditional(decision: dict, clashes: list) -> None:
-    """A failed repair cannot let an unrepresented safeguard silently turn into a yes vote."""
+def _fallback_unresolved_conditional(decision: dict, clashes: list) -> None:
+    """A failed repair cannot let an unrepresented safeguard silently turn into a yes vote. The vote
+    becomes what the delegate set for a condition that is not met, no before abstain, as when a
+    condition is tested and fails. Engine 6 abstained whatever the delegate had set, so a delegate who
+    opposed a motion in public and asked for no if its condition failed was counted as abstaining."""
     for clash in clashes:
         mid = clash.get("motion")
         if clash.get("code") != "VOTE_CONDITION_REASON_MISMATCH" or \
                 (decision.get("votes") or {}).get(mid) != "conditional":
             continue
-        decision["votes"][mid] = "abstain"
-        (decision.get("vote_conditions") or {}).pop(mid, None)
-        clash["resolution"] = "abstained_after_condition_repair_failed"
+        condition = (decision.get("vote_conditions") or {}).pop(mid, None)
+        conds = condition if isinstance(condition, list) else [condition]
+        vote = "no" if any(isinstance(c, dict) and c.get("if_unmet") == "no" for c in conds) else "abstain"
+        decision["votes"][mid] = vote
+        clash["resolution"] = "fallback_after_condition_repair_failed"
+        clash["fallback_vote"] = vote
         decision.setdefault("validation_problems", []).append(
-            f"conditional vote on {mid} abstained because its stated safeguard remained untestable after repair")
+            f"conditional vote on {mid} counted as {vote}, the fallback it set, because after repair its "
+            "condition still did not match the reason it gave")
 
 
 MONTH_OUTCOMES_KEPT = 6
@@ -1585,7 +1592,7 @@ class Council:
                               "first_ballot": {m: first["votes"].get(m) for m in names}, "repair_ballot": None,
                               "first_clashes": asked,
                               "note": "the repair answer carried no ballot; the answer first given stands"}
-            _abstain_unresolved_conditional(out, clashes)
+            _fallback_unresolved_conditional(out, clashes)
             for needed in ballot_repairs:
                 motion_id = needed["motion"]
                 if (needed["condition"] and out["votes"].get(motion_id) == "conditional"

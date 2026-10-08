@@ -90,6 +90,23 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(politics.canonical_lever("army:protest_response"), "army:protest_response")
         self.assertEqual(politics.canonical_lever("interior:warp_drive"), "interior:warp_drive")
 
+    def test_office_and_setting_run_together_resolve_and_can_be_enacted(self):
+        # A Month 1 motion asked for "treasury_imports" = max and was discarded as an unknown lever.
+        for subject, value, lever in (("treasury_imports", "max", "imports"),
+                                      ("Treasury imports", "max", "imports"),
+                                      ("interior protest response", "negotiate", "protest_response"),
+                                      ("central_bank_rate", "0.08", "rate"),
+                                      ("army_posture", "defend", "posture")):
+            with self.subTest(subject=subject):
+                mo = actions.normalize_motion_v2(self.w, {"type": "set_policy", "subject": subject,
+                                                          "value": value, "text": "set it"})
+                self.assertEqual(mo["subject"], lever)
+                self.assertIsNone(politics.validate_motion_detail(self.w, {**mo, "passed": True}))
+
+    def test_office_run_together_with_a_setting_it_does_not_own_is_not_resolved(self):
+        for subject in ("interior_tax", "head_tax", "navy_arrests"):
+            self.assertEqual(politics.canonical_lever(subject), subject)
+
 
 class Program(unittest.TestCase):
     def setUp(self):

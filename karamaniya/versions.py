@@ -32,7 +32,13 @@ PSYCHOLOGY = 4
 # 6: Veleria's red line on a bilateral split of the Union counts only a grain deal the government made
 # or extended. In engine 5 the transition arrangement it inherited crossed the line in the first month
 # of every run, before the council had met, and Veleria escalated against something nobody had done.
-WORLD_ENGINE = 6
+# 7 changes what the engine does with two kinds of answer, found in Month 1 of the first engine-6 run
+# with real models; the prompts are engine 6's. A setting written with its office run in front
+# (`treasury_imports`) is that office's setting, as `treasury:imports` already was: it was an unknown
+# lever, and the motion was discarded. A conditional vote whose condition still does not match its
+# stated reason after the repair takes the fallback the delegate set (if_unmet, no before abstain),
+# where engine 6 counted it as an abstention whatever the delegate had asked for.
+WORLD_ENGINE = 7
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

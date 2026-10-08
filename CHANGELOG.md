@@ -6,7 +6,21 @@ task-by-task record with the tests behind each item.
 
 ## Since engine-6
 
-Fixes (details and tests: `docs/ENGINEERING_BACKLOG.md`, T32-T33)
+World engine 7 (`WORLD_ENGINE` 7). The prompts are engine 6's (`AGENT_PROMPT` 6; the prompt freeze is
+unchanged), but the engine does two things differently with the same answers, so runs made before keep
+their engine-6 stamp and a run resumed across the change is marked as mixed. Both came from Month 1 of
+the first engine-6 run with real models (`docs/ENGINEERING_BACKLOG.md`, T34-T35):
+
+- A setting written with its office run in front (`treasury_imports`, `Treasury imports`) is that
+  office's setting, as `treasury:imports` already was. It was an unknown lever, and a motion setting
+  imports to max was discarded.
+- A conditional vote whose condition still does not match its stated reason after the repair takes the
+  fallback the delegate set for an unmet condition (`if_unmet`, no before abstain). Engine 6 counted it
+  as an abstention whatever the delegate had asked for, and called the safeguard "untestable" when the
+  condition tested something the reason never named. In that run a delegate who had opposed the motion
+  in public, with no as its fallback, was recorded as abstaining.
+
+Connector fixes (details and tests: `docs/ENGINEERING_BACKLOG.md`, T32-T33)
 
 - A Gemini seat (`antigravity_cli`) could not take part. Gemini accepts an enum value only as a non-empty
   string, and the CLI forwards numbers as empty strings, so the formation proposal (where "" leaves an

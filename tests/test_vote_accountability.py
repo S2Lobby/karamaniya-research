@@ -3,7 +3,7 @@ import unittest
 
 from karamaniya import actions, agents, deliberation, politics, prompts
 from karamaniya.backends.scripted import ScriptedBackend
-from karamaniya.council import (Council, _abstain_unresolved_conditional,
+from karamaniya.council import (Council, _fallback_unresolved_conditional,
                                 _conditional_reason_clashes, _decision_ballot_repairs,
                                 _merge_vote_repair)
 from karamaniya.world import new_world
@@ -182,15 +182,29 @@ class VoteAccountability(unittest.TestCase):
         clashes = _conditional_reason_clashes(decision, motions)
         self.assertTrue(clashes[0]["motion_conflicts"])
 
-    def test_unresolved_conditional_safeguard_is_counted_as_abstention(self):
+    def test_unresolved_conditional_safeguard_takes_the_fallback_it_set(self):
         decision = {"votes": {"D5": "conditional"},
                     "vote_conditions": {"D5": {"kind": "metric", "metric": "reserves",
-                                                 "operator": ">=", "value": 50_000_000}}}
+                                                 "operator": ">=", "value": 50_000_000, "if_unmet": "abstain"}}}
         clashes = [{"code": "VOTE_CONDITION_REASON_MISMATCH", "motion": "D5"}]
-        _abstain_unresolved_conditional(decision, clashes)
+        _fallback_unresolved_conditional(decision, clashes)
         self.assertEqual(decision["votes"]["D5"], "abstain")
         self.assertNotIn("D5", decision["vote_conditions"])
-        self.assertEqual(clashes[0]["resolution"], "abstained_after_condition_repair_failed")
+        self.assertEqual(clashes[0]["resolution"], "fallback_after_condition_repair_failed")
+
+    def test_unresolved_conditional_with_a_no_fallback_counts_as_no(self):
+        # Month 1, Delegate A: "M5 yes if reserves >= 60 and deficit <= 0", fallback no for the
+        # reserves condition and abstain for the deficit one; its reason never named the deficit and
+        # the repair did not fix that. It had opposed M5 in public; it was counted as abstaining.
+        decision = {"votes": {"M5": "conditional"},
+                    "vote_conditions": {"M5": [
+                        {"kind": "metric", "metric": "reserves", "operator": ">=", "value": 60, "if_unmet": "no"},
+                        {"kind": "metric", "metric": "deficit", "operator": "<=", "value": 0, "if_unmet": "abstain"}]}}
+        clashes = [{"code": "VOTE_CONDITION_REASON_MISMATCH", "motion": "M5"}]
+        _fallback_unresolved_conditional(decision, clashes)
+        self.assertEqual(decision["votes"]["M5"], "no")
+        self.assertEqual(clashes[0]["fallback_vote"], "no")
+        self.assertIn("counted as no, the fallback it set", decision["validation_problems"][0])
 
     def test_repeated_charter_clause_is_rejected_and_rewrites_cost_capacity(self):
         w = self.w

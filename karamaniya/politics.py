@@ -499,6 +499,15 @@ def canonical_lever(subj) -> str:
         # A qualified but mismatched/unknown namespace is meaningful evidence against a
         # suffix-only fuzzy match (e.g. army:protest_response must not become protest_response).
         return raw
+    # The same qualification run together, the way an identifier is written (`treasury_imports`,
+    # `interior protest response`): an office, then a setting that office owns, is that setting.
+    # Before, it was an unknown lever: a Month 1 motion setting imports to max was discarded.
+    words = text.split("_")
+    for i in range(1, len(words)):
+        tail = "_".join(words[i:])
+        candidate = LEVER_ALIASES.get(tail, tail)
+        if candidate in LEVER_OFFICE and canonical_office(" ".join(words[:i])) == LEVER_OFFICE[candidate]:
+            return candidate
     # A near-miss that is unmistakably one lever is resolved rather than rejected: a high similarity
     # threshold keeps this to slips of wording (a hyphen, a stray word) and never bends a genuinely
     # different or invented setting onto a lever it did not mean.

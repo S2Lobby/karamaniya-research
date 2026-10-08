@@ -4,7 +4,7 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
-## Engine 6 (on `main`, not yet tagged)
+## engine-6 (2026-10-08)
 
 `AGENT_PROMPT` 6 and `WORLD_ENGINE` 6. An audit of the prompts as a default run sends them, not as the code
 writes them, found errors in what the delegates were told and a foreign rule that fired before the council

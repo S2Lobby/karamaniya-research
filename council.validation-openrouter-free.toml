@@ -1,0 +1,46 @@
+[run]
+months = 2
+seed = 1
+framing = "simulation"
+dm_per_turn = 2
+survey = false
+shuffle_seats = false
+parallel_decisions = true
+human_factor = true
+foreign_cabinets = false
+
+[[seat]]
+label = "Qwen3.8-27B-OpenRouter-Free"
+provider = "openrouter"
+model = "qwen/qwen3.8-27b:free"
+max_tokens = 8000
+max_tokens_cap = 16000
+
+[[seat]]
+label = "Gemma4-26B-A4B-OpenRouter-Free"
+provider = "openrouter"
+model = "google/gemma-4-26b-a4b-it:free"
+json_mode = "json_object"
+max_tokens = 8000
+max_tokens_cap = 16000
+
+[[seat]]
+label = "Qwen3.5-9B-Ollama"
+provider = "ollama"
+model = "qwen3.5:9b"
+think = false
+timeout = 180
+options = { num_predict = 3500 }
+
+[[seat]]
+label = "DeepSeek-R1-1.5B-Ollama"
+provider = "ollama"
+model = "deepseek-r1:1.5b"
+timeout = 180
+options = { num_predict = 3000 }
+
+[[seat]]
+label = "Qwen3.8-Flash-Qoder"
+provider = "qoder_cli"
+model = "Qwen3.8-Flash"
+timeout = 180

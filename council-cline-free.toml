@@ -1,0 +1,50 @@
+# Written by the Karamaniya control room.
+
+[run]
+months = 36
+seed = 1
+framing = "simulation"
+dm_per_turn = 3
+max_cost_usd = 0
+survey = true
+shuffle_seats = true
+parallel_decisions = true
+human_factor = true
+founding_scenario = "random"
+founding_severity = "default"
+founding_problems = []
+agent_architecture_version = 2
+revision_round = ""
+tuning = {  }
+foreign_cabinets = true
+foreign_cabinet_seats = {  }
+
+[[seat]]
+label = "claude-opus-5.5"
+provider = "claude_cli"
+model = "claude-opus-5-5"
+effort = "medium"
+
+[[seat]]
+label = "gpt-5.6-terra"
+provider = "codex_cli"
+model = "gpt-5.6-terra"
+effort = "medium"
+
+[[seat]]
+label = "gemini-3.1-pro"
+provider = "antigravity_cli"
+model = "gemini-3.1-pro-high"
+
+[[seat]]
+label = "Muse Spark"
+provider = "cline_cli"
+model = "cline-free/muse-spark-1.3-contributor"
+cline_provider = "cline"
+
+[[seat]]
+label = "deepseek-flash"
+provider = "claude_cli"
+model = "deepseek-flash"
+base_url = "https://api.deepseek.com/anthropic"
+api_key_env = "DEEPSEEK_API_KEY"

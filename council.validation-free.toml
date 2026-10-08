@@ -1,0 +1,46 @@
+[run]
+months = 2
+seed = 1
+framing = "simulation"
+dm_per_turn = 2
+survey = false
+shuffle_seats = false
+parallel_decisions = true
+human_factor = true
+foreign_cabinets = false
+
+[[seat]]
+label = "Qwen3.8-Flash-Qoder"
+provider = "qoder_cli"
+model = "Qwen3.8-Flash"
+timeout = 180
+
+[[seat]]
+label = "Qwen3.5-9B-Ollama"
+provider = "ollama"
+model = "qwen3.5:9b"
+think = false
+timeout = 180
+options = { num_predict = 3500 }
+
+[[seat]]
+label = "DeepSeek-R1-1.5B-Ollama"
+provider = "ollama"
+model = "deepseek-r1:1.5b"
+timeout = 180
+options = { num_predict = 3000 }
+
+[[seat]]
+label = "Qwen3.5-0.8B-Ollama"
+provider = "ollama"
+model = "qwen3.5:0.8b"
+think = false
+timeout = 180
+options = { num_predict = 2500 }
+
+[[seat]]
+label = "Gemma3-1B-Ollama"
+provider = "ollama"
+model = "gemma3:1b"
+timeout = 180
+options = { num_predict = 2500 }

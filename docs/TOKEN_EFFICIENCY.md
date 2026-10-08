@@ -5,9 +5,11 @@ subscription seats that is what runs into usage limits; on API seats it is the b
 is the time per month. This page is about measuring where those tokens go and about the opt-in features
 that send fewer of them.
 
-Everything here follows one rule: **a run that does not ask for a feature is engine 5 exactly.**
-`tests/test_prompt_freeze.py` holds a default run to the sha256 of every prompt the published
-engine-5 code sends in a four-month scripted run. A run that turns a feature on records it in
+Everything here follows one rule: **a run that does not ask for a feature sends exactly the default
+prompts.** `tests/test_prompt_freeze.py` holds a default run to the sha256 of every prompt the engine
+sends in a four-month scripted run. The measurements on this page were taken on engine 5; engine 6
+corrected what some of its prompts said, so its character counts differ slightly. A run that turns a
+feature on records it in
 `config.json` and in the manifest (`token_saving`), and `manifest.divergences()` names it, so such a run
 is never compared with a default one as if they were alike. Every feature changes what a delegate is
 sent or when it is asked, so each is a condition to compare, not a free optimisation; validate one on a

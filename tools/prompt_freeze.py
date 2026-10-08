@@ -3,7 +3,7 @@
     python tools/prompt_freeze.py            # does a default run still send exactly the recorded prompts?
     python tools/prompt_freeze.py --write    # record the current prompts (after bumping AGENT_PROMPT)
 
-The fixture (tests/fixtures/prompt_freeze_engine5.json) is what makes "off by default" checkable: a
+The fixture (tests/fixtures/prompt_freeze_engine6.json) is what makes "off by default" checkable: a
 default four-month scripted run must reproduce the sha256 of every prompt. Writing it is a statement
 that the prompts changed on purpose, so it is never done by the test suite.
 """
@@ -23,7 +23,7 @@ from karamaniya import versions  # noqa: E402
 from karamaniya.batch import simulate  # noqa: E402
 from karamaniya.tokens import fingerprints  # noqa: E402
 
-FIXTURE = os.path.join(ROOT, "tests", "fixtures", "prompt_freeze_engine5.json")
+FIXTURE = os.path.join(ROOT, "tests", "fixtures", "prompt_freeze_engine6.json")
 
 
 def current(months: int) -> dict:

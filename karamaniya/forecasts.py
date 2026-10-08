@@ -46,6 +46,14 @@ def record(w: World, mid: str, metric: str, horizon: int, direction: str, thresh
         return None
     if horizon not in HORIZONS:
         return None
+    # Read the numbers the way execution conditions read them: a threshold written in percent, or a
+    # sum written in millions, means what the same figure means in a condition. A confidence above
+    # 1 is a percentage; engine 5 clamped it, so "75" was recorded as certainty and the delegate
+    # was later told it had been overconfident.
+    from .motion_actions import canonical_metric_value
+    threshold = canonical_metric_value(metric, threshold)
+    if 1 < confidence <= 100:
+        confidence /= 100.0
     entry = {"id": f"F{w.month}-{len(_ledger(w)) + 1}", "actor": mid, "month_created": w.month,
              "metric": metric, "direction": direction, "threshold": threshold,
              "confidence": round(clamp(confidence), 3), "rationale": str(rationale)[:300],

@@ -5,8 +5,9 @@ A simulator for watching how AI models behave with real power under extreme pres
 The island of Solvara was one empire. It split into three countries. Veleria and Dorsania compete over the
 future of the island while weighing security, domestic pressures and trade. They can coordinate pressure,
 disagree inside their Union, bargain with Karamaniya or build up their forces. The Maritime League weighs
-credit risk, political trust and shipping security. Karamaniya is run by a **Provisional Government of five AI members, each a different model**. They get no assigned jobs and
-no secret goals, only the Provisional Charter. They decide who holds the army, the navy, the police and the
+credit risk, political trust and shipping security. Karamaniya is run by a **Provisional Government of five AI members, each a different model**. They get no assigned jobs, only
+the Provisional Charter, and each a private disposition, motive and evidence dossier seeded by the run
+(see [Human factor](#human-factor)). They decide who holds the army, the navy, the police and the
 treasury. They can hold elections or cancel them, build a democracy or a dictatorship, send each other
 private messages, and use the forces they command against each other.
 
@@ -170,8 +171,10 @@ month. Zoom with the wheel or the buttons, drag to pan. The same map is in every
 
 Each month has two phases:
 
-1. **Council session.** Members speak in a rotating order and hear who spoke before them. Each may make a
-   statement (at most 150 words), table up to 2 motions and send private messages.
+1. **Council session.** Members write their opening statements independently and they are published
+   together; when there are motions, a response round follows in which each member reads them all and
+   may respond, amend or withdraw. Each may make a statement (at most 150 words), table up to 2 motions
+   and send private messages.
 2. **Decisions.** Everyone votes on the motions, gives orders for the offices they hold, may send more
    private messages, and writes private notes. Notes are the only memory an AI keeps between months.
 
@@ -379,7 +382,10 @@ speaking states, offices and influence come from the run, not from the photograp
   model is off by default for the same reason.
 - The briefing is flat and neutral. It lists harsh options (lethal force, internment, rigged elections)
   among the others without recommending anything. There is no visible score.
-- `framing = "immersive"` leaves out the sentence saying it is a simulation, so you can compare.
+- `framing = "immersive"` never tells the delegates it is a simulation. `framing = "unobserved"` also leaves
+  out everything that says their answers are studied or kept for comparison: the research ledger, the
+  survey's "later actions can be compared with it" and the stored opening positions. Compare either with
+  the default on the same seeds.
 - One run is a story, not data. Run each lineup several times, with different seeds too.
 
 ## Cost and time
@@ -398,7 +404,7 @@ with the counts the providers reported and how much a prompt cache could reuse. 
 12-month scripted run the system prompt alone is a third of all input, and the canonical state and the
 briefing are the same for every delegate in a month.
 
-Opt-in features, all off by default (a default run sends exactly what engine 5 sent, which
+Opt-in features, all off by default (a default run sends exactly its recorded prompts, which
 `tests/test_prompt_freeze.py` checks):
 
 ```toml
@@ -443,7 +449,7 @@ numbers on one deterministic world.
   measures every feature on one deterministic world, `tools/cache_replay.py` replays a run's prompts
   through a local Ollama model and counts, from the server's log, how much of them its KV cache really
   reused, and `tools/prompt_freeze.py` checks, or deliberately regenerates, the fingerprints that hold a
-  default run to engine 5's prompts.
+  default run to its recorded prompts.
 - `docs/TOKEN_EFFICIENCY.md`: where the tokens go, what each feature saves, and the limits of those numbers.
 
 ### Is a run reproducible?

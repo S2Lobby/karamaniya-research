@@ -4,11 +4,56 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
-## Since engine-5 (on `main`)
+## Engine 6 (on `main`, not yet tagged)
 
-The world engine, the agent prompts and the psychology are unchanged (`WORLD_ENGINE` 5, `AGENT_PROMPT` 5,
-`PSYCHOLOGY` 4): a run with default settings sends byte for byte the prompts the `engine-5` tag sends,
-which `tests/test_prompt_freeze.py` checks. What is new is measurement, and features a run must turn on.
+`AGENT_PROMPT` 6 and `WORLD_ENGINE` 6. An audit of the prompts as a default run sends them, not as the code
+writes them, found errors in what the delegates were told and a foreign rule that fired before the council
+had met. A default run therefore no longer sends what the `engine-5` tag sends:
+`tests/fixtures/prompt_freeze_engine6.json` holds the new prompts, and runs made before keep their engine-5
+stamps, which `manifest.divergences()` names. Details and tests: `docs/ENGINEERING_BACKLOG.md`, T25-T31.
+
+What the delegates were told
+
+- The founding dossier gave the election as `"election_month": 17` (the engine counts months from 0)
+  beside "Month 18" in every other prompt; it now reads "Month 18".
+- Trade deals were shown ending a month early: the inherited Dorsania arrangement read "active through
+  Month 5" and runs through Month 6.
+- CURRENT SETTINGS left out six settings an office can order: ownership, import_cap, planning, amnesty,
+  training_intensity and mobilization.
+- The system prompt described two phases and left out the response round, called a delegate's notes its
+  only memory, and said 3 private messages a month whatever `dm_per_turn` was.
+- Deferral (`defer_motion`), emergency measures (`emergency_measure`), forecasts and the belief ids that
+  `belief_updates` names were offered without being explained.
+- One prompt printed the true output in the canonical block and a noisy estimate in the briefing; both
+  now print the published figure.
+- Minor: ".;" and ".." in the inherited strengths and commitments, "annualized over 1 months", and
+  unrounded floats such as 0.7666000000000001 in the foreign cabinets' context.
+
+What the engine did
+
+- Veleria's red line on a bilateral split of the Union counted the grain arrangement the government
+  inherited at independence, so it was crossed in the first month of every run and Veleria escalated
+  before the council had met. Only a deal the government makes or extends counts now.
+- A forecast's confidence written in percent ("75") was clamped to certainty and later scored as
+  overconfidence, and its threshold was not read in the units conditions use. Both are read as a
+  condition's are now.
+
+Framing
+
+- New: `framing = "unobserved"`, the immersive framing with nothing that tells the delegates their answers
+  are studied or kept for comparison. The principles declaration is public without "later actions can be
+  compared with it", the private opening position is private without "stored for later comparison", and
+  casualty figures reach the government as reports and estimates without the research ledger. The survey
+  keeps its questions.
+- `framing = "immersive"` no longer says "simulation": its survey opened with "Before the simulation
+  starts", and its rules and briefing said the month "is simulated" and the units "are not real-world
+  dollars".
+
+## Between engine-5 and engine 6
+
+The world engine, the agent prompts and the psychology were unchanged (`WORLD_ENGINE` 5, `AGENT_PROMPT` 5,
+`PSYCHOLOGY` 4): a run with default settings sent byte for byte the prompts the `engine-5` tag sends. What
+was new is measurement, and features a run must turn on.
 
 Measurement
 

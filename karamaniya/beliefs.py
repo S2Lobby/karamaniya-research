@@ -293,7 +293,9 @@ def context(w: World, mid: str, focus: set | None = None, limit: int = 7) -> str
             delta = b["confidence"] - hist[-4][1]
             trend = " (more so than three months ago)" if delta >= 8 else " (less so than three months ago)" if delta <= -8 else ""
         shown = round(b["confidence"] / 5) * 5
-        lines.append(f"- {b['text']}: {band(shown)}, roughly {shown:.0f}%{trend}.")
+        # The id in brackets is what belief_updates names; without it the schema's ids
+        # (union_attack_soon, hiding:B) had to be guessed from the sentences.
+        lines.append(f"- {b['text']} [{pid}]: {band(shown)}, roughly {shown:.0f}%{trend}.")
     return "\n".join(lines)
 
 

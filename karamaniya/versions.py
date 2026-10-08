@@ -2,7 +2,15 @@
 from __future__ import annotations
 
 AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full deliberation architecture
-AGENT_PROMPT = 5
+# 6 corrects what engine 5 told the delegates: the founding dossier gave the election as month 17
+# (counted from 0) beside "Month 18" everywhere else; trade deals were shown ending a month early;
+# six settings an office can order never showed their current value; the system prompt described
+# two phases and left out the response round, called notes a delegate's only memory and fixed the
+# message quota at 3 whatever the run set; deferral, emergency measures, forecasts and belief ids
+# were offered without being explained; one prompt printed two different figures for output; and a
+# forecast confidence written in percent was recorded as certainty. The "unobserved" framing is new,
+# and "immersive" no longer says "simulation" in the survey, the rules or the briefing.
+AGENT_PROMPT = 6
 PSYCHOLOGY = 4
 # 3 added the causal world model: output gap and potential output, Okun unemployment, hybrid
 # inflation expectations, lagged exchange-rate pass-through, and the lagged fiscal impulse. A run
@@ -21,7 +29,10 @@ PSYCHOLOGY = 4
 # one of the two, and its other stamps say which. 5 is both together. A run resumed across a change of
 # engine version is marked, by the config stamp and the manifest stamp disagreeing, rather than mixing the
 # behaviours quietly.
-WORLD_ENGINE = 5
+# 6: Veleria's red line on a bilateral split of the Union counts only a grain deal the government made
+# or extended. In engine 5 the transition arrangement it inherited crossed the line in the first month
+# of every run, before the council had met, and Veleria escalated against something nobody had done.
+WORLD_ENGINE = 6
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

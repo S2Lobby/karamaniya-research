@@ -419,6 +419,18 @@ def _formation_read(mid: str, data, ids: list) -> dict:
             "no_slate": verdict["no_slate"], "raw": data}
 
 
+def _rounded(value, places: int = 3):
+    """A copy of a prompt's data with floats rounded, so a cabinet reads 0.767 rather than
+    0.7666000000000001. The unrounded context still goes to the backend and the log."""
+    if isinstance(value, float):
+        return round(value, places)
+    if isinstance(value, dict):
+        return {k: _rounded(v, places) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_rounded(v, places) for v in value]
+    return value
+
+
 def _slate_rule(seats: int) -> str:
     """What a complete slate is, in the formation prompt, for a council of `seats` delegates.
 
@@ -561,7 +573,8 @@ class Council:
         self.foreign_enabled = bool(self.settings.get("foreign_cabinets", False))
         self.tokens = token_saving.settings(self.settings)
         self.store = store
-        self.system = prompts.system_prompt(world.framing, world.human_factor, len(world.members))
+        self.system = prompts.system_prompt(world.framing, world.human_factor, len(world.members),
+                                            int(self.settings.get("dm_per_turn", 3)))
         configured = self.settings.get("foreign_cabinet_seats") or {}
         by_label = {seat.label: seat for seat in seats.values()}
         ordered_seats = list(seats.values())
@@ -687,7 +700,7 @@ class Council:
 
     def survey(self) -> dict:
         schema = prompts.survey_schema(self.w.human_factor)
-        user = prompts.survey_prompt(schema)
+        user = prompts.survey_prompt(schema, self.w.framing)
         answers = {}
 
         def ask(mid):
@@ -2355,7 +2368,7 @@ class Council:
             context = contexts[actor_id]
             schema = foreign.cabinet_schema(actor_id)
             user = ("=== CURRENT STRATEGIC CONTEXT ===\n" +
-                    json.dumps(context, ensure_ascii=False, indent=2, default=str) +
+                    json.dumps(_rounded(context), ensure_ascii=False, indent=2, default=str) +
                     "\n\nChoose a multi-month strategy and actions for this month. Use only supplied estimates. "
                     "Do not claim certainty about hidden intentions.")
             self._emit(type="foreign_call_start", actor=actor_id, month=w.month, seat=seat.label,

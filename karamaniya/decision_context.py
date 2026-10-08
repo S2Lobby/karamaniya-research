@@ -7,8 +7,18 @@ from .society import inflation_yoy
 from .world import OFFICES, World, rng_for
 
 
+def _inflation_basis(w: World) -> str:
+    """How the published inflation figure is measured, in words ("1 month", not "1 months")."""
+    if len(w.history) >= 12:
+        return "over the latest 12 months"
+    months = len(w.history) + 1
+    return f"annualized over {months} month" + ("" if months == 1 else "s")
+
+
 def canonical_hard_state(w: World, phase: str, motions: list | None = None) -> str:
     """Render current engine state, never a stale narrative or model-authored summary."""
+    from .briefing import published_output
+    from .prompts import told
     c, e, mil, dip = w.const, w.econ, w.mil, w.dip
     offices = "; ".join(f"{o}: {w.holder(o).name if w.holder(o) else 'vacant'}" for o in OFFICES)
     currency = w.names.get(e.currency, e.currency)
@@ -29,9 +39,9 @@ def canonical_hard_state(w: World, phase: str, motions: list | None = None) -> s
         + (" | ".join(a.get("text", "")[:100] for a in c.amendments[-5:]) or "none")
         + ". Check whether a new clause adds a distinct legal effect.",
         "Active directives: " + ("; ".join(f"{k}={v}" for k, v in c.directives.items()) or "none") + ".",
-        f"Public economic scale: output about {e.gdp_real * 12 / 1e9:.1f} billion annual starting-price crowns; "
+        f"Public economic scale: output about {published_output(w) / 1e9:.1f} billion annual starting-price crowns; "
         f"reported inflation {inflation_yoy(w) * (1 - e.stats_gap):.0%} "
-        f"{'annualized over ' + str(len(w.history) + 1) + ' months' if len(w.history) < 12 else 'over the latest 12 months'}; "
+        f"{_inflation_basis(w)}; "
         f"unemployment about {e.unemployment:.0%}; food availability about {e.food_ratio:.0%}. "
         "Detailed reserves, debt maturities and unpaid bills require Treasury information.",
         f"Public force strength: army about {round(mil.army.size, -3):,.0f} soldiers; "
@@ -43,7 +53,9 @@ def canonical_hard_state(w: World, phase: str, motions: list | None = None) -> s
         "Regions: " + "; ".join(
             f"{r.name} controlled by {r.controller or 'unknown'}"
             for r in w.regions if r.nation == "karamaniya") + ".",
-        "The research ledger tracks exact deaths by cause; delegates receive public reports and office estimates instead.",
+        ("The research ledger tracks exact deaths by cause; delegates receive public reports and office estimates instead."
+         if told(w.framing) else
+         "Casualty figures reach the government as public reports and office estimates, not exact counts."),
     ]
     if motions:
         lines.append("Pending motions, not yet resolved: " + "; ".join(
@@ -273,8 +285,7 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
     if oversight:
         lines.append(oversight)
     gdp_idx = e.gdp_real / e.gdp_real0 if e.gdp_real0 else 1
-    inflation_basis = (f"annualized over {len(w.history) + 1} months" if len(w.history) < 12
-                       else "over the latest 12 months")
+    inflation_basis = _inflation_basis(w)
     lines.append(f"Published economy: inflation {inflation_yoy(w) * (1 - e.stats_gap):.0%} "
                  f"({inflation_basis}); output "
                  f"{gdp_idx * 100:.0f} (start = 100); unemployment {e.unemployment:.1%}; "
@@ -320,8 +331,10 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
         agreements = active_deals(w, party)
         display = {"dorsania": "Dorsania", "veleria": "Veleria", "maritime_league": "the Maritime League"}[party]
         if agreements:
+            # `until` is the last active month counted from 0, as the engine stores months; the
+            # prompt counts from 1, so engine 5 told delegates every deal ended a month early.
             until = max(int(item.get("until", w.month)) for item in agreements)
-            lines.append(f"Trade agreement status: an agreement with {display} is active through Month {until}; "
+            lines.append(f"Trade agreement status: an agreement with {display} is active through Month {until + 1}; "
                          "state whether a proposal creates a new deal, extends it, expands volume, renegotiates terms or terminates it.")
         else:
             lines.append(f"Trade agreement status: no active agreement with {display}; a proposal must create a NEW_DEAL. "

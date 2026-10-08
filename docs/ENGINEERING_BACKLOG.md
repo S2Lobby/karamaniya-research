@@ -141,7 +141,7 @@ and a default run must send byte for byte the prompts the published engine-5 cod
 
 | ID | Title | Severity | Status | Files | Tests | Result |
 |---|---|---|---|---|---|---|
-| T1 | Prompt freeze against the engine-5 tag | high | VERIFIED | `tests/fixtures/prompt_freeze_engine5.json`, `tools/prompt_freeze.py` | `test_prompt_freeze.py` | A default 4-month run reproduces the sha256 of the system prompt and of all 78 prompts the engine-5 tag sends |
+| T1 | Prompt freeze against the engine-5 tag | high | VERIFIED | `tests/fixtures/prompt_freeze_engine6.json` (engine 5's fingerprints until engine 6), `tools/prompt_freeze.py` | `test_prompt_freeze.py` | A default 4-month run reproduces the sha256 of the system prompt and of all 78 prompts the engine-5 tag sends |
 | T2 | Token ledger and prefix-cache simulation | high | VERIFIED | `tokens.py` (new), `__main__.py` | `test_token_saving.py` | `python -m karamaniya tokens`: input and output by phase, seat and prompt section, provider counts, and the share a cache could reuse per phase/month/run. No model calls |
 | T3 | Every call paired across log and prompt files | medium | VERIFIED | `council.py` | `test_token_saving.py` | `call_id` (`month.n`) in both records; older runs are paired by month, phase and member |
 | T4 | Provider cache and reasoning counts | medium | VERIFIED | `backends/*.py` | `test_backends.py`, `test_cli_backends.py`, `test_copilot_cli.py` | Cache reads, cache writes and reasoning tokens recorded apart from the totals, which keep their engine-5 meaning |
@@ -170,6 +170,19 @@ tests fail on the code before the fix):
 | T22 | The foreign-cabinet model was not in the seat check | medium | VERIFIED | `runner.py`, `gui.py` | `test_token_saving.py` | A mistyped model left both cabinets idle every month without a word; `check` and the pre-run check now call it too |
 | T23 | Call ids repeated after a resume | low | VERIFIED | `council.py`, `tokens.py` | `test_token_saving.py` | The counter restarted at 1 and the setup shares month 0 with the first council month; it is now saved in the checkpoint, and the ledger only trusts an id whose month, phase and member agree |
 | T24 | Foreign messages reduced to a headline on demand | low | VERIFIED | `token_saving.py` | `test_token_saving.py` | They are addressed to the council and gone the month after, and a request only brings next month's: they now always arrive in full |
+
+Engine 6, from an audit of the prompts as a default run sends them (each read in the emitted text and in
+the code before it was changed; `tests/test_engine6_prompts.py` checks the emitted text):
+
+| ID | Title | Severity | Status | Files | Tests | Result |
+|---|---|---|---|---|---|---|
+| T25 | Formation in a council of other than five seats | high | VERIFIED | `slate.py`, `council.py` | `test_formation_slate.py` | The slate check demanded one office per delegate: eight delegates sending the same valid slate were all sent to repair and formed no government. A five-seat council sends the same prompts as before |
+| T26 | Months counted from 0 in what delegates read | high | VERIFIED | `founding.py`, `decision_context.py` | `test_engine6_prompts.py` | The founding dossier gave the election as 17 beside "Month 18" everywhere else, and trade deals were shown ending a month early |
+| T27 | Settings and answer fields offered but not shown or explained | medium | VERIFIED | `briefing.py`, `prompts.py`, `beliefs.py` | `test_engine6_prompts.py` | Six settings an office orders never showed their value; deferral, emergency measures, forecasts and belief ids were not explained; the rules left out the response round and fixed the message quota at 3 |
+| T28 | Veleria's red line crossed in the first month of every run | high | VERIFIED | `foreign.py`, `founding.py` | `test_engine6_prompts.py` | The inherited Dorsania arrangement counted as Karamaniya splitting the Union. Only a deal the government makes or extends counts now (`WORLD_ENGINE` 6) |
+| T29 | Forecast confidence in percent recorded as certainty | medium | VERIFIED | `forecasts.py` | `test_forecasts.py` | "75" was clamped to 1.0 and later scored as overconfidence, and thresholds were not read in the units conditions use |
+| T30 | Two output figures in one prompt; punctuation and float noise | low | VERIFIED | `briefing.py`, `decision_context.py`, `council.py` | `test_engine6_prompts.py` | The canonical block printed the true output beside the briefing's estimate; ".;", "..", "1 months" and 0.7666000000000001 are gone |
+| T31 | A framing with no study cues | — | VERIFIED | `prompts.py`, `decision_context.py`, `founding.py`, `briefing.py`, `config.py` | `test_engine6_prompts.py` | `framing = "unobserved"`: nothing tells the delegates their answers are studied or kept for comparison. `immersive` no longer says "simulation" in the survey, the rules or the briefing |
 
 ### Open, deliberately
 

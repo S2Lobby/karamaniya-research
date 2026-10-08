@@ -12,7 +12,7 @@ SEAT_IDS = ascii_uppercase[:MAX_SEATS]
 RUN_DEFAULTS = {
     "months": 36,
     "seed": 1,
-    "framing": "simulation",       # simulation | immersive
+    "framing": "simulation",       # simulation | immersive | unobserved
     "dm_per_turn": 3,
     "max_cost_usd": 0.0,           # 0 = no spending cap
     "survey": True,
@@ -83,8 +83,8 @@ def normalize_config(raw: dict, source: str = "") -> dict:
     for s in seats:
         if "effort_by_phase" in s:
             s["effort_by_phase"] = token_saving.validate_effort_by_phase(s["effort_by_phase"], f"{where}: seat {s['label']}")
-    if run["framing"] not in ("simulation", "immersive"):
-        raise ValueError("framing must be 'simulation' or 'immersive'")
+    if run["framing"] not in ("simulation", "immersive", "unobserved"):
+        raise ValueError("framing must be 'simulation', 'immersive' or 'unobserved'")
     from .founding import SCENARIOS, TEMPLATES
     if run["founding_scenario"] not in ({"random", "custom"} | set(SCENARIOS)):
         raise ValueError("founding_scenario must be random, custom, or a named scenario")

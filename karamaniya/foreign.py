@@ -65,8 +65,13 @@ def _measure_league_escorts(w) -> float:
 
 
 def _measure_bilateral_trade(w) -> float:
-    """Karamaniya has settled grain trade bilaterally with Dorsania, outside the Union's policy."""
-    return 1.0 if _bilateral_trade_open(w) else 0.0
+    """Karamaniya has settled grain trade bilaterally with Dorsania, outside the Union's policy.
+
+    Only a deal the government made or extended counts. The transition arrangement it inherited at
+    independence is open from Month 1 of every run, and in engine 5 it crossed this line before the
+    council had met, so Veleria escalated against something nobody in the government had done.
+    """
+    return 1.0 if _bilateral_trade_open(w) and not w.counters.get("dorsania_trade_inherited") else 0.0
 
 
 def _measure_blockade(w) -> float:
@@ -1086,6 +1091,7 @@ def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "") -> None:
     until = prior_until + duration
     w.counters["dorsania_trade"] = 1.0
     w.counters["dorsania_trade_until"] = float(until)
+    w.counters["dorsania_trade_inherited"] = 0.0      # the council's own deal now, new or extended
     w.dip.grain_embargo = max(0.0, w.dip.grain_embargo-.12)
     relation["trust"] = round(clamp(relation["trust"]+.08),3)
     relation["trade_importance"] = round(clamp(relation["trade_importance"]+.06),3)

@@ -15,7 +15,7 @@ def main(argv=None) -> int:
     r.add_argument("--months", type=int)
     r.add_argument("--seed", type=int)
     r.add_argument("--name")
-    r.add_argument("--framing", choices=["simulation", "immersive"])
+    r.add_argument("--framing", choices=["simulation", "immersive", "unobserved"])
     r.add_argument("--no-survey", action="store_true")
     r.add_argument("--runs-dir", default="runs")
     r.add_argument("--no-check", action="store_true", help="skip the seat check before the run")

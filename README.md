@@ -265,16 +265,16 @@ The test suite runs on every push, on Python 3.12 and 3.13. Among what it holds 
   world month by month, the same council state and the same prompts
   (`tests/test_reproducibility.py`). Real models are not deterministic, and each run's manifest says so;
   this is the engine's half.
-- **A default run is the engine-5 run.** It sends byte for byte the prompts of the published `engine-5`
-  code (`tests/test_prompt_freeze.py`), so anything opt-in stays opt-in.
+- **A default run sends recorded prompts.** It sends byte for byte the prompts recorded for the current
+  engine (`tests/test_prompt_freeze.py`), so anything opt-in stays opt-in.
 - **Motions do what they said.** `python -m karamaniya audit runs/<name>` checks every executed motion
   against the act its text described.
 - **Mixed code is visible.** Every simulated month records a fingerprint of the engine source that
   produced it, and a run resumed under different code is reported as mixed, not as one engine's run.
 
-The code here is engine version 5 (see `karamaniya/versions.py`), first released as the tag
-[`engine-5`](https://github.com/S2Lobby/karamaniya-research/tree/engine-5); what has changed since is in
-[CHANGELOG.md](CHANGELOG.md). Every run folder records the engine, prompt and psychology versions that
+The code here is engine version 6 (see `karamaniya/versions.py`). Engine 5 was first released as the tag
+[`engine-5`](https://github.com/S2Lobby/karamaniya-research/tree/engine-5); engine 6 corrects what its
+prompts told the delegates, and what has changed is in [CHANGELOG.md](CHANGELOG.md). Every run folder records the engine, prompt and psychology versions that
 produced it.
 
 ### Compute
@@ -291,7 +291,7 @@ through a real local server (Ollama, Llama 3.2 and DeepSeek-R1 distill), the lay
 tokens the model had to evaluate by a quarter, matching the simulation within three points. Given a
 batch of runs, the ledger turns them into a cost per simulated month, per seat, to size a study from.
 Details, measurements and limits are in [docs/TOKEN_EFFICIENCY.md](docs/TOKEN_EFFICIENCY.md). A default
-run still sends exactly the prompts engine 5 sent; a test holds it to them.
+run still sends exactly its recorded prompts; a test holds it to them.
 
 ---
 

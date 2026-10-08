@@ -1,11 +1,11 @@
-"""A run with no token-saving setting sends exactly what engine 5 sent, and a feature that is on changes
-only what it says it changes.
+"""A run with no token-saving setting sends exactly the recorded engine-6 prompts, and a feature that is on
+changes only what it says it changes.
 
-tests/fixtures/prompt_freeze_engine5.json holds the sha256 of the system prompt and of every prompt in a
-four-month run of council.scripted.toml (seed 1), produced by the published engine-5 code. The
+tests/fixtures/prompt_freeze_engine6.json holds the sha256 of the system prompt and of every prompt in a
+four-month run of council.scripted.toml (seed 1), produced by the engine-6 code (AGENT_PROMPT 6). The
 token-saving features in karamaniya/token_saving.py are all off by default; this is the test that holds
 them to it. A deliberate prompt change bumps versions.AGENT_PROMPT and regenerates the fixture with
-`python tools/prompt_freeze.py --write`.
+`python tools/prompt_freeze.py --write`. The engine-5 prompts are those of the `engine-5` tag.
 """
 import contextlib
 import io
@@ -23,7 +23,7 @@ sys.path.insert(0, ROOT)
 from karamaniya.batch import simulate  # noqa: E402
 from karamaniya.tokens import fingerprints  # noqa: E402
 
-FIXTURE = os.path.join(ROOT, "tests", "fixtures", "prompt_freeze_engine5.json")
+FIXTURE = os.path.join(ROOT, "tests", "fixtures", "prompt_freeze_engine6.json")
 SCRIPTED = os.path.join(ROOT, "council.scripted.toml")
 
 
@@ -43,7 +43,7 @@ def scripted_run(tmp: str, months: int, tokens: dict | None = None, prefix: str 
     return os.path.join(tmp, f"{prefix}-seed1")
 
 
-class ADefaultRunIsEngineFive(unittest.TestCase):
+class ADefaultRunSendsTheRecordedPrompts(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with open(FIXTURE, encoding="utf-8") as f:
@@ -64,7 +64,7 @@ class ADefaultRunIsEngineFive(unittest.TestCase):
         self.assertEqual([e[:4] for e in actual], [e[:4] for e in expected],
                          "the run made a different set of calls")
         changed = [e[:4] for e, a in zip(expected, actual) if e[4] != a[4]]
-        self.assertEqual(changed, [], "these prompts differ from engine 5 (month, phase, member, n)")
+        self.assertEqual(changed, [], "these prompts differ from the recorded engine 6 (month, phase, member, n)")
 
 
 def _words(text: str) -> list:

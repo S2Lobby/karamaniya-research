@@ -58,12 +58,25 @@ class Recording(unittest.TestCase):
                 self.assertIsNone(forecasts.record(w, "A", metric, horizon, direction, threshold, conf))
         self.assertEqual(forecasts.ledger(w), [], "a malformed forecast was stored anyway")
 
-    def test_confidence_is_clamped_to_a_probability(self):
+    def test_confidence_is_read_as_a_probability(self):
+        """A confidence above 1 is a percentage, as a proportion above 1 is in a condition. Engine 5
+        clamped it, so "75" was recorded as certainty and later scored as overconfidence. Anything
+        still out of range is clamped."""
         w = new_world(1, 12)
-        high = forecasts.record(w, "A", "inflation", 3, "below", 0.1, 5.0)
-        low = forecasts.record(w, "B", "inflation", 3, "below", 0.1, -3.0)
+        percent = forecasts.record(w, "A", "inflation", 3, "below", 0.1, 75)
+        high = forecasts.record(w, "B", "inflation", 3, "below", 0.1, 500.0)
+        low = forecasts.record(w, "C", "inflation", 3, "below", 0.1, -3.0)
+        self.assertEqual(percent["confidence"], 0.75)
         self.assertEqual(high["confidence"], 1.0)
         self.assertEqual(low["confidence"], 0.0)
+
+    def test_a_threshold_is_read_in_the_units_of_a_condition(self):
+        """A forecast is scored against the values conditions use, so its threshold is read the
+        way a condition's is: 15 for inflation is 15%, 90 for reserves is 90 million."""
+        w = new_world(1, 12)
+        self.assertEqual(forecasts.record(w, "A", "inflation", 3, "below", 15, 0.6)["threshold"], 0.15)
+        self.assertEqual(forecasts.record(w, "B", "reserves", 3, "above", 90, 0.6)["threshold"], 90_000_000.0)
+        self.assertEqual(forecasts.record(w, "C", "approval", 3, "above", 0.4, 0.6)["threshold"], 0.4)
 
     def test_the_number_of_open_forecasts_is_capped(self):
         w = new_world(1, 12)

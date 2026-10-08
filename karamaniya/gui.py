@@ -295,7 +295,8 @@ class Inspector:
         else:
             from . import prompts as prompt_text
             system = prompt_text.system_prompt(cfg.get("run", {}).get("framing", "simulation"),
-                                               member_count=len(cfg.get("seats", [])))
+                                               member_count=len(cfg.get("seats", [])),
+                                               dm_per_month=int(cfg.get("run", {}).get("dm_per_turn", 3)))
         data = {"id": run_id, "mapping": cfg.get("mapping", {}), "seats": seats,
                 "framing": cfg.get("run", {}).get("framing", ""), "system_prompt": system, "system_exact": exact,
                 "survey": _read_json(d / "survey.json") if (d / "survey.json").exists() else None,

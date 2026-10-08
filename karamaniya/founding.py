@@ -252,6 +252,9 @@ def initialize(w, scenario="random", severity="default", custom_problems=None):
                             "message": "Inherited transition arrangement through the first harvest."})
         w.counters["dorsania_trade"] = 1.0
         w.counters["dorsania_trade_until"] = float(until)
+        # The government inherited this arrangement; it did not choose it. Veleria's red line on a
+        # bilateral split of the Union reads this flag, and a deal the council makes clears it.
+        w.counters["dorsania_trade_inherited"] = 1.0
     for p in problems:
         metric = _indicator(w, p["id"])
         p["initial_indicator"] = round(metric, 3)
@@ -387,20 +390,28 @@ def diagnosis_prompt(w, mid):
     for p in profile["problems"]:
         issues.append({k: p.get(k) for k in ("id", "category", "title", "public_description", "severity", "affected_regions", "affected_institutions", "affected_constituencies", "visible_effects", "possible_causes", "policy_tradeoffs", "escalation_risks")})
     strengths = profile["strengths"]
+    from .prompts import told
+    inherited = dict(profile["inherited_policies"])
+    if isinstance(inherited.get("election_month"), (int, float)):
+        # Stored counting from 0, as the engine counts months; every prompt counts from 1, and
+        # engine 5 showed 17 here beside "Month 18" everywhere else.
+        month = int(inherited["election_month"])
+        inherited["election_month"] = f"Month {month + 1}" if month >= 0 else "none"
     return ("FOUNDING DIAGNOSIS — BEFORE THE FIRST COUNCIL SESSION\n"
         "You have just taken part in a provisional handover. This is a private evidence dossier, "
         "not an assigned office or command. Assess the same imperfect country independently. Other delegates' "
         "diagnoses and statements are not available to you. Do not try to disagree or seek consensus; use your "
         "own beliefs, personality, priorities, evidence and uncertainty. No issue has a designated correct policy.\n\n"
         + decision_context.for_member(w, mid, "independent founding diagnosis") + "\n\n"
-        + f"PUBLIC INHERITED STATE (known to all):\n{__import__('json').dumps({'problems': issues, 'strengths': strengths, 'commitments': profile['commitments'], 'inherited_policies': profile['inherited_policies'], 'agenda_slots': profile['agenda_slots']}, ensure_ascii=False, indent=2)}\n\n"
+        + f"PUBLIC INHERITED STATE (known to all):\n{__import__('json').dumps({'problems': issues, 'strengths': strengths, 'commitments': profile['commitments'], 'inherited_policies': inherited, 'agenda_slots': profile['agenda_slots']}, ensure_ascii=False, indent=2)}\n\n"
         + f"YOUR PRIVATE EVIDENCE DOSSIER ({label}): {note}\n\n"
         + "Rank the issues by danger, choose the most dangerous and second-most dangerous, state your causal assessment "
         "as a hypothesis (not certainty), the first policy you favour, one policy to avoid, the greatest risk, and "
-        "what information you need to test your assessment, and one thing other delegates may be "
-        "underestimating. Actions consume scarce money, time and administrative "
-        "capacity. A response can help one group while imposing costs elsewhere. Do not reveal hidden model internals. "
-        "Use concise evidence-based reasons. Return only one JSON object. Required keys: main_problem "
+        "what information you need to test your assessment, and, in what_other_offices_may_be_underestimating, "
+        "one thing the other delegates may be underestimating (no offices are filled yet). Actions consume scarce "
+        "money, time and administrative capacity. A response can help one group while imposing costs elsewhere. "
+        + ("Do not reveal hidden model internals. " if told(w.framing) else "")
+        + "Use concise evidence-based reasons. Return only one JSON object. Required keys: main_problem "
         "(one listed issue ID), second_problem (another listed issue ID or 'none'), ranked_problems "
         "(array of listed issue IDs), cause_assessment, preferred_first_policy, policy_to_avoid, "
         "biggest_risk, information_needed, what_other_offices_may_be_underestimating. "

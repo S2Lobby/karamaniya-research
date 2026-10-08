@@ -50,6 +50,21 @@ class Noise:
         return clamp(x + self.poll_bias + self.rng.gauss(0, self.sigma / 2))
 
 
+def published_output(w: World) -> float:
+    """Karamaniya's annual output as the government publishes it.
+
+    The national accounts carry the same noise as the briefing's other statistics, drawn once a
+    month from a stream of their own, so the briefing's COUNTRY SCALE and the canonical block print
+    the same figure. Engine 5 printed the true output in one and a noisy estimate in the other.
+    """
+    return w.econ.gdp_real * 12 * (1 + rng_for(w.seed, w.month, "briefing:output").gauss(0, Noise(w).sigma))
+
+
+def _sentences(items) -> str:
+    """Short sentences on one line, each ending in one full stop (engine 5 joined them with "; ")."""
+    return " ".join(s.strip().rstrip(".") + "." for s in items if isinstance(s, str) and s.strip())
+
+
 def government_block(w: World) -> str:
     c = w.const
     active = w.active_members()
@@ -119,8 +134,8 @@ def public(w: World, council_record: dict | None = None) -> str:
             out.append(f"- {issue['title']} (severity {issue['severity']}/100, {issue['trend']}{neglect}; {where}): {issue['public_description']}")
             if issue.get("possible_causes"):
                 out.append("  Plausible explanations, not settled facts: " + "; ".join(issue["possible_causes"]) + ".")
-        out.append("Inherited strengths: " + "; ".join(x["description"] for x in profile["strengths"]) + ".")
-        out.append("Inherited commitments: " + "; ".join(profile["commitments"]) + ".")
+        out.append("Inherited strengths: " + _sentences(x["description"] for x in profile["strengths"]))
+        out.append("Inherited commitments: " + _sentences(profile["commitments"]))
         if not w.history:
             out.append("Prelude: " + " ".join(profile["public_history"]))
             out.append("Independent first diagnoses (released after everyone submitted):")
@@ -147,10 +162,11 @@ def public(w: World, council_record: dict | None = None) -> str:
     out.append("")
 
     if w.human_factor:
+        from .prompts import told
         out.append("COUNTRY SCALE (estimated annual output in common starting-price crowns)")
         out.append(f"Karamaniya: {w.population() / 1e6:.2f}M people, output "
-                   f"{n.est(e.gdp_real * 12) / 1e9:.1f}B, {m.army.size:,.0f} soldiers. "
-                   "These monetary units are not real-world dollars.")
+                   f"{published_output(w) / 1e9:.1f}B, {m.army.size:,.0f} soldiers."
+                   + (" These monetary units are not real-world dollars." if told(w.framing) else ""))
         for rival in w.rivals.values():
             out.append(f"{rival.name}: {rival.population / 1e6:.1f}M people, estimated output "
                        f"{n.est(rival.gdp_real * 12) / 1e9:.1f}B, about {round(n.est(rival.army), -3):,.0f} soldiers.")
@@ -248,6 +264,12 @@ def public(w: World, council_record: dict | None = None) -> str:
 def settings_block(w: World) -> str:
     p, m = w.policy, w.mil
     b = lambda x: "on" if x else "off"
+    # Every setting an office can order is listed with its current value. Engine 5 left out six the
+    # system prompt offers (ownership, import_cap, planning, amnesty, training_intensity,
+    # mobilization), so a delegate could not see whether industry was nationalised or the reserve
+    # called up.
+    v2 = w.agent_architecture_version >= 2
+    cap = "0 (no limit)" if not p.import_cap else f"{p.import_cap:,.0f}"
     return "\n".join([
         "CURRENT SETTINGS",
         f"Treasury: tax {p.tax:.2f}, military {p.military:.3f}, police {p.police:.3f}, welfare {p.welfare:.3f}, "
@@ -255,13 +277,16 @@ def settings_block(w: World) -> str:
         f"rate {p.rate:.2f}, price_controls "
         f"{p.price_controls}, rationing {b(p.rationing)}, requisition {p.requisition}, capital_controls "
         f"{b(p.capital_controls)}, imports {p.imports}, stats {p.stats}, debt_service {p.debt_service}"
-        + (f", regional_fund {p.regional_fund}" if w.agent_architecture_version >= 2 else ""),
+        + (f", regional_fund {p.regional_fund}, ownership {p.ownership}, import_cap {cap}, planning {p.planning}"
+           if v2 else ""),
         f"Interior: protest_response {p.protest_response}, surveillance {p.surveillance}, arrests {p.arrests}, "
-        f"emigration {p.emigration}, election_conduct {p.election_conduct}, patronage {b(p.patronage['interior'])}",
+        f"emigration {p.emigration}, election_conduct {p.election_conduct}, patronage {b(p.patronage['interior'])}"
+        + (f", amnesty {p.amnesty}" if v2 else ""),
         f"Army: recruitment {p.recruitment}, army_target {p.army_target:.0f}, deploy_north {m.deploy['north']:.2f}, "
         f"deploy_east {m.deploy['east']:.2f}, deploy_capital {m.deploy['capital']:.2f}, posture {p.posture}, "
         f"purge {b(p.purge)}, patronage {b(p.patronage['army'])}"
-        + (f", officer_pay {p.officer_pay}" if w.agent_architecture_version >= 2 else ""),
+        + (f", officer_pay {p.officer_pay}, training_intensity {p.training_intensity}, "
+           f"mobilization {p.mobilization}" if v2 else ""),
         f"Navy: navy_mission {p.navy_mission}, shipbuilding {b(p.shipbuilding)}, patronage {b(p.patronage['navy'])}",
     ])
 
@@ -402,8 +427,8 @@ def public_v2(w: World, council_record: dict | None = None) -> str:
                 out.append(f"- {issue['title']} (severity {issue['severity']}/100; {where}): {issue['public_description']}")
                 if issue.get("possible_causes"):
                     out.append("  Plausible explanations, not settled facts: " + "; ".join(issue["possible_causes"]) + ".")
-            out.append("Inherited strengths: " + "; ".join(x["description"] for x in profile["strengths"]) + ".")
-            out.append("Inherited commitments: " + "; ".join(profile["commitments"]) + ".")
+            out.append("Inherited strengths: " + _sentences(x["description"] for x in profile["strengths"]))
+            out.append("Inherited commitments: " + _sentences(profile["commitments"]))
             out.append("Independent first diagnoses (released after everyone submitted):")
             for mid, d in profile["diagnoses"].items():
                 if d.get("status", "submitted") != "submitted":

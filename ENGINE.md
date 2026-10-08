@@ -81,7 +81,11 @@ across two seeds, use `python -m karamaniya simulate council.live-free-local.tom
 
 Every CLI call runs in an empty scratch folder with the tool's own tools switched off, so the AI can only
 answer. Your CLAUDE.md, Codex config, skills, plugins and MCP servers are not loaded. Cline and Antigravity
-keep each call in their own history.
+keep each call in their own history. Antigravity has no switch for its tools: it runs headless, in plan mode
+and its sandbox, where a tool the model reaches for is denied and the call ends without an answer, so that
+call is made again. Gemini also takes a narrower JSON schema than the other models (an enum value must be a
+non-empty string): the connector sends an office left empty as "none" and a forecast horizon as its digits,
+and maps the answer back, so the council reads the same values from every seat.
 
 **Usage limits.** Subscriptions have them. When a seat reports its limit (for example Codex's "try again at
 4:45 PM"), the run pauses instead of letting that member silently skip turns. Nothing of the unfinished month

@@ -163,7 +163,9 @@ HARNESS_NOTES = {
     "cline_cli": "Cline CLI: the standing instructions replace Cline's system prompt; tools need approval, which is "
                  "never given.",
     "antigravity_cli": "Antigravity CLI: no system-prompt option, so the standing instructions are put at the top "
-                       "of the message; plan mode and sandbox; answer held to the schema.",
+                       "of the message; plan mode and sandbox, and a call that ends in a denied tool request is "
+                       "made again; answer held to the schema, with an empty or numeric choice sent as a word "
+                       "Gemini accepts and mapped back.",
     "copilot_cli": "GitHub Copilot CLI: no system-prompt option, so the standing instructions are put at the top of "
                    "the message; every tool, MCP server and instruction file off; answer read from the reply text.",
     "qoder_cli": "Qoder CLI: the standing instructions are the session system prompt; every tool, MCP server and hook "

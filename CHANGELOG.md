@@ -4,6 +4,21 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## Since engine-6
+
+Fixes (details and tests: `docs/ENGINEERING_BACKLOG.md`, T32-T33)
+
+- A Gemini seat (`antigravity_cli`) could not take part. Gemini accepts an enum value only as a non-empty
+  string, and the CLI forwards numbers as empty strings, so the formation proposal (where "" leaves an
+  office empty) and every monthly decision (forecast horizons 3, 6 and 12) were rejected with
+  INVALID_ARGUMENT before the model saw the prompt, and the run paused. The connector now sends such a
+  value as a word or as its digits and maps the answer back. Every seat's prompts are unchanged, and a
+  schema Gemini already accepted (survey, founding diagnosis, formation vote, session, revision) is sent
+  byte for byte as before.
+- An Antigravity call could end with no answer when the model reached for one of the CLI's own tools,
+  which headless mode denies (the CLI has no switch for them). It was asked once more with a note that
+  the answer could not be read; it is now sent again unchanged, as after a dropped connection.
+
 ## engine-6 (2026-10-08)
 
 `AGENT_PROMPT` 6 and `WORLD_ENGINE` 6. An audit of the prompts as a default run sends them, not as the code

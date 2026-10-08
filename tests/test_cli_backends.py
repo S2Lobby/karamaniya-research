@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -36,8 +37,8 @@ class CliSeats(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="karamaniya-cli-test-")
         self.record = os.path.join(self.tmp, "record.json")
         self.saved = {k: os.environ.get(k) for k in ("FAKE_CLI_RECORD", "FAKE_CLI_LIMIT_AFTER", "FAKE_CLI_COUNTER", "FAKE_CLI_STREAM",
-                                                     "FAKE_CLI_USAGE", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN",
-                                                     "KARAMANIYA_DS_TEST")}
+                                                     "FAKE_CLI_USAGE", "FAKE_CLI_ANSWER", "FAKE_CLI_DETOURS",
+                                                     "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "KARAMANIYA_DS_TEST")}
         os.environ["FAKE_CLI_RECORD"] = self.record
         os.environ.pop("FAKE_CLI_LIMIT_AFTER", None)
         os.environ["FAKE_CLI_COUNTER"] = os.path.join(self.tmp, "count")
@@ -92,6 +93,30 @@ class CliSeats(unittest.TestCase):
         text = msg["message"]["content"][0]["text"]
         self.assertIn(SYSTEM, text)
         self.assertIn(USER, text)
+
+    def test_antigravity_sends_enums_gemini_accepts_and_maps_the_answer_back(self):
+        # Gemini rejected "" (an office left empty) and the forecast horizons 3, 6, 12 with
+        # INVALID_ARGUMENT, so a Gemini seat could neither form a government nor decide.
+        schema = {"type": "object", "additionalProperties": False, "required": ["slate", "horizon", "pick"],
+                  "properties": {"slate": {"type": "object", "additionalProperties": False, "required": ["head"],
+                                           "properties": {"head": {"type": "string", "enum": ["A", "B", ""]}}},
+                                 "horizon": {"type": "integer", "enum": [3, 6, 12]},
+                                 "pick": {"type": "string", "enum": ["A", "none"]}}}
+        os.environ["FAKE_CLI_ANSWER"] = json.dumps({"slate": {"head": "none"}, "horizon": "6", "pick": "none"})
+        res = make_backend(seat("agy", "antigravity_cli")).complete(SYSTEM, USER, schema)
+        self.assertEqual(res.data, {"slate": {"head": ""}, "horizon": 6, "pick": "none"}, res.error)
+        sent = json.loads(self.sent()["schema"])["properties"]
+        self.assertEqual(sent["slate"]["properties"]["head"]["enum"], ["A", "B", "none"])
+        self.assertEqual(sent["horizon"], {"type": "string", "enum": ["3", "6", "12"]})
+        self.assertEqual(sent["pick"], schema["properties"]["pick"])
+
+    def test_antigravity_answer_lost_to_a_denied_tool_call_is_asked_again(self):
+        os.environ["FAKE_CLI_DETOURS"] = "1"
+        with mock.patch("karamaniya.backends.base.time.sleep"):
+            res = make_backend({**seat("agy", "antigravity_cli"), "retries": 2}).complete(SYSTEM, USER, SCHEMA)
+        self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
+        self.assertEqual(res.attempts, 2)
+        self.assertFalse(res.format_retry)  # the same prompt again, not the "could not be read" note
 
     def test_claude_on_its_own_and_carrying_deepseek(self):
         os.environ["ANTHROPIC_BASE_URL"] = "https://other-provider.invalid/anthropic"

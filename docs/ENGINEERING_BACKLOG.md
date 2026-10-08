@@ -184,6 +184,15 @@ the code before it was changed; `tests/test_engine6_prompts.py` checks the emitt
 | T30 | Two output figures in one prompt; punctuation and float noise | low | VERIFIED | `briefing.py`, `decision_context.py`, `council.py` | `test_engine6_prompts.py` | The canonical block printed the true output beside the briefing's estimate; ".;", "..", "1 months" and 0.7666000000000001 are gone |
 | T31 | A framing with no study cues | — | VERIFIED | `prompts.py`, `decision_context.py`, `founding.py`, `briefing.py`, `config.py` | `test_engine6_prompts.py` | `framing = "unobserved"`: nothing tells the delegates their answers are studied or kept for comparison. `immersive` no longer says "simulation" in the survey, the rules or the briefing |
 
+After engine 6, from the first run with a Gemini seat (it paused before government formation). Each
+was reproduced through the real Antigravity CLI 1.3.1 with `gemini-3.8-flash-low` before the fix and
+checked the same way after it:
+
+| ID | Title | Severity | Status | Files | Tests | Result |
+|---|---|---|---|---|---|---|
+| T32 | Gemini rejected the formation and decision schemas | high | VERIFIED | `backends/antigravity_cli.py` | `test_gemini_schema.py`, `test_cli_backends.py` | Gemini takes an enum value only as a non-empty string, and the CLI forwards numbers as empty strings: "" (an office left out of a slate) and the forecast horizons 3, 6, 12 failed with INVALID_ARGUMENT. Such values go out as a word or their digits and the answer is mapped back; prompts are unchanged, and a schema Gemini accepted is sent byte for byte as before |
+| T33 | An Antigravity answer lost to a denied tool call | medium | VERIFIED | `backends/antigravity_cli.py` | `test_cli_backends.py` | The CLI has no switch for its own tools. 3 of 9 decision probes ended with no answer; in the one whose output was kept the model ran `dir`, headless mode denied it and the turn ended. A call that ends in a denied tool request is now made again unchanged, not answered with "could not be read" |
+
 ### Open, deliberately
 
 | ID | Title | Reason |

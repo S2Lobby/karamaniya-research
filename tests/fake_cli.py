@@ -8,6 +8,8 @@ FAKE_CLI_RECORD=<file>        write the arguments, stdin and selected environmen
 FAKE_CLI_LIMIT_AFTER=<n>      answer n calls, then report the plan's usage limit
 FAKE_CLI_COUNTER=<file>       where the call count is kept between calls
 FAKE_CLI_USAGE=<json>         extra usage fields to report (Codex, Claude Code, Copilot): cache and reasoning counts
+FAKE_CLI_ANSWER=<json>        the answer to give (Antigravity), instead of one chosen from the schema
+FAKE_CLI_DETOURS=<n>          Antigravity: the first n calls reach for a tool, which is denied, and end with no answer
 """
 import json
 import os
@@ -34,6 +36,20 @@ def extra_usage() -> dict:
     return json.loads(os.environ.get("FAKE_CLI_USAGE") or "{}")
 
 
+def detour() -> bool:
+    detours = os.environ.get("FAKE_CLI_DETOURS")
+    if detours is None:
+        return False
+    path = os.environ["FAKE_CLI_COUNTER"] + ".detours"
+    n = 0
+    if os.path.exists(path):
+        with open(path) as f:
+            n = int(f.read().strip() or 0)
+    with open(path, "w") as f:
+        f.write(str(n + 1))
+    return n < int(detours)
+
+
 def answer(schema_text: str) -> dict:
     if '"ok"' in schema_text:
         return {"ok": True, "note": "ready"}
@@ -50,8 +66,10 @@ def main():
     kind, argv = sys.argv[1], sys.argv[2:]
     stdin = sys.stdin.buffer.read().decode("utf-8") if kind != "cline" else ""   # real CLIs read UTF-8
     if os.environ.get("FAKE_CLI_RECORD"):
+        schema_file = arg_after(argv, "--json-schema") if kind == "agy" else ""
         with open(os.environ["FAKE_CLI_RECORD"], "w", encoding="utf-8") as f:
             json.dump({"kind": kind, "argv": argv, "stdin": stdin, "cwd": os.getcwd(),
+                       "schema": open(schema_file, encoding="utf-8").read() if schema_file else None,
                        "env": {k: os.environ.get(k) for k in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN",
                                                               "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL")}}, f)
     limited = over_limit()
@@ -131,7 +149,18 @@ def main():
             print(json.dumps({"event": "result", "result": {"status": "ERROR", "response": "",
                                                             "error": "RESOURCE_EXHAUSTED: usage limit reached for today"}}), file=out)
             return 3
-        data = answer(schema)
+        if detour():
+            # Recorded from Antigravity CLI 1.3.1 on 2026-10-08: the model ran `dir` instead of answering.
+            print('jetski: no output produced - a tool required the "command" permission that headless mode '
+                  'cannot prompt for, so it was auto-denied.', file=sys.stderr)
+            print(json.dumps({"event": "result", "result": {"status": "SUCCESS", "response": "", "num_turns": 1,
+                                                            "usage": {"input_tokens": 15200, "output_tokens": 655,
+                                                                      "thinking_tokens": 582},
+                                                            "denied_actions": [{"action": "command",
+                                                                                "display_name": "RunCommand"}]}}),
+                  file=out)
+            return 0
+        data = json.loads(os.environ["FAKE_CLI_ANSWER"]) if os.environ.get("FAKE_CLI_ANSWER") else answer(schema)
         print(json.dumps({"event": "result", "result": {"status": "SUCCESS", "response": json.dumps(data) + "\n",
                                                         "structured_output": data, "num_turns": 2,
                                                         "usage": {"input_tokens": 27485, "output_tokens": 46,

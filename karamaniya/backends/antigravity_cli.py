@@ -13,7 +13,67 @@ import os
 import tempfile
 
 from . import cli_common
-from .base import Backend, CallResult, extract_json
+from .base import Backend, CallResult, TransientError, extract_json
+
+NUMERIC = ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf")
+
+
+def _needs_strings(enum) -> bool:
+    return isinstance(enum, list) and any(v == "" or not isinstance(v, str) for v in enum)
+
+
+def _sent_values(enum: list) -> dict:
+    """What Gemini is sent for each enum value, mapped to the value itself: an empty string as a
+    word the enum does not already use, a number or other non-string as its JSON text."""
+    used = {v for v in enum if isinstance(v, str)}
+    empty = next((w for w in ("none", "empty", "blank") if w not in used), "(empty)")
+    return {(empty if v == "" else v if isinstance(v, str) else json.dumps(v)): v for v in enum}
+
+
+def gemini_schema(schema):
+    """The schema in the form Gemini's function declarations accept (--json-schema becomes one).
+    Gemini takes enum values only as non-empty strings and one type per field: the empty string
+    that leaves an office out of a formation slate, and the forecast horizons 3, 6 and 12 (which
+    the CLI forwards as empty strings), were rejected with INVALID_ARGUMENT before the model saw
+    the prompt. Such an enum is sent as strings, "" as "none", and a type list such as
+    ["string", "null"] as a nullable string. `restore` maps the answer back."""
+    if isinstance(schema, list):
+        return [gemini_schema(s) for s in schema]
+    if not isinstance(schema, dict):
+        return schema
+    out = {k: (v if k in ("properties", "enum", "required") else gemini_schema(v)) for k, v in schema.items()}
+    if isinstance(schema.get("properties"), dict):
+        out["properties"] = {name: gemini_schema(sub) for name, sub in schema["properties"].items()}
+    kind = schema.get("type")
+    if isinstance(kind, list) and len([k for k in kind if k != "null"]) == 1:
+        out["type"] = next(k for k in kind if k != "null")
+        if "null" in kind:
+            out["nullable"] = True
+    if _needs_strings(schema.get("enum")):
+        sent = _sent_values(schema["enum"])
+        out["enum"] = list(sent)
+        out["type"] = "string"
+        for k in NUMERIC:
+            out.pop(k, None)
+        empty = [word for word, value in sent.items() if value == ""]
+        if empty:
+            note = f'"{empty[0]}" stands for the empty string "".'
+            out["description"] = f'{schema["description"]} {note}' if schema.get("description") else note
+    return out
+
+
+def restore(data, schema):
+    """Undo gemini_schema on the answer, so the council reads the values every other seat sends."""
+    if not isinstance(schema, dict):
+        return data
+    if isinstance(data, str) and _needs_strings(schema.get("enum")):
+        return _sent_values(schema["enum"]).get(data, data)
+    props = schema.get("properties")
+    if isinstance(data, dict) and isinstance(props, dict):
+        return {k: restore(v, props.get(k)) for k, v in data.items()}
+    if isinstance(data, list) and isinstance(schema.get("items"), dict):
+        return [restore(x, schema["items"]) for x in data]
+    return data
 
 
 class AntigravityCLIBackend(Backend):
@@ -31,7 +91,7 @@ class AntigravityCLIBackend(Backend):
         with tempfile.TemporaryDirectory(prefix="karamaniya-agy-io-") as io:
             schema_path = os.path.join(io, "schema.json")
             with open(schema_path, "w", encoding="utf-8") as f:
-                json.dump(schema, f)
+                json.dump(gemini_schema(schema), f)
             cmd = self.cmd + ["--input-format", "stream-json", "--output-format", "stream-json",
                               "--json-schema", schema_path, "--mode", "plan", "--sandbox",
                               "--print-timeout", f"{int(self.timeout)}s"]
@@ -72,7 +132,18 @@ class AntigravityCLIBackend(Backend):
         if str(result.get("status", "")).upper() != "SUCCESS" and not isinstance(data, dict):
             raise cli_common.classify(result.get("error") or stderr.strip() or f"status {result.get('status')}",
                                       "Antigravity CLI")
+        if not isinstance(data, dict) and not text.strip() and result.get("denied_actions"):
+            # The CLI has no switch for its own tools. Now and then the model reaches for one (its
+            # terminal, to list the scratch folder) instead of answering; headless mode denies it
+            # and the turn ends with no answer. That is the harness, not the delegate: the same
+            # prompt is sent again, as after a dropped connection.
+            denied = ", ".join(str(a.get("display_name") or a.get("action")) for a in result["denied_actions"]
+                               if isinstance(a, dict))
+            raise TransientError(f"Antigravity CLI: no answer; the model reached for a tool ({denied or 'unknown'}), "
+                                 "which headless mode denies")
         if not isinstance(data, dict):
             data = extract_json(text)
+        if isinstance(data, dict):
+            data = restore(data, schema)
         return CallResult(data=data, raw=text, served_model=served or "antigravity default",
                           input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=self.cost(tokens_in, tokens_out))

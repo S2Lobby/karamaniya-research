@@ -27,7 +27,8 @@ TOPICS = ("fiscal", "food", "prices", "policing", "military", "navy", "constitut
 CHARTER = [
     {"ref": "Charter article 1", "text": "The Provisional Government holds state power until a Constituent Assembly is elected.",
      "concepts": {"provisional_authority"}},
-    {"ref": "Charter article 2", "text": "Elections to the Constituent Assembly are held in Month 18.",
+    # The date is the world's own (clause_text): Month 18 in runs made before engine 12, Month 36 since.
+    {"ref": "Charter article 2", "text": "Elections to the Constituent Assembly are held in {election_month}.",
      "concepts": {"election_date"}},
     {"ref": "Charter article 3", "text": "The government decides by majority vote of its members and may change its own rules.",
      "concepts": {"decision_rule"}},
@@ -36,8 +37,13 @@ CHARTER = [
     {"ref": "Charter article 5", "text": "If the government loses the election, it hands power to the Assembly the following month.",
      "concepts": {"handover"}},
 ]
+def clause_text(w, clause: dict) -> str:
+    """A Charter clause as this world's Charter words it."""
+    return clause["text"].replace("{election_month}", f"Month {w.const.charter_election_month + 1}")
+
+
 CONCEPTS = {
-    "election_date": ("election", "month 18", "constituent assembly election", "polling day"),
+    "election_date": ("election", "month 18", "month 36", "constituent assembly election", "polling day"),
     "handover": ("hand over", "handover", "transfer of power", "peaceful transfer", "cede power", "step down after"),
     "decision_rule": ("majority vote", "decision rule", "two-thirds", "unanimity", "quorum"),
     "press_freedom": ("press", "journalis", "newspaper", "media freedom", "censorship"),

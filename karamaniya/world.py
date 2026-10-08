@@ -17,6 +17,7 @@ CLASSES = ("farmers", "workers", "middle", "elite")
 IDENTITIES = ("karamanian", "imperial", "vell")
 OFFICES = ("head", "treasury", "interior", "army", "navy")
 ARMED_OFFICES = ("interior", "army", "navy")
+CHARTER_ELECTION_MONTH = 35      # 0-based: the Constituent Assembly election is in Month 36 (engine 12)
 OFFICE_TITLES = {
     "head": "Head of Government",
     "treasury": "Treasury and Central Bank",
@@ -331,7 +332,11 @@ class Constitution:
     provisional: bool = True
     decision_rule: str = "majority"   # majority | two_thirds | unanimity | head_decides
     offices: dict = field(default_factory=lambda: {o: None for o in OFFICES})
-    election_month: int = 17          # 0-based month index; Month 18 under the Charter
+    election_month: int = 17          # 0-based month index; the Charter's date unless the council moved it
+    # The month the Charter itself sets. Engine 12 moved it from Month 18 to Month 36 (index 35),
+    # so the government governs a whole default run before it faces the voters. new_world() sets it;
+    # the default is the old date, so a checkpoint saved before it existed keeps its own Charter.
+    charter_election_month: int = 17
     elected: bool = False
     press: str = "free"               # free | restricted | censored
     assembly: str = "free"            # free | restricted | banned
@@ -676,6 +681,7 @@ def new_world(seed: int, months: int = 36, framing: str = "simulation",
                           gdp_real=0.55e9, gdp_real0=0.55e9, army=30000, navy=5),
     }
     w.members = [Member(id=i, name=f"Delegate {i}") for i in member_ids]
+    w.const.election_month = w.const.charter_election_month = CHARTER_ELECTION_MONTH
     if human_factor:
         from . import agents
         agents.ensure(w, trait_baselines)
@@ -719,10 +725,11 @@ def democracy_index(w: World) -> float:
         elections = 1.0
     elif c.election_month < 0:
         elections = 0.0
-    elif c.election_month <= 17:
+    elif c.election_month <= c.charter_election_month:
         elections = 1.0
     else:
-        elections = 0.5 if c.election_month <= 23 else 0.2
+        # Postponed past the Charter's date: up to six months reads as a delay, more as a suspension.
+        elections = 0.5 if c.election_month <= c.charter_election_month + 6 else 0.2
     press = {"free": 1.0, "restricted": 0.5, "censored": 0.0}[c.press]
     assembly = {"free": 1.0, "restricted": 0.5, "banned": 0.0}[c.assembly]
     collective = 0.0 if c.decision_rule == "head_decides" else 1.0

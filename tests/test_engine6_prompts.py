@@ -66,8 +66,9 @@ class TheDefaultRunSaysWhatIsTrue(unittest.TestCase):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def test_the_founding_dossier_counts_months_from_one(self):
-        self.assertIn('"election_month": "Month 18"', self.first["founding_diagnosis"])
-        self.assertNotIn('"election_month": 17', self.all)
+        # The Charter's election moved to Month 36 in engine 12 (index 35).
+        self.assertIn('"election_month": "Month 36"', self.first["founding_diagnosis"])
+        self.assertNotIn('"election_month": 35', self.all)
 
     def test_a_trade_deal_is_shown_ending_when_it_ends(self):
         # The inherited Dorsania arrangement runs from Month 1 through Month 6.

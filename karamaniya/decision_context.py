@@ -347,7 +347,7 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
     status = freshness.directive_text(w)
     if status:
         lines.append(status)
-    charter = [f"Art. {i}: {cl['text']}" for i, cl in enumerate(deliberation.CHARTER, 1)]
+    charter = [f"Art. {i}: {deliberation.clause_text(w, cl)}" for i, cl in enumerate(deliberation.CHARTER, 1)]
     amendments = [f"Amendment {i} (Month {a.get('month', 0) + 1}): {a.get('text', '')[:140]}"
                   for i, a in enumerate(c.amendments, 1)]
     older = f" | ({len(amendments) - 6} earlier amendments)" if len(amendments) > 6 else ""

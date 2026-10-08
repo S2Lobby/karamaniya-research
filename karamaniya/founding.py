@@ -168,7 +168,7 @@ def _apply(w, pid, severity, rng, mix=None):
             if p.region in ("kessel", "highlands", "dorran"):
                 p.approval -= .012 * s * weak_regions
     elif pid == "constitutional_uncertainty":
-        w.const.election_month = min(w.const.election_month, 17)
+        w.const.election_month = min(w.const.election_month, w.const.charter_election_month)
         representation, party_bargaining, courts = (first(i) for i in range(3))
         for p in w.pops:
             p.approval -= .014 * s + .02 * s * representation

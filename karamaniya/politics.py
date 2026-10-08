@@ -1666,8 +1666,8 @@ def _constitution(w: World, field: str, raw: str, proposer: str) -> str:
         mi = parse_month(raw)
         old = c.election_month
         c.election_month = mi
-        if mi < 0 or mi > 17:
-            if old <= 17 and old >= 0:
+        if mi < 0 or mi > c.charter_election_month:
+            if 0 <= old <= c.charter_election_month:
                 w.adjust_league_trust(-0.15)
         return ("elections cancelled" if mi < 0 else
                 f"elections set for {month_label(mi)}")
@@ -2041,6 +2041,8 @@ def resolve_coups(w: World, coups: dict, stances: dict) -> list:
                 w.const.handover_month = -1
                 w.const.election_month = -1
                 w.const.elected = False
+                # The government lost the election and kept power by force: the run's outcome says so.
+                w.counters["handover_blocked_month"] = float(w.month)
             w.adjust_league_trust(-0.35)
             w.dip.propaganda = min(1.0, w.dip.propaganda + 0.1)
             for p_ in w.k_pops():

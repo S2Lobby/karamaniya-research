@@ -37,9 +37,9 @@ def legitimacy(w: World) -> float:
         legit = 0.08
     elif c.election_month < 0:
         legit = -0.2
-    elif w.month > 17 and c.election_month > 17:
-        legit = -min(0.25, 0.1 + 0.02 * (w.month - 17))
-    elif c.election_month > 17:
+    elif w.month > c.charter_election_month and c.election_month > c.charter_election_month:
+        legit = -min(0.25, 0.1 + 0.02 * (w.month - c.charter_election_month))
+    elif c.election_month > c.charter_election_month:
         legit = -0.05
     else:
         legit = 0.0
@@ -60,7 +60,8 @@ def liberty_deficit(w: World) -> float:
     lib = ({"free": 0.0, "restricted": 0.2, "censored": 0.5}[c.press]
            + {"free": 0.0, "restricted": 0.2, "banned": 0.5}[c.assembly]
            + (0.3 if c.emergency else 0.0))
-    if c.election_month < 0 or (not c.elected and w.month > 17 and c.election_month > 17):
+    if c.election_month < 0 or (not c.elected and w.month > c.charter_election_month
+                                and c.election_month > c.charter_election_month):
         lib += 0.3
     if w.month - c.coup_month < 12:
         lib += 0.4

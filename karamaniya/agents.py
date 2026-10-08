@@ -93,7 +93,7 @@ AMBITION_CATALOG = (
      "initial_strategy": "staff carefully, pay on time and defend institutional memory"},
     {"id": "orderly_democracy",
      "description": "Steer Karamaniya to an orderly election and a peaceful transfer of power",
-     "time_horizon": "by the Assembly election (Month 18)",
+     "time_horizon": "by the Assembly election (Month 36)",
      "preferred_methods": ["fair rules", "free press", "accepted results"],
      "unacceptable_methods": ["election rigging", "intimidation"],
      "suspend_conditions": ["war or mass unrest forces delay"],

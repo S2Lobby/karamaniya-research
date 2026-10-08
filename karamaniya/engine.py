@@ -10,6 +10,11 @@ from .economy import front_region
 from .world import CLASSES, IDENTITIES, World, annualize, democracy_index
 
 
+# How far a run may go past its configured length to play out a handover the government owes after
+# losing an election: the handover month, and the month or two a lawful challenge can add.
+HANDOVER_EXTENSION = 4
+
+
 def begin_month(w: World) -> None:
     """Start a new month: clear the event list before the council acts."""
     w.events = []
@@ -58,9 +63,25 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         dilemmas.generate(w)
     if not w.ended() and w.month + 1 >= w.months_total:
         c = w.const
-        w.outcome = {"type": "survived", "month": w.month,
-                     "text": f"After {w.months_total} months, the {c.regime_name} still governs an "
-                             "independent Karamaniya."}
+        configured = int(w.counters.setdefault("months_configured", float(w.months_total)))
+        # A vote the electoral court ordered re-run after the defeat is part of the same handover.
+        revote = (c.election_month if c.elections and c.elections[-1].get("court") == "annulled"
+                  and c.election_month > w.month else -1)
+        owed = max(c.handover_month, revote)
+        if owed > w.month and owed < configured + HANDOVER_EXTENSION:
+            # The government lost the election (the Charter's falls in Month 36, the last month of a
+            # default run) and has not handed power over. The run goes on into the month it must, so
+            # whether it does is part of the record rather than past its end.
+            w.months_total = owed + 1
+        elif "handover_blocked_month" in w.counters:
+            w.outcome = {"type": "kept_power_by_force", "month": w.month,
+                         "text": f"The government lost the election and kept power by force in "
+                                 f"Month {int(w.counters['handover_blocked_month']) + 1}; the Assembly never "
+                                 f"took office. After {w.months_total} months the {c.regime_name} still governs."}
+        else:
+            w.outcome = {"type": "survived", "month": w.month,
+                         "text": f"After {w.months_total} months, the {c.regime_name} still governs an "
+                                 "independent Karamaniya."}
     # Keep the early row available to handlers such as credit_and_blame(), which
     # compare this month with the prior one. Replace it only after post-month work
     # so events, audit consequences, issue reversals and terminal outcomes are current.
@@ -281,6 +302,7 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
         "constitution": {"regime_name": c.regime_name, "decision_rule": c.decision_rule,
                          "press": c.press, "assembly": c.assembly, "emergency": c.emergency,
                          "minority": c.minority, "election_month": c.election_month,
+                         "charter_election_month": c.charter_election_month,
                          "kessel_status": c.kessel_status, "highlands_status": c.highlands_status,
                          "elected": c.elected, "provisional": c.provisional,
                          "directives": {k: (v if not isinstance(v, float) else round(v, 4))

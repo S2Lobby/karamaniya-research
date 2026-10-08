@@ -618,7 +618,8 @@ class Council:
         self.tokens = token_saving.settings(self.settings)
         self.store = store
         self.system = prompts.system_prompt(world.framing, world.human_factor, len(world.members),
-                                            int(self.settings.get("dm_per_turn", 3)))
+                                            int(self.settings.get("dm_per_turn", 3)),
+                                            world.const.charter_election_month)
         configured = self.settings.get("foreign_cabinet_seats") or {}
         by_label = {seat.label: seat for seat in seats.values()}
         ordered_seats = list(seats.values())

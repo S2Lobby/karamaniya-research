@@ -692,6 +692,13 @@ def normalize_motion_v2(w: World, raw: dict) -> dict:
           "value": str(raw.get("value", "")).strip(),
           "text": words(raw.get("text", ""), 120),
           "action": _explicit_action(w, raw.get("action"))}
+    # A constitution setting moved as a policy (`set_policy highlands_status = cultural`) can only
+    # mean the constitution motion: the prompt lists the regional statuses among the levers. It was
+    # an unknown lever, and a Month 6 motion granting the Highlands cultural status was discarded.
+    if mo["type"] == "set_policy" and mo["subject"] not in LEVER_OFFICE:
+        field = re.sub(r"[\s\-]+", "_", mo["subject"].strip().lower())
+        if field in CONSTITUTION_FIELDS:
+            mo["type"], mo["subject"] = "constitution", field
     # Resolve the words a delegate used for an office, a foreign act, or a settlement source to the
     # engine's own id at intake, so the record, the vote and the executed act all name the same
     # target. Ambiguous phrases are left as written and rejected later, never guessed.

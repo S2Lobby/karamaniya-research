@@ -20,6 +20,12 @@ the first engine-6 run with real models (`docs/ENGINEERING_BACKLOG.md`, T34-T35)
   condition tested something the reason never named. In that run a delegate who had opposed the motion
   in public, with no as its fallback, was recorded as abstaining.
 
+World engine 8 (`WORLD_ENGINE` 8), from Month 6 of the same run (T36):
+
+- A constitution setting moved as a policy (`set_policy highlands_status = cultural`) is the
+  constitution motion it can only mean. The prompt lists the regional statuses among the levers; such a
+  motion was an unknown lever and was discarded.
+
 Connector fixes (details and tests: `docs/ENGINEERING_BACKLOG.md`, T32-T33)
 
 - A Gemini seat (`antigravity_cli`) could not take part. Gemini accepts an enum value only as a non-empty

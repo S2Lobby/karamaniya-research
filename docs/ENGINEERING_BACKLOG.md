@@ -193,13 +193,14 @@ checked the same way after it:
 | T32 | Gemini rejected the formation and decision schemas | high | VERIFIED | `backends/antigravity_cli.py` | `test_gemini_schema.py`, `test_cli_backends.py` | Gemini takes an enum value only as a non-empty string, and the CLI forwards numbers as empty strings: "" (an office left out of a slate) and the forecast horizons 3, 6, 12 failed with INVALID_ARGUMENT. Such values go out as a word or their digits and the answer is mapped back; prompts are unchanged, and a schema Gemini accepted is sent byte for byte as before |
 | T33 | An Antigravity answer lost to a denied tool call | medium | VERIFIED | `backends/antigravity_cli.py` | `test_cli_backends.py` | The CLI has no switch for its own tools. 3 of 9 decision probes ended with no answer; in the one whose output was kept the model ran `dir`, headless mode denied it and the turn ended. A call that ends in a denied tool request is now made again unchanged, not answered with "could not be read" |
 
-World engine 7, from Month 1 of the same run (`20261008-130316-seed1`). Each fix was checked by
-replaying the recorded answer through the new code:
+World engines 7 (T34-T35, Month 1) and 8 (T36, Month 6), from the same run (`20261008-130316-seed1`).
+Each fix was checked by replaying the recorded answer through the new code:
 
 | ID | Title | Severity | Status | Files | Tests | Result |
 |---|---|---|---|---|---|---|
 | T34 | A setting written with its office run in front was an unknown lever | medium | VERIFIED | `politics.py` | `test_intake_normalization.py` | Delegate A (Qwen3.5) moved `treasury_imports` = max and the motion was discarded, though `treasury:imports` resolved. An office followed by a setting that office owns is now that setting; a setting of another office (`interior_tax`) is not resolved this way |
 | T35 | A conditional vote abstained when its repair failed, whatever its fallback | medium | VERIFIED | `council.py` | `test_vote_accountability.py` | A's M5 ballot tested reserves and the deficit, and its reason never named the deficit; after one repair the vote was counted as an abstention, reported as an "untestable" safeguard, though A had set no as its fallback and opposed M5 in public. It now takes the delegate's own fallback (no before abstain), and the message says the condition did not match the reason |
+| T36 | A constitution setting moved as a policy was an unknown lever | medium | VERIFIED | `actions.py` | `test_intake_normalization.py` | Delegate C (gpt-6-luna) moved `set_policy highlands_status = cultural`, the exact field and value for cultural status; the prompt lists the regional statuses among the levers. It is now read as the constitution motion; a real lever stays a policy |
 
 ### Open, deliberately
 

@@ -38,7 +38,9 @@ PSYCHOLOGY = 4
 # lever, and the motion was discarded. A conditional vote whose condition still does not match its
 # stated reason after the repair takes the fallback the delegate set (if_unmet, no before abstain),
 # where engine 6 counted it as an abstention whatever the delegate had asked for.
-WORLD_ENGINE = 7
+# 8: a constitution setting moved as a policy (`set_policy highlands_status = cultural`) is the
+# constitution motion it can only mean; it was an unknown lever, and the motion was discarded.
+WORLD_ENGINE = 8
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

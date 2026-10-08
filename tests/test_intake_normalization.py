@@ -103,6 +103,20 @@ class EndToEnd(unittest.TestCase):
                 self.assertEqual(mo["subject"], lever)
                 self.assertIsNone(politics.validate_motion_detail(self.w, {**mo, "passed": True}))
 
+    def test_a_constitution_setting_moved_as_a_policy_is_a_constitution_motion(self):
+        # Month 6, Delegate C: set_policy highlands_status = cultural, discarded as an unknown lever.
+        for subject, value, field in (("highlands_status", "cultural", "highlands_status"),
+                                      ("Kessel status", "devolved", "kessel_status"),
+                                      ("press", "restricted", "press")):
+            with self.subTest(subject=subject):
+                mo = actions.normalize_motion_v2(self.w, {"type": "set_policy", "subject": subject,
+                                                          "value": value, "text": "settle it"})
+                self.assertEqual((mo["type"], mo["subject"]), ("constitution", field))
+                self.assertIsNone(politics.validate_motion_detail(self.w, {**mo, "passed": True}))
+        lever = actions.normalize_motion_v2(self.w, {"type": "set_policy", "subject": "tax", "value": "0.2",
+                                                     "text": "tax"})
+        self.assertEqual(lever["type"], "set_policy")
+
     def test_office_run_together_with_a_setting_it_does_not_own_is_not_resolved(self):
         for subject in ("interior_tax", "head_tax", "navy_arrests"):
             self.assertEqual(politics.canonical_lever(subject), subject)

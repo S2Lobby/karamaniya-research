@@ -804,14 +804,12 @@ def spend_capital(w: World, mid: str, amount: float) -> bool:
 
 def seat_outlook(w: World, mid: str) -> str:
     """The member's own seat at the coming election, read from the estimate the election uses (engine 12)."""
-    from .politics import SEAT_MARGIN, seat_estimate
+    from .politics import seat_band, seat_estimate
     c = w.const
     if not getattr(c, "personal_mandates", False) or c.elected or c.election_month < w.month:
         return ""
-    est = seat_estimate(w, mid)
-    gap = est["score"] - est["threshold"]
-    verdict = ("looks safe" if gap >= SEAT_MARGIN else "would be lost" if gap < -SEAT_MARGIN
-               else "is too close to call")
+    verdict = {"safe": "looks safe", "lost": "would be lost",
+               "close": "is too close to call"}[seat_band(seat_estimate(w, mid))]
     return (f"Your own seat at the election in {month_label(c.election_month)} {verdict} on current "
             "estimates; it rests on the support of the audiences you answer to and on your personal approval.")
 

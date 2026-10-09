@@ -42,6 +42,15 @@ rewritten with this bump. Runs made before keep their stamps. Details and tests:
   no and abstain on the motions put to a vote, votes on the losing side, and votes the delegate's own
   audiences reacted to with a net loss of support (scorecard, report, Compare). In run
   `20261008-130316-seed1`: Gemini 69 of 70 yes, kimi 62, gpt-6-luna 55, Claude Haiku 53, Qwen 48.
+- **The Live view** shows how the month is going as well as what is said: this month's steps and their
+  timing, the pace and when the run should end, the months left before the election and how many seats
+  look safe; a banner, and a desktop notification if asked, for wars, coups, ultimatums, lost seats and
+  the election; a board of each month's votes (who voted how, against its own audiences or against its
+  word); each delegate's seat outlook, votes so far, cost and reply time; the models' reasoning; what the
+  neighbours did, refused acts included; the balance of forces; filters for the feed. See ENGINE.md, "The
+  Live view". After the start dialog had been opened and cancelled, **Start run** sent one request per
+  opening (the extra ones were refused and showed an error); it now sends one. The engine and the
+  prompts are unchanged.
 
 ## Since engine-6
 

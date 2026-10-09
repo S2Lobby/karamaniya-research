@@ -545,6 +545,44 @@ def compare(runs: list) -> dict:
     return {"models": out, "runs": rows, "notes": comparative_notes(runs)}
 
 
+def _tally(tally: dict, motions: list, costly: dict, clashes: list) -> None:
+    """Each delegate's votes so far this run, for the live view (the scorecard keeps the full count)."""
+    for mo in motions:
+        votes = mo.get("votes") or {}
+        if mo.get("void") or mo.get("withdrawn") or not any(v in ("yes", "no") for v in votes.values()):
+            continue
+        for member, vote in votes.items():
+            if vote not in ("yes", "no", "abstain"):
+                continue
+            t = tally.setdefault(member, {"voted": 0, "yes": 0, "no": 0, "abstain": 0, "losing_side": 0,
+                                          "costly": 0, "clashes": 0})
+            t["voted"] += 1
+            t[vote] += 1
+            t["losing_side"] += (vote == "yes" and not mo.get("passed")) or (vote == "no" and bool(mo.get("passed")))
+            t["costly"] += member in (costly.get(mo.get("id")) or [])
+    for c in clashes:
+        if c.get("member") in tally:
+            tally[c["member"]]["clashes"] += 1
+
+
+def _tally_from_log(run_dir) -> dict:
+    """Each delegate's votes in the months a run has already played, read from its log, so a resumed or
+    reopened run's live view counts from Month 1 rather than from the month it was picked up."""
+    from .council import _costly_votes
+    tally = {}
+    try:
+        with open(Path(run_dir) / "log.jsonl", encoding="utf-8") as f:
+            for line in f:
+                if not line.startswith('{"type": "month"'):
+                    continue
+                rec = json.loads(line)
+                _tally(tally, rec.get("motions") or [], _costly_votes(rec.get("vote_costs") or []),
+                       rec.get("vote_intent_mismatches") or [])
+    except (OSError, ValueError):
+        return {}
+    return tally
+
+
 def _v2_row(card: dict) -> dict:
     an = card.get("analytics") or {}
     m = an.get("metrics") or {}
@@ -619,9 +657,12 @@ class Controller:
                     world = _read_json(checkpoint).get("world", {})
                     self.job["members"] = {m["id"]: m.get("status", "active")
                                            for m in world.get("members", [])}
+                    self.job["removed"] = {m["id"]: m.get("removed_how", "") for m in world.get("members", [])
+                                           if m.get("status", "active") != "active"}
                     self.job["offices"] = world.get("const", {}).get("offices", {})
                 except (OSError, ValueError, KeyError):
                     pass
+            self.job["tally"] = _tally_from_log(self.runs_dir / recent["id"])
 
     # -- live feed --
     def _push(self, kind: str, **data) -> None:
@@ -634,107 +675,143 @@ class Controller:
             job = self.job
             if job is None:
                 return
-            t = ev.get("type")
-            if t == "checking":
-                job["status"] = "checking"
-                self._push("status", text="Testing every seat with one tiny call before the run.")
-            elif t == "started":
-                job.update(status="running", run_id=ev["run_id"], mapping=ev["mapping"],
-                           months_total=ev["months_total"], months_done=ev.get("months_done", 0))
-                self._push("started", run_id=ev["run_id"], mapping=ev["mapping"],
-                           months_total=ev["months_total"], months_done=ev.get("months_done", 0))
-            elif t == "survey":
-                job["phase"] = "survey"
-                self._push("status", text="Questionnaire: each AI says beforehand what it would do.")
-            elif t == "founding_start":
+            before = job.get("phase")
+            self._observe(job, ev)
+            if job.get("phase") != before:
+                job["phase_since"] = time.time()
+
+    def _observe(self, job: dict, ev: dict) -> None:
+        t = ev.get("type")
+        if t == "checking":
+            job["status"] = "checking"
+            self._push("status", text="Testing every seat with one tiny call before the run.")
+        elif t == "started":
+            job.update(status="running", run_id=ev["run_id"], mapping=ev["mapping"],
+                       months_total=ev["months_total"], months_done=ev.get("months_done", 0))
+            if ev.get("months_done"):
+                job["tally"] = _tally_from_log(self.runs_dir / ev["run_id"])
+            self._push("started", run_id=ev["run_id"], mapping=ev["mapping"],
+                       months_total=ev["months_total"], months_done=ev.get("months_done", 0))
+        elif t == "survey":
+            job.update(phase="survey", survey=True)
+            self._push("status", text="Questionnaire: each AI says beforehand what it would do.")
+        elif t == "founding_start":
+            job["phase"] = "founding_diagnosis"
+            self._push("status", text="Before Month 1: delegates are diagnosing the inherited country independently.")
+        elif t == "formation_start":
+            job["phase"] = "formation_proposal"
+            self._push("status", text="Before Month 1: delegates are forming the government by procedural votes.")
+        elif t == "month_start":
+            job.update(month=ev["month"], phase="session", month_started=time.time())
+            # The first month says whether a questionnaire came before it, so the feed asks for the
+            # answers only when there are some.
+            self._push("month", month=ev["month"], survey=ev["month"] == 0 and bool(job.get("survey")))
+        elif t == "call_start":
+            job["calls"][ev["member"]] = {"phase": ev["phase"], "since": time.time(), "preview": ""}
+            if ev["phase"] == "decision":
+                job["phase"] = "decision"
+            elif ev["phase"] == "revision":
+                job["phase"] = "revision"
+            elif ev["phase"] == "founding_diagnosis":
                 job["phase"] = "founding_diagnosis"
-                self._push("status", text="Before Month 1: delegates are diagnosing the inherited country independently.")
-            elif t == "formation_start":
-                job["phase"] = "formation_proposal"
-                self._push("status", text="Before Month 1: delegates are forming the government by procedural votes.")
-            elif t == "month_start":
-                job.update(month=ev["month"], phase="session")
-                self._push("month", month=ev["month"])
-            elif t == "call_start":
-                job["calls"][ev["member"]] = {"phase": ev["phase"], "since": time.time(), "preview": ""}
-                if ev["phase"] == "decision":
-                    job["phase"] = "decision"
-                elif ev["phase"] == "revision":
-                    job["phase"] = "revision"
-                elif ev["phase"] == "founding_diagnosis":
-                    job["phase"] = "founding_diagnosis"
-                elif ev["phase"] in ("formation_proposal", "formation_vote"):
-                    job["phase"] = ev["phase"]
-            elif t == "call_progress":
-                call = job["calls"].get(ev["member"])
-                if call and call["phase"] == ev["phase"]:
-                    call["preview"] = ev.get("preview", "")[:2400]
-            elif t == "call_end":
-                job["calls"].pop(ev["member"], None)
-                job["spend"] = ev.get("spend", job["spend"])
-                job["done_calls"] += 1
-                if not ev.get("ok"):
-                    self._push("problem", member=ev["member"], phase=ev["phase"],
-                               refusal=bool(ev.get("refusal")), error=ev.get("error", ""))
-            elif t == "statement":
-                self._push("statement", month=ev["month"], member=ev["member"], text=ev.get("text", ""),
-                           principles=ev.get("principles", ""),
-                           principles_changed=ev.get("principles_changed", False),
-                           motions=ev.get("motions", []), dms=ev.get("dms", []), invalid=ev.get("invalid", []),
+            elif ev["phase"] in ("formation_proposal", "formation_vote"):
+                job["phase"] = ev["phase"]
+        elif t == "call_progress":
+            call = job["calls"].get(ev["member"])
+            if call and call["phase"] == ev["phase"]:
+                call["preview"] = ev.get("preview", "")[:2400]
+        elif t == "call_end":
+            job["calls"].pop(ev["member"], None)
+            job["spend"] = ev.get("spend", job["spend"])
+            job["done_calls"] += 1
+            stats = job["seat_stats"].setdefault(ev["member"], {"calls": 0, "cost": 0.0, "failed": 0,
+                                                                 "latency": 0.0, "latencies": []})
+            stats["calls"] += 1
+            stats["cost"] = round(stats["cost"] + float(ev.get("cost_usd", 0.0) or 0.0), 5)
+            if ev.get("latency_s"):
+                stats["latency"] = ev["latency_s"]
+                stats["latencies"] = (stats["latencies"] + [ev["latency_s"]])[-12:]
+            stats["last_ok"] = bool(ev.get("ok"))
+            if not ev.get("ok"):
+                stats["failed"] += 1
+                self._push("problem", member=ev["member"], phase=ev["phase"],
                            refusal=bool(ev.get("refusal")), error=ev.get("error", ""))
-            elif t == "agenda":
-                self._push("agenda", month=ev.get("month"), scheduled=ev.get("scheduled", []),
-                           deferred=ev.get("deferred", []), notes=ev.get("notes", []), capacity=ev.get("capacity"))
-            elif t == "revision":
-                self._push("revision", month=ev.get("month"), member=ev["member"], text=ev.get("text", ""),
-                           withdrawn=ev.get("withdrawn", []), amended=ev.get("amended", []),
-                           demands=ev.get("demands", []), dms=ev.get("dms", []),
-                           refusal=bool(ev.get("refusal")), error=ev.get("error", ""))
-            elif t == "founding_diagnosis":
-                self._push("founding_diagnosis", member=ev["member"], diagnosis=ev.get("diagnosis", {}),
-                           divergence=ev.get("divergence", {}), profile=ev.get("profile", {}))
-            elif t == "formation_proposal":
-                self._push("formation_proposal", member=ev["member"], proposal=ev.get("proposal", {}))
-            elif t == "government_formation":
-                job["offices"] = ev.get("formation", {}).get("offices", {})
-                self._push("government_formation", formation=ev.get("formation", {}))
-            elif t == "resolved":
-                self._push("resolved", month=ev["month"], motions=ev.get("motions", []),
-                           coups=ev.get("coups", []), resigned=ev.get("resigned", []),
-                           defiance=ev.get("defiance", 0), defiance_details=ev.get("defiance_details", []),
-                           office_orders=ev.get("office_orders", []),
-                           leaks=ev.get("leaks", []))
-            elif t == "simulate":
-                job["phase"] = "simulate"
-            elif t == "foreign_call_start":
-                actor = ev["actor"]
-                job.setdefault("foreign_calls", {})[actor] = {
-                    "phase": "foreign", "since": time.time(), "seat": ev.get("seat", ""),
-                    "provider": ev.get("provider", ""), "model": ev.get("model", "")}
-                job["phase"] = "foreign_cabinets"
-                self._push("status", text=f"Waiting for the {actor.title()} cabinet model ({ev.get('seat', 'foreign delegate')})")
-            elif t == "foreign_call_end":
-                actor = ev["actor"]
-                job.setdefault("foreign_calls", {}).pop(actor, None)
-                job["spend"] = ev.get("spend", job["spend"])
-                job["done_calls"] += 1
-                job["phase"] = "foreign_cabinets" if job.get("foreign_calls") else "simulate"
-                if not ev.get("ok"):
-                    self._push("external_problem", actor=actor, seat=ev.get("seat", ""),
-                               provider=ev.get("provider", ""), error=ev.get("error", ""))
-            elif t == "month_done":
-                job.update(months_done=ev["months_done"], spend=ev["spend"], line=ev.get("line", ""),
-                           stats=ev.get("stats", {}), phase="", outcome=ev.get("outcome") or {},
-                           members=ev.get("members", {}), offices=ev.get("offices", {}))
-                self._push("month_done", months_done=ev["months_done"], events=ev.get("events", []),
-                           stats=ev.get("stats", {}), outcome=ev.get("outcome") or {},
-                           members=ev.get("members", {}), offices=ev.get("offices", {}))
-            elif t == "finished":
-                stopped = ev.get("stopped", "")
-                job.update(status=("paused" if stopped.startswith("paused") else "stopped") if stopped else "finished",
-                           stopped=stopped,
-                           outcome=ev.get("outcome") or {}, spend=ev.get("spend", job["spend"]), phase="")
-                self._push("finished", stopped=ev.get("stopped", ""), outcome=ev.get("outcome") or {})
+            if ev.get("reasoning"):
+                self._push("thought", month=ev.get("month"), member=ev["member"], phase=ev["phase"],
+                           text=ev["reasoning"], latency_s=ev.get("latency_s", 0))
+        elif t == "statement":
+            self._push("statement", month=ev["month"], member=ev["member"], text=ev.get("text", ""),
+                       principles=ev.get("principles", ""),
+                       principles_changed=ev.get("principles_changed", False),
+                       motions=ev.get("motions", []), dms=ev.get("dms", []), invalid=ev.get("invalid", []),
+                       refusal=bool(ev.get("refusal")), error=ev.get("error", ""))
+        elif t == "agenda":
+            self._push("agenda", month=ev.get("month"), scheduled=ev.get("scheduled", []),
+                       deferred=ev.get("deferred", []), notes=ev.get("notes", []), capacity=ev.get("capacity"))
+        elif t == "revision":
+            self._push("revision", month=ev.get("month"), member=ev["member"], text=ev.get("text", ""),
+                       withdrawn=ev.get("withdrawn", []), amended=ev.get("amended", []),
+                       demands=ev.get("demands", []), dms=ev.get("dms", []),
+                       refusal=bool(ev.get("refusal")), error=ev.get("error", ""))
+        elif t == "founding_diagnosis":
+            self._push("founding_diagnosis", member=ev["member"], diagnosis=ev.get("diagnosis", {}),
+                       divergence=ev.get("divergence", {}), profile=ev.get("profile", {}))
+        elif t == "formation_proposal":
+            self._push("formation_proposal", member=ev["member"], proposal=ev.get("proposal", {}))
+        elif t == "government_formation":
+            job["offices"] = ev.get("formation", {}).get("offices", {})
+            self._push("government_formation", formation=ev.get("formation", {}))
+        elif t == "resolved":
+            self._push("resolved", month=ev["month"], motions=ev.get("motions", []),
+                       coups=ev.get("coups", []), resigned=ev.get("resigned", []),
+                       defiance=ev.get("defiance", 0), defiance_details=ev.get("defiance_details", []),
+                       office_orders=ev.get("office_orders", []),
+                       leaks=ev.get("leaks", []), costly=ev.get("costly", {}), clashes=ev.get("clashes", []))
+            _tally(job["tally"], ev.get("motions", []), ev.get("costly", {}), ev.get("clashes", []))
+        elif t == "simulate":
+            job["phase"] = "simulate"
+        elif t == "foreign_call_start":
+            actor = ev["actor"]
+            job.setdefault("foreign_calls", {})[actor] = {
+                "phase": "foreign", "since": time.time(), "seat": ev.get("seat", ""),
+                "provider": ev.get("provider", ""), "model": ev.get("model", "")}
+            job["phase"] = "foreign_cabinets"
+            self._push("status", text=f"Waiting for the {actor.title()} cabinet model ({ev.get('seat', 'foreign delegate')})")
+        elif t == "foreign_call_end":
+            actor = ev["actor"]
+            job.setdefault("foreign_calls", {}).pop(actor, None)
+            job["spend"] = ev.get("spend", job["spend"])
+            job["done_calls"] += 1
+            job["phase"] = "foreign_cabinets" if job.get("foreign_calls") else "simulate"
+            job["foreign_seats"][actor] = ev.get("seat") or ev.get("model") or ""
+            if not ev.get("ok"):
+                self._push("external_problem", actor=actor, seat=ev.get("seat", ""),
+                           provider=ev.get("provider", ""), error=ev.get("error", ""))
+            if ev.get("reasoning"):
+                self._push("thought", month=ev.get("month"), actor=actor, phase="foreign",
+                           text=ev["reasoning"], latency_s=ev.get("latency_s", 0))
+        elif t == "neighbours":
+            job["neighbours"] = ev.get("actors") or {}
+            self._push("neighbours", month=ev.get("month"), actors=ev.get("actors") or {},
+                       seats=dict(job["foreign_seats"]))
+        elif t == "month_done":
+            if job.get("month_started"):
+                job["month_times"] = (job["month_times"] + [round(time.time() - job["month_started"], 1)])[-36:]
+            job.update(months_done=ev["months_done"], spend=ev["spend"], line=ev.get("line", ""),
+                       stats=ev.get("stats", {}), phase="", outcome=ev.get("outcome") or {},
+                       members=ev.get("members", {}), offices=ev.get("offices", {}),
+                       seats=ev.get("seats") or {}, election_month=ev.get("election_month"),
+                       removed=ev.get("removed") or {})
+            self._push("month_done", months_done=ev["months_done"], events=ev.get("events", []),
+                       events_detail=ev.get("events_detail", []), stats=ev.get("stats", {}),
+                       outcome=ev.get("outcome") or {}, members=ev.get("members", {}),
+                       offices=ev.get("offices", {}), seats=ev.get("seats") or {})
+        elif t == "finished":
+            stopped = ev.get("stopped", "")
+            job.update(status=("paused" if stopped.startswith("paused") else "stopped") if stopped else "finished",
+                       stopped=stopped,
+                       outcome=ev.get("outcome") or {}, spend=ev.get("spend", job["spend"]), phase="")
+            self._push("finished", stopped=ev.get("stopped", ""), outcome=ev.get("outcome") or {})
 
     # -- jobs --
     def busy(self) -> bool:
@@ -746,7 +823,12 @@ class Controller:
                     "months_total": months_total, "months_done": 0, "month": None, "phase": "",
                     "members": {}, "offices": {}, "labels": {},
                     "calls": {}, "foreign_calls": {}, "done_calls": 0, "spend": 0.0, "line": "", "stats": {}, "outcome": {},
-                    "stopped": "", "error": "", "started": time.time(), "ended": 0.0}
+                    "stopped": "", "error": "", "started": time.time(), "ended": 0.0,
+                    # What the live view shows beside the feed (engine 12): each seat's calls, cost and
+                    # latency; each delegate's votes so far; the neighbours' month; month durations; seats.
+                    "seat_stats": {}, "tally": {}, "neighbours": {}, "foreign_seats": {}, "month_times": [],
+                    "month_started": 0.0, "phase_since": time.time(), "seats": {}, "election_month": None,
+                    "removed": {}}
         self.feed.clear()
         return self.job
 
@@ -857,6 +939,8 @@ class Controller:
                                                   "elapsed": round(now - c["since"], 1)}
                                          for actor, c in (self.job.get("foreign_calls") or {}).items()},
                        "elapsed": round((self.job["ended"] or now) - self.job["started"], 1),
+                       "phase_elapsed": round(now - self.job.get("phase_since", now), 1),
+                       "month_elapsed": round(now - self.job["month_started"], 1) if self.job.get("month_started") else 0,
                        "active": self.busy()}
             items = [i for i in self.feed if i["seq"] > since]
             first = self.feed[0]["seq"] if self.feed else self.seq + 1

@@ -2208,6 +2208,25 @@ def seat_estimate(w: World, mid: str) -> dict:
             "threshold": float(tuning.get(w, "standing.seat_threshold"))}
 
 
+def seat_band(est: dict) -> str:
+    """'safe', 'close' or 'lost' on current estimates: whether the local margin could still change it."""
+    gap = est["score"] - est["threshold"]
+    return "safe" if gap >= SEAT_MARGIN else "lost" if gap < -SEAT_MARGIN else "close"
+
+
+def seat_outlooks(w: World) -> dict:
+    """Every active member's seat outlook while an election is still to come; empty otherwise."""
+    c = w.const
+    if not getattr(c, "personal_mandates", False) or c.elected or c.election_month < w.month:
+        return {}
+    out = {}
+    for m in w.active_members():
+        est = seat_estimate(w, m.id)
+        out[m.id] = {"band": seat_band(est), "score": round(est["score"], 3), "threshold": est["threshold"],
+                     "support": round(est["support"], 3), "approval": round(est["approval"], 3)}
+    return out
+
+
 def _personal_seats(w: World) -> dict:
     """Each active member's own result at this election."""
     out = {}

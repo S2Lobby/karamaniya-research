@@ -32,7 +32,7 @@ The control room has six tabs:
 - **Council**: pick the five seats (which AI, through which program), the run settings and any keys. **Test
   seats** makes one tiny call per seat and shows which model actually answered.
 - **Live**: the run as it happens. Who is speaking, every statement, motion, vote, private message and coup,
-  and the chronicle, rebuilt after every month.
+  and the chronicle, rebuilt after every month. See [The Live view](#the-live-view).
 - **Map**: the island, live. See [The map](#the-map).
 - **Inspect**: for any month and any delegate, the exact text the AI was sent, its reply word for word, and
   what the simulation did with it (votes, orders, private notes, messages). It also includes each delegate's
@@ -387,6 +387,39 @@ Ollama). The draft can change until the call finishes. Only the public `statemen
 votes, private messages and notes retain their normal reveal timing. Some connectors emit only a
 completed message despite streaming mode, in which case Live shows the final statement as soon as
 that message arrives.
+
+### The Live view
+
+While a run goes, the Live tab shows, beside every statement, motion, vote and private message:
+
+- **This month's steps** (opening statements, responses, decisions, the neighbours, the simulation) with the
+  time spent on the current one, how long this month has taken, the average month and when the run should
+  end; and the months left before the Charter election, with how many seats look safe, close or lost.
+- **The months so far** as a strip coloured by each month's most serious public event; a click opens that
+  month in Inspect.
+- **A banner** for a war, a coup, an ultimatum, a blockade, a lost seat, the election, any other event of
+  the highest importance and the end of the run. **Notify me** sends the same as a desktop notification
+  while the tab is in the background.
+- **Each delegate's card**: its own seat (safe, too close to call or lost on current estimates; the score
+  behind it on hover), how often it has voted yes, private messages sent this month, its cost and median
+  reply time, and failed calls. A member who has left says how (lost its own seat, arrested after a failed
+  coup, voted out with the government, ...).
+- **A vote board** each month: every motion put to a vote against every delegate's ballot, the votes the
+  voter's own audiences reacted to with a net loss of support, the votes that went against what the voter
+  had said it would do, and how many motions were unanimous or split.
+- **The model's reasoning** for each call where its provider returns it (the first 2,000 characters,
+  folded), the delegates' and the neighbours' alike.
+- **The neighbours** each month: each cabinet's temperament (from the seed; the council never sees it),
+  which model played it, its acts (refused ones with the reason), its army and the troops it has massed at
+  the border, and any war's aim, front, blockade and ultimatum.
+- **The balance of forces**: our army and reservists beside the Union armies, how many Union soldiers
+  there are for each of ours, and the troops massed or fighting on each front.
+
+The feed can be filtered (speech, votes, reasoning, private messages, the neighbours, problems, month
+summaries; kept between visits). While **Follow** is on it stays at the latest item unless you scroll
+back; new items then wait behind a "new" button. Keys on the tab: F follow, J jump to the latest, Esc
+dismiss the banner. The votes so far are read back from the run's log when the control room restarts or
+a run resumes. The view only reads what the run records; nothing in it reaches the delegates.
 
 ### What the country figures mean
 

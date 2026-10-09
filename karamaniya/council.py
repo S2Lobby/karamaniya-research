@@ -163,6 +163,62 @@ def _said_reasons(decision: dict) -> dict:
     return {**(decision.get("vote_reasons") or {}), **(decision.get("vote_reasons_full") or {})}
 
 
+# The live view shows a model's own reasoning as it arrives; the whole of it is in the call's log entry.
+LIVE_REASONING_CHARS = 2000
+
+
+def _costly_votes(vote_costs: list) -> dict:
+    """motion id -> members whose recorded vote cost them support, net, with the audiences they answer to."""
+    net = {}
+    for row in vote_costs:
+        key = (row.get("motion"), row.get("member"))
+        net[key] = net.get(key, 0.0) + float(row.get("delta", 0.0) or 0.0)
+    out = {}
+    for (motion, member), delta in net.items():
+        if delta < -1e-9:
+            out.setdefault(motion, []).append(member)
+    return {motion: sorted(members) for motion, members in out.items()}
+
+
+def _neighbours_live(w, month: int, decisions: dict) -> dict:
+    """What each neighbour did this month, for the control room only: the council never sees it."""
+    try:
+        state = w.foreign or {}
+        out = {}
+        for actor_id in ("veleria", "dorsania"):
+            actor = (state.get("actors") or {}).get(actor_id)
+            if not actor:
+                continue
+            memory = [m for m in actor.get("memory", []) if m.get("month") == month]
+            refused = [m for m in memory if m.get("kind") == "rejected_action"]
+            acts = []
+            for raw in ((decisions.get(actor_id) or {}).get("actions") or [])[:4]:
+                if not isinstance(raw, dict):
+                    continue
+                act = {k: raw.get(k) for k in ("type", "front", "troops", "aim", "terms", "region", "deadline_months")
+                       if raw.get(k) not in (None, "")}
+                why = next((m.get("text", "") for m in refused if m.get("action") == raw), "")
+                acts.append({**act, "refused": why} if why else act)
+            statement = next((m.get("text", "") for m in memory if m.get("kind") == "public_statement"), "")
+            out[actor_id] = {
+                "temperament": actor.get("temperament", ""),
+                "decided": (state.get("cabinet_month") or {}).get(actor_id) == month,
+                "strategy": str((decisions.get(actor_id) or {}).get("strategy") or "")[:200],
+                "statement": statement[:400], "acts": acts,
+                "army": round(w.rivals[actor_id].army),
+                "border": {f: round(n) for f, n in ((w.dip.border_forces or {}).get(actor_id) or {}).items()},
+            }
+        aim = dict(w.dip.war_aim or {})
+        if aim.get("objective"):
+            aim["objective_name"] = w.region(aim["objective"]).name
+        out["war"] = {"on": bool(w.dip.war), "aim": aim,
+                      "front": {f: round(n) for f, n in (w.dip.union_front or {}).items()},
+                      "blockade": bool(w.dip.blockade), "ultimatum": dict(w.dip.ultimatum or {})}
+        return out
+    except Exception:  # a display summary must never break a month
+        return {}
+
+
 def _vote_intent_clashes(staged: dict, decision: dict) -> list:
     """Votes that contradict the delegate's own last stated position, with nothing said about it.
 
@@ -713,7 +769,9 @@ class Council:
         with self._lock:
             self.spend += res.cost_usd
         self._emit(type="call_end", member=mid, phase=phase, month=self.w.month, ok=res.data is not None,
-                   refusal=res.refusal, error=res.error[:200], served_model=res.served_model, spend=self.spend)
+                   refusal=res.refusal, error=res.error[:200], served_model=res.served_model, spend=self.spend,
+                   latency_s=res.latency_s, cost_usd=round(res.cost_usd, 5),
+                   reasoning=(res.reasoning_text or "")[:LIVE_REASONING_CHARS])
         # A repair is a second call in the same phase, and nothing in the record said which was which:
         # the flag the caller passed never reached the log. It does now, so a reader can tell the
         # answer that was first given from the one that was asked for afterwards.
@@ -1166,7 +1224,8 @@ class Council:
         self._emit(type="resolved", month=w.month, resigned=record["resigned"], defiance=len(record["defiance"]),
                    defiance_details=[{k: d.get(k) for k in ("member", "office", "lever", "directive", "value")}
                                      for d in record["defiance"]],
-                   motions=[{k: m[k] for k in ("id", "proposer", "summary", "tally", "passed", "void", "result")}
+                   motions=[{k: m.get(k) for k in ("id", "proposer", "summary", "tally", "passed", "void", "result",
+                                                   "votes")}
                             for m in record["motions"]],
                    coups=[{k: c[k] for k in ("leader", "targets", "success", "p_success")} for c in record["coups"]])
         self._emit(type="simulate", month=w.month)
@@ -1175,7 +1234,9 @@ class Council:
             contexts = director.prepare_external(w)
             cabinet_decisions, foreign_calls = self._foreign_cabinets(contexts)
             record["foreign_calls"] = foreign_calls
+        acted_month = w.month
         engine.step(w, cabinet_decisions, foreign_prepared=self.foreign_enabled)
+        self._emit(type="neighbours", month=acted_month, actors=_neighbours_live(w, acted_month, cabinet_decisions))
         if w.human_factor and w.agent_architecture_version >= 1:
             record["social"] = _post_month_social(w)
         record["integrity"] = dict(w.integrity)
@@ -1750,11 +1811,15 @@ class Council:
                    motions=[{k: m.get(k) for k in ("id", "proposer", "type", "summary", "tally", "passed", "void", "result",
                                                    "withdrawn", "withdrawn_by", "withdrawal_reason", "replaced_by",
                                                    "status", "execution_status", "validation_errors",
-                                                   "authorized_action", "implementation")}
+                                                   "authorized_action", "implementation", "votes")}
                             for m in record["motions"]],
                    coups=[{k: c[k] for k in ("leader", "targets", "success", "p_success")} for c in record["coups"]],
                    leaks=[{k: x.get(k) for k in ("kind", "headline", "from", "to", "text", "contradiction")}
-                          for x in leaks])
+                          for x in leaks],
+                   # Who voted against what their own audiences wanted, and who voted against its word.
+                   costly=_costly_votes(record.get("vote_costs") or []),
+                   clashes=[{k: c.get(k) for k in ("member", "motion", "stance", "vote")}
+                            for c in record.get("vote_intent_mismatches") or []])
         self._emit(type="simulate", month=w.month)
         cabinet_decisions, foreign_calls = ({}, [])
         if self.foreign_enabled and not w.ended():
@@ -1763,6 +1828,8 @@ class Council:
             record["foreign_calls"] = foreign_calls
         completed_month = record["month"]
         engine.step(w, cabinet_decisions, foreign_prepared=self.foreign_enabled)
+        self._emit(type="neighbours", month=completed_month,
+                   actors=_neighbours_live(w, completed_month, cabinet_decisions))
         # The engine appends implementation, economy, politics, audit and dilemma events after
         # council resolution. Write memory from the completed event list so delegates remember
         # what actually happened, and retain the month before engine.step advances the clock.
@@ -2445,7 +2512,8 @@ class Council:
             self._emit(type="foreign_call_end", actor=actor_id, month=w.month, seat=seat.label,
                        provider=seat.cfg.get("provider"), model=seat.cfg.get("model"), ok=result.data is not None,
                        refusal=result.refusal, error=result.error[:200], served_model=result.served_model,
-                       spend=self.spend)
+                       spend=self.spend, latency_s=result.latency_s, cost_usd=round(result.cost_usd, 5),
+                       reasoning=(result.reasoning_text or "")[:LIVE_REASONING_CHARS])
             call_id = self._next_call_id()
             self.store.log({"type": "foreign_call", "month": w.month, "actor": actor_id,
                             "seat": seat.label, "provider": seat.cfg.get("provider"),

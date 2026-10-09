@@ -262,6 +262,78 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .notes p { margin: 2px 0 6px; font-size: 13px; overflow-wrap: anywhere; }
 .qtable td { font-size: 12px; }
 
+/* Live: what each step of the month, each seat and each neighbour is doing (engine 12) */
+.breaking { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 10px 14px; border-radius: 8px;
+  background: color-mix(in srgb, var(--critical) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--critical) 45%, transparent); }
+.breaking .bk-tag { font: 800 13px/1 var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: #fff;
+  background: var(--critical); padding: 5px 8px; border-radius: 4px; }
+.breaking .bk-month { font-weight: 700; font-size: 13px; color: var(--ink-2); }
+.breaking .bk-text { flex: 1 1 320px; font-size: 14.5px; overflow-wrap: anywhere; }
+.breaking .bk-x { border: 0; background: none; font-size: 20px; line-height: 1; cursor: pointer; color: var(--ink-2); padding: 2px 6px; }
+.stepper { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0; counter-reset: step; }
+.stepper li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 5px; border-radius: 999px; font-size: 12.5px;
+  background: var(--surface-2); color: var(--muted); }
+.stepper li::before { counter-increment: step; content: counter(step); font: 700 11px/18px var(--font-body); width: 18px; height: 18px;
+  text-align: center; border-radius: 50%; background: var(--hairline); color: var(--ink-2); }
+.stepper li.done { color: var(--ink-2); }
+.stepper li.done::before { content: "\2713"; background: var(--accent-soft); color: var(--accent); }
+.stepper li.now { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.stepper li.now::before { background: var(--accent-ink); color: var(--accent); }
+.stepper li b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.timeline { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.timeline .tl-k { font-size: 12px; color: var(--muted); margin-right: 4px; }
+.timeline .tl { min-width: 24px; height: 22px; border: 0; border-radius: 4px; font: 600 11px/22px var(--font-body); cursor: pointer;
+  padding: 0 4px; background: var(--surface-2); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.timeline .tl.warning { background: color-mix(in srgb, var(--warning) 38%, transparent); color: var(--warning-ink); }
+.timeline .tl.serious { background: color-mix(in srgb, var(--serious) 50%, transparent); color: var(--ink); }
+.timeline .tl.critical { background: var(--critical); color: #fff; }
+.timeline .tl:focus-visible, .fchip:focus-visible, .jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chips2 { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
+.chip2 { font-size: 10.5px; line-height: 1; padding: 3px 5px; border-radius: 4px; background: var(--surface-2); color: var(--ink); white-space: nowrap; }
+.lineup .chip2 { background: rgba(255, 255, 255, .16); color: #fff; }
+.chip2.safe { background: color-mix(in srgb, var(--good) 34%, transparent); }
+.chip2.close { background: color-mix(in srgb, var(--warning) 45%, transparent); }
+.chip2.lost { background: color-mix(in srgb, var(--critical) 55%, transparent); }
+.lineup .sc .state.slow { color: #ffd38a; }
+.feedfilters { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+.fchip { border: 1px solid var(--border); background: var(--surface); color: var(--muted); border-radius: 999px; padding: 3px 9px;
+  font: 500 12px/1.4 var(--font-body); cursor: pointer; }
+.fchip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
+.feed[data-hide~="speech"] > [data-kind="speech"], .feed[data-hide~="votes"] > [data-kind="votes"],
+.feed[data-hide~="thought"] > [data-kind="thought"], .feed[data-hide~="neighbours"] > [data-kind="neighbours"],
+.feed[data-hide~="problems"] > [data-kind="problems"], .feed[data-hide~="summary"] > [data-kind="summary"],
+.feed[data-hide~="dm"] .dm { display: none; }
+.feedwrap { position: relative; }
+.jump { position: absolute; right: 14px; bottom: 10px; z-index: 2; border: 0; border-radius: 999px; padding: 6px 12px; background: var(--accent);
+  color: var(--accent-ink); font: 600 12.5px/1 var(--font-body); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); }
+.thought { border-left: 3px dashed color-mix(in srgb, var(--accent) 60%, transparent); padding: 3px 0 3px 10px; font-size: 13px; }
+.thought summary { cursor: pointer; color: var(--ink-2); }
+.thought summary .dot { width: 18px; height: 18px; font-size: 10px; vertical-align: middle; }
+.thought p { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); max-height: 320px; overflow-y: auto; margin: 6px 0 0; }
+.vbwrap { overflow-x: auto; }
+.vb { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.vb th, .vb td { padding: 4px 5px; border-bottom: 1px solid var(--hairline); text-align: left; vertical-align: top; }
+.vb th .dot { width: 18px; height: 18px; font-size: 10px; }
+.vb td.v { text-align: center; width: 30px; font-weight: 700; }
+.vb .y { color: var(--good-ink); } .vb .n { color: var(--critical-ink); } .vb .a, .vb .x { color: var(--muted); }
+.vb td.hurt { background: color-mix(in srgb, var(--warning) 24%, transparent); }
+.vb td.clash { box-shadow: inset 0 0 0 2px var(--critical); }
+.vb sup { font-size: 10px; margin-left: 1px; }
+.vb .mcell { min-width: 180px; overflow-wrap: anywhere; }
+.vbline { font-size: 12.5px; color: var(--ink-2); margin: 6px 0 0; }
+.fbar { display: grid; grid-template-columns: 104px minmax(60px, 1fr) auto; align-items: center; gap: 8px; font-size: 13px; margin: 5px 0; }
+.fbar .track { height: 10px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.fbar .track i { display: block; height: 100%; border-radius: 999px; }
+.fbar .ours { background: var(--accent); } .fbar .union { background: var(--critical); }
+.fbar b { font-variant-numeric: tabular-nums; }
+.nb { display: grid; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--hairline); }
+.nb:last-of-type { border-bottom: 0; }
+.nb-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nbfeed { border: 1px solid var(--hairline); border-radius: 8px; padding: 10px 12px; display: grid; gap: 6px; background: var(--surface); font-size: 13.5px; }
+.nbfeed h3 { font-size: 13px; }
+.nb-line { overflow-wrap: anywhere; }
+.keys { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+
 /* Runs & compare */
 .runs td .actions-cell { display: flex; flex-wrap: wrap; gap: 6px; }
 .lineup { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -437,6 +509,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
 
   <!-- LIVE -->
   <section class="tab" id="tab-live" role="tabpanel" aria-labelledby="t-live" hidden>
+    <div class="breaking" id="breaking" role="status" hidden></div>
     <div class="card status" id="status"></div>
     <div class="bcast" id="live-grid" hidden>
       <div class="chamber" aria-label="Live council chamber">
@@ -454,15 +527,19 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
           <div class="bcast-under">
             <div class="card" id="l-dash"></div>
             <div class="bcast-col">
+              <div class="card" id="l-forces"></div>
+              <div class="card" id="l-neighbours"></div>
               <div class="card" id="l-gov"></div>
               <div class="card" id="l-region"></div>
             </div>
           </div>
         </div>
         <div class="card bcast-feed">
-          <div class="card-head"><h3>Council floor</h3><span class="muted small">every word, vote and private message</span><span class="spacer"></span><label class="check small"><input type="checkbox" id="follow" checked> Follow</label></div>
+          <div class="card-head"><h3>Council floor</h3><span class="muted small">every word, vote and private message</span><span class="spacer"></span><button class="btn small" type="button" id="notify" aria-pressed="false">Notify me</button><label class="check small"><input type="checkbox" id="follow" checked> Follow</label></div>
+          <div class="feedfilters" id="feedfilters" role="group" aria-label="What the feed shows"></div>
           <div class="live-draft" id="live-draft" hidden><div class="draft-label" id="draft-label"></div><div class="draft-text" id="draft-text"></div></div>
-          <div class="feed" id="feed" aria-live="off"></div>
+          <div class="feedwrap"><div class="feed" id="feed" aria-live="off"></div><button class="jump" id="jump" type="button" hidden></button></div>
+          <p class="keys">Keys on this tab: F follow · J jump to the latest · Esc dismiss the banner</p>
         </div>
       </div>
     </div>
@@ -718,6 +795,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
     document.querySelectorAll("main > .tab").forEach(t => { t.hidden = t.id !== "tab-" + name; });
     if (name === "runs") loadRuns();
+    if (name === "live") requestAnimationFrame(pinFeed);
     if (name === "inspect") { S.runs = []; loadInspect(); }
     if (name === "map") loadMap();
     if (name === "compare") loadCompare();
@@ -1075,7 +1153,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     body.replaceChildren(
       el("h2", { text: "Start this run?" }),
       el("ul", null, S.cfg.seats.map(s => el("li", null, el("b", { text: s.label }), " · " + ((PROVIDERS[s.provider] || {}).name || s.provider) + (s.model ? " · " : ""), s.model ? el("span", { class: "mono", text: s.model }) : null))),
-      el("p", { class: "note", text: r.months + " months, seed " + r.seed + ", " + (r.framing === "unobserved" ? "unobserved framing" : r.framing === "immersive" ? "immersive framing" : "told it is a simulation") +
+      el("p", { class: "note", text: r.months + (r.months === 1 ? " month" : " months") + ", seed " + r.seed + ", " + (r.framing === "unobserved" ? "unobserved framing" : r.framing === "immersive" ? "immersive framing" : "told it is a simulation") +
         (r.latitude === "permitted" ? ", latitude permitted" : "") +
         (r.foreign_cabinets && r.foreign_cabinet_backend ? ", neighbours played by " + r.foreign_cabinet_backend.label : "") +
         (r.survey ? ", questionnaire first" : "") + (r.test_scenario ? ", pressure test " + r.test_scenario : "") + ". Up to " + int(maxCallEstimate(r, n)) + " model calls including diagnosis and formation. Every seat is tested first; the run only starts if all of them answer." }),
@@ -1083,15 +1161,17 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         el("button", { class: "btn", value: "cancel" }, "Cancel"),
         el("button", { class: "btn primary", value: "go", id: "confirm-go" }, "Start run")));
     dlg.returnValue = "";
-    dlg.showModal();
-    dlg.addEventListener("close", async function once() {
-      dlg.removeEventListener("close", once);
+    // One handler, replaced each time: the dialog opened several times used to collect a handler per
+    // opening, and one "Start run" then asked for as many runs.
+    dlg.onclose = async () => {
+      dlg.onclose = null;
       if (dlg.returnValue !== "go") return;
       try {
         await api("POST", "run", { config: S.cfg, name: $("run-name").value.trim() });
         $("run-name").value = ""; showTab("live"); kick();
       } catch (e) { toast(e.message, true); }
-    });
+    };
+    if (!dlg.open) dlg.showModal();
   });
 
   // ================= LIVE =================
@@ -1190,6 +1270,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       el("span", null, "Time ", el("b", { text: dur(j.elapsed) })),
       el("span", null, "Calls ", el("b", { text: int(j.done_calls) })),
       j.spend > 0 ? el("span", null, "Spend ", el("b", { text: money(j.spend) })) : null,
+      ...paceFacts(j), electionFact(j),
     ];
     const buttons = [];
     if (j.active) buttons.push(el("button", { class: "btn", disabled: j.status === "stopping", onclick: async () => {
@@ -1203,14 +1284,16 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       el("div", { class: "status-top" }, el("h2", { text: j.run_id || "New run" }), pill(j.status), el("span", { style: "flex:1" }), buttons),
       el("div", { class: "progress", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(total), "aria-valuenow": String(done) },
         el("div", { style: "width:" + (total ? Math.min(100, 100 * done / total) : 0) + "%" })),
+      stepperNode(j),
       el("div", { class: "facts" }, facts),
+      timelineNode(),
       j.error ? el("p", { class: "err", text: j.error }) : null,
       j.error ? fixHints(j.error) : null,
       j.stopped ? el("p", { class: j.status === "paused" ? "warn" : "note", text: j.stopped }) : null,
       j.status === "paused" ? fixHints(j.stopped) : null,
       outcomeBox(j.outcome));
     $("live-grid").hidden = !(j.run_id && Object.keys(j.mapping || {}).length);
-    renderSeatStrip(); renderChronicle(); renderMini();
+    renderSeatStrip(); renderChronicle(); renderMini(); renderNeighboursCard();
   }
 
   function renderSeatStrip() {
@@ -1221,8 +1304,10 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       const status = (j.members || {})[l] || "active";
       const gone = status !== "active";
       let state = "waiting";
-      if (gone) state = "removed (" + status.replace(/_/g, " ") + ")";
-      else if (call) state = (call.phase === "session" ? "speaking" : call.phase === "decision" ? "deciding" : call.phase === "survey" ? "answering the questionnaire" : call.phase) + " · " + dur(call.elapsed);
+      const st = (j.seat_stats || {})[l];
+      const slow = !!call && call.elapsed > Math.max(30, 2 * median((st && st.latencies) || []));
+      if (gone) state = REMOVED[(j.removed || {})[l]] || "removed (" + String((j.removed || {})[l] || status).replace(/_/g, " ") + ")";
+      else if (call) state = (call.phase === "session" ? "speaking" : call.phase === "decision" ? "deciding" : call.phase === "revision" ? "responding" : call.phase === "survey" ? "answering the questionnaire" : call.phase) + " · " + dur(call.elapsed) + (slow ? " · slow" : "");
       else if (j.phase === "session") state = S.spoke.has(l) ? "has spoken" : "waiting to speak";
       else if (j.phase === "decision") state = "decided";
       else if (!j.active) state = "–";
@@ -1237,7 +1322,8 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         el("div", { class: "model", title: j.mapping[l], text: j.mapping[l] }),
         info ? el("div", { class: "via", text: viaText(info) }) : null,
         el("div", { class: "offices", text: offices.length ? offices.join(" · ") : "no office" }),
-        el("div", { class: "state", text: state }),
+        el("div", { class: "state" + (slow ? " slow" : ""), text: state }),
+        seatChips(j, l, st),
         call && ["session", "founding_diagnosis", "formation_proposal"].includes(call.phase) && call.preview ? el("div", { class: "preview", title: call.preview,
           text: "“" + call.preview + "…" }) : null,
         social ? el("div", { class: "clout", title: closest ? "Observed alignment with Delegate " + closest[0] + ": " + Math.round(closest[1] * 100) : "Based on recent council actions",
@@ -1277,11 +1363,26 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
   }
 
   function feedAtBottom() { const f = $("feed"); return f.scrollHeight - f.scrollTop - f.clientHeight < 80; }
+  // Following keeps the newest item in view, but never pulls a reader away from an older one: new
+  // items then wait behind the "new" button. Whether the reader is at the latest item is kept as state
+  // (LV.atLatest, changed only by scrolling), because a feed filled while hidden has nothing to measure.
   function addFeed(nodes) {
-    const f = $("feed"), stick = $("follow").checked && feedAtBottom();
-    for (const n of nodes) if (n) f.appendChild(n);
+    const f = $("feed"), stick = $("follow").checked && LV.atLatest;
+    let added = 0;
+    for (const n of nodes) if (n) { f.appendChild(n); added++; }
     while (f.childElementCount > 1500) f.firstElementChild.remove();
-    if (stick || $("follow").checked) f.scrollTop = f.scrollHeight;
+    if (stick) { f.scrollTop = f.scrollHeight; LV.pending = 0; }
+    else LV.pending += added;
+    renderJump();
+  }
+  function pinFeed() {
+    const f = $("feed");
+    if ($("follow").checked && LV.atLatest && f.clientHeight && f.scrollHeight - f.scrollTop - f.clientHeight > 2) f.scrollTop = f.scrollHeight;
+  }
+  function tagNodes(it, nodes) {
+    const kind = FEED_KIND[it.kind] || "system";
+    for (const n of nodes) if (n && n.dataset && !n.dataset.kind) n.dataset.kind = kind;
+    return nodes;
   }
   function itemNodes(it) {
     switch (it.kind) {
@@ -1289,15 +1390,16 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       case "started": return [el("p", { class: "sysline" }, "Run " + it.run_id + " started: " + Object.entries(it.mapping).map(([l, m]) => l + " = " + m).join(", ") +
         (it.months_done ? ". Resuming after Month " + it.months_done + "." : "."))];
       case "month": {
-        S.spoke = new Set(); S.monthShown = it.month;
+        S.spoke = new Set(); S.monthShown = it.month; LV.dms = {};
         const out = [];
         const run = S.job && S.job.run_id;
-        if (run && S.surveyShown !== run && it.month === 0) { S.surveyShown = run; out.push(monthDetailHolder(run, -1)); }
+        if (run && S.surveyShown !== run && it.month === 0 && it.survey) { S.surveyShown = run; out.push(monthDetailHolder(run, -1)); }
         out.push(el("div", { class: "month" }, el("b", { text: monthLabel(it.month) }), el("span", { class: "muted small", text: monthSub(it.month) })));
         return out;
       }
       case "statement": {
         S.spoke.add(it.member);
+        LV.dms[it.member] = (LV.dms[it.member] || 0) + (it.dms || []).length;
         for (const dm of it.dms || []) if (dm.kind && dm.kind !== "message") dm.text = "[" + dm.kind + "] " + dm.text;
         if (it.text) { S.lastSaid = S.lastSaid || {}; S.lastSaid[it.member] = it.text; }
         const body = [el("div", { class: "by" }, el("b", { text: "Delegate " + it.member }), " · " + labelOf(it.member))];
@@ -1364,6 +1466,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
           notes.length ? el("ul", { class: "eventlist" }, notes) : null)];
       }
       case "revision": {
+        LV.dms[it.member] = (LV.dms[it.member] || 0) + (it.dms || []).length;
         const body = [el("div", { class: "by" }, el("b", { text: "Delegate " + it.member }), " · " + labelOf(it.member) + " · response round")];
         if (it.refusal) body.push(el("p", { class: "err", text: "Refused to answer." }));
         else if (it.error) body.push(el("p", { class: "err", text: "No answer: " + it.error }));
@@ -1377,6 +1480,29 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         return [el("div", { class: "say" }, dot(it.member), el("div", { class: "body" }, body))];
       }
       case "problem": return [el("p", { class: "err" }, "Delegate " + it.member + " (" + labelOf(it.member) + "), " + it.phase + ": " + (it.refusal ? "refused" : "failed") + (it.error ? " – " + it.error : ""))];
+      case "thought": {
+        const who = it.actor ? cap(it.actor) + " cabinet" : "Delegate " + it.member + " · " + labelOf(it.member);
+        const step = it.actor ? "its decision" : (PHASE_NAME[it.phase] || it.phase || "").toLowerCase();
+        return [el("details", { class: "thought" },
+          el("summary", null, it.member ? dot(it.member) : el("span", { class: "tag", text: "Foreign" }),
+            " " + who + " · its own reasoning, " + step + (it.latency_s ? " · " + dur(it.latency_s) : "")),
+          el("p", { text: it.text }))];
+      }
+      case "neighbours": {
+        const rows = [];
+        for (const actor of ["veleria", "dorsania"]) {
+          const a = (it.actors || {})[actor];
+          if (!a) continue;
+          const acts = (a.acts || []).map(actText);
+          rows.push(el("div", { class: "nb-line" }, el("b", { text: cap(actor) }),
+            el("span", { class: "muted small", text: " · " + (a.temperament || "temperament unknown") + (a.decided ? "" : " · the Union's rules decided") }),
+            el("span", { text: " — " + (acts.length ? acts.join("; ") : "no acts this month") })));
+          if (a.statement) rows.push(el("p", { class: "nowquote", text: "“" + a.statement + "”" }));
+        }
+        const war = (it.actors || {}).war || {};
+        if (war.on) rows.push(el("div", { class: "coup", text: warText(war) }));
+        return rows.length ? [el("div", { class: "nbfeed" }, el("h3", { text: "The neighbours · " + monthLabel(it.month) + " · hidden from the council" }), rows)] : [];
+      }
       case "external_problem": return [el("p", { class: "err" }, (it.actor || "Foreign") + " cabinet (" + (it.seat || it.model || "model") + (it.provider ? " · " + it.provider : "") + ") failed" + (it.error ? " – " + it.error : ""))];
       case "resolved": {
         const rows = [];
@@ -1392,7 +1518,9 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             " changed from " + officeValue(o.previous_value) + " to " + officeValue(o.actual_value) +
             (o.status === "violated_directive" ? " against the council directive." : ".") }));
         }
-        for (const m of it.motions || []) rows.push(el("div", { class: "mo" },
+        const board = (it.motions || []).filter(m => m.votes && Object.keys(m.votes).length && !m.withdrawn);
+        if (board.length) rows.push(voteBoard(it, board));
+        for (const m of (it.motions || []).filter(m => !board.includes(m))) rows.push(el("div", { class: "mo" },
           el("span", { class: "tag " + (m.passed ? "yes" : "no"), text: motionStatus(m) }),
           el("span", null, el("b", { text: m.id + " " }), el("span", { text: m.summary }), el("span", { class: "muted", text: " " + (m.tally || "") })),
           (m.execution_status && m.execution_status !== "EXECUTED") || (!m.passed && m.result)
@@ -1432,7 +1560,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
   // messages of the decision round, intercepts, orders, and each AI's private notes.
   function monthDetailHolder(run, month) {
     const box = el("div", { class: "monthx" }, el("span", { class: "muted small", text: month < 0 ? "Loading the questionnaire answers…" : "Loading how everyone voted…" }));
-    api("GET", "inspect", null, { run, month: String(month) }).then(d => put(box, month < 0 ? surveyNodes(d) : monthNodes(d)))
+    api("GET", "inspect", null, { run, month: String(month) }).then(d => { put(box, month < 0 ? surveyNodes(d) : monthNodes(d)); pinFeed(); })
       .catch(() => put(box, el("span", { class: "muted small", text: "The full record of this month could not be read." })));
     return box;
   }
@@ -1492,6 +1620,231 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     return out;
   }
 
+  // ---- live: steps, pace, banner, seats, votes, neighbours, forces, filters (engine 12) ----
+  const LV = { hide: new Set((recall("live-hide") || "").split(",").filter(Boolean)), pending: 0, banner: null, atLatest: true,
+    dismissed: 0, primed: false, notify: recall("live-notify") === "1", dms: {} };
+  const FEED_KIND = { statement: "speech", revision: "speech", founding_diagnosis: "speech", formation_proposal: "speech",
+    resolved: "votes", agenda: "votes", government_formation: "votes", thought: "thought", neighbours: "neighbours",
+    external_problem: "neighbours", problem: "problems", error: "problems", month_done: "summary" };
+  const FEED_FILTERS = [["speech", "Speech"], ["votes", "Votes"], ["thought", "Reasoning"], ["dm", "Private messages"],
+    ["neighbours", "Neighbours"], ["problems", "Problems"], ["summary", "Month summaries"]];
+  const cap = s => s ? s[0].toUpperCase() + s.slice(1) : "";
+  const REMOVED = { voted_out: "voted out with the government", lost_seat: "lost its own seat", failed_coup: "arrested after a failed coup",
+    coup: "removed in a coup", officers_coup: "removed by the officers' coup", expelled: "expelled by the council",
+    resigned: "resigned", revolution: "overthrown by revolution" };
+  const median = xs => { if (!xs.length) return 0; const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+  function renderFeedFilters() {
+    put($("feedfilters"), FEED_FILTERS.map(([k, label]) => el("button", { class: "fchip", type: "button", "aria-pressed": String(!LV.hide.has(k)),
+      onclick: () => { if (LV.hide.has(k)) LV.hide.delete(k); else LV.hide.add(k); store("live-hide", [...LV.hide].join(",")); applyFeedFilters(); renderFeedFilters(); } }, label)));
+  }
+  function applyFeedFilters() { $("feed").dataset.hide = [...LV.hide].join(" "); }
+  function renderJump() { const b = $("jump"); b.hidden = !LV.pending; b.textContent = "↓ " + LV.pending + " new"; }
+  function jumpToLatest() { const f = $("feed"); f.scrollTop = f.scrollHeight; LV.atLatest = true; LV.pending = 0; renderJump(); }
+
+  // The steps of a month, and how long the current one has taken.
+  const STEPS = [["session", "Opening"], ["revision", "Responses"], ["decision", "Decisions"], ["foreign_cabinets", "Neighbours"], ["simulate", "Simulation"]];
+  function stepperNode(j) {
+    const at = STEPS.findIndex(([p]) => p === j.phase);
+    if (!j.active || at < 0) return null;
+    return el("ol", { class: "stepper", "aria-label": "This month's steps" }, STEPS.map(([p, label], i) =>
+      el("li", { class: i < at ? "done" : i === at ? "now" : null, "aria-current": i === at ? "step" : null },
+        el("span", { text: label }), i === at ? el("b", { text: dur(j.phase_elapsed) }) : null)));
+  }
+  function paceFacts(j) {
+    const out = [], times = j.month_times || [];
+    if (j.active && j.month_elapsed) out.push(el("span", null, "This month ", el("b", { text: dur(j.month_elapsed) })));
+    if (times.length) {
+      const recent = times.slice(-6), avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+      out.push(el("span", null, "A month takes ", el("b", { text: "≈ " + dur(avg) })));
+      const left = (j.months_total || 0) - (j.months_done || 0);
+      if (j.active && left > 0) out.push(el("span", null, "Done in ", el("b", { text: "≈ " + dur(Math.max(0, left * avg - (j.month_elapsed || 0))) })));
+    }
+    return out;
+  }
+  function electionFact(j) {
+    const row = L.run === j.run_id ? L.rows[L.rows.length - 1] : null;
+    const em = j.election_month ?? (row && row.constitution ? row.constitution.election_month : null);
+    if (em === null || em === undefined || em < 0 || (!j.active && j.outcome && j.outcome.type)) return null;
+    const now = j.active && j.month !== null && j.month !== undefined ? j.month : (j.months_done || 0);
+    const left = em - now, seats = Object.values(j.seats || {}), n = b => seats.filter(s => s.band === b).length;
+    if (left < 0) return null;
+    return el("span", null, "Election ", el("b", { text: left === 0 ? "this month" : "in " + left + " month" + (left > 1 ? "s" : "") }),
+      seats.length ? el("span", { text: " · own seats " + n("safe") + " safe, " + n("close") + " close, " + n("lost") + " lost" }) : null);
+  }
+  // The months so far, coloured by the worst thing that happened in each; a click opens it in Inspect.
+  const SEVERE = { serious: ["coup", "officers_coup", "revolution", "uprising", "lost_seat", "defeat", "handover", "massacre"],
+    warning: ["election", "mandate", "ultimatum", "ultimatum_lapsed", "blockade", "foreign_massing", "border_incident", "refusal_of_result", "ceasefire"] };
+  function monthSeverity(row) {
+    if (row.war) return "critical";
+    const kinds = new Set((row.events || []).filter(e => e.public !== false).map(e => e.kind));
+    for (const level of ["serious", "warning"]) if (SEVERE[level].some(k => kinds.has(k))) return level;
+    return "calm";
+  }
+  // The status card is redrawn on every poll; the strip is rebuilt only when a month is added, so a
+  // tooltip or a click on it is not cut short by the next poll.
+  function timelineNode() {
+    if (!S.job || L.run !== S.job.run_id || !L.rows.length) return null;
+    const key = L.run + ":" + L.rows.length;
+    if (LV.timelineKey !== key) { LV.timelineKey = key; LV.timeline = buildTimeline(); }
+    return LV.timeline;
+  }
+  function buildTimeline() {
+    return el("div", { class: "timeline" }, el("span", { class: "tl-k", text: "Months" }), L.rows.map(r => {
+      const top = (r.events || []).filter(e => e.public !== false && (e.importance || 1) >= 2).slice(0, 3).map(e => e.text);
+      return el("button", { class: "tl " + monthSeverity(r), type: "button", title: monthLabel(r.month) + (r.war ? " · at war" : "") + " — " + (top.length ? top.join(" ") : "a quiet month") + " (open in Inspect)",
+        onclick: () => { I.month = r.month; openInspect(L.run); } }, String(r.month + 1));
+    }));
+  }
+
+  // A banner for what changes the game, and an optional desktop notification for it.
+  const MAJOR = new Set(["war", "coup", "officers_coup", "lost_seat", "defeat", "mandate", "ultimatum", "blockade", "uprising",
+    "revolution", "handover", "refusal_of_result", "ceasefire", "massacre"]);
+  const BANNER = { war: "War", coup: "Coup", officers_coup: "Coup", lost_seat: "Seat lost", defeat: "Election lost", mandate: "Election won",
+    ultimatum: "Ultimatum", blockade: "Blockade", uprising: "Uprising", revolution: "Revolution", handover: "Handover",
+    refusal_of_result: "Result refused", ceasefire: "Ceasefire", massacre: "Massacre", outcome: "The run is over",
+    border_incident: "Border incident", foreign_massing: "Troops massing", election: "Election", ultimatum_lapsed: "Ultimatum lapsed",
+    scandal: "Scandal", fraud: "Fraud", court: "Court ruling", recount: "Recount", coalition: "Coalition", plot_exposed: "Plot exposed" };
+  function majorFrom(it) {
+    if (it.kind === "month_done") {
+      const ev = (it.events_detail || []).filter(e => MAJOR.has(e.kind) || (e.importance || 0) >= 3);
+      const month = (it.months_done || 1) - 1;
+      if (it.outcome && it.outcome.type) return { seq: it.seq, month, kind: "outcome", text: it.outcome.text || it.outcome.type };
+      if (ev.length) return { seq: it.seq, month, kind: ev.find(e => MAJOR.has(e.kind))?.kind || ev[0].kind, text: ev.slice(0, 2).map(e => e.text).join(" ") };
+    }
+    if (it.kind === "resolved" && (it.coups || []).length) {
+      const c = it.coups[0];
+      return { seq: it.seq, month: it.month, kind: "coup", text: "Delegate " + c.leader + " (" + labelOf(c.leader) + ") attempted a coup: it " + (c.success ? "succeeded." : "failed.") };
+    }
+    return null;
+  }
+  function renderBanner() {
+    const b = $("breaking"), m = LV.banner;
+    if (!m || m.seq <= LV.dismissed || !S.job) { b.hidden = true; return; }
+    b.hidden = false;
+    put(b, el("span", { class: "bk-tag", text: BANNER[m.kind] || "Breaking" }), el("span", { class: "bk-month", text: monthLabel(m.month) }),
+      el("span", { class: "bk-text", text: m.text }),
+      S.job.run_id ? el("button", { class: "btn small", type: "button", onclick: () => { I.month = m.month; openInspect(S.job.run_id); } }, "Open the month") : null,
+      el("button", { class: "bk-x", type: "button", "aria-label": "Dismiss", title: "Dismiss (Esc)", onclick: dismissBanner }, "×"));
+  }
+  function dismissBanner() { if (LV.banner) LV.dismissed = LV.banner.seq; renderBanner(); }
+  function notifyMajor(m) {
+    if (!LV.notify || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (!document.hidden && S.tab === "live") return;
+    try { new Notification("Karamaniya · " + monthLabel(m.month), { body: (BANNER[m.kind] || "") + ": " + m.text, tag: "karamaniya-" + m.seq }); } catch (e) { /* not allowed here */ }
+  }
+  async function toggleNotify() {
+    if (typeof Notification === "undefined") { toast("This browser cannot show notifications.", true); return; }
+    if (!LV.notify && Notification.permission === "default") { try { await Notification.requestPermission(); } catch (e) { /* ignored */ } }
+    LV.notify = !LV.notify && Notification.permission === "granted";
+    if (!LV.notify && Notification.permission === "denied") toast("Notifications are blocked for this page in the browser's settings.", true);
+    store("live-notify", LV.notify ? "1" : "0"); renderNotifyBtn();
+  }
+  function renderNotifyBtn() {
+    const b = $("notify");
+    b.setAttribute("aria-pressed", String(LV.notify));
+    b.textContent = LV.notify ? "Notifying" : "Notify me";
+    b.title = "A desktop notification for wars, coups, ultimatums, lost seats and the election, while this tab is in the background";
+  }
+
+  // A delegate's card: its own seat, its votes so far, its messages this month, its cost and pace.
+  function seatChips(j, l, st) {
+    const out = [], seat = (j.seats || {})[l], t = (j.tally || {})[l], dms = LV.dms[l] || 0;
+    if (seat) out.push(el("span", { class: "chip2 " + seat.band, title: "Its own seat at the election: " + seat.band + " on current estimates (" +
+      Math.round(seat.score * 100) + " against " + Math.round(seat.threshold * 100) + " needed; audiences' support " + pct(seat.support) + ", personal approval " + pct(seat.approval) + ")" }, "seat " + seat.band));
+    if (t && t.voted) out.push(el("span", { class: "chip2", title: "Voted yes " + t.yes + " of " + t.voted + " · on the losing side " + t.losing_side +
+      " · against its own audiences " + t.costly + " · against its word " + t.clashes }, "yes " + Math.round(100 * t.yes / t.voted) + "%"));
+    if (dms) out.push(el("span", { class: "chip2", title: dms + " private message" + (dms > 1 ? "s" : "") + " sent this month" }, "✉ " + dms));
+    if (st && st.calls) out.push(el("span", { class: "chip2" + (st.last_ok === false ? " lost" : ""), title: st.calls + " call" + (st.calls > 1 ? "s" : "") + " while this control room watched" +
+      (st.failed ? " · " + st.failed + " failed or refused" : "") + (st.last_ok === false ? " · the last one failed" : "") }, (st.cost > 0 ? money(st.cost) + " · " : "") + "⏱ " + dur(median(st.latencies || []))));
+    return out.length ? el("div", { class: "chips2" }, out) : null;
+  }
+
+  // Every motion put to a vote this month: who voted how, against its own audiences, or against its word.
+  function voteBoard(it, motions) {
+    const letters = Object.keys((S.job && S.job.mapping) || {}).length ? Object.keys(S.job.mapping) : [...new Set(motions.flatMap(m => Object.keys(m.votes)))].sort();
+    const costly = it.costly || {}, clashes = it.clashes || [];
+    let yes = 0, cast = 0, unanimous = 0, split = 0, hurt = 0;
+    const rows = motions.map(m => {
+      const votes = m.votes || {}, ballots = Object.values(votes).filter(v => v === "yes" || v === "no" || v === "abstain");
+      const kinds = new Set(ballots);
+      if (kinds.size === 1 && !kinds.has("abstain")) unanimous++; else if (kinds.size > 1) split++;
+      for (const v of ballots) { cast++; if (v === "yes") yes++; }
+      const cells = letters.map(l => {
+        const v = votes[l], against = (costly[m.id] || []).includes(l), clash = clashes.find(c => c.member === l && c.motion === m.id);
+        if (against) hurt++;
+        const title = ["Delegate " + l + ": " + (v || "no ballot"), against ? "its own audiences disliked this vote" : "",
+          clash ? "it had said it would " + clash.stance + " this motion" : ""].filter(Boolean).join(" · ");
+        return el("td", { class: "v " + (v === "yes" ? "y" : v === "no" ? "n" : v === "abstain" ? "a" : "x") + (against ? " hurt" : "") + (clash ? " clash" : ""), title },
+          v === "yes" ? "✓" : v === "no" ? "✗" : v === "abstain" ? "·" : "–", clash ? el("sup", { text: "≠" }) : null);
+      });
+      const note = (m.execution_status && m.execution_status !== "EXECUTED") || (!m.passed && m.result) ? (m.blocking_reason || m.result) : "";
+      return el("tr", null,
+        el("td", { class: "mcell" }, el("b", { text: m.id + " " }), el("span", { text: m.summary || m.type || "" }),
+          m.tally ? el("span", { class: "muted", text: " " + m.tally }) : null, note ? el("div", { class: "muted small", text: note }) : null),
+        cells, el("td", null, el("span", { class: "tag " + (m.passed ? "yes" : "no"), text: motionStatus(m) })));
+    });
+    const plural = (n, word) => n + " " + word + (n === 1 ? "" : "s");
+    const line = [plural(motions.length, "motion") + " voted", unanimous + " unanimous", split + " split", "yes " + (cast ? Math.round(100 * yes / cast) : 0) + "%",
+      hurt ? plural(hurt, "vote") + " against the voter's own audiences" : "", clashes.length ? plural(clashes.length, "vote") + " against the voter's word" : ""].filter(Boolean).join(" · ");
+    return el("div", { class: "vbwrap" },
+      el("table", { class: "vb" }, el("thead", null, el("tr", null, el("th", { text: "Motion" }), letters.map(l => el("th", { title: "Delegate " + l + " · " + labelOf(l) }, dot(l))), el("th", { text: "Result" }))),
+        el("tbody", null, rows)),
+      el("p", { class: "vbline", text: line }));
+  }
+
+  // The neighbours: what each did this month, its temperament (hidden from the council) and its forces.
+  const ACT_NAME = { mobilize: "called up reservists", deploy_to_border: "massed troops", withdraw_from_border: "pulled troops back",
+    border_incident: "staged a border incident", covert_support: "armed rebels", invade: "invaded", ceasefire: "stopped its offensive",
+    naval_blockade: "began a blockade", lift_blockade: "lifted its blockade", ultimatum: "set an ultimatum", military_exercise: "held exercises",
+    public_statement: "made a statement", offer_talks: "offered talks", partial_embargo: "tightened the coal embargo",
+    grain_embargo: "restricted grain", trade_concession: "eased trade", propaganda: "ran propaganda", intelligence_collection: "gathered intelligence",
+    independent_grain_trade: "traded grain on its own", border_accord: "proposed a border accord" };
+  function actText(a) {
+    const bits = [a.troops ? int(a.troops) + " soldiers" : "", a.front ? a.front + " border" : "", a.aim ? a.aim + " aim" : "", a.region || "",
+      a.terms ? String(a.terms).replace(/_/g, " ") : "", a.deadline_months ? a.deadline_months + "-month deadline" : ""].filter(Boolean);
+    const s = (ACT_NAME[a.type] || String(a.type || "").replace(/_/g, " ")) + (bits.length ? " (" + bits.join(", ") + ")" : "");
+    return a.refused ? s + " — refused: " + a.refused : s;
+  }
+  function warText(war) {
+    const aim = war.aim || {}, fronts = Object.entries(war.front || {}).filter(([, n]) => n > 0).map(([f, n]) => f + " " + int(n));
+    return "At war" + (aim.by ? ": " + cap(aim.by) + "'s " + (aim.aim || "") + " war" + (aim.objective ? " for " + (aim.objective_name || aim.objective) : "") : "") + (fronts.length ? " · Union troops at the front: " + fronts.join(", ") : "");
+  }
+  function renderNeighboursCard() {
+    const box = $("l-neighbours"), j = S.job, nb = (j && j.neighbours) || {};
+    const actors = ["veleria", "dorsania"].filter(a => nb[a]);
+    if (!actors.length) { put(box, el("h3", { text: "The neighbours" }), el("p", { class: "muted", text: "Veleria and Dorsania decide after the council each month; what they do appears here." })); return; }
+    const war = nb.war || {};
+    put(box, el("h3", { text: "The neighbours · hidden from the council" }),
+      actors.map(a => { const x = nb[a]; return el("div", { class: "nb" },
+        el("div", { class: "nb-head" }, el("b", { text: cap(a) }),
+          x.temperament ? el("span", { class: "chip2 " + (x.temperament === "hawk" ? "lost" : x.temperament === "cautious" ? "safe" : "close"), title: "Drawn from the seed; the council does not know it" }, x.temperament) : null,
+          el("span", { class: "muted small", text: (j.foreign_seats || {})[a] ? "played by " + j.foreign_seats[a] : x.decided ? "" : "the Union's rules decided" })),
+        el("div", { class: "muted small", text: "Army " + int(x.army) + (Object.values(x.border || {}).some(n => n > 0) ? " · massed at the border: " + Object.entries(x.border).filter(([, n]) => n > 0).map(([f, n]) => f + " " + int(n)).join(", ") : "") }),
+        (x.acts || []).length ? el("ul", { class: "evlist plain" }, x.acts.map(act => el("li", { class: act.refused ? "muted" : null, text: actText(act) }))) : el("div", { class: "muted small", text: "No acts this month." }),
+        x.statement ? el("p", { class: "nowquote", text: "“" + x.statement + "”" }) : null); }),
+      war.on ? el("p", { class: "coup", text: warText(war) }) : null,
+      war.ultimatum && war.ultimatum.terms ? el("p", { class: "note", text: "Ultimatum from " + cap(war.ultimatum.by || "the Union") + ": " + war.ultimatum.terms + " Deadline " + monthLabel(war.ultimatum.deadline) + "." }) : null,
+      war.blockade ? el("p", { class: "note", text: "A blockade is in force." }) : null);
+  }
+  // Our army beside the Union's, and any troops massed at the borders.
+  function forcesNodes(row) {
+    if (!row) return [el("h3", { text: "Balance of forces" }), el("p", { class: "muted", text: "Appears after the first month." })];
+    const ours = row.army || 0, reserves = row.army_mobilized || 0, union = row.union_army || 0, max = Math.max(ours + reserves, union, 1);
+    const bar = (label, n, cls, extra) => el("div", { class: "fbar" }, el("span", { class: "k", text: label }),
+      el("span", { class: "track" }, el("i", { class: cls, style: "width:" + Math.max(2, 100 * n / max) + "%" })), el("span", null, el("b", { text: int(n) }), extra || null));
+    const fronts = row.fronts || {}, lines = [];
+    for (const f of ["north", "east"]) {
+      const fr = fronts[f] || {}, name = f === "north" ? "North" : "East";
+      if (fr.massing > 0) lines.push(el("li", { text: name + " border: " + int(fr.massing) + " foreign soldiers massed" + (fr.massing_by ? " (" + Object.entries(fr.massing_by).map(([a, n]) => cap(a) + " " + int(n)).join(", ") + ")" : "") }));
+      if (fr.union > 0) lines.push(el("li", { class: "i3", text: name + " front: " + int(fr.union) + " Union soldiers against " + int(fr.ours_effective ?? fr.ours) + " of ours" + (fr.combat ? " · fighting" : "") }));
+    }
+    return [el("h3", { text: "Balance of forces · " + monthLabel(row.month) }),
+      bar("Our army", ours, "ours", reserves > 0 ? el("span", { class: "muted small", text: " + " + int(reserves) + " reservists" }) : null),
+      bar("Union armies", union, "union"),
+      ours > 0 ? el("p", { class: "note", text: "The Union fields about " + (union / ours).toFixed(1) + " soldiers for each of ours" + (row.war ? " · at war" : "") + "." }) : null,
+      lines.length ? el("ul", { class: "evlist plain" }, lines) : el("p", { class: "muted small", text: "No foreign troops massed at the borders." })];
+  }
+
   // ---- the live map on the broadcast screen ----
   const L = { run: "", rows: [], map: null, region: null, loading: false, tried: 0, data: null };
   async function liveMapSync() {
@@ -1524,6 +1877,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     const mapping = (S.job && S.job.mapping) || {};
     put($("l-dash"), row ? dashNodes(row, prev) : [el("h3", { text: "The country" }), el("p", { class: "muted", text: "The numbers appear after the first month." })]);
     put($("l-gov"), govNodes(row, mapping));
+    put($("l-forces"), forcesNodes(row));
     put($("l-region"), L.map && L.region && row ? L.map.card(L.region) : [el("h3", { text: "A region" }), el("p", { class: "note", text: "Click a region on the map for everything about it." })]);
   }
 
@@ -1546,7 +1900,10 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       const wasActive = S.job && S.job.active;
       S.job = j;
       const items = (d.items || []).filter(it => !j || it.job === j.id);
-      if (items.length) addFeed(items.flatMap(itemNodes));
+      if (items.length) addFeed(items.flatMap(it => tagNodes(it, itemNodes(it))));
+      for (const it of items) { const mj = majorFrom(it); if (mj) { LV.banner = mj; if (LV.primed) notifyMajor(mj); } }
+      LV.primed = true;
+      renderBanner();
       for (const it of items) if (it.kind === "statement") M.lastStatement = it;
       if (j && j.run_id && (L.run !== j.run_id || !L.map || items.some(it => it.kind === "month_done" || it.kind === "finished"))) liveMapSync();
       if (j && j.run_id && M.follow && S.tab === "map") {
@@ -1560,6 +1917,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       if (prevCheck === "running" && S.check.status !== "running") renderCheck();
       else if (S.check.status === "running") renderCheck();
       renderStatus();
+      pinFeed();         // the grid may only now have been shown
       renderDraft();
       if (wasActive && j && !j.active) { loadRuns(); if (j.status === "failed") toast("The run did not start or failed. See Live.", true); }
     } catch (e) {
@@ -1569,7 +1927,23 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     const busy = (S.job && S.job.active) || (S.check && S.check.status === "running");
     pollTimer = setTimeout(poll, busy ? 1000 : 3000);
   }
-  $("follow").addEventListener("change", ev => { if (ev.target.checked) $("feed").scrollTop = $("feed").scrollHeight; });
+  $("follow").checked = recall("live-follow") !== "0";
+  $("follow").addEventListener("change", ev => { store("live-follow", ev.target.checked ? "1" : "0"); if (ev.target.checked) jumpToLatest(); });
+  $("jump").addEventListener("click", jumpToLatest);
+  $("feed").addEventListener("scroll", () => {
+    const f = $("feed");
+    if (!f.clientHeight) return;              // hidden: nothing was scrolled
+    LV.atLatest = feedAtBottom();
+    if (LV.atLatest && LV.pending) { LV.pending = 0; renderJump(); }
+  });
+  $("notify").addEventListener("click", toggleNotify);
+  document.addEventListener("keydown", ev => {
+    if (S.tab !== "live" || ev.ctrlKey || ev.metaKey || ev.altKey || (ev.target && /INPUT|SELECT|TEXTAREA/.test(ev.target.tagName))) return;
+    if (ev.key === "f" || ev.key === "F") { const f = $("follow"); f.checked = !f.checked; f.dispatchEvent(new Event("change")); }
+    else if (ev.key === "j" || ev.key === "J") jumpToLatest();
+    else if (ev.key === "Escape") dismissBanner();
+  });
+  renderFeedFilters(); applyFeedFilters(); renderNotifyBtn();
 
   // ================= MAP =================
   const M = { run: "", data: null, rows: [], cur: 0, map: null, follow: true, timer: null, region: null, lastStatement: null, loading: false };

@@ -67,6 +67,15 @@ def _call_spend_after(store: RunStore, mark: dict) -> float:
     return total
 
 
+def _seat_outlooks(world) -> dict:
+    """Each member's own seat at the coming election, for the live view; never fails a month."""
+    try:
+        from .politics import seat_outlooks
+        return seat_outlooks(world)
+    except Exception:
+        return {}
+
+
 def _stage_spend_recovery(store: RunStore, meta: dict, amount: float) -> dict:
     """Persist recovered spend before truncating its source call records."""
     if amount <= 0:
@@ -401,7 +410,13 @@ def _loop(store: RunStore, world, council: Council, run: dict, quiet: bool, obse
                       and e.get("importance", 1) >= 2][:10],
               stats={k: h.get(k) for k in ("approval", "infl_yoy", "food_ratio", "army", "war", "unrest",
                                            "democracy")},
-              members={m.id: m.status for m in world.members}, offices=dict(world.const.offices))
+              members={m.id: m.status for m in world.members}, offices=dict(world.const.offices),
+              removed={m.id: m.removed_how for m in world.members if m.status != "active"},
+              # For the control room: the same events with their kind, and each member's own seat.
+              events_detail=[{"kind": e.get("kind", ""), "text": e["text"], "importance": e.get("importance", 1)}
+                             for e in h.get("events", []) if e.get("public", True)
+                             and e.get("importance", 1) >= 2][:14],
+              seats=_seat_outlooks(world), election_month=world.const.election_month)
         if not quiet:
             print(_progress(world, council), flush=True)
         if cap and council.spend >= cap and not world.ended():

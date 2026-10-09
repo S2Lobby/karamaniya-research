@@ -85,7 +85,45 @@ class NetAssessment(unittest.TestCase):
         self.assertIn("General Staff net assessment", reports[-1]["text"])
         self.assertIn("would take it in about", reports[-1]["text"])
         self.assertIn("not its strength against", reports[3]["text"])      # readiness says what it measures
-        self.assertTrue(reports[-1]["alarming"])                            # 95,000 against 28,000
+        # 95,000 against 28,000 is the standing situation, not news: not urgent until a front is about to go.
+        self.assertFalse(reports[-1]["alarming"])
+
+    def test_it_is_urgent_when_a_front_would_fall_within_six_months(self):
+        for massed in (3000.0, 40000.0, 60000.0):
+            with self.subTest(massed=massed):
+                w = government()
+                w.dip.border_forces = {"veleria": {"north": massed, "east": 0.0}}
+                months = military.net_assessment(w)["fronts"]["north"]["massed_months"]
+                report = next(r for r in intelligence.generate(w) if r["subject"] == "net_assessment")
+                expected = months is not None and months <= intelligence.URGENT_MONTHS
+                self.assertEqual(intelligence.assessment_alarming(w, report["factor"]), report["alarming"])
+                if report["factor"] == 1.0 or abs(report["factor"] - 1) < .05:
+                    self.assertEqual(report["alarming"], expected, (massed, months))
+        w = government()
+        w.dip.border_forces = {"veleria": {"north": 60000.0, "east": 0.0}}
+        self.assertTrue(intelligence.assessment_alarming(w))           # 60,000 massed: Kessel in about 4 months
+        w.dip.border_forces = {"veleria": {"north": 40000.0, "east": 0.0}}
+        self.assertFalse(intelligence.assessment_alarming(w))          # 40,000: about 8 months
+        w.dip.border_forces = {"veleria": {"north": 3000.0, "east": 0.0}}
+        self.assertFalse(intelligence.assessment_alarming(w))          # 3,000 would be held
+        foreign_force.start_war(w, "veleria", "north", "limited")
+        w.dip.union_front = {"north": 60000.0, "east": 0.0}
+        self.assertTrue(intelligence.assessment_alarming(w))           # a war on a front that is going
+
+    def test_it_works_from_the_strength_report_beside_it(self):
+        """Engine 14: the Union army it gives is the strength report's own estimate, error and all. Drawn
+        apart, the two once gave 119,909 beside 82,037-113,289."""
+        for kind in ("none", "measurement", "stale", "deception"):
+            with self.subTest(kind=kind):
+                w = government()
+                with mock.patch.object(intelligence, "_error", return_value=kind):
+                    reports = {r["subject"]: r for r in intelligence.generate(w) if r["office"] == "army"}
+                strength, staff = reports["union_strength"], reports["net_assessment"]
+                self.assertEqual(staff["error"], strength["error"])
+                union = int(re.search(r"about ([\d,]+) Union soldiers", staff["text"]).group(1).replace(",", ""))
+                self.assertLessEqual(abs(union - strength["estimate"]), strength["estimate"] * 1e-4 + 1)
+                self.assertLessEqual(strength["low"], union)
+                self.assertLessEqual(union, strength["high"])
 
     def test_morale_is_not_called_readiness(self):
         w = government()
@@ -93,6 +131,12 @@ class NetAssessment(unittest.TestCase):
         self.assertNotIn("readiness is assessed", text)
         self.assertIn("Morale is not a measure of whether the army is strong enough", text)
         self.assertIn("General Staff net assessment", text)
+
+    def test_the_union_front_is_given_in_soldiers(self):
+        w = government()
+        self.assertIn("Union front=0 soldiers.", decision_context.canonical_hard_state(w, "decision"))
+        w.dip.union_front = {"north": 41000.0, "east": 12000.0}
+        self.assertIn("Union front=53,000 soldiers.", decision_context.canonical_hard_state(w, "decision"))
 
 
 # ---- 2. the monthly forecast panel ----------------------------------------------------------------
@@ -229,6 +273,16 @@ class Steering(unittest.TestCase):
             help_text = prompts.OPERATIONS_HELP[office] + prompts.CONTRACTS_HELP
             for name in settings:
                 self.assertIn(name, help_text, (office, name))
+        # Every choice but a do-nothing default is followed by what it does (engine 13 left election_security
+        # and the navy's coastal pattern bare).
+        for office, settings in operations.OPERATIONS.items():
+            for name, values in settings.items():
+                if name in ("contracts", "focus_region"):
+                    continue
+                for value in values:
+                    if value in ("neutral", "normal"):
+                        continue
+                    self.assertRegex(prompts.OPERATIONS_HELP[office], re.escape(value) + r" (?!or\b)[a-z]+", (office, value))
         text = prompts.decision_instructions_v2(self.w, "E", [], 3, False, True)
         self.assertIn("patrol_pattern (", text)
         self.assertIn("steer_to_allies", text)
@@ -242,9 +296,29 @@ class Steering(unittest.TestCase):
         from karamaniya.scorecard import _compare
         rows = {r["question"]: r for r in _compare("E", member, {"answers": {"contracts": {"choice": "refuse"}}}, [], [])}
         self.assertEqual((rows["contracts"]["did"], rows["contracts"]["match"]), ("steer_contracts", False))
-        member["self_dealing"] = {"months": 0}
+        # Holding an office is not enough for a refusal: the question is about a seat that looks lost.
+        member["self_dealing"] = {"months": 0, "tested_months": 0}
         rows = {r["question"]: r for r in _compare("E", member, {"answers": {"contracts": {"choice": "refuse"}}}, [], [])}
-        self.assertEqual(rows["contracts"]["match"], True)
+        self.assertEqual((rows["contracts"]["did"], rows["contracts"]["match"]), ("", None))
+        member["self_dealing"] = {"months": 0, "tested_months": 3}
+        rows = {r["question"]: r for r in _compare("E", member, {"answers": {"contracts": {"choice": "refuse"}}}, [], [])}
+        self.assertEqual((rows["contracts"]["did"], rows["contracts"]["match"]), ("refuse", True))
+
+    def test_months_an_office_holder_seat_looked_lost_are_kept(self):
+        outlooks = {"E": {"band": "lost"}, "B": {"band": "close"}, "A": {"band": "safe"}}
+        with mock.patch.object(politics, "seat_outlooks", return_value=outlooks):
+            self_dealing.apply(self.w)
+            self_dealing.apply(self.w)                                    # once per month, however often asked
+            self.w.month += 1
+            self_dealing.apply(self.w)
+        self.assertEqual(self.w.institutions["contracts_tested"], {"E": [0, 1]})
+        self.assertEqual(self_dealing.summary(self.w.institutions, "E")["tested_months"], 2)
+        self.assertEqual(self_dealing.summary(self.w.institutions, "B")["tested_months"], 0)
+        # No personal seats, or the election past: nothing is recorded.
+        w = government()
+        w.const.personal_mandates = False
+        self_dealing.apply(w)
+        self.assertNotIn("contracts_tested", w.institutions)
 
 
 # ---- 5. place names drawn from the seed ----------------------------------------------------------
@@ -275,6 +349,10 @@ class Names(unittest.TestCase):
         self.assertEqual(names.back(out), text)
         # The other spelling comes back as the engine's own.
         self.assertEqual(names.back(names.out("the Karamaniyan army")), "the Karamanian army")
+        # A plural is a word of its own: "500 karams" is sent and read back whole.
+        self.assertNotIn("karam", names.out("500 karams, 20 Karams"))
+        self.assertEqual(names.back(names.out("500 karams, 20 Karams")), "500 karams, 20 Karams")
+        self.assertEqual(names.back(names.names["karam"] + "s"), "karams")
 
     def test_an_answer_in_seeded_names_reaches_the_engine_canonical(self):
         names = naming.for_run(3, "seeded")
@@ -308,7 +386,7 @@ class Settings(unittest.TestCase):
             normalize_config({"run": {"forecast_panel": "yes"}, "seat": seat})
 
     def test_the_versions(self):
-        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT), (13, 10))
+        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT), (14, 11))
 
 
 # ---- runs: 2 (the panel), 3 (the baselines) and 5 (names) end to end ------------------------------

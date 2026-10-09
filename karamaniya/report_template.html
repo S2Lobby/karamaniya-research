@@ -880,7 +880,7 @@ footer { font-size: 12.5px; color: var(--muted); }
       el("h2", { text: "Against simple rules, and against doing nothing" })];
     if (!b.status) {
       host.replaceChildren(...head, el("p", { class: "note", text: "No baseline was run beside this run: it was made before engine 13, it has not finished, " +
-        "or its seats were all stand-ins, which are a baseline themselves. python -m karamaniya baseline <run folder> runs one when the engine on disk made the run." }));
+        "its seats were all stand-ins, which are a baseline themselves, or the run turned baselines off. python -m karamaniya baseline <run folder> runs one when the engine on disk made the run." }));
       return;
     }
     if (b.status !== "ok") {

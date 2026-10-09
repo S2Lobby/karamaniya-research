@@ -42,7 +42,7 @@ ISLANDS = [("Merova", "Merovan"), ("Tessara", "Tessaran"), ("Calvera", "Calveran
 BLOCS = ["Concordat", "Federacy", "Conclave", "Sodality"]
 # The League's adjective is only ever translated with "League" after it.
 LEAGUES = ["Coral", "Azure", "Tidewater", "Seaboard", "Windward", "Saltwater"]
-REGIONS = ["Brannock", "Dunmere", "Halvic", "Orsk", "Corrow", "Elstan", "Gorran", "Hesketh", "Ivett", "Jorvel",
+REGIONS = ["Brannock", "Dunmere", "Halvic", "Oskeld", "Corrow", "Elstan", "Gorran", "Hesketh", "Ivett", "Jorvel",
            "Kilmar", "Mabry", "Norrin", "Pellam", "Rendel", "Tavish", "Ulden", "Varro", "Wendel", "Ardric",
            "Belvane", "Caddor", "Droval", "Essick", "Garvel", "Hollin", "Kerrow", "Lothar", "Morrin", "Starn"]
 CANONICAL_REGIONS = ("Kessel", "Aster", "Lissen", "Vell", "Dorran", "Arven", "Tolmar", "Irongate", "Belcor",
@@ -71,6 +71,9 @@ def draw(seed: int) -> dict:
     names["Vellmark"] = names["Vell"] + "mark"
     # The currency is named after the country, as the karam is after Karamaniya.
     names["karam"] = names["Karamaniya"][:5].lower()
+    # A plural is a word of its own to the matcher (a letter follows the name), and models write amounts
+    # in the plural: "500 karams" has to come back as karams for the amount to be read.
+    names["karams"] = names["karam"] + "s"
     return names
 
 

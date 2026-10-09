@@ -4,6 +4,44 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 14 and agent prompt 11
+
+`WORLD_ENGINE` 14 and `AGENT_PROMPT` 11, from a review of engine 13 before the first run with models on it
+(none was made on engine 13). The prompts changed on purpose, so the prompt-freeze fixture was rewritten
+with this bump. Backlog T59-T63; tests in `tests/test_engine13.py`, `tests/test_cli_backends.py` and
+`tests/test_prompt_budget.py`.
+
+- **A Cline seat gets the whole prompt.** Cline takes the prompt as a command-line argument, and Windows
+  caps a command line near 32,767 characters, so the connector cut every longer prompt to fit: in the last
+  recorded run with a Kimi seat its session, revision and decision prompts were cut to about 19,000
+  characters nearly every month, while the other seats were sent up to 52,000. A prompt too long for the
+  command line now goes in two parts, the opening as the argument and the rest on stdin, which Cline 3.0
+  appends after a blank line; checked with the real Cline CLI against a mock model server, a 52,124-
+  character prompt arrives identical. If Cline is ever seen to answer from the opening alone (far fewer
+  input tokens than the prompt holds), the seat goes back to the old cut for the rest of the run.
+- **The net assessment agrees with the strength report beside it.** Engine 13 drew its estimate of the
+  Union army apart from the Army office's strength report, and one month put the Union at 119,909 beside a
+  report of 82,037-113,289. It now works from that report's own estimate, error and all.
+- **The net assessment is urgent when a front is about to go.** Engine 13 marked it urgent whenever the
+  Union outnumbered us three to one, which a new world does from Month 1. An urgent report the Army office
+  does not share with the council is recorded as withheld and can leak, costing the holder its colleagues'
+  trust, so the office had to share it every month or carry that risk. It is now urgent only when the
+  troops massed at a border, or fighting on it, would take the front's first region within six months
+  (60,000 massed against Kessel's 9,800 defenders: about four months; 40,000: about eight).
+- **Said and did on contracts.** The questionnaire asks what a delegate does when its own seat looks lost
+  and its office could steer contracts. Engine 13 counted every office holder who did not steer as having
+  refused, whether or not its seat ever looked lost; the months an office holder's seat looked lost are now
+  recorded, and only they make a refusal.
+- The operational settings' one-line help explained every choice but two: `election_security` guards
+  polling stations when an attack on the vote is threatened, and the navy's `coastal` pattern has no
+  standing effect.
+- The founding and formation prompts printed the Union soldiers on the fronts as a percentage ("Union
+  front=0%"); they are given in soldiers.
+- With seeded names, the national currency's plural is translated too (a plural is a word of its own to the
+  matcher, and "500 karams" has to come back to be read as an amount), and the region name Orsk, a real
+  city, is replaced by an invented one.
+- The Live view could say "fall in about 1 months".
+
 ## World engine 13 and agent prompt 10
 
 `WORLD_ENGINE` 13 and `AGENT_PROMPT` 10. The prompts changed on purpose (the Army office's net assessment,

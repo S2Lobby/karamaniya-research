@@ -106,15 +106,50 @@ class TheConnectorCannotAbortTheRun(unittest.TestCase):
         return cline_cli.ClineCLIBackend(cfg)
 
     def test_the_advertised_budget_is_the_room_that_actually_exists(self):
-        """It must never advertise space the command line does not have."""
+        """It must never advertise space the command line does not have: with stdin a prompt is not
+        limited by the command line, and without it the whole prompt has to fit there."""
         backend = self._backend()
         for system_chars in (2000, 8000, 20000):
             with self.subTest(system_chars=system_chars):
+                self.assertEqual(backend.prompt_budget(system_chars), 60000)
+        backend.stdin_ok = False
+        for system_chars in (2000, 8000, 20000):
+            with self.subTest(system_chars=system_chars, stdin=False):
                 budget = backend.prompt_budget(system_chars)
                 self.assertGreater(budget, 0)
                 # The system prompt and the whole user prompt must fit under the cap together,
                 # leaving the flag overhead room inside it.
                 self.assertLess(system_chars + budget, cline_cli.MAX_ARGS)
+
+    def test_a_long_prompt_is_split_between_the_command_line_and_stdin(self):
+        from karamaniya.backends import cli_common
+        backend = self._backend()
+        seen = {}
+
+        def fake_run(cmd, input_text, timeout, cwd=None, on_stdout_line=None):
+            seen.update(cmd=cmd, length=sum(len(a) + 3 for a in cmd), stdin=input_text)
+            return 0, VALID_ANSWER, ""
+
+        original = cli_common.run
+        cli_common.run = fake_run
+        try:
+            context = {}
+            user = "OPENING\nof the prompt\n\n" + "u" * 40000
+            backend.call("s" * 6000, user, {}, context)
+        finally:
+            cli_common.run = original
+        self.assertLessEqual(seen["length"], cline_cli.MAX_ARGS)
+        self.assertEqual(seen["cmd"][-1], "OPENING\nof the prompt")
+        self.assertEqual(seen["stdin"], "u" * 40000)
+        self.assertNotIn("connector_trimmed", context)
+
+    def test_the_split_is_made_where_clines_join_restores_the_prompt(self):
+        split = cline_cli.split_prompt
+        self.assertEqual(split("head\n\nrest\n\nmore", 100), ("head", "rest\n\nmore"))
+        # A first blank line beyond the room: the last line break inside it.
+        self.assertEqual(split("a" * 50 + "\nb" * 30 + "\n\nrest", 70), ("a" * 50 + "\nb" * 9, "b" * 1 + "\nb" * 20 + "\n\nrest"))
+        # No line break at all: a plain cut.
+        self.assertEqual(split("x" * 30, 10), ("x" * 10, "x" * 20))
 
     def test_a_pathologically_long_system_prompt_reports_no_room_rather_than_a_floor(self):
         backend = self._backend()
@@ -138,6 +173,7 @@ class TheConnectorCannotAbortTheRun(unittest.TestCase):
         cli_common.run = fake_run
         try:
             context = {}
+            backend.stdin_ok = False        # a Cline seen to ignore stdin: the prompt must fit the command line
             backend.call("s" * 6000, "u" * 40000, {}, context)
         finally:
             cli_common.run = original

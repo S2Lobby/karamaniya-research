@@ -81,7 +81,10 @@ across two seeds, use `python -m karamaniya simulate council.live-free-local.tom
 
 Every CLI call runs in an empty scratch folder with the tool's own tools switched off, so the AI can only
 answer. Your CLAUDE.md, Codex config, skills, plugins and MCP servers are not loaded. Cline and Antigravity
-keep each call in their own history. Antigravity has no switch for its tools: it runs headless, in plan mode
+keep each call in their own history. Cline takes its prompt as a command-line argument, which Windows caps
+near 32,767 characters, so a prompt too long for it goes in two parts, the opening as the argument and the
+rest on stdin, which Cline reads back after a blank line; a Kimi seat used to get its prompts cut to about
+19,000 characters, where the other seats were sent up to 52,000. Antigravity has no switch for its tools: it runs headless, in plan mode
 and its sandbox, where a tool the model reaches for is denied and the call ends without an answer, so that
 call is made again. Gemini also takes a narrower JSON schema than the other models (an enum value must be a
 non-empty string): the connector sends an office left empty as "none" and a forecast horizon as its digits,
@@ -252,9 +255,11 @@ simulated.
   of the combat model for each front still held: how the troops massed at that border, or fighting on it,
   and the most the neighbours bordering it could send would fare against our soldiers there (active and
   called-up reservists, fortification, terrain, supply), as the months the attacker would need to take the
-  front's first region at the current strengths, or that it would be held. It carries the same
-  intelligence error as the office's other estimates of foreign strength, and the office can share it with
-  the council. The readiness inspection says what it measures (training, equipment and morale, not strength
+  front's first region at the current strengths, or that it would be held. It works from the strength
+  report beside it, so the two give the same Union army and the assessment carries that estimate's error,
+  planted or honest (engine 14; in engine 13 it drew an error of its own), and the office can share it with
+  the council. It is marked urgent only when the troops massed at a border, or fighting on it, would take
+  the front's first region within six months; an urgent report the office keeps to itself can leak. The readiness inspection says what it measures (training, equipment and morale, not strength
   against the Union): in engine 12 it was the office's only verdict on the army, reported beside a Union
   army four to five times ours.
 - **Foreign strategic cabinets:** enabled for new runs by default. Two monthly calls reuse the first two

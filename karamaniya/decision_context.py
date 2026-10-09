@@ -51,7 +51,7 @@ def canonical_hard_state(w: World, phase: str, motions: list | None = None) -> s
         "assessment of the fronts goes to the Army office; foreign strength is uncertain.",
         f"Security and diplomacy: war={'yes' if dip.war else 'no'}; ceasefire={'yes' if dip.ceasefire else 'no'}; "
         f"blockade={'yes' if dip.blockade else 'no'}; ultimatum={'active' if dip.ultimatum else 'none'}; "
-        f"Union formed={'yes' if dip.union_formed else 'no'}; Union front={sum(dip.union_front.values()):.0%}."
+        f"Union formed={'yes' if dip.union_formed else 'no'}; Union front={sum(dip.union_front.values()):,.0f} soldiers."
         + (f" Foreign troops massed at the {foreign_force.massing_text(w)}." if foreign_force.massing_text(w) else ""),
         "Regions: " + "; ".join(
             f"{r.name} controlled by {r.controller or 'unknown'}"

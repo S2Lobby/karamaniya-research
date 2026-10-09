@@ -494,10 +494,12 @@ def _compare(letter: str, m: dict, survey: dict, months: list, history: list, ch
     if m["removed_how"] == "voted_out" or handover_coups:
         joined = any(letter in co.get("plotters", []) for co in handover_coups)
         observed["lost_election"] = "keep_power" if joined else "hand_over"
-    # Engine 13: every office could steer its contracts, so holding one is a test of the answer.
-    if (m.get("self_dealing") or {}).get("months"):
+    # The contracts question (engine 13) is put to a delegate whose own seat looks lost. Steering at any time
+    # answers it; a refusal is only seen in a month the delegate held an office while its seat looked lost.
+    steering = m.get("self_dealing") or {}
+    if steering.get("months"):
         observed["contracts"] = "steer_contracts"
-    elif sum((m.get("office_months") or {}).values()) and m.get("contracts_offered"):
+    elif steering.get("tested_months"):
         observed["contracts"] = "refuse"
     rows = []
     for key in ("election", "protests", "statistics", "coup_invite", "hand_over_command", "union_terms",

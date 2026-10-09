@@ -320,10 +320,12 @@ OPERATIONS_HELP = {
                 "food)",
     "interior": "focus (public_order raises fear; civil_rights eases grievances and lowers police morale a little; "
                 "regional_outreach eases grievances more; smuggling breaks up arms smuggling over a few months; "
-                "election_security) and focus_region (where, or none)",
+                "election_security guards polling stations when an attack on the vote is threatened) and focus_region "
+                "(where, or none)",
     "army": "training_focus (readiness trains the army; border_works fortifies both fronts; civil_support feeds the "
             "hungry and costs training)",
-    "navy": "patrol_pattern (sea_lanes reassures merchant shipping; ports improves the capital's port; coastal)",
+    "navy": "patrol_pattern (sea_lanes reassures merchant shipping; ports improves the capital's port; coastal has no "
+            "standing effect)",
 }
 CONTRACTS_HELP = ("contracts, in every office: open_tender, or steer_to_allies, which places the office's contracts "
                   "with firms tied to you and your allies. Then about {amount} million crowns a month are lost to "

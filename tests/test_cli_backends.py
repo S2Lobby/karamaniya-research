@@ -81,6 +81,44 @@ class CliSeats(unittest.TestCase):
         self.assertEqual(argv[argv.index("-P") + 1], "cline-pass")
         self.assertEqual(argv[-1], USER)
 
+    def test_cline_sends_a_prompt_too_long_for_the_command_line_whole(self):
+        # One recorded run cut the Kimi seat's prompts to about 19,000 characters every month to fit
+        # Windows' command line. The opening now goes as the argument and the rest on stdin, which
+        # Cline reads back after a blank line, so the model gets the prompt exactly as written.
+        from karamaniya.backends import cline_cli
+        body = "\n".join(f"Line {i} of the prompt, with a dash — and a \"quote\"." for i in range(1500))
+        long_user = USER + "\n\n" + body
+        backend = make_backend(seat("cline", "cline_cli"))
+        self.assertEqual(backend.prompt_budget(len(SYSTEM)), 60000)
+        context = {"phase": "decision"}     # complete() swaps an empty context for a new one
+        res = backend.complete(SYSTEM, long_user, SCHEMA, context)
+        self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
+        s = self.sent()
+        self.assertEqual(s["argv"][-1], USER)
+        self.assertEqual(s["read"], long_user)
+        self.assertLess(sum(len(a) + 3 for a in s["argv"]), cline_cli.MAX_ARGS)
+        self.assertNotIn("connector_trimmed", context)
+        self.assertTrue(backend.stdin_ok)
+
+    def test_a_cline_that_does_not_read_stdin_gets_the_prompt_cut_to_fit_instead(self):
+        os.environ["FAKE_CLI_CLINE_IGNORES_STDIN"] = "1"
+        try:
+            from karamaniya.backends import cline_cli
+            long_user = USER + "\n\n" + "\n".join(f"Line {i} of the prompt." for i in range(3000))
+            backend = make_backend(seat("cline", "cline_cli"))
+            context = {"phase": "decision"}
+            res = backend.complete(SYSTEM, long_user, SCHEMA, context)
+        finally:
+            os.environ.pop("FAKE_CLI_CLINE_IGNORES_STDIN", None)
+        self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
+        self.assertFalse(backend.stdin_ok)
+        self.assertTrue(context.get("connector_trimmed"))
+        s = self.sent()                     # the second call: the prompt cut to fit, nothing on stdin
+        self.assertEqual(s["stdin"], "")
+        self.assertTrue(s["argv"][-1].endswith("[...trimmed by the connector to fit the command line]"))
+        self.assertGreater(res.input_tokens, 3937, "the first answer's tokens were not counted")
+        self.assertLess(len(SYSTEM) + backend.prompt_budget(len(SYSTEM)), cline_cli.MAX_ARGS)
+
     def test_antigravity(self):
         res = make_backend(seat("agy", "antigravity_cli", model="gemini-3.1-pro-high")).complete(SYSTEM, USER, SCHEMA)
         self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)

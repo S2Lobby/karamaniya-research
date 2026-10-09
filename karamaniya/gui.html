@@ -1870,7 +1870,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     return el("div", { class: "staff" }, el("div", { class: "muted small", text: "General Staff assessment (the Army office's report; true figures here)" }),
       el("ul", { class: "evlist plain" }, fronts.map(([f, x]) => el("li", { class: (x.fighting ? x.enemy_months : x.worst_months) && (x.fighting ? x.enemy_months : x.worst_months) <= 3 ? "i3" : null,
         text: cap(f) + " · " + x.region + ": " + (x.fighting ? "under attack by " + int(x.enemy) + ", " + months(x.enemy_months)
-          : (x.massed ? int(x.massed) + " massed would see it " + (x.massed_months ? "fall in about " + x.massed_months + " months" : "hold") + "; " : "") +
+          : (x.massed ? int(x.massed) + " massed would see it " + (x.massed_months ? months(x.massed_months).replace("falls", "fall") : "hold") + "; " : "") +
             "against all " + int(x.worst) + " the neighbours could send it " + months(x.worst_months)) }))));
   }
 

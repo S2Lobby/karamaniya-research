@@ -11,6 +11,7 @@ FAKE_CLI_USAGE=<json>         extra usage fields to report (Codex, Claude Code, 
 FAKE_CLI_ANSWER=<json>        the answer to give (Antigravity), instead of one chosen from the schema
 FAKE_CLI_DETOURS=<n>          Antigravity: the first n calls reach for a tool, which is denied, and end with no answer
 FAKE_CLI_THINKING=<text>      reasoning to print the way each tool prints it (Claude Code, Codex, Cline)
+FAKE_CLI_CLINE_IGNORES_STDIN=1  Cline: answer from the prompt argument alone, as a Cline that did not read stdin would
 """
 import json
 import os
@@ -65,11 +66,18 @@ def arg_after(argv, flag, default=""):
 
 def main():
     kind, argv = sys.argv[1], sys.argv[2:]
-    stdin = sys.stdin.buffer.read().decode("utf-8") if kind != "cline" else ""   # real CLIs read UTF-8
+    stdin = sys.stdin.buffer.read().decode("utf-8")   # real CLIs read UTF-8
+    read = ""
+    if kind == "cline":
+        # Cline CLI 3.0 appends piped stdin to the prompt argument after a blank line, trimmed
+        # (checked on 2026-10-09 against a mock model server).
+        read = argv[-1]
+        if stdin.strip() and not os.environ.get("FAKE_CLI_CLINE_IGNORES_STDIN"):
+            read = f"{read}\n\n{stdin.strip()}"
     if os.environ.get("FAKE_CLI_RECORD"):
         schema_file = arg_after(argv, "--json-schema") if kind == "agy" else ""
         with open(os.environ["FAKE_CLI_RECORD"], "w", encoding="utf-8") as f:
-            json.dump({"kind": kind, "argv": argv, "stdin": stdin, "cwd": os.getcwd(),
+            json.dump({"kind": kind, "argv": argv, "stdin": stdin, "read": read, "cwd": os.getcwd(),
                        "schema": open(schema_file, encoding="utf-8").read() if schema_file else None,
                        "env": {k: os.environ.get(k) for k in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN",
                                                               "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL")}}, f)
@@ -99,7 +107,10 @@ def main():
         return 0
 
     if kind == "cline":
-        prompt = argv[-1]
+        prompt = read
+        # The recorded count for a short prompt; a long one is counted as a tokenizer would, about
+        # three characters a token, from what Cline actually read.
+        tokens = 3937 if not stdin.strip() else (len(arg_after(argv, "-s")) + len(read)) // 3
         if limited and os.environ.get("FAKE_CLI_LIMIT_STYLE") == "text":
             # Recorded from Cline CLI on 2026-09-29: the plan limit arrives as the answer text.
             text = "You have reached your monthly Clinepass limit. The limit resets in 1h 11m, please try again later."
@@ -118,9 +129,9 @@ def main():
         print(json.dumps({"type": "agent_event", "event": {"type": "iteration_end", "iteration": 1, "hadToolCalls": False,
                                                           "toolCallCount": 0}}), file=out)
         print(json.dumps({"type": "agent_event", "event": {"type": "done", "reason": "completed", "text": text,
-                                                          "iterations": 1, "usage": {"inputTokens": 3937, "outputTokens": 31}}}), file=out)
+                                                          "iterations": 1, "usage": {"inputTokens": tokens, "outputTokens": 31}}}), file=out)
         print(json.dumps({"type": "run_result", "finishReason": "completed", "iterations": 1,
-                          "usage": {"inputTokens": 3937, "outputTokens": 31}}), file=out)
+                          "usage": {"inputTokens": tokens, "outputTokens": 31}}), file=out)
         return 0
 
     if kind == "copilot":

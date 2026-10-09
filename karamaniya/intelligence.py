@@ -177,29 +177,37 @@ def _error(w: World, rng, subject: str, holder_state: dict) -> str:
 
 
 def _report(w: World, rng, office: str, subject: str, truths: dict, prev_truths: dict, holder_state: dict,
-            index: int) -> dict:
+            index: int, basis: dict | None = None) -> dict:
     truth = truths[subject]
-    kind = _error(w, rng, subject, holder_state)
-    lo_shift, hi_shift = tuning.get(w, "intelligence.wrong_shift")
-    central = truth
-    if kind == "stale":
-        central = prev_truths.get(subject, truth)
-    elif kind != "none":
-        magnitude = rng.uniform(lo_shift, hi_shift)
-        if kind == "bureaucratic":
-            sign = -1 if subject in ("default_risk", "unrest_outlook", "protest_turnout", "hidden_budget_stress",
-                                     "foreign_backing", "shipping_risk", "union_intent") else 1
-        elif kind == "confirmation":
-            props = holder_state.get("propositions", {})
-            prop = PROPOSITION.get(subject)
-            believed = props.get(prop, {}).get("confidence", 50) if prop else 50
-            sign = 1 if believed >= 50 else -1
-            if subject in ("officer_loyalty", "police_loyalty", "league_stance"):
+    if basis is not None:
+        # The net assessment works from the strength report beside it, so the two give the same Union
+        # army, and the assessment carries that estimate's error, planted or honest. Drawn on its own,
+        # it once put the Union at 119,909 next to a strength report of 82,037-113,289.
+        kind = basis["error"]
+        strength = float(truths.get("union_strength") or 0.0)
+        central = truth * (basis["estimate"] / strength) if strength > 1e-9 else truth
+    else:
+        kind = _error(w, rng, subject, holder_state)
+        lo_shift, hi_shift = tuning.get(w, "intelligence.wrong_shift")
+        central = truth
+        if kind == "stale":
+            central = prev_truths.get(subject, truth)
+        elif kind != "none":
+            magnitude = rng.uniform(lo_shift, hi_shift)
+            if kind == "bureaucratic":
+                sign = -1 if subject in ("default_risk", "unrest_outlook", "protest_turnout", "hidden_budget_stress",
+                                         "foreign_backing", "shipping_risk", "union_intent") else 1
+            elif kind == "confirmation":
+                props = holder_state.get("propositions", {})
+                prop = PROPOSITION.get(subject)
+                believed = props.get(prop, {}).get("confidence", 50) if prop else 50
                 sign = 1 if believed >= 50 else -1
-        else:
-            sign = rng.choice((-1, 1))
-        central = truth * (1 + sign * magnitude) if abs(truth) > 1e-9 else sign * magnitude * 10
-    central += central * rng.gauss(0, .04)
+                if subject in ("officer_loyalty", "police_loyalty", "league_stance"):
+                    sign = 1 if believed >= 50 else -1
+            else:
+                sign = rng.choice((-1, 1))
+            central = truth * (1 + sign * magnitude) if abs(truth) > 1e-9 else sign * magnitude * 10
+        central += central * rng.gauss(0, .04)
     confidence = BASE_CONFIDENCE.get(subject, "medium")
     if kind == "deception" and rng.random() < .5:
         confidence = "medium"      # a planted report can look solid
@@ -225,13 +233,30 @@ def _report(w: World, rng, office: str, subject: str, truths: dict, prev_truths:
     if subject == "net_assessment":
         # The assessment's foreign figures carry this report's error, planted or honest.
         report["factor"] = round(central / truth, 4) if truth > 1e-9 else 1.0
+        report["alarming"] = assessment_alarming(w, report["factor"])
     report["text"] = render(w, report, truths)
     return report
 
 
+URGENT_MONTHS = 6
+
+
+def assessment_alarming(w: World, factor: float = 1.0) -> bool:
+    """The net assessment is urgent when the troops massed at a border, or fighting on it, would take the
+    front's first region within URGENT_MONTHS at these strengths. The Union's standing superiority (over
+    three to one in a new world) is the situation, not news: engine 13 marked the assessment urgent whenever
+    it held, from Month 1 on, so the Army office had to share it every month or have it recorded as
+    withheld, where it could leak and cost the holder its colleagues' trust."""
+    from .military import net_assessment
+    for front in net_assessment(w, factor)["fronts"].values():
+        months = front.get("enemy_months") if front.get("fighting") else front.get("massed_months")
+        if months is not None and months <= URGENT_MONTHS:
+            return True
+    return False
+
+
 def _alarming(subject: str, central: float) -> bool:
     return ((subject == "union_intent" and central >= 50) or (subject == "default_risk" and central >= 45)
-            or (subject == "net_assessment" and central >= 3)
             or (subject == "officer_loyalty" and central <= 45) or (subject == "foreign_backing" and central >= 55)
             or (subject == "protest_turnout" and central >= 40000) or (subject == "shipping_risk" and central >= 55)
             or (subject == "food_outlook" and central < 85))
@@ -289,7 +314,10 @@ def generate(w: World) -> list:
         rng = rng_for(w.seed, w.month, f"intel-v2:{office}")
         holder_state = holder.agent_state or {}
         for i, subject in enumerate(SUBJECTS[office], 1):
-            new.append(_report(w, rng, office, subject, truths, prev, holder_state, i))
+            # The General Staff reads its net assessment off Army intelligence's estimate of Union strength.
+            basis = (next((r for r in new if r["office"] == office and r["subject"] == "union_strength"), None)
+                     if subject == "net_assessment" else None)
+            new.append(_report(w, rng, office, subject, truths, prev, holder_state, i, basis))
     contest = _contest(w, truths, new)
     s["reports"] = [r for r in s["reports"] if w.month - r["month"] < int(tuning.get(w, "intelligence.report_months_kept"))] + new
     s["last_truths"] = {k: v for k, v in truths.items() if isinstance(v, (int, float))}

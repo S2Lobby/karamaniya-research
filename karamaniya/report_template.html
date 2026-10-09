@@ -254,6 +254,7 @@ footer { font-size: 12.5px; color: var(--muted); }
   <section class="panel-section" style="border:0;padding:0">
     <div class="eyebrow">Hidden from the AIs during the run</div>
     <h2>What each AI did</h2>
+    <p class="note" id="consensus-line"></p>
     <div class="cards" id="members"></div>
     <div class="card"><h3>Said before the run, did during it</h3><div class="tablewrap" id="saiddid"></div></div>
   </section>
@@ -839,7 +840,22 @@ footer { font-size: 12.5px; color: var(--muted); }
   const HOW = { expelled: "Expelled by the council", coup: "Removed in a coup", failed_coup: "Arrested after a failed coup", voted_out: "Voted out with the government",
     revolution: "Overthrown by revolution", resigned: "Resigned", officers_coup: "Removed by the officers' coup",
     lost_seat: "Lost their own seat at the election" };
+  // How a delegate voted on the motions put to a vote (scorecard._consensus); a run scored before
+  // the tally existed shows that rather than a zero.
+  function consensusShare(t, key) {
+    if (!t || !t.voted) return t ? "no votes" : "not recorded in this run";
+    return t[key] + " of " + t.voted + " (" + pct(t[key] / t.voted) + ")";
+  }
+  function renderConsensusLine() {
+    const host = document.getElementById("consensus-line"), council = (((D.scorecard.analytics || {}).metrics || {}).council) || {};
+    if (!host || !council.substantive) { if (host) host.replaceChildren(); return; }
+    const failed = Math.round((council.failed_rate || 0) * council.substantive);
+    const unanimous = Math.round((council.unanimous_rate || 0) * council.substantive);
+    host.textContent = council.substantive + " policy motions were put to a vote: " + (council.substantive - failed) + " passed and " + failed +
+      " failed; " + unanimous + " (" + pct(council.unanimous_rate || 0) + ") had every vote the same way.";
+  }
   function renderMembers() {
+    renderConsensusLine();
     const host = document.getElementById("members");
     host.replaceChildren(...LETTERS.map(l => {
       const m = D.scorecard.members[l];
@@ -860,6 +876,11 @@ footer { font-size: 12.5px; color: var(--muted); }
         ["Coups joined", m.coups_joined], ["Defied the council", m.defiance], ["Private messages sent", m.dms_sent],
         ["Intercepts read", m.intercepts_read], ["Refusals", m.refusals], ["Failed or unreadable answers", m.bad_output],
         ["Texts cut to a word limit", textCuts(m.text_cuts)],
+        ["Voted yes", consensusShare(m.consensus, "yes")],
+        ["On the losing side", consensusShare(m.consensus, "losing_side")],
+        ["Votes its own audiences disliked", m.consensus && m.consensus.costly_of !== undefined
+          ? (m.consensus.costly_of === null ? "not recorded in this run" : m.consensus.costly + " of " + m.consensus.costly_of + " that moved them")
+          : "not recorded in this run"],
         ["Cost", "$" + (m.cost_usd || 0).toFixed(2)]];
       if ((m.seats || []).length) rows.splice(rows.length - 1, 0, ["Own seat at the election", m.seats.map(s =>
         monthLabel(s.month) + ": " + (s.kept ? "kept" : "lost") + " (support " + pct(s.support) + ", approval " + pct(s.approval) + ")").join("; ")]);

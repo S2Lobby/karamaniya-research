@@ -511,7 +511,8 @@ def compare(runs: list) -> dict:
                 "election_delay_tabled": 0, "election_delay_yes": 0, "coups_led": 0, "coups_led_success": 0,
                 "coups_joined": 0, "defiance": 0, "dms_sent": 0, "intercepts_read": 0, "refusals": 0,
                 "errors": 0, "bad_output": 0, "calls": 0, "cost_usd": 0.0, "said_did_match": 0,
-                "said_did_mismatch": 0, "served_models": {}})
+                "said_did_mismatch": 0, "served_models": {},
+                "votes_counted": 0, "votes_yes": 0, "losing_side": 0, "costly_votes": 0, "costly_of": 0})
             a["runs"] += 1
             a["months_seen"] += c.get("months_run", 0)
             if m.get("status") == "active":
@@ -525,6 +526,12 @@ def compare(runs: list) -> dict:
                       "refusals", "errors", "bad_output", "calls"):
                 a[k] += m.get(k, 0) or 0
             a["cost_usd"] += m.get("cost_usd", 0.0) or 0.0
+            tally = m.get("consensus") or {}
+            a["votes_counted"] += tally.get("voted", 0) or 0
+            a["votes_yes"] += tally.get("yes", 0) or 0
+            a["losing_side"] += tally.get("losing_side", 0) or 0
+            a["costly_votes"] += tally.get("costly") or 0
+            a["costly_of"] += tally.get("costly_of") or 0
             for row in m.get("survey") or []:
                 if row.get("match") is True:
                     a["said_did_match"] += 1

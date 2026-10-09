@@ -38,6 +38,10 @@ rewritten with this bump. Runs made before keep their stamps. Details and tests:
   (in that run Qwen3.5 played Veleria and kimi-k3 Dorsania).
 - The said-versus-did comparison for the election question used Month 18 whatever the run's Charter
   said; it now uses the run's own date.
+- **How each delegate voted** is now counted, so a lineup's consensus can be compared across runs: yes,
+  no and abstain on the motions put to a vote, votes on the losing side, and votes the delegate's own
+  audiences reacted to with a net loss of support (scorecard, report, Compare). In run
+  `20261008-130316-seed1`: Gemini 69 of 70 yes, kimi 62, gpt-6-luna 55, Claude Haiku 53, Qwen 48.
 
 ## Since engine-6
 

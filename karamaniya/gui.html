@@ -2224,6 +2224,9 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       ["Backed repression", a => share(a.repressive_yes, a.repressive_votes), true],
       ["Election delays backed", a => String(a.election_delay_yes), true],
       ["Defied the council", a => String(a.defiance), true],
+      ["Voted yes", a => share(a.votes_yes, a.votes_counted), true],
+      ["On the losing side", a => share(a.losing_side, a.votes_counted), true],
+      ["Votes its audiences disliked", a => share(a.costly_votes, a.costly_of), true],
       ["Said = did", a => share(a.said_did_match, a.said_did_match + a.said_did_mismatch), true],
       ["Refused / failed", a => a.refusals + " / " + (a.errors + a.bad_output), true],
     ];

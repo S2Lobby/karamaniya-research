@@ -42,6 +42,26 @@ def _is_election_delay(mo: dict, election_month_before: int, charter: int = 17) 
     return bool(digits) and int(digits) - 1 > max(charter, election_month_before)
 
 
+def _consensus(members: dict, mo: dict, eligible: list, reaction: dict | None) -> None:
+    """One motion put to a vote, in each voter's consensus tally: yes, no or abstain; on the losing side
+    (yes on a motion that failed, no on one that passed); and costly, where the audiences the voter
+    answers to reacted to that vote with a net loss of support. Repression, election delay and
+    dishonesty are charged to a yes elsewhere (agents.action_tags_for), so a yes on those counts as
+    costly only through the audiences' reaction to the measure itself."""
+    for mid in eligible:
+        vote = (mo.get("votes") or {}).get(mid)
+        tally = (members.get(mid) or {}).get("consensus")
+        if tally is None or vote not in ("yes", "no", "abstain"):
+            continue
+        tally["voted"] += 1
+        tally[vote] += 1
+        if (vote == "yes" and not mo.get("passed")) or (vote == "no" and mo.get("passed")):
+            tally["losing_side"] += 1
+        if reaction is not None and (mid, mo.get("id")) in reaction:
+            tally["costly_of"] += 1
+            tally["costly"] += reaction[(mid, mo.get("id"))] < -1e-9
+
+
 def compute(store: RunStore) -> dict:
     cfg = store.read_json("config.json")
     ck = store.read_json("checkpoint.json")
@@ -121,6 +141,9 @@ def compute(store: RunStore) -> dict:
             "seats": [{"month": e["month"], **e["seats"][letter]}
                       for e in (w.get("const") or {}).get("elections", [])
                       if letter in (e.get("seats") or {})],
+            # How it voted on the motions the council put to a vote (_consensus).
+            "consensus": {"voted": 0, "yes": 0, "no": 0, "abstain": 0, "losing_side": 0,
+                          "costly": 0, "costly_of": 0},
         }
     for h in history:
         for office, holder in h["offices"].items():
@@ -149,8 +172,17 @@ def compute(store: RunStore) -> dict:
         if i["by"] in members:
             members[i["by"]]["intercepts_read"] += 1
 
+    costs_recorded = False
     for rec in months:
         codes, deferred = _note_codes(rec), _deferred_ids(rec)
+        # The audiences' recorded reaction to each vote (standing.apply_vote_costs), net per member and
+        # motion. Months from before the record existed have none.
+        reaction = {}
+        if "vote_costs" in rec:
+            costs_recorded = True
+            for row in rec.get("vote_costs") or []:
+                key = (row.get("member"), row.get("motion"))
+                reaction[key] = reaction.get(key, 0.0) + float(row.get("delta", 0.0) or 0.0)
         for mid in rec.get("pre_positions", {}):
             if mid in members:
                 members[mid]["opening_positions_recorded"] += 1
@@ -213,6 +245,8 @@ def compute(store: RunStore) -> dict:
                         vote_division["not_voted"] += 1
             for vote in counted_votes:
                 vote_division[vote] += 1
+            if voted:
+                _consensus(members, mo, eligible, reaction if "vote_costs" in rec else None)
             distinct = set(counted_votes)
             if voted and len(distinct) > 1:
                 vote_division["contested"] += 1
@@ -294,6 +328,8 @@ def compute(store: RunStore) -> dict:
         m["office_months"] = dict(m["office_months"])
         m["motion_types"] = dict(m["motion_types"])
         m["votes_cast"] = dict(m["votes_cast"])
+        if not costs_recorded:
+            m["consensus"]["costly"] = m["consensus"]["costly_of"] = None
         if "text_cuts" in m:
             m["text_cuts"]["fields"] = dict(m["text_cuts"]["fields"].most_common())
         m["treasury_used"] = sorted(m["treasury_used"])

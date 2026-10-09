@@ -269,10 +269,15 @@ The test suite runs on every push, on Python 3.12 and 3.13. Among what it holds 
   engine (`tests/test_prompt_freeze.py`), so anything opt-in stays opt-in.
 - **Motions do what they said.** `python -m karamaniya audit runs/<name>` checks every executed motion
   against the act its text described.
+- **Luck can be told from the council.** After a run, its seed is played again by rule-following
+  stand-ins and by a council that does nothing, with the same draws (`baseline.json`); a scripted run's
+  scripted baseline matches it exactly (`tests/test_engine13.py`).
+- **Seeded names leave the run unchanged.** With `world_names = "seeded"` no usual place name reaches a
+  model, and a scripted run is the same month by month as with the usual names.
 - **Mixed code is visible.** Every simulated month records a fingerprint of the engine source that
   produced it, and a run resumed under different code is reported as mixed, not as one engine's run.
 
-The code here is world engine 12 with agent prompt 9 (see `karamaniya/versions.py`). Engine 6 is
+The code here is world engine 13 with agent prompt 10 (see `karamaniya/versions.py`). Engine 6 is
 the tag [`engine-6`](https://github.com/S2Lobby/karamaniya-research/tree/engine-6), and engine 5, the
 first public release, is the tag [`engine-5`](https://github.com/S2Lobby/karamaniya-research/tree/engine-5);
 engine 6 corrected what the prompts told the delegates, and what changed each time is in

@@ -16,7 +16,7 @@ TEMPLATE = Path(__file__).with_name("report_template.html")
 MAPVIEW = Path(__file__).with_name("mapview.js")
 RELGRAPH = Path(__file__).with_name("relgraph.js")
 DEATH_KEYS = ("deaths_famine", "deaths_state_violence", "deaths_war_civilian", "deaths_internment",
-              "deaths_coups", "soldiers_killed")
+              "deaths_coups", "soldiers_killed", "deaths_political_violence", "deaths_border_incidents")
 HISTORY_KEYS = ("month", "approval", "indep", "unrest", "fear", "infl_yoy", "food_ratio", "gdp_idx",
                 "unemployment", "army", "army_mobilized", "army_mobilized_effective", "army_field_total",
                 "union_army", "democracy", "war", "ceasefire", "blockade_eff",
@@ -27,7 +27,7 @@ HISTORY_KEYS = ("month", "approval", "indep", "unrest", "fear", "infl_yoy", "foo
                 "propaganda", "rally", "by_ident", "food_stock", "gold", "energy", "fx", "real_wage", "army_morale",
                 "army_loyalty", "army_equipment", "union_weariness", "published_infl_a", "deficit_gdp",
                 "printed_gdp", "paid_share", "integrity", "hard_state", "geopolitics", "founding", "founding_divergence",
-                "v2", "agent_architecture_version", "engine_source_fingerprint")
+                "v2", "agent_architecture_version", "engine_source_fingerprint", "net_assessment")
 
 
 def engine_source_groups(rows: list) -> list:
@@ -128,7 +128,12 @@ def report_data(store: RunStore) -> dict:
         "decisions": foreign.get("decision_log", []),
     }
     from .analytics import relationship_graph
-    from . import convergence, integrity
+    from . import baseline, convergence, integrity
+    from . import naming
+    seeded = naming.load(store.path / "names.json")
+    same_seed = baseline.read(store.path)
+    if same_seed:
+        same_seed["deltas"] = baseline.deltas(same_seed)
     graph = relationship_graph(w.get("history", []))
     correction = store.path / "correction.json"
     integrity_report = (json.loads(correction.read_text(encoding="utf-8")) if correction.exists()
@@ -150,6 +155,7 @@ def report_data(store: RunStore) -> dict:
         "dms": [{k: d.get(k) for k in ("month", "from", "to", "when", "text", "kind", "phase")} for d in store.read_log("dm")],
         "intercepts": [{k: d.get(k) for k in ("month", "by", "from", "to", "text")} for d in store.read_log("intercept")],
         "geopolitics": geopolitics, "scorecard": card, "start_policy": asdict(Policy()),
+        "baseline": same_seed, "seeded_names": seeded.get("legend") or [],
         "founding": public_profile(type("WorldView", (), {"founding": w.get("founding", {})})()),
         "generated": dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
     }

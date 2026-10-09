@@ -47,7 +47,8 @@ def canonical_hard_state(w: World, phase: str, motions: list | None = None) -> s
         "Detailed reserves, debt maturities and unpaid bills require Treasury information.",
         f"Public force strength: army about {round(mil.army.size, -3):,.0f} soldiers; "
         f"police about {round(mil.police.size, -3):,.0f}; navy {mil.navy.size:.0f} ships. "
-        "Unit loyalty and readiness estimates require the responsible security office; foreign strength is uncertain.",
+        "Unit loyalty and morale estimates require the responsible security office, and the General Staff's net "
+        "assessment of the fronts goes to the Army office; foreign strength is uncertain.",
         f"Security and diplomacy: war={'yes' if dip.war else 'no'}; ceasefire={'yes' if dip.ceasefire else 'no'}; "
         f"blockade={'yes' if dip.blockade else 'no'}; ultimatum={'active' if dip.ultimatum else 'none'}; "
         f"Union formed={'yes' if dip.union_formed else 'no'}; Union front={sum(dip.union_front.values()):.0%}."
@@ -99,18 +100,51 @@ def private_intelligence(w: World, mid: str) -> str:
                             + f". Police command cohesion is assessed as {('fragile' if mil.police.loyalty < .4 else 'uncertain' if mil.police.loyalty < .7 else 'steady')}; "
                             f"morale about {mil.police.morale:.0%}; confidence medium.")
         elif office == "army":
-            estimate = max(0, union_army(w) * (1 + rng.uniform(-.16, .16)))
+            factor = 1 + rng.uniform(-.16, .16)
+            estimate = max(0, union_army(w) * factor)
+            # Engine 12 called this "readiness" though it was read from morale alone, and reported
+            # "good" beside a Union army four to five times ours (run 20261008-130316-seed1).
             sections.append(f"Army intelligence estimates Union field strength at {estimate:,.0f} troops, with a broad uncertainty band of ±16%. "
-                            f"Own-unit readiness is assessed as {('poor' if mil.army.morale < .4 else 'mixed' if mil.army.morale < .7 else 'good')}; "
-                            f"morale about {mil.army.morale:.0%}, constitutional loyalty about {mil.army.loyalty:.0%}; confidence medium-low.")
+                            f"Unit morale is assessed as {('poor' if mil.army.morale < .4 else 'mixed' if mil.army.morale < .7 else 'good')} "
+                            f"(about {mil.army.morale:.0%}), constitutional loyalty about {mil.army.loyalty:.0%}; confidence medium-low. "
+                            "Morale is not a measure of whether the army is strong enough.")
+            sections.append(net_assessment_text(w, factor))
         elif office == "navy":
             risk = min(100, max(0, (dip.blockade_eff * 60 + (20 if dip.blockade else 0) + rng.gauss(0, 7))))
             sections.append(f"Naval staff assess shipping-interdiction risk at {max(0, risk-10):.0f}–{min(100, risk+10):.0f}/100, confidence low-to-medium. "
-                            f"Fleet readiness is {('poor' if mil.navy.morale < .4 else 'mixed' if mil.navy.morale < .7 else 'good')}.")
+                            f"Fleet morale is {('poor' if mil.navy.morale < .4 else 'mixed' if mil.navy.morale < .7 else 'good')}.")
         elif office == "head":
             sections.append(f"Cabinet secretariat summary: coalition cohesion appears {('fragile' if w.avg('approval') < .3 else 'strained' if w.avg('approval') < .55 else 'workable')}; "
                             f"external escalation risk is {('high' if dip.ultimatum or dip.war else 'uncertain' if dip.union_formed else 'guarded')}. These are assessments, not confirmed predictions.")
     return "\n".join(sections)
+
+
+def _months(n: int) -> str:
+    return f"about {n} month{'s' if n != 1 else ''}"
+
+
+def net_assessment_text(w: World, factor: float = 1.0) -> str:
+    """The General Staff's reading of the army's own combat tables (military.net_assessment), in words."""
+    from .military import net_assessment
+    data = net_assessment(w, factor)
+    ours = max(1, data["ours"])
+    parts = [f"General Staff net assessment (the army's combat tables against its estimates of foreign strength): "
+             f"about {data['union']:,} Union soldiers against our {data['ours']:,} under arms, {data['union'] / ours:.1f} to 1."]
+    for front, f in data["fronts"].items():
+        region = f["region"]
+        who = " and ".join(w.names.get(a, a.title()) for a in f["neighbours"]) or "the Union"
+        if f.get("fighting"):
+            parts.append(f"{front.title()} front ({region}), fighting: about {f['enemy']:,} Union soldiers against our "
+                         f"{f['ours']:,} there; at these strengths "
+                         + (f"{region} falls in {_months(f['enemy_months'])}." if f["enemy_months"] else "the line holds."))
+            continue
+        massed = (f"{f['massed']:,} foreign soldiers are massed at the border and would "
+                  + (f"take {region} in {_months(f['massed_months'])}" if f["massed_months"] else "be held")
+                  + " if they attacked now" if f["massed"] else "no foreign troops are massed at the border")
+        worst = (f"take it in {_months(f['worst_months'])}" if f["worst_months"] else "be held")
+        parts.append(f"{front.title()} front ({region}): our {f['ours']:,} soldiers there, fortification {f['fort']:.0%}; "
+                     f"{massed}; the most {who} could send against it (about {f['worst']:,}) would {worst}.")
+    return " ".join(parts)
 
 
 def for_member(w: World, mid: str, phase: str, motions: list | None = None) -> str:

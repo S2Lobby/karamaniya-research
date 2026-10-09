@@ -205,10 +205,32 @@ def score(w: World, mid: str | None = None) -> dict:
     return result
 
 
+def ledger_score(entries: list, mid: str | None = None) -> dict:
+    """score() from a saved ledger rather than a live world, for the scorecard."""
+    own = [f for f in entries if mid is None or f.get("actor") == mid]
+    result = {"actor": mid, "recorded": len(own), "open": sum(1 for f in own if f.get("resolved_month") is None),
+              "scored": sum(1 for f in own if f.get("brier") is not None),
+              "brier_scale": "binomial, 0-1 (not the 0-2 Good Judgment scale)"}
+    result.update(murphy(None, own))
+    result["directional"] = directional_accuracy(None, own)
+    return result
+
+
 def summary(w: World) -> dict:
     """Council-wide forecast performance, for the report."""
     return {"per_actor": {m.id: score(w, m.id) for m in w.members},
             "council": score(w, None), "ledger_size": len(_ledger(w))}
+
+
+def _confidence_side(entries: list) -> str:
+    """'overconfident' or 'underconfident': whether the side a forecaster leaned to came true less or more
+    often than it said. Reliability alone measures the mismatch, not its direction."""
+    scored = [e for e in entries if e.get("correct") is not None]
+    if not scored:
+        return "overconfident"
+    stated = sum(max(e["confidence"], 1 - e["confidence"]) for e in scored) / len(scored)
+    hits = sum(1 for e in scored if e["correct"]) / len(scored)
+    return "overconfident" if hits < stated else "underconfident"
 
 
 def context_for(w: World, mid: str) -> str:
@@ -218,15 +240,167 @@ def context_for(w: World, mid: str) -> str:
     Another delegate's record is not, because that would leak private reasoning.
     """
     own = score(w, mid)
-    if not own.get("scored"):
-        return ""
-    d = own["directional"]
-    line = (f"YOUR FORECAST RECORD: {own['scored']} scored, {own['open']} still open. "
-            f"Brier {own['brier']:.3f} on the 0-1 scale (0.25 is what always saying 50% scores). "
-            f"Direction right {d['hit_rate']:.0%} of the time against a {d['no_skill_baseline']:.0%} "
-            f"do-nothing baseline.")
-    if own["reliability"] > 0.05:
-        line += " Your stated confidence has not matched outcomes well: you have been overconfident."
-    elif own["reliability"] < 0.02 and own.get("n", 0) >= 4:
-        line += " Your stated confidence has matched outcomes closely."
-    return line
+    lines = []
+    if own.get("scored"):
+        d = own["directional"]
+        line = (f"YOUR FORECAST RECORD: {own['scored']} scored, {own['open']} still open. "
+                f"Brier {own['brier']:.3f} on the 0-1 scale (0.25 is what always saying 50% scores). "
+                f"Direction right {d['hit_rate']:.0%} of the time against a {d['no_skill_baseline']:.0%} "
+                f"do-nothing baseline.")
+        # Engine 12 called any mismatch overconfidence, an underconfident forecaster included.
+        if own["reliability"] > 0.05:
+            side = _confidence_side([f for f in _ledger(w) if f["actor"] == mid])
+            line += f" Your stated confidence has not matched outcomes well: you have been {side}."
+        elif own["reliability"] < 0.02 and own.get("n", 0) >= 4:
+            line += " Your stated confidence has matched outcomes closely."
+        lines.append(line)
+    panel = panel_score(panel_ledger(w), mid)
+    if panel.get("scored"):
+        lines.append(f"YOUR MONTHLY PANEL: {panel['scored']} answers scored, Brier {panel['brier']:.3f} "
+                     "(always answering 50% scores 0.250).")
+    return "\n".join(lines)
+
+
+# ---- the monthly panel (engine 13) -----------------------------------------------------------
+# The forecasts above are each delegate's own choice of question, so two delegates' scores answer
+# different questions and cannot be compared. The panel asks every delegate the same questions every
+# month, as probabilities, and scores every answer the same way. Each question names its month and
+# the figure it starts from, which the delegate is already shown (reported inflation, not the true
+# figure the statistics office may be hiding); the answers change nothing in the world.
+PANEL_HORIZON = 3
+PANEL_KEYS = ("inflation_up", "approval_up", "war", "own_seat")
+
+
+def _reported_inflation(w: World) -> float:
+    from .society import inflation_yoy
+    return inflation_yoy(w) * (1 - w.econ.stats_gap)
+
+
+def _approval(w: World) -> float:
+    return w.avg("approval") if w.k_pops() else 0.0
+
+
+def _seat_question(w: World, mid: str) -> bool:
+    c = w.const
+    return bool(getattr(c, "personal_mandates", False)) and not c.elected and c.election_month >= w.month \
+        and w.member(mid).status == "active"
+
+
+def panel_questions(w: World, mid: str) -> dict:
+    """This month's panel for one delegate: key -> (question, starting figure). The same for every
+    delegate except own_seat, asked only while the delegate stands for its own seat at an election
+    still to come."""
+    due = w.month + PANEL_HORIZON - 1          # the panel asks about the end of the third month from now
+    out = {"inflation_up": (f"reported annual inflation will be higher at the end of Month {due + 1} than its "
+                            f"{_reported_inflation(w):.1%} now", round(_reported_inflation(w), 5)),
+           "approval_up": (f"the government's approval will be higher at the end of Month {due + 1} than its "
+                           f"{_approval(w):.0%} now", round(_approval(w), 5)),
+           "war": (f"Karamaniya will be at war at the end of Month {due + 1}", None)}
+    if _seat_question(w, mid):
+        out["own_seat"] = (f"you will keep your own seat at the Assembly election (Month "
+                           f"{w.const.election_month + 1})", None)
+    return out
+
+
+def panel_probability(raw) -> float | None:
+    """A probability from 0 to 1; a figure from 1 to 100 is a percentage. Anything else is no answer."""
+    if isinstance(raw, bool):
+        return None
+    try:
+        p = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if p != p:              # NaN
+        return None
+    if 1 < p <= 100:
+        p /= 100.0
+    return round(p, 4) if 0 <= p <= 1 else None
+
+
+def panel_ledger(w: World) -> list:
+    """The panel's answers so far (read only: a run without the panel keeps no ledger)."""
+    return list(w.institutions.get("forecast_panel") or [])
+
+
+def panel_record(w: World, mid: str, answers: dict) -> list:
+    """Store one delegate's answers to this month's panel. Unanswered questions are kept as such."""
+    questions = panel_questions(w, mid)
+    added = []
+    for key, (_, start) in questions.items():
+        p = panel_probability((answers or {}).get(key))
+        entry = {"id": f"P{w.month}-{mid}-{key}", "actor": mid, "key": key, "month_created": w.month,
+                 "due_month": None if key == "own_seat" else w.month + PANEL_HORIZON - 1,
+                 "start": start, "p": p, "resolved_month": None, "outcome": None, "brier": None}
+        w.institutions.setdefault("forecast_panel", []).append(entry)
+        added.append(entry)
+    return added
+
+
+def _seat_results(w: World) -> dict:
+    """member -> kept, from the latest election that decided members' own seats."""
+    for election in reversed(w.const.elections or []):
+        if election.get("seats"):
+            return {mid: bool(s.get("kept")) for mid, s in election["seats"].items()}
+    return {}
+
+
+def resolve_panel(w: World) -> list:
+    """Score the panel answers that fall due at the end of this month (engine.step, after the month)."""
+    resolved, seats = [], None
+    for entry in w.institutions.get("forecast_panel") or []:
+        if entry["resolved_month"] is not None:
+            continue
+        key = entry["key"]
+        if key == "own_seat":
+            if seats is None:
+                seats = _seat_results(w)
+            member = w.member(entry["actor"])
+            if entry["actor"] in seats:
+                outcome = 1.0 if seats[entry["actor"]] else 0.0
+            elif member.status != "active" and member.removed_month >= 0:
+                outcome = 0.0      # gone before the election: there is no seat to keep
+            else:
+                continue
+        else:
+            if entry["due_month"] is None or entry["due_month"] > w.month:
+                continue
+            if key == "inflation_up":
+                outcome = 1.0 if _reported_inflation(w) > entry["start"] else 0.0
+            elif key == "approval_up":
+                outcome = 1.0 if _approval(w) > entry["start"] else 0.0
+            else:
+                outcome = 1.0 if w.dip.war else 0.0
+        entry["resolved_month"] = w.month
+        entry["outcome"] = outcome
+        if entry["p"] is not None:
+            entry["brier"] = round((entry["p"] - outcome) ** 2, 4)
+        resolved.append(entry)
+    return resolved
+
+
+def panel_score(entries: list, mid: str | None = None) -> dict:
+    """One delegate's panel (or the council's): Brier overall and by question, beside two references.
+
+    "always 50%" scores 0.25 on every question; "base rate" is what answering each question with how
+    often it came true in this run would have scored, which no delegate could know in advance."""
+    own = [e for e in entries if mid is None or e["actor"] == mid]
+    scored = [e for e in own if e.get("brier") is not None]
+    out = {"actor": mid, "asked": len(own), "answered": sum(1 for e in own if e.get("p") is not None),
+           "scored": len(scored), "open": sum(1 for e in own if e.get("resolved_month") is None)}
+    if not scored:
+        return out
+    by_key = {}
+    for key in PANEL_KEYS:
+        rows = [e for e in scored if e["key"] == key]
+        if not rows:
+            continue
+        rate = sum(e["outcome"] for e in rows) / len(rows)
+        by_key[key] = {"n": len(rows), "brier": round(sum(e["brier"] for e in rows) / len(rows), 4),
+                       "base_rate": round(rate, 4), "base_rate_brier": round(rate * (1 - rate), 4),
+                       "mean_p": round(sum(e["p"] for e in rows) / len(rows), 4)}
+    brier = sum(e["brier"] for e in scored) / len(scored)
+    reference = sum(v["base_rate_brier"] * v["n"] for v in by_key.values()) / len(scored)
+    out.update(brier=round(brier, 4), by_question=by_key, base_rate_brier=round(reference, 4),
+               skill_vs_half=round(1 - brier / .25, 4),
+               scale="binomial Brier, 0-1; 0.25 is always answering 50%")
+    return out

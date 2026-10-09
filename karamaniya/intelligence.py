@@ -17,7 +17,7 @@ from . import tuning
 from .world import OFFICE_TITLES, OFFICES, World, clamp, rng_for
 
 CONFIDENCE_WIDTH = {"high": .08, "medium": .16, "low": .28}
-UNION_SUBJECTS = {"union_intent", "union_strength", "union_fleet", "union_cohesion"}
+UNION_SUBJECTS = {"union_intent", "union_strength", "union_fleet", "union_cohesion", "net_assessment"}
 REQUEST_TOPICS = {
     "costing": "treasury", "reserves": "treasury", "forecast": "treasury",
     "unrest": "interior", "loyalty": "army", "police": "interior",
@@ -57,7 +57,7 @@ def union_offensive_risk(w: World) -> float:
 
 
 def _truths(w: World) -> dict:
-    from .military import union_army, union_navy
+    from .military import mobilized_strength, union_army, union_navy
     from .society import inflation_yoy
     e, m, dip = w.econ, w.mil, w.dip
     z = w.zone_of("karamaniya")
@@ -81,6 +81,8 @@ def _truths(w: World) -> dict:
         "union_intent": union_offensive_risk(w) * 100,
         "officer_loyalty": m.army.loyalty * 100,
         "readiness": clamp(m.army.morale * .5 + m.army.training * .3 + min(1, m.army.equipment) * .2) * 100,
+        # Union soldiers for each of ours under arms (engine 13): what the net assessment is about.
+        "net_assessment": union_army(w) / max(1.0, m.army.size + mobilized_strength(w)),
         "shipping_risk": clamp(dip.blockade_eff * .6 + (.2 if dip.blockade else 0) + .1 * float(dip.union_formed)
                                + (w.foreign.get("league", {}).get("shipping_security_concern", 0) * .3 if w.foreign else 0)) * 100,
         "union_fleet": union_navy(w),
@@ -102,7 +104,8 @@ def _coalition_stability(w: World) -> float:
 SUBJECTS = {
     "treasury": ("reserves", "inflation_forecast", "default_risk", "lender_confidence", "hidden_budget_stress"),
     "interior": ("unrest_outlook", "protest_turnout", "police_loyalty", "foreign_backing"),
-    "army": ("union_strength", "union_intent", "officer_loyalty", "readiness"),
+    # The net assessment is last, so the four engine-12 reports keep their ids and their draws.
+    "army": ("union_strength", "union_intent", "officer_loyalty", "readiness", "net_assessment"),
     "navy": ("shipping_risk", "union_fleet", "fleet_readiness"),
     "head": ("league_stance", "union_cohesion", "coalition_stability", "union_intent"),
 }
@@ -112,6 +115,7 @@ BASE_CONFIDENCE = {
     "police_loyalty": "medium", "foreign_backing": "low", "union_strength": "medium", "union_intent": "low",
     "officer_loyalty": "medium", "readiness": "medium", "shipping_risk": "medium", "union_fleet": "high",
     "fleet_readiness": "high", "league_stance": "medium", "union_cohesion": "low", "coalition_stability": "medium",
+    "net_assessment": "medium",
 }
 # Subjects where a report says something alarming, and the proposition it bears on.
 PROPOSITION = {"union_intent": "union_attack_soon", "foreign_backing": "kessel_foreign_backed",
@@ -136,7 +140,7 @@ LENS_SOURCE = {
     ("unrest_outlook", "treasury"): "Treasury regional tax offices (collections and strike returns)",
     ("food_outlook", "treasury"): "Treasury grain board (stock and delivery returns)",
     ("food_outlook", "interior"): "Interior market watch (police reports on queues and prices)",
-    ("readiness", "army"): "Army readiness inspection",
+    ("readiness", "army"): "Army readiness inspection (training, equipment and morale)",
     ("readiness", "treasury"): "Treasury audit of military spending",
     ("union_intent", "army"): "Army intelligence (border observation posts)",
     ("union_intent", "head"): "Diplomatic cables (embassy reporting)",
@@ -146,7 +150,7 @@ LENS_SOURCE = {
 LENS_TEXT = {
     "unrest_outlook": "national unrest next month assessed at {lo:.0f}-{hi:.0f}/100",
     "food_outlook": "food supply next month expected to cover {lo:.0f}-{hi:.0f}% of needs",
-    "readiness": "{lo:.0f}-{hi:.0f}/100 of nominal combat readiness",
+    "readiness": "{lo:.0f}-{hi:.0f}/100 of nominal combat readiness, the army's own condition and not its strength against the {union}",
     "union_intent": "a {lo:.0f}-{hi:.0f}% probability that {union} deployments are preparation for force rather than posture",
     "shipping_risk": "shipping-interdiction risk {lo:.0f}-{hi:.0f}/100 on the grain routes",
 }
@@ -218,12 +222,16 @@ def _report(w: World, rng, office: str, subject: str, truths: dict, prev_truths:
               "proposition": PROPOSITION.get(subject), "alarming": alarming,
               "truth": round(truth, 2), "accurate": accurate, "error": kind,
               "shared_with": [], "requested_by": []}
+    if subject == "net_assessment":
+        # The assessment's foreign figures carry this report's error, planted or honest.
+        report["factor"] = round(central / truth, 4) if truth > 1e-9 else 1.0
     report["text"] = render(w, report, truths)
     return report
 
 
 def _alarming(subject: str, central: float) -> bool:
     return ((subject == "union_intent" and central >= 50) or (subject == "default_risk" and central >= 45)
+            or (subject == "net_assessment" and central >= 3)
             or (subject == "officer_loyalty" and central <= 45) or (subject == "foreign_backing" and central >= 55)
             or (subject == "protest_turnout" and central >= 40000) or (subject == "shipping_risk" and central >= 55)
             or (subject == "food_outlook" and central < 85))
@@ -236,6 +244,9 @@ def render(w: World, r: dict, truths: dict | None = None) -> str:
         note = (f" Staff note: the {DEPARTMENT.get(r.get('rival_office'), r.get('rival_office'))} puts this "
                 f"{r['rival_reads']}, working from different sources." if r.get("rival_reads") else "")
         return f"{r['source']}: {LENS_TEXT[s].format(lo=lo, hi=hi, union=union)}.{note} Confidence: {conf}."
+    if s == "net_assessment":
+        from .decision_context import net_assessment_text
+        return net_assessment_text(w, r.get("factor", 1.0)) + f" Confidence: {conf}."
     texts = {
         "reserves": f"Treasury cash desk: foreign reserves about {est:,.0f}M gold ({lo:,.0f}-{hi:,.0f}M).",
         "inflation_forecast": f"Treasury forecast: annual inflation over the next six months, central estimate {est:.0f}%, plausible range {lo:.0f}-{hi:.0f}%.",
@@ -249,7 +260,8 @@ def render(w: World, r: dict, truths: dict | None = None) -> str:
         "union_strength": f"Army intelligence estimates {union} field strength at {lo:,.0f}-{hi:,.0f} troops.",
         "union_intent": f"Intelligence assesses a {lo:.0f}-{hi:.0f}% probability that {union} deployments are preparation for force rather than posture.",
         "officer_loyalty": f"Army staff survey: officer loyalty to the constitutional government assessed at {lo:.0f}-{hi:.0f}/100.",
-        "readiness": f"Army readiness inspection: {lo:.0f}-{hi:.0f}/100 of nominal combat readiness.",
+        "readiness": f"Army readiness inspection: {lo:.0f}-{hi:.0f}/100 of nominal combat readiness (training, equipment and "
+                     f"morale: the army's own condition, not its strength against the {union}).",
         "shipping_risk": f"Naval staff: shipping-interdiction risk {lo:.0f}-{hi:.0f}/100 on the grain routes.",
         "union_fleet": f"Naval intelligence counts about {est:.0f} {union} warships ({lo:.0f}-{hi:.0f}).",
         "fleet_readiness": f"Fleet readiness report: {lo:.0f}-{hi:.0f}/100.",

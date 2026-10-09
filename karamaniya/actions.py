@@ -635,7 +635,7 @@ def revision_schema(w: World, mid: str, motions: list, dm_left: int = DM_PER_PHA
 
 
 def decision_schema_v2(w: World, mid: str, motion_ids: list, election_pending: bool = False,
-                       dm_left: int = DM_PER_PHASE) -> dict:
+                       dm_left: int = DM_PER_PHASE, panel: bool = False) -> dict:
     from .beliefs import ids_for_schema
     from .deliberation import METRICS
     from .operations import OPERATIONS, schema as op_schema
@@ -675,6 +675,10 @@ def decision_schema_v2(w: World, mid: str, motion_ids: list, election_pending: b
                                          "direction": {"type": "string", "enum": ["more_likely", "less_likely"]},
                                          "reason": {"type": "string"}}), 3)
     props["forecasts"] = _arr(forecast_schema(), 2)
+    if panel:
+        # The monthly forecast panel (engine 13): the same questions for every delegate, as probabilities.
+        from .forecasts import panel_questions
+        props["forecast_panel"] = _obj({key: {"type": "number"} for key in panel_questions(w, mid)})
     _offer_dms(props, others, dm_left)
     props["notes"] = {"type": "string"}
     props["decision_factors"] = _arr({"type": "string"}, 4)
@@ -1072,6 +1076,9 @@ def normalize_decision_v2(w: World, mid: str, data, motion_ids: list, dm_quota: 
                             "reason": words(item.get("reason", ""), 30)})
     base["belief_updates"] = updates[:3]
     base["forecasts"] = [item for item in (data.get("forecasts") or [])[:2] if isinstance(item, dict)]
+    from .forecasts import PANEL_KEYS, panel_probability
+    raw_panel = data.get("forecast_panel") if isinstance(data.get("forecast_panel"), dict) else {}
+    base["forecast_panel"] = {k: panel_probability(v) for k, v in raw_panel.items() if k in PANEL_KEYS}
     response = str(data.get("election_response", "")).strip().lower()
     base["election_response"] = response if response in ("concede", "legal_challenge", "request_recount",
                                                           "negotiate_coalition", "resign", "refuse") else ""

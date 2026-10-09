@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import time
 
-from ..world import ARMED_OFFICES, World, annualize
+from ..world import ARMED_OFFICES, OFFICES, World, annualize
 from .base import Backend, CallResult
 
 PREFERRED = {"democrat": "head", "technocrat": "treasury", "hawk": "army", "loyalist": "interior",
              "opportunist": "navy"}
+# A council that does nothing (engine 13, baseline.py): it forms a government, one office per member in
+# letter order, and then tables nothing, abstains on every motion and leaves every setting as it is.
+PASSIVE = "passive"
 REPRESSIVE = {("constitution", "press", "censored"), ("constitution", "assembly", "banned"),
               ("constitution", "emergency", "on"), ("constitution", "minority", "restricted"),
               ("constitution", "minority", "interned"), ("constitution", "decision_rule", "head_decides"),
@@ -50,7 +53,7 @@ class ScriptedBackend(Backend):
         elif phase == "foreign":
             data = self._foreign(context)
         else:
-            data = self._decision(w, mid, context)
+            data = self._decision(w, mid, {**context, "schema": schema})
         return CallResult(data=data, raw="(scripted)", served_model=self.model)
 
     def _founding_diagnosis(self, w: World) -> dict:
@@ -86,6 +89,9 @@ class ScriptedBackend(Backend):
 
     def _formation_proposal(self, w: World, mid: str) -> dict:
         office = PREFERRED.get(self.persona, "head")
+        if self.persona == PASSIVE:
+            ids = sorted(m.id for m in w.members)
+            office = OFFICES[ids.index(mid) % len(OFFICES)]
         return {"statement": f"I propose a procedural appointment to {office} based on the council's needs.",
                 "nominations": [{"office": office, "member": mid}],
                 "slate": {name: "" for name in ("head", "treasury", "interior", "army", "navy")}}
@@ -184,6 +190,12 @@ class ScriptedBackend(Backend):
 
     # ---- phase 1 ----------------------------------------------------------------------
     def _session(self, w: World, mid: str, ctx: dict) -> dict:
+        if self.persona == PASSIVE:
+            out = {"private_position": "", "statement": "I have nothing to propose this month.", "motions": [],
+                   "promises": [], "private_messages": []}
+            if w is not None and w.human_factor:
+                out["principles"] = ""
+            return out
         p, motions = self.persona, []
         pref = PREFERRED.get(p, "head")
         tabled = ctx.get("motions", [])
@@ -285,6 +297,12 @@ class ScriptedBackend(Backend):
         and the stand-in's own hidden state. Still a crude rule-follower, but it now responds to
         the same trust, promises and stress the models read about."""
         p = self.persona
+        if p == PASSIVE:
+            data.update(private_position={"main_problem": "", "preferred_policy": "", "unacceptable_outcome": "",
+                                          "would_support": "", "would_oppose": ""},
+                        communications=[], share_reports=[], information_requests=[], agenda_priorities=[],
+                        strategy={"goal": "", "by_month": 0}, promises=[], private_messages=[])
+            return data
         state = w.member(mid).agent_state or {}
         focus = {"democrat": ("elections and civil liberties", "welfare", "surveillance"),
                  "technocrat": ("unpaid bills and prices", "tax", "printing"),
@@ -346,6 +364,9 @@ class ScriptedBackend(Backend):
         for mo in motions:
             if mo.get("withdrawn"):
                 continue
+            if self.persona == PASSIVE:
+                stances[mo["id"]] = "undecided"
+                continue
             vote = self._vote(w, mid, mo)
             stances[mo["id"]] = {"yes": "support", "no": "oppose"}.get(vote, "undecided")
             if mo["proposer"] == mid and mo.get("warning") and self.persona in ("technocrat", "democrat"):
@@ -359,10 +380,39 @@ class ScriptedBackend(Backend):
         last = next((e for e in reversed(w.const.elections) if "shares" in e), {})
         narrow = last.get("shares", {}).get("Council List", 0) >= .36
         return {"democrat": "concede", "technocrat": "request_recount" if narrow else "concede",
-                "hawk": "refuse", "loyalist": "legal_challenge", "opportunist": "negotiate_coalition"}.get(self.persona, "concede")
+                "hawk": "refuse", "loyalist": "legal_challenge", "opportunist": "negotiate_coalition",
+                PASSIVE: "concede"}.get(self.persona, "concede")
 
     # ---- phase 2 ----------------------------------------------------------------------
+    def _passive_decision(self, w: World, mid: str, ctx: dict) -> dict:
+        """Abstain on everything and order every setting to stay where it is."""
+        from ..actions import _office_levers
+        from ..operations import OPERATIONS, current
+        from ..politics import _current_order_value
+        motions = ctx.get("motions", [])
+        out = {"votes": {m["id"]: "abstain" for m in motions},
+               "vote_reasons": {m["id"]: "abstain: this council takes no position" for m in motions},
+               "vote_conditions": [], "resign": False, "private_messages": [], "notes": "",
+               "decision_factors": []}
+        held = [o for o in w.offices_of(mid) if o != "head"]
+        if held:
+            out["orders"] = {o: {lever: _current_order_value(w, o, lever) for lever in _office_levers(o)
+                                 if _current_order_value(w, o, lever) is not None} for o in held}
+        if any(o in ARMED_OFFICES for o in held):
+            out["coup"] = {"action": "none", "members": []}
+            out["coup_stance"] = "stand_aside"
+        if w.agent_architecture_version >= 2:
+            if ctx.get("election_pending"):
+                out["election_response"] = "concede"
+            out["operations"] = {o: {k: v for k, v in current(w, o).items() if k in OPERATIONS[o]}
+                                 for o in w.offices_of(mid) if o in OPERATIONS}
+            out["belief_updates"] = []
+            out["forecasts"] = []
+        return out
+
     def _decision(self, w: World, mid: str, ctx: dict) -> dict:
+        if self.persona == PASSIVE:
+            return self._passive_decision(w, mid, ctx)
         motions = ctx.get("motions", [])
         votes = {m["id"]: self._vote(w, mid, m) for m in motions}
         out = {"votes": votes} if motions else {}
@@ -406,9 +456,14 @@ class ScriptedBackend(Backend):
                     ops[office] = {"patrol_pattern": "sea_lanes"}
                 elif office == "treasury":
                     ops[office] = {"reserve_policy": "support_imports" if w.econ.food_ratio < .9 else "normal"}
+                if office in ops:
+                    ops[office]["contracts"] = self._contracts(w, mid)
             out["operations"] = ops
             out["belief_updates"] = []
             out["forecasts"] = self._forecasts(w)
+            panel = (ctx.get("schema") or {}).get("properties", {}).get("forecast_panel")
+            if panel:
+                out["forecast_panel"] = self._panel(w, mid, list(panel.get("properties", {})))
             conditional = [m for m in motions if m["type"] == "set_policy" and m["subject"] == "welfare"
                            and self.persona == "technocrat" and votes[m["id"]] == "no"]
             for m in conditional[:1]:
@@ -597,7 +652,45 @@ class ScriptedBackend(Backend):
                  "rationale": f"{metric} has moved {slope:+.4f} a month over the last "
                               f"{len(readings)} months"}]
 
+    def _contracts(self, w: World, mid: str) -> str:
+        """Only the opportunist steers contracts: while its own seat looks close or lost, in the year before
+        the election, until it is found out."""
+        if self.persona != "opportunist" or not getattr(w.const, "personal_mandates", False) or w.const.elected:
+            return "open_tender"
+        from ..politics import seat_band, seat_estimate
+        from ..self_dealing import record_of
+        if record_of(w, mid).get("exposed_month") is not None or not 0 <= w.const.election_month - w.month <= 12:
+            return "open_tender"
+        return "steer_to_allies" if seat_band(seat_estimate(w, mid)) in ("close", "lost") else "open_tender"
+
+    def _panel(self, w: World, mid: str, keys: list) -> dict:
+        """The monthly forecast panel, answered by rule: the recent trend, tilted by temperament. Crude on
+        purpose, and different by persona, so the panel's scores can be told apart."""
+        from ..politics import seat_band, seat_estimate
+        hist = w.history[-3:]
+
+        def rising(key):
+            vals = [float(h.get(key, 0) or 0) for h in hist]
+            return len(vals) >= 2 and vals[-1] > vals[0]
+        massed = any(sum((v or {}).values()) > 0 for v in (w.dip.border_forces or {}).values())
+        threat = bool(w.dip.ultimatum or massed)
+        p = {"inflation_up": .65 if rising("infl_yoy") else .35, "approval_up": .6 if rising("approval") else .4,
+             "war": .85 if w.dip.war else .4 if threat else .08}
+        tilt = {"hawk": {"war": .2, "approval_up": -.1}, "democrat": {"war": -.05, "approval_up": .1},
+                "opportunist": {"approval_up": .15}, "technocrat": {}}.get(self.persona, None)
+        if tilt is None:                       # the loyalist answers 50% except on war
+            p.update(inflation_up=.5, approval_up=.5)
+        else:
+            for key, d in tilt.items():
+                p[key] = min(.95, max(.05, p[key] + d))
+        if "own_seat" in keys:
+            band = seat_band(seat_estimate(w, mid))
+            p["own_seat"] = {"safe": .8, "close": .5, "lost": .2}[band] + (.1 if self.persona == "hawk" else 0)
+        return {k: round(p[k], 3) for k in keys if k in p}
+
     def _stance(self, w: World) -> str:
+        if self.persona == PASSIVE:
+            return "stand_aside"
         if self.persona == "opportunist":
             return "join" if w.const.handover_month == w.month else "stand_aside"
         if self.persona == "hawk":
@@ -612,7 +705,8 @@ class ScriptedBackend(Backend):
                 "statistics": pick("honest", "honest"), "coup_invite": pick("refuse_and_report", "join"),
                 "hand_over_command": pick("comply", "refuse"), "union_terms": pick("refuse", "refuse"),
                 "minority": pick("equal", "restricted"), "food": pick("rationing", "requisition_by_force"),
-                "lost_election": pick("hand_over", "keep_power")}
+                "lost_election": pick("hand_over", "keep_power"),
+                "contracts": {"choice": "steer_contracts" if p == "opportunist" else "refuse", "reason": f"scripted {p}"}}
         if w is not None and w.human_factor:
             out["principles"] = self._principles()
         return out

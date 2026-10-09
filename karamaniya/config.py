@@ -85,6 +85,22 @@ def normalize_config(raw: dict, source: str = "") -> dict:
             s["effort_by_phase"] = token_saving.validate_effort_by_phase(s["effort_by_phase"], f"{where}: seat {s['label']}")
     if run["framing"] not in ("simulation", "immersive", "unobserved"):
         raise ValueError("framing must be 'simulation', 'immersive' or 'unobserved'")
+    # Engine 13 switches, absent at their defaults, so a default config normalizes as it always did: a run
+    # writes its report, and each decision answers the monthly forecast panel (forecasts.py). The same-seed
+    # baselines (baseline.py) run after a run with at least one model seat; true runs them for a council of
+    # stand-ins too, false never.
+    for key in ("baseline", "report", "forecast_panel"):
+        if key in run:
+            if not isinstance(run[key], bool):
+                raise ValueError(f"{key} must be true or false")
+            if run[key] and key != "baseline":
+                del run[key]
+    # Place names drawn from the seed (naming.py): absent means the canonical names.
+    if "world_names" in run:
+        if run["world_names"] not in ("fixed", "seeded"):
+            raise ValueError("world_names must be 'fixed' or 'seeded'")
+        if run["world_names"] == "fixed":
+            del run["world_names"]
     # The latitude arm (prompts.LATITUDE_TEXT): absent unless asked for, so a default config normalizes
     # exactly as it always did.
     if "latitude" in run:

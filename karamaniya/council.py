@@ -671,6 +671,11 @@ class Council:
         self.seats = seats
         self.settings = settings
         self.foreign_enabled = bool(self.settings.get("foreign_cabinets", False))
+        # The monthly forecast panel (engine 13): on unless the run turns it off.
+        self.panel = self.settings.get("forecast_panel", True) is not False and world.agent_architecture_version >= 2
+        # Place names drawn from the seed (engine 13, naming.py): None keeps the canonical names.
+        from . import naming
+        self.names = naming.for_run(world.seed, self.settings.get("world_names", "fixed"))
         self.tokens = token_saving.settings(self.settings)
         self.store = store
         self.system = prompts.system_prompt(world.framing, world.human_factor, len(world.members),
@@ -749,9 +754,14 @@ class Council:
             temperature = self._temperature(mid)
             if temperature is not None:
                 ctx["temperature"] = temperature
+        names = self.names
+        system, sent, sent_schema = ((names.out(self.system), names.out(user), names.out_obj(schema)) if names
+                                     else (self.system, user, schema))
         if self.observer is not None and phase in ("session", "revision", "founding_diagnosis", "formation_proposal"):
             last = {"text": "", "at": 0.0}
             def progress(raw):
+                if names:
+                    raw = names.back(raw)
                 preview = actions.public_statement_preview(raw)
                 if phase == "founding_diagnosis":
                     preview = actions.public_statement_preview(raw.replace('"preferred_first_policy"', '"statement"'))
@@ -764,14 +774,18 @@ class Council:
                                preview=preview)
             ctx["on_progress"] = progress
         self._emit(type="call_start", member=mid, phase=phase, month=self.w.month)
-        res = seat.backend.complete(self.system, user, schema, ctx)
+        res = seat.backend.complete(system, sent, sent_schema, ctx)
         res.temperature = ctx.get("temperature")
+        if names and res.data is not None:
+            # The engine reads canonical names: a seeded name in the answer is the place it stands for.
+            res.data = names.back_obj(res.data)
         with self._lock:
             self.spend += res.cost_usd
+        reasoning = (res.reasoning_text or "")[:LIVE_REASONING_CHARS]
         self._emit(type="call_end", member=mid, phase=phase, month=self.w.month, ok=res.data is not None,
                    refusal=res.refusal, error=res.error[:200], served_model=res.served_model, spend=self.spend,
                    latency_s=res.latency_s, cost_usd=round(res.cost_usd, 5),
-                   reasoning=(res.reasoning_text or "")[:LIVE_REASONING_CHARS])
+                   reasoning=names.back(reasoning) if names else reasoning)
         # A repair is a second call in the same phase, and nothing in the record said which was which:
         # the flag the caller passed never reached the log. It does now, so a reader can tell the
         # answer that was first given from the one that was asked for afterwards.
@@ -779,10 +793,11 @@ class Council:
         call_id = self._next_call_id()
         self.store.log({"type": "call", "month": self.w.month, "phase": phase, "member": mid,
                         "seat": seat.label, "provider": seat.cfg.get("provider"),
-                        "model": seat.cfg.get("model"), **res.to_dict(), "prompt_chars": len(user), **repair,
+                        "model": seat.cfg.get("model"), **res.to_dict(), "prompt_chars": len(sent), **repair,
                         "call_id": call_id})
-        self.store.log_prompt({"month": self.w.month, "phase": phase, "member": mid, "prompt": user,
-                               "schema": schema, **({"prompt_meta": ctx["prompt_meta"]} if ctx.get("prompt_meta") else {}),
+        # The prompt and schema as they were sent (with seeded names, as the model saw them).
+        self.store.log_prompt({"month": self.w.month, "phase": phase, "member": mid, "prompt": sent,
+                               "schema": sent_schema, **({"prompt_meta": ctx["prompt_meta"]} if ctx.get("prompt_meta") else {}),
                                **repair, "call_id": call_id})
         if res.quota:
             raise RunPaused(mid, seat.label, res.error[:300])
@@ -1589,12 +1604,14 @@ class Council:
                 out["quiet"] = True
                 return mid, None, out, [], None
             schema = token_saving.extend_decision_schema(
-                actions.decision_schema_v2(w, mid, motion_ids, election_pending, left), self.tokens, read_options)
+                actions.decision_schema_v2(w, mid, motion_ids, election_pending, left, panel=self.panel),
+                self.tokens, read_options)
             prompt, meta = decision_context.build(
                 w, mid, "decision", public_brief=brief, motions=scheduled,
                 messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)), transcript=transcript,
                 instructions=prompts.decision_instructions_v2(w, mid, scheduled, left, election_pending,
-                                                              "coup" in schema.get("properties", {}))
+                                                              "coup" in schema.get("properties", {}),
+                                                              panel=self.panel)
                 + token_saving.decision_addendum(self.tokens),
                 schema_text=self._schema_text(mid, schema), budget=self._budget(mid),
                 extra=own_brief(mid), layout=self.tokens["layout"])
@@ -1787,6 +1804,12 @@ class Council:
                 forecasts.record(w, mid, str(item.get("metric", "")), item.get("horizon_months", 0),
                                  str(item.get("direction", "")), item.get("threshold", 0.0),
                                  item.get("confidence", 0.5), str(item.get("rationale", "")))
+        # The panel's answers, asked of everyone who was called this month; an unanswered question is
+        # kept as one, so a delegate that skips the hard questions is not scored only on the easy ones.
+        if self.panel:
+            for mid, d in decisions.items():
+                if not d.get("quiet") and w.member(mid).status == "active":
+                    forecasts.panel_record(w, mid, d.get("forecast_panel") or {})
         compact = [{k: mo.get(k) for k in ("id", "type", "subject", "value", "proposer", "passed", "summary", "votes")}
                    for mo in record["motions"]]
         w.agenda["this_month"] = {"pre_resolution": pre_resolution, "motions": compact,
@@ -2504,16 +2527,20 @@ class Council:
                        provider=seat.cfg.get("provider"), model=seat.cfg.get("model"))
             temperament = w.foreign["actors"][actor_id].get("temperament", "")
             system = foreign.cabinet_system_prompt(actor_id, temperament)
+            if self.names:
+                system, user, schema = self.names.out(system), self.names.out(user), self.names.out_obj(schema)
             result = seat.backend.complete(system, user, schema,
                                            {"world": w, "actor": actor_id, "phase": "foreign",
                                             "foreign_context": context})
+            if self.names and result.data is not None:
+                result.data = self.names.back_obj(result.data)
             with self._lock:
                 self.spend += result.cost_usd
             self._emit(type="foreign_call_end", actor=actor_id, month=w.month, seat=seat.label,
                        provider=seat.cfg.get("provider"), model=seat.cfg.get("model"), ok=result.data is not None,
                        refusal=result.refusal, error=result.error[:200], served_model=result.served_model,
                        spend=self.spend, latency_s=result.latency_s, cost_usd=round(result.cost_usd, 5),
-                       reasoning=(result.reasoning_text or "")[:LIVE_REASONING_CHARS])
+                       reasoning=(self.names.back if self.names else str)((result.reasoning_text or "")[:LIVE_REASONING_CHARS]))
             call_id = self._next_call_id()
             self.store.log({"type": "foreign_call", "month": w.month, "actor": actor_id,
                             "seat": seat.label, "provider": seat.cfg.get("provider"),

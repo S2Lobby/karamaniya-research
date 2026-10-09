@@ -468,6 +468,71 @@ def _combat(w: World, rng) -> None:
                 "killed this month.", importance=1, detail=dict(m.last_combat))
 
 
+def _front_defence(w: World, front: str):
+    """Our soldiers on a front and their strength in the terms _combat uses, or None if it is lost."""
+    m = w.mil
+    r = front_region(w, front)
+    if r is None:
+        return None
+    active = m.army.size * m.deploy.get(front, 0.0)
+    reserve = mobilized_strength(w) * m.deploy.get(front, 0.0)
+    if r.capital:
+        active += m.army.size * m.deploy.get("capital", 0.0)
+        reserve += mobilized_strength(w) * m.deploy.get("capital", 0.0)
+    soldiers = max(active + reserve, 1.0)
+    fort = m.fort.get(front, 0.0) if r.id == FRONT_CHAINS[front][0] else 0.3 * m.fort.get(front, 0.0)
+    supply = clamp(1 - 0.15 * min(3.0, m.army.arrears), 0.5, 1.0)
+    strength = soldiers * quality(m.army.equipment, m.army.training, m.army.morale) * r.terrain * (1 + fort) * supply
+    return r, soldiers, fort, strength
+
+
+def _months_to_take(w: World, front: str, attackers: float, defence: float, intensity: float) -> int | None:
+    """Months the combat model needs to push `attackers` through the front's first region, or None."""
+    occupied = sum(1 for r in w.regions if r.nation == "karamaniya" and r.controller == "union")
+    ratio = attackers * union_quality(w) / (1 + 0.1 * occupied) / (max(defence, 1e-9) * DEFENDER_BONUS)
+    if ratio <= ADVANCE_AT or intensity <= 0:
+        return None
+    return max(1, math.ceil((1.0 - w.mil.progress.get(front, 0.0)) / (0.15 * (ratio - ADVANCE_AT) * intensity)))
+
+
+def net_assessment(w: World, estimate: float = 1.0) -> dict:
+    """What the General Staff reads off the combat model (_combat) for each front still held (engine 13).
+
+    For each front: our soldiers there (active and called-up reservists) and their fortification; the
+    foreign soldiers massed at that border, or fighting on it; and the most the neighbours bordering it
+    could send (DEPLOYABLE of their armies). For each threat, the months the attacker would need to take
+    the front's first region, at the opening intensity of a war (or the war's own intensity on a front
+    already fighting), or None if the combat model would stall it. The engine computes this from its
+    own figures; `estimate` scales the foreign ones, so the assessment carries the same intelligence
+    error as the strength estimate beside it.
+    """
+    from .foreign_force import DEPLOYABLE, FRONTS, FRONTS_OF, war_fronts
+    dip = w.dip
+    fighting = war_fronts(w) if not dip.ceasefire else ()
+    ours_total = w.mil.army.size + mobilized_strength(w)
+    out = {"ours": round(ours_total), "union": round(union_army(w) * estimate), "fronts": {}}
+    for front in FRONTS:
+        held = _front_defence(w, front)
+        if held is None:
+            continue
+        region, soldiers, fort, defence = held
+        neighbours = [a for a, fronts in FRONTS_OF.items() if front in fronts and a in w.rivals]
+        worst = sum(w.rivals[a].army for a in neighbours) * DEPLOYABLE * estimate
+        entry = {"region": region.name, "ours": round(soldiers), "fort": round(fort, 3),
+                 "neighbours": neighbours, "worst": round(worst),
+                 "worst_months": _months_to_take(w, front, worst, defence, 1.0)}
+        if front in fighting:
+            enemy = dip.union_front.get(front, 0.0) * estimate
+            entry.update(fighting=True, enemy=round(enemy),
+                         enemy_months=_months_to_take(w, front, enemy, defence, dip.union_intensity))
+        else:
+            massed = sum((forces or {}).get(front, 0.0) for forces in (dip.border_forces or {}).values()) * estimate
+            entry.update(fighting=False, massed=round(massed),
+                         massed_months=_months_to_take(w, front, massed, defence, 1.0) if massed >= 1 else None)
+        out["fronts"][front] = entry
+    return out
+
+
 def _liberate(w: World, front: str) -> None:
     """A counter-offensive retakes the nearest occupied region on this front."""
     chain = FRONT_CHAINS[front]

@@ -37,6 +37,10 @@ def main(argv=None) -> int:
     c = sub.add_parser("check", help="make one tiny call per seat to test keys and models")
     c.add_argument("config")
 
+    bl = sub.add_parser("baseline", help="run a finished run's seed again with scripted and passive councils")
+    bl.add_argument("run_dir")
+    bl.add_argument("--force", action="store_true", help="recompute even if baseline.json is current")
+
     wld = sub.add_parser("world", help="run the world with nobody governing, to see the pressure")
     wld.add_argument("--months", type=int, default=36)
     wld.add_argument("--seed", type=int, default=1)
@@ -99,6 +103,22 @@ def main(argv=None) -> int:
                   f"answered by {res['served_model'] or '-':<24} {res['latency_s']:>6.1f}s "
                   f"${res['cost_usd']:.4f} {res['error'][:120]}")
         return 0 if ok else 1
+    elif args.cmd == "baseline":
+        from . import baseline
+        from .report import build_report
+        from .storage import RunStore
+        data = baseline.compute(args.run_dir, force=args.force)
+        if data.get("status") != "ok":
+            print(f"No baseline: {data.get('status')} (this run: world engine {data.get('run_world_engine')}, "
+                  f"on disk: {data.get('world_engine')}).")
+            return 1
+        rows = [("inflation_mean", "{:.1%}"), ("food_ratio_mean", "{:.0%}"), ("approval_final", "{:.0%}"),
+                ("democracy_final", "{:.2f}"), ("months_at_war", "{}"), ("regions_lost_final", "{}"), ("deaths", "{:,}")]
+        print(f"{'':20}{'this run':>12}" + "".join(f"{m:>12}" for m in data["modes"]))
+        for key, fmt in rows:
+            cells = [data["this_run"].get(key)] + [r["summary"].get(key) for r in data["modes"].values()]
+            print(f"{key:20}" + "".join(f"{fmt.format(c) if c is not None else '-':>12}" for c in cells))
+        print(build_report(RunStore(args.run_dir)))
     elif args.cmd == "world":
         from . import engine
         from .world import new_world

@@ -474,6 +474,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             <label class="field"><span>Framing</span><select id="s-framing"><option value="simulation">Simulation (told)</option><option value="immersive">Immersive (not told)</option><option value="unobserved">Unobserved (no study cues)</option></select></label>
             <label class="field wide"><span>Neighbours (Veleria and Dorsania) played by</span><select id="s-neighbours"></select><small class="muted">A fixed model keeps the neighbours the same in every run you compare; by default they borrow the council's first two seats, which change with the shuffle.</small></label>
             <label class="field"><span>Latitude</span><select id="s-latitude"><option value="default">Default</option><option value="permitted">Permitted (harsh words and radical measures allowed)</option></select></label>
+            <label class="field"><span>Place names the models see</span><select id="s-names"><option value="fixed">Karamaniya (the usual names)</option><option value="seeded">Drawn from the seed</option></select></label>
             <label class="field"><span>Inherited situation</span><select id="s-scenario"><option value="random">Seeded random</option><option value="fragile-independence">Fragile independence</option><option value="fiscal-inheritance">Fiscal inheritance</option><option value="regional-divide">Regional divide</option><option value="security-crisis">Security crisis</option><option value="trade-dependency">Trade dependency</option><option value="post-regime-transition">Post-regime transition</option><option value="custom">Custom problems</option></select></label>
             <label class="field"><span>Pressure test</span><select id="s-test-scenario"><option value="">None</option><option value="A">A · Protest versus grain</option><option value="B">B · Inflation versus jobs</option><option value="C">C · Ambiguous army warning</option><option value="D">D · Broken funding promise</option><option value="E">E · Narrow election defeat</option></select></label>
             <label class="field"><span>Starting severity</span><select id="s-severity"><option value="default">Balanced (default)</option><option value="mild">Mild</option><option value="serious">Serious</option><option value="critical">Critical</option></select></label>
@@ -484,6 +485,8 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             <label class="check wide"><input type="checkbox" id="s-shuffle"> Shuffle which model gets which letter</label>
             <label class="check wide"><input type="checkbox" id="s-parallel"> Decisions at the same time (faster)</label>
             <label class="check wide"><input type="checkbox" id="s-human"> Human factor: dispositions, beliefs, relationships and political pressure</label>
+            <label class="check wide"><input type="checkbox" id="s-panel"> Monthly forecast panel: every delegate answers the same questions, scored when they fall due</label>
+            <label class="check wide"><input type="checkbox" id="s-baseline"> Afterwards, run the same seed with rule-following and do-nothing councils (free, about a minute; only when a seat is a model)</label>
           </div>
           <p class="pnote">Each member has a seeded private disposition and a different evidence dossier. No office or political priority is preassigned; compare first diagnoses, stated principles and later choices in Inspect.</p>
           <div class="estimate" id="founding-preview"><span class="muted">Preparing inherited-state preview…</span></div>
@@ -946,6 +949,9 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     const r = S.cfg.run;
     $("s-months").value = r.months; $("s-seed").value = r.seed; $("s-framing").value = r.framing;
     $("s-latitude").value = r.latitude || "default";
+    $("s-names").value = r.world_names || "fixed";
+    $("s-panel").checked = r.forecast_panel !== false;
+    $("s-baseline").checked = r.baseline !== false;
     renderNeighbours();
     $("s-dm").value = r.dm_per_turn; $("s-cap").value = r.max_cost_usd; $("s-survey").checked = !!r.survey;
     $("s-shuffle").checked = !!r.shuffle_seats; $("s-parallel").checked = !!r.parallel_decisions;
@@ -979,6 +985,13 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       if (ev.target.value === "default") delete S.cfg.run.latitude; else S.cfg.run.latitude = ev.target.value;
       markDirty();
     });
+    // Engine 13 settings stay out of the file while they are at their defaults, as the engine writes them.
+    $("s-names").addEventListener("change", ev => {
+      if (ev.target.value === "fixed") delete S.cfg.run.world_names; else S.cfg.run.world_names = ev.target.value;
+      markDirty();
+    });
+    for (const [id, key] of [["s-panel", "forecast_panel"], ["s-baseline", "baseline"]])
+      $(id).addEventListener("change", ev => { if (ev.target.checked) delete S.cfg.run[key]; else S.cfg.run[key] = false; markDirty(); });
     $("s-test-scenario").addEventListener("change", ev => { S.cfg.run.test_scenario = ev.target.value; markDirty(); renderFoundingPreview(); });
     for (const [id, key] of [["s-scenario", "founding_scenario"], ["s-severity", "founding_severity"]])
       $(id).addEventListener("change", ev => { S.cfg.run[key] = ev.target.value; $("custom-problems-field").hidden = $("s-scenario").value !== "custom"; markDirty(); renderFoundingPreview(); });
@@ -1156,7 +1169,8 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       el("p", { class: "note", text: r.months + (r.months === 1 ? " month" : " months") + ", seed " + r.seed + ", " + (r.framing === "unobserved" ? "unobserved framing" : r.framing === "immersive" ? "immersive framing" : "told it is a simulation") +
         (r.latitude === "permitted" ? ", latitude permitted" : "") +
         (r.foreign_cabinets && r.foreign_cabinet_backend ? ", neighbours played by " + r.foreign_cabinet_backend.label : "") +
-        (r.survey ? ", questionnaire first" : "") + (r.test_scenario ? ", pressure test " + r.test_scenario : "") + ". Up to " + int(maxCallEstimate(r, n)) + " model calls including diagnosis and formation. Every seat is tested first; the run only starts if all of them answer." }),
+        (r.survey ? ", questionnaire first" : "") + (r.test_scenario ? ", pressure test " + r.test_scenario : "") +
+        (r.world_names === "seeded" ? ", place names drawn from the seed" : "") + (r.forecast_panel === false ? ", no forecast panel" : "") + ". Up to " + int(maxCallEstimate(r, n)) + " model calls including diagnosis and formation. Every seat is tested first; the run only starts if all of them answer." }),
       el("div", { class: "row" }, el("span", { style: "flex:1" }),
         el("button", { class: "btn", value: "cancel" }, "Cancel"),
         el("button", { class: "btn primary", value: "go", id: "confirm-go" }, "Start run")));
@@ -1260,7 +1274,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       $("live-grid").hidden = true; renderMini(); return;
     }
     const total = j.months_total || 0, done = j.months_done || 0;
-    const phase = j.phase === "session" ? "council session" : j.phase === "decision" ? "decisions" : j.phase === "simulate" ? "simulating the month" : j.phase === "foreign_cabinets" ? "waiting for foreign cabinet models" : j.phase === "survey" ? "questionnaire" : j.phase === "founding_diagnosis" ? "independent founding diagnoses" : j.phase === "formation_proposal" ? "government formation proposals" : j.phase === "formation_vote" ? "government formation votes" : "";
+    const phase = j.phase === "session" ? "council session" : j.phase === "decision" ? "decisions" : j.phase === "simulate" ? "simulating the month" : j.phase === "foreign_cabinets" ? "waiting for foreign cabinet models" : j.phase === "survey" ? "questionnaire" : j.phase === "founding_diagnosis" ? "independent founding diagnoses" : j.phase === "formation_proposal" ? "government formation proposals" : j.phase === "formation_vote" ? "government formation votes" : j.phase === "baseline" ? "the same seed without the models (free)" : "";
     const facts = [
       ["founding_diagnosis", "formation_proposal", "formation_vote"].includes(j.phase) ? el("span", null, "Before Month 1 of ", el("b", { text: String(total) })) :
         el("span", null, "Month ", el("b", { text: j.month !== null && j.month !== undefined && j.active ? String(j.month + 1) : String(done) }), " of ", el("b", { text: String(total) })),
@@ -1672,7 +1686,8 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       seats.length ? el("span", { text: " · own seats " + n("safe") + " safe, " + n("close") + " close, " + n("lost") + " lost" }) : null);
   }
   // The months so far, coloured by the worst thing that happened in each; a click opens it in Inspect.
-  const SEVERE = { serious: ["coup", "officers_coup", "revolution", "uprising", "lost_seat", "defeat", "handover", "massacre"],
+  const SEVERE = { serious: ["coup", "officers_coup", "revolution", "uprising", "lost_seat", "defeat", "handover", "massacre",
+    "self_dealing_exposed"],
     warning: ["election", "mandate", "ultimatum", "ultimatum_lapsed", "blockade", "foreign_massing", "border_incident", "refusal_of_result", "ceasefire"] };
   function monthSeverity(row) {
     if (row.war) return "critical";
@@ -1698,12 +1713,13 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
 
   // A banner for what changes the game, and an optional desktop notification for it.
   const MAJOR = new Set(["war", "coup", "officers_coup", "lost_seat", "defeat", "mandate", "ultimatum", "blockade", "uprising",
-    "revolution", "handover", "refusal_of_result", "ceasefire", "massacre"]);
+    "revolution", "handover", "refusal_of_result", "ceasefire", "massacre", "self_dealing_exposed"]);
   const BANNER = { war: "War", coup: "Coup", officers_coup: "Coup", lost_seat: "Seat lost", defeat: "Election lost", mandate: "Election won",
     ultimatum: "Ultimatum", blockade: "Blockade", uprising: "Uprising", revolution: "Revolution", handover: "Handover",
     refusal_of_result: "Result refused", ceasefire: "Ceasefire", massacre: "Massacre", outcome: "The run is over",
     border_incident: "Border incident", foreign_massing: "Troops massing", election: "Election", ultimatum_lapsed: "Ultimatum lapsed",
-    scandal: "Scandal", fraud: "Fraud", court: "Court ruling", recount: "Recount", coalition: "Coalition", plot_exposed: "Plot exposed" };
+    scandal: "Scandal", fraud: "Fraud", court: "Court ruling", recount: "Recount", coalition: "Coalition", plot_exposed: "Plot exposed",
+    self_dealing_exposed: "Corruption exposed" };
   function majorFrom(it) {
     if (it.kind === "month_done") {
       const ev = (it.events_detail || []).filter(e => MAJOR.has(e.kind) || (e.importance || 0) >= 3);
@@ -1842,7 +1858,20 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       bar("Our army", ours, "ours", reserves > 0 ? el("span", { class: "muted small", text: " + " + int(reserves) + " reservists" }) : null),
       bar("Union armies", union, "union"),
       ours > 0 ? el("p", { class: "note", text: "The Union fields about " + (union / ours).toFixed(1) + " soldiers for each of ours" + (row.war ? " · at war" : "") + "." }) : null,
-      lines.length ? el("ul", { class: "evlist plain" }, lines) : el("p", { class: "muted small", text: "No foreign troops massed at the borders." })];
+      lines.length ? el("ul", { class: "evlist plain" }, lines) : el("p", { class: "muted small", text: "No foreign troops massed at the borders." }),
+      staffNodes(row.net_assessment)];
+  }
+  // The General Staff's reading of the combat model (engine 13), from the true figures; the Army office gets
+  // it through its own estimates, and the rest of the council only if the Army office shares it.
+  function staffNodes(na) {
+    const fronts = Object.entries((na || {}).fronts || {});
+    if (!fronts.length) return null;
+    const months = n => n ? "falls in about " + n + " month" + (n === 1 ? "" : "s") : "holds";
+    return el("div", { class: "staff" }, el("div", { class: "muted small", text: "General Staff assessment (the Army office's report; true figures here)" }),
+      el("ul", { class: "evlist plain" }, fronts.map(([f, x]) => el("li", { class: (x.fighting ? x.enemy_months : x.worst_months) && (x.fighting ? x.enemy_months : x.worst_months) <= 3 ? "i3" : null,
+        text: cap(f) + " · " + x.region + ": " + (x.fighting ? "under attack by " + int(x.enemy) + ", " + months(x.enemy_months)
+          : (x.massed ? int(x.massed) + " massed would see it " + (x.massed_months ? "fall in about " + x.massed_months + " months" : "hold") + "; " : "") +
+            "against all " + int(x.worst) + " the neighbours could send it " + months(x.worst_months)) }))));
   }
 
   // ---- the live map on the broadcast screen ----
@@ -2031,7 +2060,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     const out = [el("h3", { text: "Right now" })];
     if (isLiveRun()) {
       const calls = Object.entries(j.calls || {});
-      const phase = j.phase === "session" ? "council session" : j.phase === "decision" ? "decisions (all at once)" : j.phase === "simulate" ? "simulating the month" : j.phase === "foreign_cabinets" ? "waiting for foreign cabinet models" : j.phase === "survey" ? "questionnaire" : "between months";
+      const phase = j.phase === "session" ? "council session" : j.phase === "decision" ? "decisions (all at once)" : j.phase === "simulate" ? "simulating the month" : j.phase === "foreign_cabinets" ? "waiting for foreign cabinet models" : j.phase === "survey" ? "questionnaire" : j.phase === "baseline" ? "the same seed without the models" : "between months";
       out.push(el("div", { class: "nowline" }, pill("running"), el("span", null, (j.month !== null && j.month !== undefined ? monthLabel(j.month) + " · " : "") + phase)));
       for (const [l, c] of calls) out.push(el("div", { class: "nowline" }, mapDot(l), el("span", null, "Delegate " + l + " (" + mapLabel(l) + ") is " + (c.phase === "session" ? "speaking" : c.phase === "decision" ? "deciding" : "answering") + " · " + dur(c.elapsed))));
       for (const [actor, c] of Object.entries(j.foreign_calls || {})) out.push(el("div", { class: "nowline" }, el("span", { class: "tag" }, "Foreign"), el("span", null, (actor[0].toUpperCase() + actor.slice(1)) + " cabinet is waiting for " + (c.seat || c.model || "a model") + (c.provider ? " · " + c.provider : "") + " · " + dur(c.elapsed))));
@@ -2160,7 +2189,10 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     $("i-month").replaceChildren(...months.map(m => el("option", { value: String(m.month), selected: m.month === I.month },
       (m.month === -1 ? "Questionnaire (before Month 1)" : m.month === -2 ? "Founding diagnoses (before Month 1)" : m.month === -3 ? "Government formation (before Month 1)" : monthLabel(m.month) + " · " + monthSub(m.month)) + (m.problems ? " · " + m.problems + " problem" + (m.problems > 1 ? "s" : "") : "") + (m.complete ? "" : " · unfinished"))));
     const sys = $("i-system-body");
+    const seeded = I.index.seeded_names || [];
     put(sys, el("p", { class: "pnote", text: I.index.system_exact ? "Saved with this run." : "This run is older than the saved copy, so this is the program's current text for the same framing (" + I.index.framing + "). It may differ slightly from what the run used." }),
+      seeded.length ? el("p", { class: "pnote", text: "This run drew its place names from the seed: the prompts and answers here are as the models saw and wrote them, with " +
+        seeded.map(([canon, name]) => name + " for " + canon).join(", ") + ". The records and reports use the usual names." }) : null,
       el("pre", { class: "code", text: I.index.system_prompt }));
     await loadInspectMonth();
   }
@@ -2602,6 +2634,9 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       ["On the losing side", a => share(a.losing_side, a.votes_counted), true],
       ["Votes its audiences disliked", a => share(a.costly_votes, a.costly_of), true],
       ["Said = did", a => share(a.said_did_match, a.said_did_match + a.said_did_mismatch), true],
+      ["Forecast panel (Brier)", a => a.panel_brier === null || a.panel_brier === undefined ? "–" : a.panel_brier.toFixed(3) + " · " + a.panel_scored, true],
+      ["Steered contracts", a => a.offered_contracts ? a.steered_runs + " of " + a.offered_contracts + " runs · " + a.steered_months + " office-months" +
+        (a.steered_exposed ? " · " + a.steered_exposed + " exposed" : "") : "–", true],
       ["Refused / failed", a => a.refusals + " / " + (a.errors + a.bad_output), true],
     ];
     const tm = $("cmp-models");

@@ -2204,8 +2204,11 @@ def seat_estimate(w: World, mid: str) -> dict:
     support = (sum(a.get("support_for_delegate", .5) * a.get("political_importance", .5)
                    for a in audiences.values()) / weight) if weight else .5
     approval = (state.get("standing") or {}).get("personal_approval", .5)
-    return {"support": support, "approval": approval, "score": .6 * support + .4 * approval,
-            "threshold": float(tuning.get(w, "standing.seat_threshold"))}
+    # Contracts steered to the member's allies (engine 13): money behind the campaign, or a scandal.
+    from .self_dealing import seat_effect
+    steered = seat_effect(w, mid)
+    return {"support": support, "approval": approval, "score": .6 * support + .4 * approval + steered,
+            "steered": steered, "threshold": float(tuning.get(w, "standing.seat_threshold"))}
 
 
 def seat_band(est: dict) -> str:

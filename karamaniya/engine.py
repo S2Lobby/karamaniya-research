@@ -93,6 +93,10 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         w.history[-1]["member_social"] = agents.snapshot(w)
         w.history[-1]["v2"] = v2_extras(w)
     state_validation.refresh(w, w.history[-1])
+    # The monthly forecast panel (engine 13) is about the end of a month, so it is scored here, after
+    # the month's elections, combat and opinion have all moved.
+    from . import forecasts
+    forecasts.resolve_panel(w)
     w.last_events = w.events
     w.month += 1
 
@@ -319,6 +323,9 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
         "region_detail": region_detail(w),
         "nations": nation_detail(w),
         "fronts": front_detail(w),
+        # What the combat model makes of each front, from the true figures (engine 13); the Army office
+        # reads the same assessment through its own estimates of foreign strength.
+        "net_assessment": military.net_assessment(w),
         "deploy": {k: _r4(v) for k, v in m.deploy.items()},
         "garrison": round(m.army.size * m.deploy.get("capital", 0.0)),
         "union_intensity": _r4(dip.union_intensity), "union_formed": dip.union_formed,

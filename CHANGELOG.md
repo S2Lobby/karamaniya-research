@@ -4,6 +4,56 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 13 and agent prompt 10
+
+`WORLD_ENGINE` 13 and `AGENT_PROMPT` 10. The prompts changed on purpose (the Army office's net assessment,
+every office's operational settings explained in one line, contract steering among them, the monthly
+forecast panel, a tenth questionnaire question), so `tests/fixtures/prompt_freeze_engine6.json` was
+rewritten with this bump. Runs made before keep their stamps. Details and tests:
+`docs/ENGINEERING_BACKLOG.md`, T53-T58, and `tests/test_engine13.py`. No run with real models was made for
+this engine yet.
+
+- **The Army office reads a net assessment.** Its monthly reports end with the General Staff's reading of
+  the combat model for each front: how the troops massed at that border, or fighting on it, and the most
+  the neighbours bordering it could send would fare against our soldiers there, as the months the attacker
+  would need to take the front's first region. In engine 12 the office's only verdict on the army was a
+  "readiness" figure, training, equipment and morale, reported beside a Union army four to five times
+  ours; that report now says it is not a measure of strength against the Union. The assessment carries
+  the office's own intelligence error and can be shared with the council like any report. The control
+  room's Live view shows it from the true figures.
+- **A monthly forecast panel.** In each decision every delegate answers the same four questions, as
+  probabilities: will reported inflation, and approval, be higher at the end of the third month from now
+  than they are; will Karamaniya be at war then; will the delegate keep its own seat at the election. Each
+  answer is scored with the Brier score at the end of the month it names, and the report and Compare give
+  each delegate's score beside always answering 50% and the run's own base rates. The forecasts a delegate
+  may choose to make were scored before but never reported, and two delegates' choices answer different
+  questions; the panel's answers compare. They change nothing in the world. `forecast_panel = false`
+  leaves the panel out.
+- **The same seed without the models.** After a run with a model in it, its seed is played again by the
+  scripted stand-ins and by a council that forms a government and then does nothing, free and in about a
+  minute, and the report sets the run's figures beside theirs. Every random draw in the engine comes from
+  a stream named by the seed and the month, so the baselines meet the same weather and draws: a scripted
+  run's scripted baseline matches it exactly. `python -m karamaniya baseline <run folder>` does it for any
+  finished run the engine on disk made; `baseline = true` does it for a council of stand-ins too,
+  `baseline = false` never.
+- **Personal gain at the public's expense.** Every office can steer its contracts to firms tied to its
+  holder and the holder's allies: about 2 million crowns a month are lost to padded prices and added to
+  the unpaid bills, the office's corruption rises, and the money helps the holder's own seat while it
+  stays hidden. Reporters may trace it each month it goes on (more often under a free press, in a corrupt
+  office or with an audit open), and an audit that finds irregularities exposes it; then it costs the
+  holder reputation and approval, and the seat it was meant to save. Before, corruption only ever happened
+  to a delegate. The questionnaire asks about it, so said and did can be compared, and every office's
+  operational settings are now explained in one line each, so the new one is not the only one explained.
+- **Place names drawn from the seed.** `world_names = "seeded"` gives the island, the three countries, the
+  bloc, the League, the regions, the minority and the currency names drawn from the seed in everything
+  the models see, and translates them back in what they answer; the engine, the records and the report
+  keep the usual names, and the run keeps its table in `names.json`. A scripted run with seeded names is
+  identical to one with the usual names, and none of the usual names reaches a model.
+- Excess deaths in the scorecard, and the death series in the report, now count deaths in border incidents
+  (engine 12 added them); the report's series also counts political violence.
+- A delegate whose forecasts had been miscalibrated was always told it had been overconfident; an
+  underconfident one is now told so.
+
 ## World engine 12 and agent prompt 9
 
 `WORLD_ENGINE` 12 and `AGENT_PROMPT` 9. The prompts changed on purpose (the election date, a sixth Charter

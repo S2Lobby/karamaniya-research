@@ -5,6 +5,7 @@ import datetime as dt
 import json
 import math
 import random
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -153,6 +154,7 @@ def _form_government(store: RunStore, council: Council, observer, quiet: bool) -
 
 def _end(store: RunStore, world, council: Council, stopped: str, quiet: bool, observer) -> Path:
     from .report import build_report
+    settings = getattr(council, "settings", None) or {}
     # Refresh the manifest now the run has calls behind it: this is where "which model actually
     # answered" and the structured engine-error tally become meaningful.
     try:
@@ -167,6 +169,23 @@ def _end(store: RunStore, world, council: Council, stopped: str, quiet: bool, ob
         pass  # a manifest failure must never take down a finished run
     if not quiet:
         print(f"Stopped: {stopped} (resume to continue)" if stopped else f"Outcome: {world.outcome.get('text')}")
+    if settings.get("report", True) is False:          # a baseline's own run (baseline.py) needs no report
+        _emit(observer, type="finished", stopped=stopped, outcome=dict(world.outcome), spend=council.spend)
+        return store.path
+    # The same seed without the models (engine 13): run once a run is over, never for a paused one, whose
+    # months may still change when it is resumed. A council of stand-ins has no models to set apart from
+    # its luck, so it gets one only when asked (baseline = true).
+    models = any(seat.cfg.get("provider") != "scripted" for seat in council.seats.values())
+    wanted = settings.get("baseline")
+    if not stopped and world.history and (wanted is True or (wanted is None and models)):
+        _emit(observer, type="baseline_start")
+        if not quiet:
+            print("Running the same-seed baselines (scripted and passive councils, no models)...")
+        try:
+            from . import baseline
+            baseline.compute(store.path)
+        except Exception:
+            traceback.print_exc()     # a baseline failure must never take down a finished run
     path = build_report(store)
     _emit(observer, type="finished", stopped=stopped, outcome=dict(world.outcome), spend=council.spend)
     if not quiet:
@@ -217,7 +236,12 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
     # The manifest is written before the first call, so a run that dies early is still readable.
     store._write_json("manifest.json", manifest.build(world, {**cfg, "mapping": mapping}))
     council = Council(world, _seats(cfg, mapping), run, store, observer=observer)
-    (store.path / "system_prompt.txt").write_text(council.system, encoding="utf-8")
+    if council.names:
+        # Seeded place names (naming.py): the run keeps its table, and the system prompt as it was sent.
+        from . import naming
+        naming.save(store, council.names)
+    (store.path / "system_prompt.txt").write_text(council.names.out(council.system) if council.names
+                                                  else council.system, encoding="utf-8")
     _emit(observer, type="started", run_id=run_id, mapping=mapping, months_total=run["months"])
     if not quiet:
         print(f"Run {run_id}: {len(mapping)} seats, {run['months']} months, seed {run['seed']}, "

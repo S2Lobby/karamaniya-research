@@ -6,7 +6,7 @@ import os
 import urllib.error
 import urllib.request
 
-from .base import Backend, CallResult, FatalError, TransientError, extract_json
+from .base import Backend, CallResult, FatalError, TransientError, extract_json, reasoning
 
 
 def parse_think(raw):
@@ -58,17 +58,20 @@ class OllamaBackend(Backend):
                                      method="POST", headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                thinking = []      # the thinking field a thinking model fills when think is on
                 if streaming:
                     chunks, out = [], {}
                     for line in resp:
                         part = json.loads(line)
                         chunks.append((part.get("message") or {}).get("content") or "")
+                        thinking.append((part.get("message") or {}).get("thinking") or "")
                         progress("".join(chunks))
                         out = part
                     text = "".join(chunks)
                 else:
                     out = json.loads(resp.read().decode("utf-8", "replace"))
                     text = (out.get("message") or {}).get("content") or ""
+                    thinking.append((out.get("message") or {}).get("thinking") or "")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:400]
             if exc.code == 404:
@@ -81,4 +84,5 @@ class OllamaBackend(Backend):
                                  f"{exc}") from exc
         return CallResult(data=extract_json(text), raw=text, served_model=out.get("model", self.model),
                           input_tokens=int(out.get("prompt_eval_count", 0)),
-                          output_tokens=int(out.get("eval_count", 0)))
+                          output_tokens=int(out.get("eval_count", 0)),
+                          reasoning_text=reasoning("".join(thinking)))

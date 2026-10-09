@@ -15,7 +15,7 @@ import os
 import tempfile
 
 from . import cli_common
-from .base import Backend, CallResult, extract_json
+from .base import Backend, CallResult, extract_json, reasoning
 
 DISABLE = ("shell_tool", "unified_exec", "plugins", "apps", "skill_search", "tool_suggest", "browser_use",
            "computer_use", "image_generation", "multi_agent", "goals", "hooks", "in_app_browser", "view_image",
@@ -133,7 +133,7 @@ class CodexCLIBackend(Backend):
                 with open(answer_path, encoding="utf-8", errors="replace") as f:
                     answer = f.read().strip()
         events = cli_common.json_lines(stdout)
-        errors, usage, text = [], {}, ""
+        errors, usage, text, thoughts = [], {}, "", []
         for e in events:
             kind = e.get("type")
             if kind == "error" and e.get("message"):
@@ -146,6 +146,11 @@ class CodexCLIBackend(Backend):
                 item = e.get("item") or {}
                 if item.get("type") in ("agent_message", "assistant_message") and item.get("text"):
                     text = item["text"]
+                elif item.get("type") == "reasoning":
+                    # A reasoning summary, when the model gives one; the reasoning itself is hidden.
+                    summary = item.get("summary") if isinstance(item.get("summary"), list) else []
+                    thoughts.append(item.get("text") or " ".join(
+                        s.get("text", "") for s in summary if isinstance(s, dict)))
         text = answer or text
         if not text:
             detail = errors[-1] if errors else (stderr.strip() or stdout.strip() or f"exit code {code}")
@@ -155,7 +160,7 @@ class CodexCLIBackend(Backend):
         # reasoning_output_tokens breaks out. Engine 5 added the reasoning to the output a second time.
         tokens_in = int(usage.get("input_tokens", 0) or 0)
         tokens_out = int(usage.get("output_tokens", 0) or 0)
-        reasoning = int(usage.get("reasoning_output_tokens", 0) or 0)
+        reasoning_count = int(usage.get("reasoning_output_tokens", 0) or 0)
         cache_read = int(usage.get("cached_input_tokens", 0) or 0)
         cache_write = int(usage.get("cache_write_input_tokens", 0) or 0)
         data = extract_json(text)
@@ -163,4 +168,5 @@ class CodexCLIBackend(Backend):
                           served_model=self.model or "codex default",
                           input_tokens=tokens_in, output_tokens=tokens_out,
                           cost_usd=self.cost(tokens_in, tokens_out, cache_read, cache_write),
-                          cache_read_tokens=cache_read, cache_write_tokens=cache_write, reasoning_tokens=reasoning)
+                          cache_read_tokens=cache_read, cache_write_tokens=cache_write, reasoning_tokens=reasoning_count,
+                          reasoning_text=reasoning(*thoughts))

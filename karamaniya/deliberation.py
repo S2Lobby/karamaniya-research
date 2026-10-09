@@ -37,6 +37,18 @@ CHARTER = [
     {"ref": "Charter article 5", "text": "If the government loses the election, it hands power to the Assembly the following month.",
      "concepts": {"handover"}},
 ]
+# Engine 12: the sixth article, in a run whose members stand for their own seats (prompts.SEAT_ARTICLE).
+SEAT_CLAUSE = {"ref": "Charter article 6",
+               "text": "At the election each member also stands for a seat in their own right; a member who "
+                       "loses it leaves the government.",
+               "concepts": {"personal_seat"}}
+
+
+def charter_clauses(w) -> list:
+    """This world's Charter: the five articles, and the sixth where members stand for their own seats."""
+    return CHARTER + ([SEAT_CLAUSE] if getattr(w.const, "personal_mandates", False) else [])
+
+
 def clause_text(w, clause: dict) -> str:
     """A Charter clause as this world's Charter words it."""
     return clause["text"].replace("{election_month}", f"Month {w.const.charter_election_month + 1}")
@@ -58,6 +70,8 @@ CONCEPTS = {
     "civil_liberties": ("civil libert", "free speech", "privacy", "due process", "habeas", "detention"),
     "appointments": ("appoint", "office holder", "portfolio"),
     "provisional_authority": ("provisional government", "state power"),
+    "personal_seat": ("own seat", "personal mandate", "individual mandate", "loses their seat",
+                      "lose their seat"),
 }
 CONSTITUTION_CONCEPT = {"press": "press_freedom", "assembly": "assembly", "minority": "minority_rights",
                         "emergency": "emergency_limits", "election_month": "election_date", "decision_rule": "decision_rule"}
@@ -124,7 +138,7 @@ def redundancy(w: World, mo: dict, tabled: list) -> dict | None:
     if not proposed:
         return None
     covered, refs = set(), []
-    for clause in CHARTER:
+    for clause in charter_clauses(w):
         hit = proposed & clause["concepts"]
         if hit:
             covered |= hit

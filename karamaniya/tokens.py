@@ -102,7 +102,8 @@ def load_calls(run_dir) -> list:
             actor = str(c.get("actor") or "")
             if actor not in foreign_systems:
                 foreign_systems[actor] = _foreign_system(actor)
-            system, system_id = foreign_systems[actor], f"foreign:{actor}"
+            # Logged with the call since engine 12; rebuilt for a run saved before.
+            system, system_id = p.get("system") or foreign_systems[actor], f"foreign:{actor}"
         else:
             system, system_id = council_system, "council"
         meta = p.get("prompt_meta") or {}
@@ -295,8 +296,10 @@ def fingerprints(run_dir) -> dict:
     for r in _jsonl(run / "prompts.jsonl"):
         key = (r.get("month"), r.get("phase"), _who(r))
         counts[key] += 1
+        # A call that carries its own instructions (a foreign cabinet's) is frozen with them.
+        text = ((r["system"] + "\n\n") if r.get("system") else "") + (r.get("prompt") or "")
         entries.append([key[0], key[1], key[2], counts[key],
-                        hashlib.sha256((r.get("prompt") or "").encode("utf-8")).hexdigest()])
+                        hashlib.sha256(text.encode("utf-8")).hexdigest()])
     entries.sort(key=lambda e: (e[0], e[1], e[2], e[3]))
     system = (run / "system_prompt.txt").read_text(encoding="utf-8") if (run / "system_prompt.txt").exists() else ""
     return {"system_prompt_sha256": hashlib.sha256(system.encode("utf-8")).hexdigest(), "prompts": entries}

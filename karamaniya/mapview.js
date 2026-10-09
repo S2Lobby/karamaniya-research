@@ -468,6 +468,11 @@
             sv("path", { d: "M" + (ex + ux * 24) + " " + (ey + uy * 24) + "L" + x2 + " " + y2, stroke: "var(--km-union)", "stroke-width": 5, "stroke-linecap": "round", opacity: 0.85 }, gFront);
             sv("path", { d: "M" + (x2 + ux * 9) + " " + (y2 + uy * 9) + "L" + (x2 - uy * 7) + " " + (y2 + ux * 7) + "L" + (x2 + uy * 7) + " " + (y2 - ux * 7) + "Z", fill: "var(--km-union)" }, gFront);
           }
+        } else if (fr.massing > 0) {
+          // A neighbour's troops gathered at this border, before any war: no front line, no arrow.
+          const who = Object.entries(fr.massing_by || {}).map(([a, n]) => (names[a] || a) + " " + num(n)).join(", ");
+          counter(gMil, ex, ey, "var(--km-union)", [compact(fr.massing), "massing"],
+            "Troops massed at the " + f + " border: " + (who || num(fr.massing)), 1);
         }
         if (fr.combat) {
           const cx = (bx + ex) / 2, cy = (by + ey) / 2;
@@ -483,7 +488,8 @@
       if (cap && row.garrison > 0) counter(gMil, cap.x - 58, cap.y - 4, "var(--km-ours)", [compact(row.garrison), "garrison"], "Held back to guard the capital", 3);
       // Union armies massing before the war, at their capitals.
       if (row.union_formed && row.union_army > 0) {
-        const fr = fronts || {}; const onFront = (fr.north ? fr.north.union : 0) + (fr.east ? fr.east.union : 0);
+        const fr = fronts || {};
+        const onFront = ["north", "east"].reduce((s, k) => s + (fr[k] ? (fr[k].union || 0) + (fr[k].massing || 0) : 0), 0);
         const rest = Math.max(0, row.union_army - onFront);
         const caps = geo.cities.filter(c => c.kind === "capital" && (REG[c.region] || {}).nation !== "karamaniya");
         if (rest > 500 && caps.length) caps.forEach(c => counter(gMil, c.x, c.y - 26, "var(--km-union)", [compact(rest / caps.length), "reserve"], "Union troops not on a front", 3));

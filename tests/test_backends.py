@@ -37,6 +37,8 @@ class Backends(unittest.TestCase):
         self.state.reject_json_schema = False
         self.state.refuse = False
         self.state.usage = {}
+        self.state.thinking = ""
+        self.state.message_extra = {}
 
     def test_anthropic_sdk_request_shape(self):
         try:
@@ -214,6 +216,47 @@ class Backends(unittest.TestCase):
         self.assertIs(self.state.requests[-1][2]["think"], False)
         b.complete("S", "U", SCHEMA, {"phase": "survey"})
         self.assertNotIn("think", self.state.requests[-1][2])      # not in the table: the model's default
+
+    def test_the_models_own_reasoning_is_kept_where_returned(self):
+        os.environ["KARAMANIYA_TEST_KEY"] = "sk-test"
+        ollama = make_backend({"provider": "ollama", "model": "qwen-test", "base_url": self.url, "retries": 0})
+        self.assertEqual(ollama.complete("S", "U", SCHEMA).reasoning_text, "")
+        self.state.thinking = "The treasury cannot pay both."
+        res = ollama.complete("S", "U", SCHEMA)
+        self.assertEqual((res.data, res.reasoning_text), ({"ok": True, "note": "ready"}, "The treasury cannot pay both."))
+        self.state.thinking = ""
+        compat = make_backend({"provider": "deepseek", "model": "deepseek-test", "base_url": self.url,
+                               "api_key_env": "KARAMANIYA_TEST_KEY", "retries": 0})
+        self.state.message_extra = {"reasoning_content": "Delay the vote? No."}
+        self.assertEqual(compat.complete("S", "U", SCHEMA).reasoning_text, "Delay the vote? No.")
+        # OpenRouter sends the same reasoning twice, as a string and as blocks: kept once.
+        self.state.message_extra = {"reasoning": "Weigh the army.",
+                                    "reasoning_details": [{"type": "reasoning.text", "text": "Weigh the army."}]}
+        self.assertEqual(compat.complete("S", "U", SCHEMA).reasoning_text, "Weigh the army.")
+        self.state.message_extra = {"reasoning_details": [{"type": "reasoning.summary", "summary": "Short."},
+                                                          {"type": "reasoning.encrypted", "data": "xyz"}]}
+        self.assertEqual(compat.complete("S", "U", SCHEMA).reasoning_text, "Short.")
+        self.state.message_extra = {}
+        self.assertEqual(compat.complete("S", "U", SCHEMA).reasoning_text, "")
+
+    def test_a_thinking_block_is_kept_from_the_anthropic_api(self):
+        try:
+            import anthropic  # noqa: F401
+        except ImportError:
+            self.skipTest("anthropic SDK not installed")
+        os.environ["KARAMANIYA_TEST_KEY"] = "test-key"
+        self.state.thinking = "If I back the motion, the officers turn."
+        res = make_backend({"provider": "anthropic", "model": "claude-opus-5-5", "base_url": self.url,
+                            "api_key_env": "KARAMANIYA_TEST_KEY", "retries": 0}).complete("S", "U", SCHEMA)
+        self.assertEqual(res.data, {"ok": True, "note": "ready"})
+        self.assertEqual(res.reasoning_text, "If I back the motion, the officers turn.")
+
+    def test_reasoning_is_capped(self):
+        from karamaniya.backends.base import REASONING_CAP, reasoning
+        text = reasoning("x" * (REASONING_CAP + 10), "  ", None)
+        self.assertTrue(text.startswith("x" * REASONING_CAP))
+        self.assertTrue(text.endswith("[... 10 more characters]"))
+        self.assertEqual(reasoning("a ", "", " b"), "a\n\nb")
 
     def test_unreachable_server_gives_up_cleanly(self):
         b = make_backend({"provider": "ollama", "model": "x", "base_url": "http://127.0.0.1:9", "retries": 0,

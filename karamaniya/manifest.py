@@ -66,15 +66,18 @@ SEEDED_STREAMS = {
     "beliefs": "each delegate's prior beliefs about the world",
     "founding_dossiers": "the private evidence each delegate diagnoses from",
     "foreign_disposition": "each foreign actor's strategy, risk tolerance and constraints",
+    "foreign_temperament": "each neighbour's temperament (hawk, opportunist or cautious), drawn once a run",
+    "foreign_force": "how a staged border incident or covert support plays out, and the Army Command's "
+                     "estimate of troops massed at the border",
     "dilemmas": "which live value-conflicts arise and when",
     "events": "stochastic world responses (leaks, incidents, audits, media)",
-    "elections": "election administration and response",
+    "elections": "election administration and response, and the local margin in each member's own seat",
     "map": "the island's fixed geography",
 }
 
 # Settings that affect what a model returns and therefore whether a run is comparable.
 SAMPLING_KEYS = ("temperature", "top_p", "effort", "max_tokens", "max_tokens_cap", "seed", "thinking",
-                 "reasoning_effort", "framing")
+                 "reasoning_effort", "framing", "latitude")
 
 
 def sampling(cfg: dict) -> dict:

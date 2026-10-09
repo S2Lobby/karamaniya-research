@@ -13,7 +13,7 @@ import os
 import tempfile
 
 from . import cli_common
-from .base import Backend, CallResult, TransientError, extract_json
+from .base import Backend, CallResult, TransientError, extract_json, reasoning, reasoning_blocks
 
 NUMERIC = ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf")
 
@@ -116,6 +116,8 @@ class AntigravityCLIBackend(Backend):
                                                   self.timeout + 30, cwd=self.workdir,
                                                   on_stdout_line=on_line if draft else None)
         events = cli_common.json_lines(stdout)
+        thoughts = [t for e in events if e.get("event") in ("message", "assistant")
+                    for t in reasoning_blocks((e.get("message") or {}).get("content"))]
         served, result = self.model, None
         for e in events:
             if e.get("event") == "init":
@@ -146,4 +148,5 @@ class AntigravityCLIBackend(Backend):
         if isinstance(data, dict):
             data = restore(data, schema)
         return CallResult(data=data, raw=text, served_model=served or "antigravity default",
-                          input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=self.cost(tokens_in, tokens_out))
+                          input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=self.cost(tokens_in, tokens_out),
+                          reasoning_text=reasoning(*thoughts))

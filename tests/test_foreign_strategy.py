@@ -89,6 +89,10 @@ class RedLines(ForeignStrategy):
 
     def test_the_response_to_a_crossing_follows_disposition(self):
         w = self.prepared()
+        # Since engine 12 a run's temperament moves the seeded disposition, so the dispositions are set
+        # here: an aggressive, impatient Veleria and a patient Dorsania.
+        w.foreign["actors"]["veleria"]["disposition"].update(aggressiveness=.80, patience=.42)
+        w.foreign["actors"]["dorsania"]["disposition"].update(aggressiveness=.30, risk_tolerance=.30, patience=.66)
         aggressive = foreign._red_line_response(w.foreign["actors"]["veleria"]["disposition"])
         patient = foreign._red_line_response(w.foreign["actors"]["dorsania"]["disposition"])
         self.assertEqual((aggressive, patient), ("escalate", "protest"))

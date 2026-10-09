@@ -37,7 +37,7 @@ class CliSeats(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="karamaniya-cli-test-")
         self.record = os.path.join(self.tmp, "record.json")
         self.saved = {k: os.environ.get(k) for k in ("FAKE_CLI_RECORD", "FAKE_CLI_LIMIT_AFTER", "FAKE_CLI_COUNTER", "FAKE_CLI_STREAM",
-                                                     "FAKE_CLI_USAGE", "FAKE_CLI_ANSWER", "FAKE_CLI_DETOURS",
+                                                     "FAKE_CLI_USAGE", "FAKE_CLI_ANSWER", "FAKE_CLI_DETOURS", "FAKE_CLI_THINKING",
                                                      "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "KARAMANIYA_DS_TEST")}
         os.environ["FAKE_CLI_RECORD"] = self.record
         os.environ.pop("FAKE_CLI_LIMIT_AFTER", None)
@@ -139,6 +139,18 @@ class CliSeats(unittest.TestCase):
         del os.environ["KARAMANIYA_DS_TEST"]
         with self.assertRaises(ValueError):
             make_backend(seat("claude", "claude_cli", base_url="https://api.deepseek.com/anthropic", api_key_env="KARAMANIYA_DS_TEST"))
+
+    def test_the_models_own_reasoning_is_read_back(self):
+        for kind, provider, extra in (("claude", "claude_cli", {}), ("codex", "codex_cli", {}),
+                                      ("cline", "cline_cli", {"cline_provider": "cline-pass"})):
+            os.environ.pop("FAKE_CLI_THINKING", None)
+            res = make_backend(seat(kind, provider, **extra)).complete(SYSTEM, USER, SCHEMA)
+            self.assertEqual((res.data, res.reasoning_text), ({"ok": True, "note": "ready"}, ""), kind)
+            os.environ["FAKE_CLI_THINKING"] = "Concede the port, keep the army."
+            res = make_backend(seat(kind, provider, **extra)).complete(SYSTEM, USER, SCHEMA)
+            self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
+            self.assertEqual(res.reasoning_text, "Concede the port, keep the army.", kind)
+        self.assertIn("reasoning_text", res.to_dict())
 
     def test_cache_and_reasoning_counts_are_read_back(self):
         os.environ["FAKE_CLI_USAGE"] = json.dumps({"cache_read_input_tokens": 9000, "cache_creation_input_tokens": 400})

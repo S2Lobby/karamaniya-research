@@ -291,6 +291,13 @@ class Diplomacy:
     union_weariness: float = 0.0
     union_intensity: float = 1.0   # how hard the Union is attacking, 0..1
     union_front: dict = field(default_factory=lambda: {"north": 0.0, "east": 0.0})
+    # Foreign troops massed at Karamaniya's borders without a war (engine 12): actor -> front -> soldiers.
+    # Part of each actor's active army, not added to it; at the start of a war they become its front.
+    border_forces: dict = field(default_factory=lambda: {"veleria": {"north": 0.0, "east": 0.0},
+                                                         "dorsania": {"north": 0.0, "east": 0.0}})
+    # What a war a foreign cabinet started is for: {"by", "aim": limited | full, "front", "objective",
+    # "month"}. Empty for a war the Union's own rules started, or Karamaniya did.
+    war_aim: dict = field(default_factory=dict)
     delay_until: int = -1       # trade talks that postpone Union escalation
     nonaggression: bool = False
     rally: float = 0.0          # rally-round-the-flag effect after foreign aggression
@@ -337,6 +344,9 @@ class Constitution:
     # so the government governs a whole default run before it faces the voters. new_world() sets it;
     # the default is the old date, so a checkpoint saved before it existed keeps its own Charter.
     charter_election_month: int = 17
+    # Engine 12: at the Assembly election each member also stands in their own right, and one who loses
+    # their seat leaves the government even if the Council List wins. Off in a run saved before it.
+    personal_mandates: bool = False
     elected: bool = False
     press: str = "free"               # free | restricted | censored
     assembly: str = "free"            # free | restricted | banned
@@ -682,6 +692,8 @@ def new_world(seed: int, months: int = 36, framing: str = "simulation",
     }
     w.members = [Member(id=i, name=f"Delegate {i}") for i in member_ids]
     w.const.election_month = w.const.charter_election_month = CHARTER_ELECTION_MONTH
+    # A run without the human factor has no audiences or personal approval for a seat to rest on.
+    w.const.personal_mandates = bool(human_factor)
     if human_factor:
         from . import agents
         agents.ensure(w, trait_baselines)

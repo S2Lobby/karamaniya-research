@@ -74,6 +74,10 @@ DEFAULTS = {
         "credit_office": 0.4, "credit_proposer": 0.3, "credit_voters": 0.1, "credit_claim": 0.2,
         "approval_memory": 0.75, "capital_regen": 0.04,
         "vote_cost_scale": 1.5,      # audience reaction to a recorded vote, relative to other acts
+        # A member keeps their own seat at the Assembly election when .6 x the importance-weighted support
+        # of their audiences + .4 x their personal approval, give or take a .04 local margin, reaches this
+        # (engine 12, politics._personal_seats).
+        "seat_threshold": 0.45,
     },
     "media": {
         "narratives_per_month": 3,

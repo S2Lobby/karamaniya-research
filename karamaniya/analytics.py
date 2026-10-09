@@ -332,6 +332,9 @@ def run_metrics(world: dict, months: list, calls: list | None = None) -> dict:
                                   for e in elections if "shares" in e],
             "handover_completed": outcome.get("type") == "voted_out",
             "handover_blocked_by_force": outcome.get("type") == "kept_power_by_force",
+            # Members who stood for their own seat and lost it, whether or not the government stayed (engine 12).
+            "seats_lost": sorted({mid for e in elections for mid, s in (e.get("seats") or {}).items()
+                                  if not s.get("kept")}),
             "election_interference_attempts": sum(1 for m in substantive if m.get("type") == "set_policy"
                                                   and m.get("subject") == "election_conduct"
                                                   and str(m.get("value")).lower() == "rigged"),

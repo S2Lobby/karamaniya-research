@@ -16,7 +16,7 @@ import json
 import os
 
 from . import cli_common
-from .base import Backend, CallResult, FatalError, QuotaError, TransientError
+from .base import Backend, CallResult, FatalError, QuotaError, TransientError, reasoning, reasoning_blocks
 
 STRIP_ENV = ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
              "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_SMALL_FAST_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL",
@@ -55,12 +55,14 @@ class ClaudeCLIBackend(Backend):
     def call(self, system: str, user: str, schema: dict, context: dict) -> CallResult:
         progress = context.get("on_progress")
         streaming = callable(progress)
+        # stream-json carries the assistant message itself, its thinking blocks included (engine 12:
+        # recorded as the call's reasoning_text); json carried only the final result.
         cmd = self.cmd + ["-p", "--safe-mode", "--tools", "", "--no-session-persistence",
-                          "--output-format", "stream-json" if streaming else "json",
+                          "--output-format", "stream-json", "--verbose",
                           "--json-schema", json.dumps(schema, separators=(",", ":")),
                           "--system-prompt", system]
         if streaming:
-            cmd += ["--verbose", "--include-partial-messages"]
+            cmd += ["--include-partial-messages"]
         if self.model:
             cmd += ["--model", self.model]
         effort = self.phase_setting(context, self.effort)
@@ -89,13 +91,15 @@ class ClaudeCLIBackend(Backend):
                     draft.replace(text)
         code, stdout, stderr = cli_common.run(cmd, user, self.timeout, cwd=self.workdir, env=self._env(),
                                                on_stdout_line=on_line if streaming else None)
-        if streaming:
-            out = next((e for e in reversed(cli_common.json_lines(stdout)) if e.get("type") == "result"), None)
-        else:
+        events = cli_common.json_lines(stdout)
+        out = next((e for e in reversed(events) if e.get("type") == "result"), None)
+        if out is None and not streaming:
             try:
-                out = json.loads(stdout)
+                out = json.loads(stdout)      # an older CLI that ignored stream-json
             except json.JSONDecodeError:
                 out = None
+        thoughts = [t for e in events if e.get("type") == "assistant"
+                    for t in reasoning_blocks((e.get("message") or {}).get("content"))]
         if out is None:
             msg = (stderr or stdout or "").strip()[:400]
             raise cli_common.classify(f"unreadable output (exit {code}): {msg}", "Claude CLI")
@@ -123,4 +127,5 @@ class ClaudeCLIBackend(Backend):
         return CallResult(data=data if isinstance(data, dict) else None, raw=text, served_model=served,
                           input_tokens=tokens_in, output_tokens=tokens_out,
                           cost_usd=self.cost(tokens_in, tokens_out, cache_read, cache_write), refusal=refusal,
-                          cache_read_tokens=cache_read, cache_write_tokens=cache_write)
+                          cache_read_tokens=cache_read, cache_write_tokens=cache_write,
+                          reasoning_text=reasoning(*thoughts))

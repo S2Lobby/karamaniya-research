@@ -10,6 +10,7 @@ FAKE_CLI_COUNTER=<file>       where the call count is kept between calls
 FAKE_CLI_USAGE=<json>         extra usage fields to report (Codex, Claude Code, Copilot): cache and reasoning counts
 FAKE_CLI_ANSWER=<json>        the answer to give (Antigravity), instead of one chosen from the schema
 FAKE_CLI_DETOURS=<n>          Antigravity: the first n calls reach for a tool, which is denied, and end with no answer
+FAKE_CLI_THINKING=<text>      reasoning to print the way each tool prints it (Claude Code, Codex, Cline)
 """
 import json
 import os
@@ -88,6 +89,10 @@ def main():
         text = json.dumps(answer(schema))
         with open(arg_after(argv, "-o"), "w", encoding="utf-8") as f:
             f.write(text)
+        if os.environ.get("FAKE_CLI_THINKING"):
+            # A reasoning summary item, as codex exec --json prints one before the answer.
+            print(json.dumps({"type": "item.completed", "item": {"id": "item_r", "type": "reasoning",
+                                                                  "text": os.environ["FAKE_CLI_THINKING"]}}), file=out)
         print(json.dumps({"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": text}}), file=out)
         print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 6717, "cached_input_tokens": 0,
                                                              "output_tokens": 19, **extra_usage()}}), file=out)
@@ -106,6 +111,9 @@ def main():
             return 1
         text = json.dumps(answer(prompt))
         print(json.dumps({"type": "agent_event", "event": {"type": "iteration_start", "iteration": 1}}), file=out)
+        if os.environ.get("FAKE_CLI_THINKING"):
+            print(json.dumps({"type": "agent_event", "event": {"type": "content_end", "contentType": "reasoning",
+                                                              "text": os.environ["FAKE_CLI_THINKING"]}}), file=out)
         print(json.dumps({"type": "agent_event", "event": {"type": "content_end", "contentType": "text", "text": text}}), file=out)
         print(json.dumps({"type": "agent_event", "event": {"type": "iteration_end", "iteration": 1, "hadToolCalls": False,
                                                           "toolCallCount": 0}}), file=out)
@@ -180,6 +188,11 @@ def main():
                 print(json.dumps({"type": "stream_event", "event": {"type": "content_block_delta",
                                   "delta": {"type": "text_delta", "text": chunk}}}), file=out, flush=True)
                 time.sleep(0.25)
+        if arg_after(argv, "--output-format") == "stream-json" and os.environ.get("FAKE_CLI_THINKING"):
+            # The assistant message stream-json prints before the result, with its thinking block.
+            print(json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "thinking", "thinking": os.environ["FAKE_CLI_THINKING"], "signature": "x"},
+                {"type": "text", "text": json.dumps(data)}]}}), file=out)
         print(json.dumps({"type": "result", "is_error": False, "result": json.dumps(data), "structured_output": data,
                           "stop_reason": "end_turn", "usage": {"input_tokens": 120, "output_tokens": 12, **extra_usage()},
                           "modelUsage": {model: {}}, "total_cost_usd": 0.01}), file=out)

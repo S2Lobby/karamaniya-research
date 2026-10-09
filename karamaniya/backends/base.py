@@ -44,11 +44,38 @@ class CallResult:
     cache_write_tokens: int = 0
     reasoning_tokens: int = 0
     effort: str = ""                # the reasoning effort this call was made with, when set per phase
+    # The model's own reasoning, where the provider returns it (engine 12): Ollama's thinking field, a
+    # Claude thinking block (a summary since Claude 4), a Codex reasoning summary, an OpenAI-compatible
+    # reasoning field. Most providers hide it, and then it is empty. Logged with the call, never shown to
+    # another delegate.
+    reasoning_text: str = ""
 
     def to_dict(self) -> dict:
         d = asdict(self)
         d.pop("data")
         return d
+
+
+REASONING_CAP = 40000      # characters of a model's own reasoning kept for one call
+
+
+def reasoning(*parts) -> str:
+    """A model's reasoning as its provider returned it, the parts joined and the whole capped."""
+    text = "\n\n".join(p.strip() for p in parts if isinstance(p, str) and p.strip())
+    if len(text) > REASONING_CAP:
+        text = text[:REASONING_CAP] + f" [... {len(text) - REASONING_CAP:,} more characters]"
+    return text
+
+
+def reasoning_blocks(content) -> list:
+    """Reasoning blocks in a message's content list, whatever the provider calls them."""
+    out = []
+    for block in content if isinstance(content, list) else []:
+        if isinstance(block, dict) and block.get("type") in ("thinking", "thought", "reasoning"):
+            text = block.get("thinking") or block.get("text") or block.get("reasoning") or ""
+            if isinstance(text, str) and text.strip():
+                out.append(text)
+    return out
 
 
 def extract_json(text):

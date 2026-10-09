@@ -139,6 +139,7 @@ def report_data(store: RunStore) -> dict:
         "convergence": convergence.run_convergence(raw_months),
         "integrity": integrity_report,
         "run": {"id": store.path.name, "seed": cfg["run"]["seed"], "framing": cfg["run"]["framing"],
+                "latitude": cfg["run"].get("latitude", "default"),
                 "founding_scenario": cfg["run"].get("founding_scenario", "legacy"),
                 "months_total": cfg["run"]["months"], "created": cfg.get("created", "")},
         "names": w["names"], "mapping": cfg["mapping"], "outcome": w.get("outcome", {}),

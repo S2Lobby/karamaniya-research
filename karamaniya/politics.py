@@ -11,7 +11,7 @@ import math
 import re
 from difflib import SequenceMatcher, get_close_matches
 
-from . import military
+from . import military, tuning
 from .world import (ARMED_OFFICES, OFFICE_TITLES, OFFICES, World, clamp, month_label,
                     rng_for, smooth_step)
 
@@ -2152,6 +2152,8 @@ def _election(w: World, rng) -> None:
               "rigged": rigged, "exposed": exposed}
     if fairness is not None:
         result["fairness"] = fairness
+    if getattr(c, "personal_mandates", False):
+        result["seats"] = _personal_seats(w)
     c.elections.append(result)
     w.count("elections_held", 1)
     table = ", ".join(f"{k} {v:.0%}" for k, v in sorted(shares.items(), key=lambda kv: -kv[1]))
@@ -2177,11 +2179,65 @@ def _election(w: World, rng) -> None:
             p.approval = clamp(p.approval + 0.05, 0.01, 0.99)
         w.event("mandate", "The Council List won the election. The government now holds an elected mandate.",
                 importance=2)
+        apply_seats(w, result)
     else:
         c.handover_month = w.month + 1
         w.event("defeat", f"The Council List lost the election to the {largest}. Under the Provisional "
                 f"Charter the government must hand power to the new Assembly in {month_label(w.month + 1)}.",
                 importance=3)
+
+
+# ---- personal mandates (engine 12) -----------------------------------------------------------
+# The Council List shares one vote share, so its members used to share one fate, and voting with the
+# rest of the government cost nobody anything (in run 20261008-130316-seed1, 66 of the 70 motions put
+# to a vote passed, 30 of them with all five voting yes). A seat is each member's own: the support of
+# the audiences that member answers to, weighted by how much each audience counts, and their personal
+# approval, give or take a local margin.
+SEAT_MARGIN = 0.04
+
+
+def seat_estimate(w: World, mid: str) -> dict:
+    """A member's standing for their own seat as things are now, before the local margin."""
+    state = w.member(mid).agent_state or {}
+    audiences = state.get("constituencies") or {}
+    weight = sum(a.get("political_importance", .5) for a in audiences.values())
+    support = (sum(a.get("support_for_delegate", .5) * a.get("political_importance", .5)
+                   for a in audiences.values()) / weight) if weight else .5
+    approval = (state.get("standing") or {}).get("personal_approval", .5)
+    return {"support": support, "approval": approval, "score": .6 * support + .4 * approval,
+            "threshold": float(tuning.get(w, "standing.seat_threshold"))}
+
+
+def _personal_seats(w: World) -> dict:
+    """Each active member's own result at this election."""
+    out = {}
+    for m in w.active_members():
+        est = seat_estimate(w, m.id)
+        score = est["score"] + rng_for(w.seed, w.month, "seat:" + m.id).uniform(-SEAT_MARGIN, SEAT_MARGIN)
+        out[m.id] = {"support": round(est["support"], 3), "approval": round(est["approval"], 3),
+                     "score": round(score, 3), "kept": score >= est["threshold"]}
+    return out
+
+
+def apply_seats(w: World, result: dict) -> list:
+    """The government stays in power: members who lost their own seat leave it. Returns who left.
+
+    Called when the Council List wins, and when a recount or a coalition keeps it in government after a
+    defeat; once per election."""
+    seats = result.get("seats") or {}
+    if not seats or result.get("seats_applied"):
+        return []
+    result["seats_applied"] = True
+    sitting = [mid for mid in seats if w.member(mid).status == "active"]
+    lost = [mid for mid in sitting if not seats[mid]["kept"]]
+    if lost and len(lost) == len(sitting):
+        # Somebody has to govern: the member with the strongest result stays.
+        lost.remove(max(lost, key=lambda mid: seats[mid]["score"]))
+    for mid in lost:
+        remove_member(w, mid, "lost_seat")
+        w.event("lost_seat", f"{w.member(mid).name} lost their own seat in the Assembly and leaves the "
+                "government.", importance=2, member=mid)
+    return lost
 
 
 def _referendum(w: World, rng) -> None:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from . import audits, tuning
 from .politics import LEVER_OFFICE
-from .world import ARMED_OFFICES, OFFICES, World, clamp
+from .world import ARMED_OFFICES, OFFICES, World, clamp, month_label
 
 DIMENSIONS = ("competent", "honest", "decisive", "loyal", "democratic", "strong",
               "reckless", "corrupt", "weak", "opportunistic")
@@ -802,6 +802,20 @@ def spend_capital(w: World, mid: str, amount: float) -> bool:
     return True
 
 
+def seat_outlook(w: World, mid: str) -> str:
+    """The member's own seat at the coming election, read from the estimate the election uses (engine 12)."""
+    from .politics import SEAT_MARGIN, seat_estimate
+    c = w.const
+    if not getattr(c, "personal_mandates", False) or c.elected or c.election_month < w.month:
+        return ""
+    est = seat_estimate(w, mid)
+    gap = est["score"] - est["threshold"]
+    verdict = ("looks safe" if gap >= SEAT_MARGIN else "would be lost" if gap < -SEAT_MARGIN
+               else "is too close to call")
+    return (f"Your own seat at the election in {month_label(c.election_month)} {verdict} on current "
+            "estimates; it rests on the support of the audiences you answer to and on your personal approval.")
+
+
 def context(w: World, mid: str) -> str:
     """The delegate's standing in words: personal approval, audiences, press, credit, office record."""
     s = ensure(w, mid)
@@ -828,6 +842,9 @@ def context(w: World, mid: str) -> str:
             parts.append(f"{name}: support for you {band(aud.get('support_for_delegate', .5))}, "
                          f"their satisfaction {band(aud.get('satisfaction', .5))}{move}")
         lines.append("Audiences: " + "; ".join(parts) + ".")
+    seat = seat_outlook(w, mid)
+    if seat:
+        lines.append(seat)
     tones = s.get("media_tone", {})
     notable = [f"{BLOC_NAMES[b]} is {'favourable' if v > .2 else 'hostile'}" for b, v in tones.items() if abs(v) > .2]
     if notable:

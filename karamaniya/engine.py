@@ -167,8 +167,13 @@ def front_detail(w: World) -> dict:
         if r is not None and r.capital:
             ours += m.army.size * m.deploy.get("capital", 0.0)
         combat = m.last_combat.get(f)
+        # Troops a neighbour has massed at this border without a war (engine 12), by country.
+        massing_by = {a: round(forces.get(f, 0.0)) for a, forces in (dip.border_forces or {}).items()
+                      if forces.get(f, 0.0) >= 1}
         out[f] = {"region": r.id if r is not None else None, "ours": round(ours),
-                  "union": round(dip.union_front.get(f, 0.0)), "fort": _r4(m.fort.get(f, 0.0)),
+                  "union": round(dip.union_front.get(f, 0.0)),
+                  "massing": sum(massing_by.values()), "massing_by": massing_by,
+                  "fort": _r4(m.fort.get(f, 0.0)),
                   "progress": _r4(m.progress.get(f, 0.0)), "recapture": _r4(m.recapture.get(f, 0.0)),
                   "combat": combat if isinstance(combat, dict) and combat.get("month") == w.month else None}
     return out

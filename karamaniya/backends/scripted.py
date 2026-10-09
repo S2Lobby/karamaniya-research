@@ -116,6 +116,29 @@ class ScriptedBackend(Backend):
                                       if vote == "no" else "This nominee can plausibly carry the office's duties.")
         return {"votes": votes, "reasons": reasons}
 
+    @staticmethod
+    def _velerian_force(w) -> list:
+        """Force as the Union's own rules would use it (director.war_rule, deadline_blockade_rule).
+
+        Since engine 12 a cabinet that answers decides on war and blockade instead of those rules, so
+        the stand-in follows them itself: it masses troops at the north border, invades the month after,
+        and enforces an expired ultimatum with a blockade when the rules would."""
+        if w is None or not w.foreign:
+            return []
+        from .. import foreign_force
+        from ..director import deadline_blockade_rule, war_rule
+        out = []
+        if war_rule(w):
+            if foreign_force.at_border(w, "veleria", "north") >= foreign_force.MIN_INVASION:
+                out.append({"type": "invade", "front": "north", "aim": "full", "magnitude": 1.0})
+            else:
+                troops = int(min(foreign_force.free_troops(w, "veleria"), 20000))
+                if troops >= foreign_force.MIN_INVASION:
+                    out.append({"type": "deploy_to_border", "front": "north", "troops": troops, "magnitude": .6})
+        if deadline_blockade_rule(w):
+            out.append({"type": "naval_blockade", "magnitude": .7})
+        return out
+
     def _foreign(self, ctx: dict) -> dict:
         """Cheap deterministic cabinet stand-ins for no-cost runs and tests."""
         actor = ctx.get("actor")
@@ -132,6 +155,7 @@ class ScriptedBackend(Backend):
                 actions.append({"type": "partial_embargo", "magnitude": .45})
             if threat > .58:
                 actions.append({"type": "military_exercise", "magnitude": .45, "troops": 4500})
+            actions = self._velerian_force(ctx.get("world")) + actions
             return {"public_statement": "Veleria will protect Union security while leaving room for talks.",
                     "strategic_assessment": "Economic pressure is useful only while its domestic cost is manageable.",
                     "strategy": "conditional Union leadership and economic containment",

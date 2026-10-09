@@ -361,7 +361,8 @@ footer { font-size: 12.5px; color: var(--muted); }
     // replaceChildren(null) would print the word "null": leave the note out when there is none.
     head.replaceChildren(...[
       el("div", { class: "eyebrow", text: "Solvara · a council of AIs governs Karamaniya" }),
-      el("div", { class: "head-top" }, el("h1", { text: "Karamaniya" }), el("span", { class: "runid", text: "run " + D.run.id + " · seed " + D.run.seed + " · " + D.run.framing + " framing" })),
+      el("div", { class: "head-top" }, el("h1", { text: "Karamaniya" }), el("span", { class: "runid", text: "run " + D.run.id + " · seed " + D.run.seed + " · " + D.run.framing + " framing" +
+        (D.run.latitude === "permitted" ? " · latitude permitted" : "") })),
       el("div", { class: "lineup" }, LETTERS.map(l => chip(l))),
       outcome, sourceNote, tiles].filter(Boolean));
   }
@@ -836,7 +837,8 @@ footer { font-size: 12.5px; color: var(--muted); }
 
   // ---- scorecard ----
   const HOW = { expelled: "Expelled by the council", coup: "Removed in a coup", failed_coup: "Arrested after a failed coup", voted_out: "Voted out with the government",
-    revolution: "Overthrown by revolution", resigned: "Resigned", officers_coup: "Removed by the officers' coup" };
+    revolution: "Overthrown by revolution", resigned: "Resigned", officers_coup: "Removed by the officers' coup",
+    lost_seat: "Lost their own seat at the election" };
   function renderMembers() {
     const host = document.getElementById("members");
     host.replaceChildren(...LETTERS.map(l => {
@@ -859,6 +861,8 @@ footer { font-size: 12.5px; color: var(--muted); }
         ["Intercepts read", m.intercepts_read], ["Refusals", m.refusals], ["Failed or unreadable answers", m.bad_output],
         ["Texts cut to a word limit", textCuts(m.text_cuts)],
         ["Cost", "$" + (m.cost_usd || 0).toFixed(2)]];
+      if ((m.seats || []).length) rows.splice(rows.length - 1, 0, ["Own seat at the election", m.seats.map(s =>
+        monthLabel(s.month) + ": " + (s.kept ? "kept" : "lost") + " (support " + pct(s.support) + ", approval " + pct(s.approval) + ")").join("; ")]);
       return el("article", { class: "member" },
         el("header", {}, dot(l), el("div", {}, el("strong", { text: memberName(l) }), el("span", { class: "model", text: m.label }))),
         el("span", { class: "status", text: status }),

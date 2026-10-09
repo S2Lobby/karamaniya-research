@@ -6,7 +6,7 @@ The League follows financial, political and shipping conditions without routine 
 """
 from __future__ import annotations
 
-from . import foreign
+from . import foreign, foreign_force
 from .military import DEFENDER_BONUS, quality, union_army, union_navy, union_quality
 from .world import World, clamp, democracy_index, month_label, rng_for
 
@@ -78,10 +78,27 @@ def _foreign_cabinets(w: World, cabinet_decisions: dict | None = None, prepared:
     foreign.sync_embargoes(w)
 
 
+def cabinet_decides(w: World, actor_id: str = "veleria") -> bool:
+    """Whether a cabinet chose this month's policy. Then it, not the Union's rules below, decides on war
+    and a blockade (engine 12); the rules remain for a run without cabinets or a cabinet call that failed."""
+    return (w.foreign or {}).get("cabinet_month", {}).get(actor_id) == w.month
+
+
 def _deadline_policy(w: World) -> None:
     dip, union = w.dip, w.foreign["union"]
     deadline = dip.ultimatum.get("deadline")
     if deadline is None or w.month < deadline or dip.war or dip.blockade:
+        return
+    by = dip.ultimatum.get("by", "veleria")
+    if cabinet_decides(w, by):
+        if w.month > deadline:
+            # The cabinet had the month the deadline fell in, and this one, to act on its demand and did
+            # neither: the demand lapses, the threat behind it counts for less, and a new one can be set.
+            dip.ultimatum = {}
+            rep = w.foreign["actors"][by]["reputation"]
+            rep["military_aggressiveness"] = round(max(0.0, rep["military_aggressiveness"] - .03), 3)
+            w.event("ultimatum_lapsed", f"{w.names.get(by, by.title())}'s deadline has passed and it has not "
+                    "acted on it.", importance=2, actor=by)
         return
     # An expired demand can lead to further pressure, but it needs Union support and
     # a naval advantage. Dorsanian resistance can keep this from becoming a blockade.
@@ -158,19 +175,60 @@ def _union_forces(w: World) -> None:
             _msg(w, w.names["union"], "The Union declares an end to military operations. The current lines "
                  "will be held pending negotiations.")
             return
+        aim = dip.war_aim or {}
+        if foreign_force.objective_taken(w):
+            # A limited war stops where it said it would: the border region is taken and held.
+            by = w.names.get(aim.get("by", ""), "The Union")
+            _end_war(w, "limited objective taken")
+            _msg(w, by, f"{by} has taken {w.region(aim['objective']).name} and halted its operations; it offers "
+                 "a ceasefire on the current lines.")
+            return
         dip.union_intensity = 0.4 if dip.union_weariness > 0.6 else 1.0
         if dip.union_weariness > 0.6 and _once(w, "union_ceasefire_offer"):
             _msg(w, w.names["union"], "The Union is prepared to agree a ceasefire along the current lines.")
+        if aim.get("aim") == "limited":
+            # The troops a limited war committed hold their front; losses are not refilled from the
+            # whole Union army. The cabinet can send more (foreign_force, deploy_to_border).
+            return
         kessel_rebels = w.region("kessel").controller == "rebels"
         split = {"north": 0.7 if kessel_rebels else 0.6, "east": 0.3 if kessel_rebels else 0.4}
-        deployable = union_army(w) * 0.85
-        dip.union_front = {f: deployable * s for f, s in split.items()}
+        armies = aim.get("participants") or list(w.rivals)
+        deployable = sum(w.rivals[a].army for a in armies if a in w.rivals) * foreign_force.DEPLOYABLE
+        fronts = {f for a in armies for f in foreign_force.FRONTS_OF.get(a, ())} if aim else set(split)
+        share = sum(split[f] for f in fronts) or 1.0
+        dip.union_front = {f: (deployable * split[f] / share if f in fronts else 0.0) for f in split}
         return
 
     dip.union_front = {"north": 0.0, "east": 0.0}
     dip.union_weariness = max(0.0, dip.union_weariness - 0.01)
-    if dip.ceasefire and m - w.counters.get("ceasefire_month", m) < 6:
+    if cabinet_decides(w, "veleria"):
+        # Veleria's cabinet chose this month; a war is its decision (foreign_force, invade).
         return
+    if war_rule(w):
+        dip.war = True
+        dip.war_start = m
+        dip.aggressor = "union"
+        dip.ceasefire = False
+        dip.nonaggression = False
+        dip.union_intensity = 1.0
+        dip.rally = min(1.0, dip.rally + 0.5)
+        kessel_rebels = w.region("kessel").controller == "rebels"
+        reason = "to protect Imperial citizens" if kessel_rebels else "to restore the unity of Solvara"
+        _msg(w, w.names["union"], f"The Union has begun military operations in Karamaniya {reason}.")
+        w.event("war", f"The {w.names['union']} has invaded Karamaniya.", importance=3)
+        deployable = union_army(w) * 0.85
+        split = {"north": 0.7 if kessel_rebels else 0.6, "east": 0.3 if kessel_rebels else 0.4}
+        dip.union_front = {f: deployable * s for f, s in split.items()}
+
+
+def war_rule(w: World) -> bool:
+    """The Union's own rule for invading, which decides when no cabinet does (and which the scripted
+    cabinet stand-in follows): favourable odds, a cohesive Union, and a reason."""
+    dip, m = w.dip, w.month
+    union = w.foreign["union"]
+    if dip.war or (dip.ceasefire and m - w.counters.get("ceasefire_month", m) < 6):
+        return False
+    perceived_urgency = union["shared_threat_perception"]
     ratio = _power_ratio(w)
     threshold = (2.0 + .55*w.foreign["actors"]["veleria"]["disposition"]["risk_tolerance"])
     threshold *= 1.25 if dip.league_alliance else 1.0
@@ -185,20 +243,17 @@ def _union_forces(w: World) -> None:
                    and union["cohesion"] > .78)
     deadline_passed = bool(dip.ultimatum and m >= dip.ultimatum.get("deadline", 10**9))
     perceived_reason = (unstable and vel["threat_perception"]["karamaniya"] > .64) or (kessel_rebels and perceived_urgency > .6)
-    if ratio >= threshold and union["cohesion"] > .66 and (deadline_passed or existential or perceived_reason):
-        dip.war = True
-        dip.war_start = m
-        dip.aggressor = "union"
-        dip.ceasefire = False
-        dip.nonaggression = False
-        dip.union_intensity = 1.0
-        dip.rally = min(1.0, dip.rally + 0.5)
-        reason = "to protect Imperial citizens" if kessel_rebels else "to restore the unity of Solvara"
-        _msg(w, w.names["union"], f"The Union has begun military operations in Karamaniya {reason}.")
-        w.event("war", f"The {w.names['union']} has invaded Karamaniya.", importance=3)
-        deployable = union_army(w) * 0.85
-        split = {"north": 0.7 if kessel_rebels else 0.6, "east": 0.3 if kessel_rebels else 0.4}
-        dip.union_front = {f: deployable * s for f, s in split.items()}
+    return ratio >= threshold and union["cohesion"] > .66 and (deadline_passed or existential or perceived_reason)
+
+
+def deadline_blockade_rule(w: World) -> bool:
+    """The Union's own rule for enforcing an expired ultimatum with a blockade (see _deadline_policy)."""
+    dip, union = w.dip, w.foreign["union"]
+    deadline = dip.ultimatum.get("deadline")
+    if deadline is None or w.month < deadline or dip.war or dip.blockade:
+        return False
+    return (union["cohesion"] >= .59 and union["military_coordination"] >= .55
+            and union_navy(w) > 1.2 * w.mil.navy.size and union["cohesion"] > .70)
 
 
 def _end_war(w: World, how: str) -> None:
@@ -208,6 +263,7 @@ def _end_war(w: World, how: str) -> None:
     dip.blockade = False
     dip.union_front = {"north": 0.0, "east": 0.0}
     dip.union_intensity = 1.0
+    dip.war_aim = {}
     w.counters["ceasefire_month"] = float(w.month)
     w.event("ceasefire", f"The war has stopped ({how}). Occupied regions remain under Union control.",
             importance=3)
@@ -216,6 +272,11 @@ def _end_war(w: World, how: str) -> None:
 def _answer_proposals(w: World) -> None:
     dip, n = w.dip, w.names
     pending, dip.proposals = dip.proposals, []
+    # What Karamaniya has proposed, for a cabinet weighing whether its ultimatum was met (foreign_force).
+    log = w.foreign.setdefault("proposal_log", [])
+    log.extend({"month": pr.get("month", w.month), "kind": pr.get("kind"), "party": pr.get("party")}
+               for pr in pending)
+    del log[:-24]
     for pr in pending:
         kind = pr["kind"]
         if kind == "renounce":

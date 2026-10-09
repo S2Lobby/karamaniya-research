@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 
-from .base import Backend, CallResult, FatalError, TransientError, extract_json
+from .base import Backend, CallResult, FatalError, TransientError, extract_json, reasoning
 
 DEFAULT_BASE_URL = "https://api.anthropic.com"
 
@@ -107,5 +107,7 @@ class AnthropicBackend(Backend):
             return CallResult(served_model=resp.model, input_tokens=tokens_in, output_tokens=tokens_out,
                               cost_usd=cost, refusal=True, raw="(refused)", **cached)
         text = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "")
+        thoughts = [getattr(b, "thinking", "") for b in resp.content if getattr(b, "type", "") == "thinking"]
         return CallResult(data=extract_json(text), raw=text, served_model=resp.model,
-                          input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost, **cached)
+                          input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost,
+                          reasoning_text=reasoning(*thoughts), **cached)

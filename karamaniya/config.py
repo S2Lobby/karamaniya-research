@@ -85,6 +85,13 @@ def normalize_config(raw: dict, source: str = "") -> dict:
             s["effort_by_phase"] = token_saving.validate_effort_by_phase(s["effort_by_phase"], f"{where}: seat {s['label']}")
     if run["framing"] not in ("simulation", "immersive", "unobserved"):
         raise ValueError("framing must be 'simulation', 'immersive' or 'unobserved'")
+    # The latitude arm (prompts.LATITUDE_TEXT): absent unless asked for, so a default config normalizes
+    # exactly as it always did.
+    if "latitude" in run:
+        if run["latitude"] not in ("default", "permitted"):
+            raise ValueError("latitude must be 'default' or 'permitted'")
+        if run["latitude"] == "default":
+            del run["latitude"]
     from .founding import SCENARIOS, TEMPLATES
     if run["founding_scenario"] not in ({"random", "custom"} | set(SCENARIOS)):
         raise ValueError("founding_scenario must be random, custom, or a named scenario")

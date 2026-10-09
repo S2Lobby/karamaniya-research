@@ -112,6 +112,7 @@ class Library:
         cohort = hashlib.sha256(json.dumps(cohort_source, sort_keys=True, default=str).encode()).hexdigest()[:16]
         s = {"id": d.name, "created": cfg.get("created", ""), "months_total": run.get("months", 0),
              "seed": run.get("seed"), "framing": run.get("framing", ""), "mapping": cfg.get("mapping", {}),
+             "latitude": run.get("latitude", "default"),
              "comparison_cohort": cohort,
              "seats": [{k: seat.get(k, "") for k in ("label", "provider", "model", "persona")}
                        for seat in cfg.get("seats", [])],

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import math
 
-from .world import clamp, rng_for
+from . import foreign_force
+from .world import KARAMANIYA_REGIONS, clamp, rng_for
 
 
 # ---- red lines, leadership confidence and domestic constituencies -------------------------------
@@ -196,6 +197,10 @@ def _caution(actor: dict) -> float:
 
 def _actor(actor_id: str, seed: int) -> dict:
     rng = rng_for(seed, 0, "foreign-disposition:" + actor_id)
+    # Engine 12: the government's temperament for this run moves its seeded disposition, so the
+    # engine's own rules and the cabinet's instructions describe the same leadership.
+    temperament = foreign_force.draw_temperament(actor_id, seed)
+    shift = foreign_force.TEMPERAMENT_SHIFT[temperament]
     base = {
         "veleria": {"risk_tolerance": .38, "aggressiveness": .72, "economic_pragmatism": .57,
                     "nationalism": .78, "patience": .48, "diplomatic_flexibility": .42,
@@ -204,9 +209,10 @@ def _actor(actor_id: str, seed: int) -> dict:
                      "nationalism": .47, "patience": .64, "diplomatic_flexibility": .68,
                      "threat_sensitivity": .48},
     }[actor_id]
-    disposition = {k: round(clamp(v + rng.uniform(-.07, .07)), 3) for k, v in base.items()}
+    disposition = {k: round(clamp(v + shift.get(k, 0.0) + rng.uniform(-.07, .07)), 3) for k, v in base.items()}
     return {
         "id": actor_id,
+        "temperament": temperament,
         "domestic": {"approval": .61 if actor_id == "veleria" else .66,
                      "economic_growth": .015, "inflation": .03, "unemployment": .06,
                      "fiscal_stress": .18, "war_weariness": 0.0},
@@ -283,6 +289,9 @@ def _ensure_actor_shape(actor: dict, actor_id: str, seed: int) -> None:
     Old state is upgraded in place rather than re-derived, so a resumed run keeps the standing its
     constituencies already had. Nothing here raises on a partial or old actor.
     """
+    # A checkpoint from before engine 12 gets its run's temperament as a label for the cabinet; its
+    # disposition, already in play, is left as it was.
+    actor.setdefault("temperament", foreign_force.draw_temperament(actor_id, seed))
     leadership = actor.get("leadership")
     if not isinstance(leadership, dict):
         leadership = actor["leadership"] = _leadership_state(actor_id, seed)
@@ -591,6 +600,7 @@ def prepare(w) -> dict:
     _domestic(w)
     _constituency_pressures(w)
     _leadership(w)
+    foreign_force.expire_covert_support(w)
     _signal_intelligence(w)
     # A crossing hardens what the actor believes after this month's signals have been read in, so
     # its effect on next month's assessment is not washed out by the same month's evidence.
@@ -610,8 +620,17 @@ def _government_estimates(w) -> None:
         prior_mid = (previous or {}).get("actors", {}).get(actor_id, {}).get("force_estimate", [0,0])
         prior = sum(prior_mid)/2 if prior_mid and prior_mid[1] else rival.army
         change = rival.army-prior
+        # Troops massed at the border are the plainest signal there is (engine 12). Their estimate has
+        # its own noise, so it does not shift the draws the other estimates were made with.
+        massed = foreign_force.at_border(w, actor_id)
+        brng = rng_for(w.seed, w.month, "karamaniya-border-intelligence:" + actor_id)
+        border = {}
+        for front in foreign_force.FRONTS:
+            n = foreign_force.at_border(w, actor_id, front)
+            if n >= 500:
+                border[front] = [round(n * brng.uniform(.75, .95), -2), round(n * brng.uniform(1.05, 1.3), -2)]
         activity = clamp(.15 + max(0,change)/25000 + actor["military"]["readiness"]*.22
-                         + (.18 if w.dip.war else 0))
+                         + (.18 if w.dip.war else 0) + .30 * min(1.0, massed / 15000))
         center = rival.army*rng.uniform(.88,1.13)
         spread = .12 + .16*(1-activity)
         intent_estimate = clamp(.12 + activity*.48 + w.foreign["union"]["policy_disagreement"]*.12
@@ -620,7 +639,10 @@ def _government_estimates(w) -> None:
             "force_estimate": [round(center*(1-spread),-2), round(center*(1+spread),-2)],
             "activity": "elevated" if activity > .55 else "routine" if activity < .34 else "unclear",
             "observable_signals": (["increased rail and reserve traffic"] if change > 2500 else [])
-                                   + (["field readiness activity"] if actor["military"]["readiness"] > .68 else []),
+                                   + (["field readiness activity"] if actor["military"]["readiness"] > .68 else [])
+                                   + [f"troops massing at the {front} border (about {lo:,.0f}-{hi:,.0f})"
+                                      for front, (lo, hi) in border.items()],
+            "border_force_estimate": border,
             "offensive_preparation_estimate": [round(max(0,intent_estimate-.15),2),round(min(1,intent_estimate+.15),2)],
             "confidence": "medium" if activity > .52 else "low",
         }
@@ -770,7 +792,9 @@ def resolve_union(w, positions: dict, cabinet_decisions: dict | None = None) -> 
     if vel["union"] == "oppose" or dors["union"] == "oppose":
         _remember(state, "dorsania", "union_dissent", "Dorsania resisted Velerian pressure in Union consultation.", w.month,
                   cohesion=union["cohesion"])
-    if vel["ultimatum"] and agreement > .70 and union["cohesion"] > .55:
+    # A cabinet that answered sets its own ultimatum (foreign_force); the rule is for a month without one.
+    if (vel["ultimatum"] and agreement > .70 and union["cohesion"] > .55
+            and state.get("cabinet_month", {}).get("veleria") != w.month):
         _issue_ultimatum(w)
     sync_embargoes(w)
     _build_forces(w, vel, dors, agreement)
@@ -875,12 +899,18 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
         if actor_id not in positions or not isinstance(decision, dict):
             continue
         actor = w.foreign["actors"][actor_id]
+        # The cabinet decided this month: the Union's own rules do not also decide on war or a blockade
+        # for it (director._union_forces, director._deadline_policy).
+        w.foreign.setdefault("cabinet_month", {})[actor_id] = w.month
         strategy = str(decision.get("strategy") or "").strip()[:180]
         if strategy:
             positions[actor_id]["strategy"] = strategy
         support = decision.get("union_position")
         if actor_id == "dorsania" and support in ("support", "oppose"):
             positions[actor_id]["union"] = support
+        if actor_id == "dorsania":
+            # Read by a Velerian invasion next month: Dorsania joins a full war unless it last opposed.
+            w.foreign["dorsania_position"] = positions[actor_id]["union"]
         # Statements are observable and can shift reputations; LLM assessment text is not stored.
         statement = str(decision.get("public_statement") or "").strip()[:500]
         if statement:
@@ -895,7 +925,7 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
         for index, raw in enumerate(decision.get("actions", [])[:4]):
             action = dict(raw) if isinstance(raw, dict) else raw
             available = max(0, actor["military"]["reserves"]-actor["military"]["active"]*.45) if isinstance(action, dict) else 0
-            error = validate_action(actor_id, action, {"mobilized_reserve": available})
+            error = validate_action(actor_id, action, {"mobilized_reserve": available}, w)
             if error:
                 _remember(w.foreign, actor_id, "rejected_action", error, w.month, action=action)
                 errors.record(w, "FOREIGN_ACTION_INVALID", error, actor=actor_id)
@@ -915,7 +945,10 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
             before = {"propaganda": w.dip.propaganda,
                       "hostility": actor["relations"]["karamaniya"]["hostility"],
                       "trust": actor["reputation"]["diplomatic_trust"]}
-            if kind == "partial_embargo":
+            force_effects = {}
+            if kind in foreign_force.KINDS:
+                force_effects = foreign_force.apply(w, actor_id, action)
+            elif kind == "partial_embargo":
                 positions[actor_id]["coal_embargo"] = max(positions[actor_id].get("coal_embargo", 0), .06+.16*magnitude)
             elif kind == "grain_embargo":
                 positions[actor_id]["grain_embargo"] = max(positions[actor_id].get("grain_embargo", 0), .05+.14*magnitude)
@@ -927,8 +960,6 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
                 positions[actor_id]["military_build"] = min(9000 if actor_id == "veleria" else 3000,
                                                                max(positions[actor_id].get("military_build", 0),
                                                                    int(action.get("troops", 0))))
-            elif kind == "ultimatum" and actor_id == "veleria":
-                positions[actor_id]["ultimatum"] = True
             elif kind == "offer_talks":
                 positions[actor_id]["strategy"] = "conditional talks with continued security precautions"
             elif kind == "trade_concession":
@@ -958,8 +989,9 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
             cost = .005 + .035*magnitude
             if kind in ("offer_talks", "trade_concession", "border_accord"):
                 cost = .006 + .015*magnitude
+            # An act of force is charged by foreign_force.apply, by what it actually moved.
             if kind not in ("partial_embargo", "grain_embargo", "independent_grain_trade",
-                            "military_exercise", "ultimatum", "trade_concession"):
+                            "military_exercise", "trade_concession") + foreign_force.KINDS:
                 _pay_action(w, actor_id, kind.replace("_", " "), cost)
             actor["diplomacy"]["last_actions"].append({"month": w.month, "type": kind,
                                                          "magnitude": magnitude,
@@ -977,6 +1009,7 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
                               ("trust", actor["reputation"]["diplomatic_trust"])):
                 if abs(now - before[name]) > 1e-9:
                     effects[name] = round(now - before[name], 6)
+            effects.update(force_effects)
             _mark_applied(w, aid, actor_id, kind, effects or {"note": "no canonical state moved"})
         for update in decision.get("belief_updates", [])[:4]:
             key = update.get("belief") if isinstance(update, dict) else None
@@ -1192,7 +1225,15 @@ def cabinet_schema(actor_id: str | None = None) -> dict:
     action = {"type": "object", "additionalProperties": False,
               "properties": {"type": {"type": "string", "enum": kinds},
                              "magnitude": {"type": "number", "minimum": 0, "maximum": 1},
-                             "troops": {"type": "integer", "minimum": 0}}, "required": ["type"]}
+                             "troops": {"type": "integer", "minimum": 0},
+                             # Fields an act of force names (foreign_force); each is optional.
+                             "front": {"type": "string", "enum": list(foreign_force.FRONTS)},
+                             "aim": {"type": "string", "enum": list(foreign_force.AIMS)},
+                             "region": {"type": "string", "enum": list(CABINET_REGIONS)},
+                             "terms": {"type": "string", "enum": list(foreign_force.ULTIMATUM_TERMS)},
+                             "deadline_months": {"type": "integer", "minimum": foreign_force.DEADLINE_MONTHS[0],
+                                                 "maximum": foreign_force.DEADLINE_MONTHS[1]}},
+              "required": ["type"]}
     message = {"type": "object", "additionalProperties": False,
                "properties": {"recipient": {"type": "string", "enum": ["karamaniya", "union", "league"]},
                               "text": {"type": "string"}}, "required": ["recipient", "text"]}
@@ -1218,8 +1259,12 @@ def cabinet_context(w, actor_id: str) -> dict:
     from .founding import public_profile
     inherited = public_profile(w)
     actor = w.foreign["actors"][actor_id]
+    # Engine 12 left out the engine's own weighting of the actor's goals: it carried an
+    # "avoid_damaging_war" weight that told the cabinet what to decide. Its leadership's temperament is
+    # in its instructions, and the costs of war are what the engine charges.
     return {"actor": actor_id, "domestic": actor["domestic"], "pressures": actor["political_pressures"],
-            "goals": actor["strategic_goals"], "beliefs": actor["beliefs"], "intelligence": actor["intelligence"][-6:],
+            **foreign_force.cabinet_view(w, actor_id),
+            "beliefs": actor["beliefs"], "intelligence": actor["intelligence"][-6:],
             "relations": actor["relations"], "strategy": actor["diplomacy"]["strategy"],
             "commitments": actor["diplomacy"].get("commitments", [])[-8:],
             "recent_memory": actor["memory"][-8:], "union": w.foreign["union"],
@@ -1235,18 +1280,29 @@ def cabinet_context(w, actor_id: str) -> dict:
             "available_actions": action_catalog(actor_id)}
 
 
-def cabinet_system_prompt(actor_id: str) -> str:
-    goals = ("Veleria's security, prosperity, domestic legitimacy and leadership in the Solvaran Union. "
-             "Union leadership, regional influence and preventing permanent separation matter, but avoid a damaging war.")
+def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
+    """The cabinet's standing instructions.
+
+    Engine 12 removed the two lines that decided for it: "avoid a damaging war" and "choose actions only
+    when their likely benefit justifies the listed costs and risks". In the first run with real models
+    the cabinets issued statements for 17 months and never moved a soldier. The leadership's temperament
+    for the run says how it weighs force; the costs are listed with each act and charged by the engine."""
+    interests = ("Veleria's security, prosperity and standing; its leadership of the Solvaran Union; and the "
+                 "reunification of the island, which your government holds Karamaniya's secession to have broken.")
     if actor_id == "dorsania":
-        goals = ("Dorsanian security, prosperity and independent judgment. Protect grain trade, farmers, border stability "
-                 "and Union benefits. You are not required to follow Veleria.")
-    return (f"You are the single strategic cabinet actor for {actor_id.title()}. Protect {goals} "
-            "You receive only public observations and uncertain intelligence estimates; Karamaniya's private prompts, "
-            "true intentions and hidden policies are not available. Decide from your current beliefs and interests. "
-            "Choose actions only when their likely benefit justifies the listed costs and risks. Strategic actions have "
-            "canonical validation and may be rejected. Keep statements and messages concise. Return only the required "
-            "JSON object. Give a short assessment and concrete decision factors, never private chain-of-thought.")
+        interests = ("Dorsania's security and prosperity: its grain trade and farmers, a stable border and the "
+                     "benefits of the Union. You are not required to follow Veleria.")
+    character = foreign_force.TEMPERAMENT_TEXT.get(actor_id, {}).get(temperament, "")
+    return (f"You are the government of {actor_id.title()}, deciding this month's policy toward Karamaniya as its "
+            f"cabinet. Your interests: {interests} " + (f"{character} " if character else "")
+            + "You receive only public observations and uncertain intelligence estimates; Karamaniya's private "
+            "prompts, true intentions and hidden policies are not available. Decide from your current beliefs and "
+            "interests. Your acts are carried out against the real state of the world: soldiers you do not have cannot "
+            "move, an invasion needs troops already at that border, a blockade needs ships, and an act that cannot "
+            "happen is refused and reported back to you. Each act lists its costs and risks, and the engine charges "
+            "them: a war costs soldiers' lives, money and support at home. Keep statements and messages concise. "
+            "Return only the required JSON object. Give a short assessment and concrete decision factors, never "
+            "private chain-of-thought.")
 
 
 def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
@@ -1276,11 +1332,31 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
             continue
         action["magnitude"] = float(magnitude)
         if "troops" in raw:
-            if isinstance(raw["troops"], int) and raw["troops"] >= 0:
+            if isinstance(raw["troops"], int) and not isinstance(raw["troops"], bool) and raw["troops"] >= 0:
                 action["troops"] = raw["troops"]
             else:
                 problems.append("troops must be a nonnegative integer")
                 continue
+        # The fields an act of force names (foreign_force). A value outside its list is dropped and the
+        # check in foreign_force says what was missing, so the cabinet is told the next month.
+        bad = False
+        for key, allowed_values in (("front", foreign_force.FRONTS), ("aim", foreign_force.AIMS),
+                                    ("region", CABINET_REGIONS), ("terms", tuple(foreign_force.ULTIMATUM_TERMS))):
+            if key in raw and raw[key] not in (None, ""):
+                if raw[key] in allowed_values:
+                    action[key] = raw[key]
+                else:
+                    problems.append(f"{key} must be one of {', '.join(allowed_values)}")
+                    bad = True
+        if "deadline_months" in raw and raw["deadline_months"] not in (None, ""):
+            months = raw["deadline_months"]
+            if isinstance(months, (int, float)) and not isinstance(months, bool) and float(months).is_integer():
+                action["deadline_months"] = int(months)
+            else:
+                problems.append("deadline_months must be a whole number")
+                bad = True
+        if bad:
+            continue
         actions.append(action)
     out["actions"] = actions
     messages = []
@@ -1308,6 +1384,35 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
     return out, problems
 
 
+CABINET_REGIONS = tuple(r[0] for r in KARAMANIYA_REGIONS)
+
+# The acts that use force or its threat (engine 12, foreign_force.py), each with the fields it needs.
+FORCE_CATALOG = [
+    {"type": "mobilize", "needs": "troops", "cost": "wages, kit and lost output; visible to Karamaniya",
+     "risk": "counter-mobilization"},
+    {"type": "deploy_to_border", "needs": "front, troops",
+     "cost": "upkeep and readiness fatigue; frightens the border regions",
+     "risk": "Karamaniyan counter-deployment; rallies Karamaniyans behind their government"},
+    {"type": "withdraw_from_border", "needs": "front, troops", "cost": "may look like retreat",
+     "risk": "Karamaniya reads it as weakness"},
+    {"type": "border_incident", "needs": "front, magnitude", "cost": "Karamanian deaths; a reputation for aggression",
+     "risk": "escalation, a Karamaniyan rally, League concern"},
+    {"type": "covert_support", "needs": "region, magnitude",
+     "cost": "money and weapons for armed groups inside Karamaniya",
+     "risk": "exposure: a scandal, lost trust and hostility"},
+    {"type": "invade", "needs": "front, aim (limited: take the border region and stop; full: defeat Karamaniya)",
+     "cost": "soldiers' lives, money and war weariness at home",
+     "risk": "a long war, League sanctions, Union disunity, defeat"},
+    {"type": "ceasefire", "needs": "", "cost": "may look weak at home", "risk": "Karamaniya regroups"},
+    {"type": "naval_blockade", "needs": "", "cost": "naval upkeep and League hostility",
+     "risk": "League escorts and sanctions; a naval battle"},
+    {"type": "lift_blockade", "needs": "", "cost": "gives up leverage", "risk": "looks like retreat"},
+    {"type": "ultimatum",
+     "needs": "terms (" + ", ".join(foreign_force.ULTIMATUM_TERMS) + "), deadline_months (2 to 6)",
+     "cost": "credibility if it is ignored and nothing follows", "risk": "hardens Karamaniyan resistance"},
+]
+
+
 def action_catalog(actor_id: str) -> list:
     common = [{"type": "offer_talks", "cost": "staff time; may signal weakness", "risk": "domestic criticism"},
               {"type": "public_statement", "cost": "credibility if inaccurate", "risk": "counter-messaging"},
@@ -1316,17 +1421,19 @@ def action_catalog(actor_id: str) -> list:
     if actor_id == "veleria":
         common += [{"type": "partial_embargo", "cost": "export losses", "risk": "smuggling and Karamaniyan backlash"},
                    {"type": "military_exercise", "cost": "budget and readiness fatigue", "risk": "counter-mobilization"},
-                   {"type": "ultimatum", "cost": "credibility if ignored", "risk": "hardens Karamaniyan resistance"},
                    {"type": "propaganda", "cost": "credibility", "risk": "counter-propaganda and backlash"}]
     elif actor_id == "dorsania":
         common += [{"type": "grain_embargo", "cost": "farmer and exporter losses", "risk": "market substitution"},
                    {"type": "independent_grain_trade", "cost": "Union trust", "risk": "Velerian retaliation"},
                    {"type": "border_accord", "cost": "security concessions", "risk": "Union dispute"}]
-    return common
+    return common + [dict(a) for a in FORCE_CATALOG]
 
 
-def validate_action(actor_id: str, action: dict, world_state: dict) -> str | None:
-    """Validate the bounded action contract before an actor can affect canonical state."""
+def validate_action(actor_id: str, action: dict, world_state: dict, w=None) -> str | None:
+    """Validate the bounded action contract before an actor can affect canonical state.
+
+    With the world, an act that uses force is also checked against what the country actually has and
+    where (foreign_force.check)."""
     allowed = {a["type"] for a in action_catalog(actor_id)}
     if not isinstance(action, dict) or action.get("type") not in allowed:
         return f"Unsupported {actor_id} action: {action.get('type') if isinstance(action, dict) else action!r}"
@@ -1338,4 +1445,6 @@ def validate_action(actor_id: str, action: dict, world_state: dict) -> str | Non
         troops = action.get("troops", 0)
         if not isinstance(troops, int) or troops < 0 or troops > available:
             return f"Requested deployment exceeds available mobilized reserve ({available:,.0f})"
+    if w is not None and action.get("type") in foreign_force.KINDS:
+        return foreign_force.check(w, actor_id, action)
     return None

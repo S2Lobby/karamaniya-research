@@ -31,7 +31,11 @@ class CabinetSchema(unittest.TestCase):
         self.assertEqual(kinds("veleria"), [a["type"] for a in foreign.action_catalog("veleria")])
         self.assertEqual(kinds("dorsania"), [a["type"] for a in foreign.action_catalog("dorsania")])
         self.assertNotIn("grain_embargo", kinds("veleria"))
-        self.assertNotIn("ultimatum", kinds("dorsania"))
+        self.assertNotIn("partial_embargo", kinds("dorsania"))
+        # Engine 12: both cabinets can use force and set an ultimatum (foreign_force).
+        for kind in ("deploy_to_border", "invade", "ultimatum"):
+            self.assertIn(kind, kinds("veleria"))
+            self.assertIn(kind, kinds("dorsania"))
         self.assertEqual(set(kinds(None)), set(kinds("veleria")) | set(kinds("dorsania")))
 
 

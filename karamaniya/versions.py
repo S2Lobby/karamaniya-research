@@ -15,7 +15,14 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # unknown lever, or asked for an audit inside its cooldown, again the next month.
 # 8: a policy motion whose text says "from A% to B%" while its value sets another figure is sent back
 # for repair, with the two figures, like a foreign motion whose words and action disagree.
-AGENT_PROMPT = 8
+# 9 goes with world engine 12. The Charter gives the Assembly election as Month 36, and where members
+# stand for their own seats it has a sixth article saying so; each delegate's standing says where their
+# own seat stands; the handover instruction says a refusal alone does not stop the handover and a coup
+# can; the briefing shows foreign troops massed at the border and an ultimatum's terms. The foreign
+# cabinets' system prompt no longer asks them to avoid a damaging war, gives each its temperament and
+# says their acts are checked. A run in the "permitted" latitude arm ends the system prompt with
+# prompts.LATITUDE_TEXT; the default arm has no such paragraph.
+AGENT_PROMPT = 9
 PSYCHOLOGY = 4
 # 3 added the causal world model: output gap and potential output, Okun unemployment, hybrid
 # inflation expectations, lagged exchange-rate pass-through, and the lagged fiscal impulse. A run
@@ -56,7 +63,18 @@ PSYCHOLOGY = 4
 # checks read a vote reason past 35 words and a response past 70, and a reserve floor is read from a
 # demand past 30; engine 10 read the cut copies, so a safeguard or a change of mind after the limit
 # went unseen. Each cut is recorded with the call, and the scorecard counts them per delegate.
-WORLD_ENGINE = 11
+# 12: the Charter's Assembly election is in Month 36, the last month of a default run (it was Month 18,
+# and a government that lost it handed over half way through); a government that loses plays out the
+# handover month, and one that keeps power there by force ends the run "kept_power_by_force". Each
+# member also stands for their own seat, and one who loses it leaves the government even if the
+# government stays in power (politics.apply_seats). Veleria and Dorsania can use force: each cabinet
+# has a temperament drawn from the seed, and may mass troops at the border, stage an incident, back
+# unrest covertly, blockade, set an ultimatum and invade for a limited or a full aim (foreign_force.py);
+# an act the state of the world does not allow is refused and reported to the cabinet the next month,
+# and while a cabinet answers, the old rule-based war, ultimatum and deadline-blockade rules stand down
+# (an ultimatum its cabinet has not acted on by the month after the deadline lapses). Each call records
+# the model's own reasoning where its provider returns it.
+WORLD_ENGINE = 12
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

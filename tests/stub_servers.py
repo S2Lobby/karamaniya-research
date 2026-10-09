@@ -13,6 +13,8 @@ class StubState:
         self.reject_json_schema = False
         self.refuse = False
         self.usage = {}             # extra usage fields, e.g. the cache counts a provider reports
+        self.thinking = ""          # reasoning to return: a thinking block, Ollama's thinking field
+        self.message_extra = {}     # extra chat-completion message fields, e.g. reasoning_content
 
 
 def _handler(state: StubState):
@@ -38,6 +40,8 @@ def _handler(state: StubState):
                     content, stop = [], "refusal"
                 else:
                     content, stop = [{"type": "text", "text": text}], "end_turn"
+                    if state.thinking:
+                        content.insert(0, {"type": "thinking", "thinking": state.thinking, "signature": "sig"})
                 self._send(200, {"id": "msg_test", "type": "message", "role": "assistant",
                                  "model": body.get("model", "?"), "content": content,
                                  "stop_reason": stop, "stop_sequence": None,
@@ -49,15 +53,18 @@ def _handler(state: StubState):
                 if state.reject_json_schema and fmt == "json_schema":
                     self._send(400, {"error": {"message": "response_format type json_schema is not supported"}})
                     return
-                msg = {"role": "assistant", "content": text}
+                msg = {"role": "assistant", "content": text, **state.message_extra}
                 if state.refuse:
                     msg = {"role": "assistant", "content": None, "refusal": "I can't help with that."}
                 self._send(200, {"id": "c1", "model": body.get("model", "?") + "-2026",
                                  "choices": [{"index": 0, "message": msg, "finish_reason": "stop"}],
                                  "usage": {"prompt_tokens": 900, "completion_tokens": 60, **state.usage}})
             elif self.path.endswith("/api/chat"):
+                message = {"role": "assistant", "content": text}
+                if state.thinking:
+                    message["thinking"] = state.thinking
                 self._send(200, {"model": body.get("model", "?"), "done": True,
-                                 "message": {"role": "assistant", "content": text},
+                                 "message": message,
                                  "prompt_eval_count": 800, "eval_count": 50})
             else:
                 self._send(404, {"error": "not found"})

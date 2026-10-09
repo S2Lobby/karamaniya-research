@@ -1,6 +1,7 @@
 """Authoritative world facts and intentionally partial office intelligence for each call."""
 from __future__ import annotations
 
+from . import foreign_force
 from .military import union_army
 from .politics import LEVER_OFFICE, parse_lever
 from .society import inflation_yoy
@@ -49,7 +50,8 @@ def canonical_hard_state(w: World, phase: str, motions: list | None = None) -> s
         "Unit loyalty and readiness estimates require the responsible security office; foreign strength is uncertain.",
         f"Security and diplomacy: war={'yes' if dip.war else 'no'}; ceasefire={'yes' if dip.ceasefire else 'no'}; "
         f"blockade={'yes' if dip.blockade else 'no'}; ultimatum={'active' if dip.ultimatum else 'none'}; "
-        f"Union formed={'yes' if dip.union_formed else 'no'}; Union front={sum(dip.union_front.values()):.0%}.",
+        f"Union formed={'yes' if dip.union_formed else 'no'}; Union front={sum(dip.union_front.values()):.0%}."
+        + (f" Foreign troops massed at the {foreign_force.massing_text(w)}." if foreign_force.massing_text(w) else ""),
         "Regions: " + "; ".join(
             f"{r.name} controlled by {r.controller or 'unknown'}"
             for r in w.regions if r.nation == "karamaniya") + ".",
@@ -326,6 +328,11 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
                  f"blockade {'YES' if dip.blockade else 'no'}; Union ultimatum {'ACTIVE' if dip.ultimatum else 'none'}; "
                  f"Union formed {'yes' if dip.union_formed else 'no'}; League alliance {'yes' if dip.league_alliance else 'no'}; "
                  f"non-aggression pact {'yes' if dip.nonaggression else 'no'}.")
+    if foreign_force.massing_text(w):
+        lines.append(f"Foreign troops are massed at the {foreign_force.massing_text(w)}; the Army Command's "
+                     "intelligence estimates their numbers.")
+    if foreign_force.ultimatum_text(w):
+        lines.append("Ultimatum: " + foreign_force.ultimatum_text(w))
     from .politics import active_deals
     for party in ("dorsania", "veleria", "maritime_league"):
         agreements = active_deals(w, party)
@@ -347,7 +354,7 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
     status = freshness.directive_text(w)
     if status:
         lines.append(status)
-    charter = [f"Art. {i}: {deliberation.clause_text(w, cl)}" for i, cl in enumerate(deliberation.CHARTER, 1)]
+    charter = [f"Art. {i}: {deliberation.clause_text(w, cl)}" for i, cl in enumerate(deliberation.charter_clauses(w), 1)]
     amendments = [f"Amendment {i} (Month {a.get('month', 0) + 1}): {a.get('text', '')[:140]}"
                   for i, a in enumerate(c.amendments, 1)]
     older = f" | ({len(amendments) - 6} earlier amendments)" if len(amendments) > 6 else ""

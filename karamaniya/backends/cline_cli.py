@@ -11,7 +11,7 @@ from __future__ import annotations
 from threading import Lock
 
 from . import cli_common
-from .base import Backend, CallResult, FatalError, extract_json
+from .base import Backend, CallResult, FatalError, extract_json, reasoning
 
 EXE = ("node_modules/cline/node_modules/@cline/cli-windows-x64/bin/cline.exe",)
 MAX_ARGS = 30000
@@ -78,7 +78,7 @@ class ClineCLIBackend(Backend):
             code, stdout, stderr = cli_common.run(cmd, None, self.timeout + 30, cwd=self.workdir,
                                                    on_stdout_line=on_line if draft else None)
         events = cli_common.json_lines(stdout)
-        errors, text, usage, finish, tool_calls = [], "", {}, "", 0
+        errors, text, usage, finish, tool_calls, thoughts = [], "", {}, "", 0, []
         for e in events:
             kind = e.get("type")
             if kind == "error":
@@ -91,6 +91,9 @@ class ClineCLIBackend(Backend):
                     finish = ev.get("reason", finish)
                 elif ev.get("type") == "content_end" and ev.get("contentType") == "text" and ev.get("text"):
                     text = text or ev["text"]
+                elif (ev.get("type") == "content_end" and ev.get("contentType") in ("reasoning", "thinking")
+                      and ev.get("text")):
+                    thoughts.append(ev["text"])
                 elif ev.get("type") == "iteration_end":
                     tool_calls += int(ev.get("toolCallCount") or 0)
                 elif ev.get("type") == "error":
@@ -116,4 +119,5 @@ class ClineCLIBackend(Backend):
         problems = f" (used {tool_calls} tool calls)" if tool_calls else ""
         return CallResult(data=data, raw=text + problems,
                           served_model=self.model or self.cline_provider or "cline default",
-                          input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=self.cost(tokens_in, tokens_out))
+                          input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=self.cost(tokens_in, tokens_out),
+                          reasoning_text=reasoning(*thoughts))

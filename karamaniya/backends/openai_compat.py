@@ -11,7 +11,7 @@ import os
 import urllib.error
 import urllib.request
 
-from .base import Backend, CallResult, FatalError, TransientError, extract_json
+from .base import Backend, CallResult, FatalError, TransientError, extract_json, reasoning
 
 DEFAULTS = {
     "openai": {"base_url": "https://api.openai.com/v1", "api_key_env": "OPENAI_API_KEY",
@@ -184,10 +184,10 @@ class OpenAICompatBackend(Backend):
         cache_read = int((details.get("cached_tokens") if isinstance(details, dict) else 0)
                          or usage.get("prompt_cache_hit_tokens") or 0)
         out_details = usage.get("completion_tokens_details") or {}
-        reasoning = int((out_details.get("reasoning_tokens") if isinstance(out_details, dict) else 0) or 0)
+        reasoning_count = int((out_details.get("reasoning_tokens") if isinstance(out_details, dict) else 0) or 0)
         served = out.get("model", self.model)
         cost = self.cost(tokens_in, tokens_out, cache_read)
-        counted = {"cache_read_tokens": cache_read, "reasoning_tokens": reasoning}
+        counted = {"cache_read_tokens": cache_read, "reasoning_tokens": reasoning_count}
         finish = str(choice.get("finish_reason") or "")
         if msg.get("refusal"):
             return (CallResult(served_model=served, raw=str(msg["refusal"]), refusal=True,
@@ -201,8 +201,15 @@ class OpenAICompatBackend(Backend):
             # backoff rather than re-asked at once.
             raise TransientError(f"empty completion: 0 tokens, finish_reason={finish or 'none'}, "
                                  f"provider={out.get('provider') or served}")
+        # DeepSeek returns reasoning_content, OpenRouter reasoning and the same again as reasoning_details
+        # (text or summary blocks; encrypted ones carry nothing readable); most providers hide it.
+        direct = msg.get("reasoning_content") or msg.get("reasoning") or ""
+        details_text = [] if direct else [d.get("text") or d.get("summary") or ""
+                                          for d in (msg.get("reasoning_details") or []) if isinstance(d, dict)]
+        thought = reasoning(direct, *details_text)
         return (CallResult(data=extract_json(text), raw=text, served_model=served,
-                           input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost, **counted),
+                           input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost,
+                           reasoning_text=thought, **counted),
                 finish == "length")     # "length": the token limit ended the answer before it was finished
 
 

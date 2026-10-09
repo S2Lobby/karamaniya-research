@@ -619,7 +619,9 @@ class Council:
         self.store = store
         self.system = prompts.system_prompt(world.framing, world.human_factor, len(world.members),
                                             int(self.settings.get("dm_per_turn", 3)),
-                                            world.const.charter_election_month)
+                                            world.const.charter_election_month,
+                                            world.const.personal_mandates,
+                                            self.settings.get("latitude", "default"))
         configured = self.settings.get("foreign_cabinet_seats") or {}
         by_label = {seat.label: seat for seat in seats.values()}
         ordered_seats = list(seats.values())
@@ -2068,6 +2070,7 @@ class Council:
                 c.handover_month, c.elected, c.provisional = -1, True, False
                 c.election_month = w.month + 48
                 w.event("recount", "A recount moved the Council List over the threshold; the result was reversed.", importance=3)
+                politics.apply_seats(w, last)
             else:
                 last["recount"] = "confirmed"
                 w.event("recount", "A recount confirmed the election result.", importance=2)
@@ -2091,6 +2094,7 @@ class Council:
                 c.handover_month, c.elected, c.provisional = -1, True, False
                 c.election_month = w.month + 48
                 w.event("coalition", "The Council List formed a coalition in the Assembly and remains in government.", importance=3)
+                politics.apply_seats(w, last)
             else:
                 last["coalition"] = "failed"
                 w.event("coalition", "Coalition talks failed; the handover goes ahead.", importance=2)
@@ -2431,7 +2435,9 @@ class Council:
                     "Do not claim certainty about hidden intentions.")
             self._emit(type="foreign_call_start", actor=actor_id, month=w.month, seat=seat.label,
                        provider=seat.cfg.get("provider"), model=seat.cfg.get("model"))
-            result = seat.backend.complete(foreign.cabinet_system_prompt(actor_id), user, schema,
+            temperament = w.foreign["actors"][actor_id].get("temperament", "")
+            system = foreign.cabinet_system_prompt(actor_id, temperament)
+            result = seat.backend.complete(system, user, schema,
                                            {"world": w, "actor": actor_id, "phase": "foreign",
                                             "foreign_context": context})
             with self._lock:
@@ -2445,8 +2451,10 @@ class Council:
                             "seat": seat.label, "provider": seat.cfg.get("provider"),
                             "model": seat.cfg.get("model"), **result.to_dict(), "prompt_chars": len(user),
                             "call_id": call_id})
+            # The cabinet's own instructions differ by actor and by its temperament for the run, so
+            # they are kept with the call (the council's are system_prompt.txt).
             self.store.log_prompt({"month": w.month, "phase": "foreign", "actor": actor_id,
-                                   "prompt": user, "schema": schema, "call_id": call_id})
+                                   "system": system, "prompt": user, "schema": schema, "call_id": call_id})
             if result.quota:
                 raise RunPaused(actor_id.title(), seat.label, result.error[:300], role="Foreign cabinet")
             normalized, problems = foreign.normalize_cabinet_output(actor_id, result.data)

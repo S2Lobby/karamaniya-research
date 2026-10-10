@@ -269,6 +269,12 @@ def _change(rel: dict, *, month: int | None = None, reason: str | None = None, *
 
 
 # ---- monthly evaluation ---------------------------------------------------------------------
+# The promise kinds that read a member's vote (_judge). Under a secret ballot no colleague sees that vote, so a
+# promise of this kind is not judged: nothing is kept or broken on it, and nothing settles (engine 18).
+VOTE_PROMISE_KINDS = ("support_proposals_of", "support_motion", "support_policy", "oppose_policy", "support_appointment",
+                      "fund", "raise", "cut", "policy_limit")
+
+
 def evaluate(w: World, record_: dict) -> list:
     """Judge checkable promises against this month's votes, orders and shares."""
     results = []
@@ -284,6 +290,8 @@ def evaluate(w: World, record_: dict) -> list:
             if p.get("status") != "active" or p.get("created_month") == w.month and p.get("source") != "dm":
                 continue
             norm = p.get("normalized") or {}
+            if w.ballot == "secret" and norm.get("type") in VOTE_PROMISE_KINDS:
+                continue
             cond = p.get("condition_metric")
             met = condition_met(w, cond)
             if cond and met is False:

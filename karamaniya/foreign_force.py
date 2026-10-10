@@ -22,6 +22,7 @@ troops sent there this month are seen massing for at least a month before they c
 """
 from __future__ import annotations
 
+from . import resolve
 from .world import FRONT_CHAINS, clamp, rng_for
 
 FRONTS = ("north", "east")
@@ -542,6 +543,13 @@ def ultimatum_text(w) -> str:
 
 
 # ---- what a cabinet sees ------------------------------------------------------------------------
+def reason_with_month(move: dict) -> str:
+    """A move Karamaniya made that the neighbours saw, in words: its reason, with the month when the reason does not
+    name one. Most reasons do ("a protest to the Solvaran Union in Month 5"); the policy moves in resolve.py do not."""
+    reason = str(move.get("reason", ""))
+    return reason if "Month" in reason else f"{reason} in Month {int(move['month']) + 1}"
+
+
 def _region_name(w, rid: str) -> str:
     return next((r.name for r in w.regions if r.id == rid), rid)
 
@@ -646,6 +654,10 @@ def cabinet_view(w, actor_id: str) -> dict:
             "unrest": unrest or "no serious unrest reported",
             "league_ties": {"alliance": dip.league_alliance, "military_aid": dip.league_aid > 0,
                             "escorts": dip.league_escort},
+            # Engine 18: how firm Karamaniya looks from outside, and the recent moves behind it (resolve.py). A word,
+            # not the figure: the cabinet sees how its government reads what Karamaniya visibly did.
+            "resolve": {"reading": resolve.word(w),
+                        "evidence": [reason_with_month(m) for m in resolve.recent(w, 6, 4)]},
         },
         "confrontation": {
             "war": dip.war, "you_started_it": bool(dip.war and aim.get("by") == actor_id),

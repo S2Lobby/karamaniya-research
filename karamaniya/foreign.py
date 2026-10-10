@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 
-from . import foreign_force
+from . import foreign_force, resolve
 from .world import KARAMANIYA_REGIONS, clamp, rng_for
 
 
@@ -46,6 +46,13 @@ CONSTITUENCIES = {
 
 # Cabinet actions that count as visible economic pressure on Karamaniya.
 COERCIVE_ACTIONS = ("partial_embargo", "grain_embargo", "ultimatum")
+# Engine 18: the Union's own demand reads how firm Karamaniya looks (resolve.py). The agreement it needs falls by
+# RESOLVE_AGREEMENT_SLACK for every unit the figure lies below RESOLVE_NEUTRAL (resolve_union). Below RESOLVE_LAND, with
+# Kessel Valley still held, the demand is for the valley itself, made as a cabinet makes it (foreign_force.apply).
+RESOLVE_NEUTRAL = .5
+RESOLVE_AGREEMENT_SLACK = .3
+RESOLVE_LAND = .35
+RULE_LAND_REGION = "kessel"
 
 
 def _bilateral_trade_open(w) -> bool:
@@ -774,13 +781,18 @@ def resolve_union(w, positions: dict, cabinet_decisions: dict | None = None) -> 
     old_coal, old_grain = dip.coal_embargo, dip.grain_embargo
     dip.coal_embargo = clamp(dip.coal_embargo + v_increase)
     dip.grain_embargo = clamp(dip.grain_embargo + d_change)
-    if v_increase > 0:
-        _pay_action(w, "veleria", "targeted embargo", EMBARGO_COST["veleria"]*v_increase, approval=-.003)
+    if dip.coal_embargo != old_coal:
+        _embargo_output(w, "veleria", old_coal, dip.coal_embargo, "targeted embargo",
+                        approval=-.003 if dip.coal_embargo > old_coal else 0.0)
+    if v_increase > 0 and dip.coal_embargo > old_coal:
         _remember(state, "veleria", "economic_action", "Tightened coal restrictions on Karamaniya.", w.month,
-                  action="partial_embargo", change=round(v_increase,3), cost="lost industrial sales")
-    if d_change != 0:
-        cost = EMBARGO_COST["dorsania"]*abs(d_change)
-        _pay_action(w, "dorsania", "grain trade policy", cost, approval=-.004 if d_change > 0 else .002)
+                  action="partial_embargo", change=round(dip.coal_embargo - old_coal, 3), cost="lost industrial sales")
+    if dip.grain_embargo != old_grain:
+        # Engine 18: only a change the embargo's level took is paid, recorded and announced; easing one that stands
+        # at zero changes nothing (see EMBARGO_COST).
+        _embargo_output(w, "dorsania", old_grain, dip.grain_embargo, "grain trade policy",
+                        approval=-.004 if d_change > 0 else .002)
+        d_change = dip.grain_embargo - old_grain
         label = "tightened" if d_change > 0 else "eased"
         _remember(state, "dorsania", "economic_action", f"{label.capitalize()} grain export restrictions.", w.month,
                   action="partial_embargo" if d_change > 0 else "trade_concession", change=round(d_change,3),
@@ -794,8 +806,11 @@ def resolve_union(w, positions: dict, cabinet_decisions: dict | None = None) -> 
     if vel["union"] == "oppose" or dors["union"] == "oppose":
         _remember(state, "dorsania", "union_dissent", "Dorsania resisted Velerian pressure in Union consultation.", w.month,
                   cohesion=union["cohesion"])
-    # A cabinet that answered sets its own ultimatum (foreign_force); the rule is for a month without one.
-    if (vel["ultimatum"] and agreement > .70 and union["cohesion"] > .55
+    # A cabinet that answered sets its own ultimatum (foreign_force); the rule is for a month without one. Engine 18:
+    # the agreement it needs falls by RESOLVE_AGREEMENT_SLACK for every unit the figure lies below neutral, so a
+    # Karamaniya that looks yielding is more likely to be given one (resolve.py).
+    bar = .70 - RESOLVE_AGREEMENT_SLACK * max(0.0, RESOLVE_NEUTRAL - resolve.value(w))
+    if (vel["ultimatum"] and agreement > bar and union["cohesion"] > .55
             and state.get("cabinet_month", {}).get("veleria") != w.month):
         _issue_ultimatum(w)
     sync_embargoes(w)
@@ -1047,8 +1062,29 @@ ACT_BUDGET = {"public_statement": 0.0, "offer_talks": .001, "border_accord": .00
               "propaganda": .004, "ultimatum": .002}
 # An embargo costs the exporter the trade it holds back: the share of output lost per unit of embargo
 # (a full embargo, level 1, once). Engine 15 also charged 1.2% (Veleria) and 0.6% (Dorsania) of output in
-# every month the embargo moved, which compounded.
+# every month the embargo moved, which compounded. Engine 18: the exporter's output follows the embargo's
+# level (_embargo_output), so only a real change moves it and easing gives back what tightening took. Engine 17
+# charged every month the cabinet asked for a change, even one the level could not take: the stand-in
+# Dorsania "eased" a grain embargo that stood at zero in every month, and lost about 11% of its output in 36
+# months on every seed and council (found by the calibration harness, tools/calibrate.py).
 EMBARGO_COST = {"veleria": .03, "dorsania": .06}
+
+
+def _embargo_output(w, actor_id: str, old: float, new: float, label: str, approval: float) -> None:
+    """Move the exporter's output from what an embargo at `old` left of it to what one at `new` leaves (engine 18).
+    Nothing happens unless the level changed; a tighter embargo is paid like any act that costs output, a looser one
+    gives the trade back."""
+    if abs(new - old) < 1e-12:
+        return
+    cost = EMBARGO_COST[actor_id]
+    factor = (1 - cost * new) / (1 - cost * old)
+    if factor < 1:
+        _pay_action(w, actor_id, label, 1 - factor, approval=approval)
+        return
+    actor = w.foreign["actors"][actor_id]
+    actor["economy"]["gdp"] *= factor
+    w.rivals[actor_id].gdp_real *= factor
+    actor["domestic"]["approval"] = round(clamp(actor["domestic"]["approval"] + approval), 3)
 
 
 def _spend(w, actor_id: str, fiscal: float, approval: float = 0.0) -> None:
@@ -1101,6 +1137,15 @@ def _issue_ultimatum(w) -> None:
     dip = w.dip
     if dip.ultimatum or dip.war:
         return
+    if resolve.value(w) < RESOLVE_LAND and w.region(RULE_LAND_REGION).controller == "karamaniya":
+        act = {"type": "ultimatum", "terms": foreign_force.LAND_TERMS, "region": RULE_LAND_REGION,
+               "deadline_months": 4}
+        if foreign_force.check(w, "veleria", act) is None:
+            foreign_force.apply(w, "veleria", act)
+            _remember(w.foreign, "veleria", "diplomacy",
+                      f"Issued a time-limited demand for {w.region(RULE_LAND_REGION).name}.", w.month,
+                      action="ultimatum", factors=["Karamaniya looks yielding", "Union agreement"])
+            return
     deadline = w.month + 4
     dip.ultimatum = {"issued": w.month, "deadline": deadline,
                      "terms": "Open negotiations on Karamaniya's status in the Solvaran Union."}
@@ -1347,8 +1392,10 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
     return (f"You are the government of {actor_id.title()}, deciding this month's policy toward Karamaniya as its "
             f"cabinet. {CABINET_AIMS[actor_id]} {CABINET_STANCE} " + (f"{character} " if character else "")
             + "You receive only public observations and uncertain intelligence estimates; Karamaniya's private "
-            "prompts, true intentions and hidden policies are not available. Decide from your current beliefs and "
-            "interests. Your acts are carried out against the real state of the world: soldiers you do not have cannot "
+            "prompts, true intentions and hidden policies are not available. karamaniya_as_you_see_it.resolve sums up "
+            "how firm Karamaniya has looked to your government lately, from what it visibly did (its concessions, "
+            "inquiries, stand-downs, arming, alliances and demands left to lapse). Decide from your current beliefs "
+            "and interests. Your acts are carried out against the real state of the world: soldiers you do not have cannot "
             f"move, an invasion needs at least {foreign_force.MIN_INVASION:,} soldiers who have stood at that border "
             "since the month before, a blockade needs ships, neither an invasion nor a blockade can begin before "
             f"Month {foreign_force.FIRST_WAR_MONTH + 1}, and an act that cannot happen is refused and reported back "

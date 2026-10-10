@@ -159,7 +159,10 @@ council did not meet.
 
 Measured, with every delegate standing by for the maximum: in the scripted world with the foreign
 cabinets on, **no month is quiet**, because the scripted Dorsania proposes trade every month and the
-council meets for every message from abroad. Without the foreign cabinets, **24% fewer calls** (130
+council meets for every message from abroad (measured before engine 18: that monthly proposal came from an
+engine bug, the scripted Dorsania easing a grain embargo that stood at zero, and engine 18 stopped it, so the
+scripted world with the foreign cabinets on can now have quiet months; not re-measured). Without the foreign
+cabinets, **24% fewer calls** (130
 instead of 170 in 12 months) and 24% less input; in the other months a new issue, a message from the
 Union or an expiring stand-by brought the council together. Both are upper bounds: whether models
 choose to stand by, and for how long, is behaviour, and measuring it is part of the point: a council
@@ -212,7 +215,7 @@ only the prompts differ):
 \* Input cost relative to engine 5 under the same conditions with no cache, when a cache serves the
 reusable prefix within a month at a tenth of the price (about what Anthropic charges for a cache read;
 check current prices). With the foreign cabinets on, quiet months only add the stand-by field to the
-decision (1% more input): the scripted Dorsania writes every month.
+decision (1% more input): the scripted Dorsania wrote every month before engine 18 (see section 4).
 
 The behaviour-dependent rows (briefing, quiet months) are upper bounds: real models decide what to read
 and whether to stand by.

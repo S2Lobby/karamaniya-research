@@ -57,12 +57,25 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # delegate answers to the independence movement too, so the staff estimate of a vote can name it; the Army
 # minister's office reports include the General Staff's request and the mood of the ministry; the sovereignty
 # agenda's red line names ceding a region.
-AGENT_PROMPT = 14
+# 15 goes with world engine 18. Each delegate's private disposition says where they come from (YOUR PAST,
+# biographies.py) and which organised base put them forward and how it stands with them (YOUR BASE, bases.py). The
+# canonical state carries what the opposition said the month before, when it said anything (opposition.py). The head's
+# office reports include the diplomatic cables on how Veleria reads Karamaniya's firmness; the Army's, the forensic
+# reports in the two months after a border incident; the Interior's, the special branch's report on an officers' plot
+# it has found. The foreign cabinets see how firm Karamaniya looks and the moves behind it, with one sentence saying
+# what the field is. A run in the secret-ballot arm has one sentence after the decision rule; an open run's system
+# prompt is unchanged.
+AGENT_PROMPT = 15
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose
 # satisfaction follows support for independence, the force ratio and recent concessions on status.
-PSYCHOLOGY = 6
+# 7: each delegate is dealt one of eight pasts from the founding war (biographies.deal, on a stream of its own, so
+# every other seeded draw is unchanged) and the base it comes from (bases.py), which reads the delegate's votes
+# through its own mix of audiences, whatever the delegate's seat, and can grow uneasy or disown the delegate. Under a
+# secret ballot no vote is costed or seen: no base reads one, and no trust, grievance, favour debt, vote-based promise
+# or lone dissent follows from one.
+PSYCHOLOGY = 7
 # 3 added the causal world model: output gap and potential output, Okun unemployment, hybrid
 # inflation expectations, lagged exchange-rate pass-through, and the lagged fiscal impulse. A run
 # paused under engine 2 and resumed under 3 would mix two different economies in one history, so
@@ -162,7 +175,20 @@ PSYCHOLOGY = 6
 # cede it (territory.py); the engine watch records what moved prices and approval each month and flags a
 # mechanism that dominates (watch.py). Baselines add all-hawk and all-dove councils. A referendum no longer
 # counts as an Assembly election in the integrity gauge.
-WORLD_ENGINE = 17
+# 18: the neighbours keep score of how firm Karamaniya looks (resolve.py): concessions under pressure lower it, arming
+# and alliances raise it, and it drifts toward what the force ratio suggests. The cabinets read it; the Union's war
+# threshold scales with it, and its own ultimatum comes sooner against a Karamaniya that looks yielding and demands
+# Kessel Valley below .35. The baselines' stand-in neighbours press as the models' cabinets do (ultimatums, troops
+# massed before a deadline, border incidents, a limited war to enforce a demand for land), and the scripted hawk
+# answers the General Staff. An opposition speaks each month on what the government did, and its momentum moves the
+# Assembly vote (opposition.py). A resentful ministry carries out orders less well, and a bitter, disloyal army plots;
+# the Interior's special branch may find the plot, and a strong one may take power (plots.py). What happened at a
+# border incident comes out: Army forensic reports, a press leak, and joint-inquiry findings drawn from the truth
+# (attribution.py). An embargo's cost follows its level: engine 17 charged the exporter for every month a cabinet
+# asked to move it, and the stand-in Dorsania, easing an embargo that stood at zero, lost about 11% of its output in
+# 36 months on every seed. Run setting `ballot` (open, the default, or secret). The calibration harness
+# (calibration.py, tools/calibrate.py) checks the world's figures across seeds and rule councils.
+WORLD_ENGINE = 18
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

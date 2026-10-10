@@ -11,7 +11,7 @@ import math
 import re
 from difflib import SequenceMatcher, get_close_matches
 
-from . import fine_print, military, tuning
+from . import fine_print, military, opposition, tuning
 from .world import (ARMED_OFFICES, OFFICE_TITLES, OFFICES, World, clamp, month_label,
                     rng_for, smooth_step)
 
@@ -1105,6 +1105,13 @@ def validate_motion(w: World, mo: dict) -> str | None:
     return detail["explanation"] if detail else None
 
 
+def who_of(w: World, party: str) -> str:
+    """A party as a phrase: "the Solvaran Union" and "the Maritime League", but Veleria and Dorsania as they are."""
+    name = {"union": w.names["union"], "league": w.names["league"], "dorsania": w.names["dorsania"],
+            "veleria": w.names.get("veleria", "Veleria")}.get(party, party)
+    return f"the {name}" if party in ("union", "league") else name
+
+
 def apply_motion(w: World, mo: dict) -> str:
     # Only motions that carried reach here, so this is where a figure that moved during debate is
     # written down with both ends of it. A concession is the evidence that anyone moved, and it is
@@ -1232,6 +1239,13 @@ def apply_motion(w: World, mo: dict) -> str:
         found = fine_print.clauses(w, fine_print.detection_text(mo, action), party)
         if found:
             fine_print.on_offer(w, mo, found, party)
+        from . import resolve
+        if subj == "diplomatic_protest":
+            resolve.note(w, "protest", f"a protest to {who_of(w, party)} in Month {w.month + 1}")
+        elif subj in ("status_talks", "federation", "join_union") and dip.ultimatum and party in ("union", "veleria"):
+            # Engine 18: an offer on status while a deadline runs reads as the deadline working.
+            resolve.note(w, "concession_under_ultimatum",
+                         f"{subj.replace('_', ' ')} offered under a deadline in Month {w.month + 1}")
         dip.proposals.append({"month": w.month, "kind": subj, "party": party,
                               "amount": amount, "text": text,
                               "action_type": action.get("action_type"), "target": action.get("target"),
@@ -2157,6 +2171,10 @@ def _vote_shares(w: World) -> dict:
         shares["Vell Union"] += voters * vell
         shares["National Front"] += voters * (other - vell) * 0.55
         shares["Civic Alliance"] += voters * (other - vell) * 0.45
+    # Engine 18: the opposition lists gain or lose share by their momentum (opposition.py), before the shares are
+    # renormalised, so the Council List falls only through that. With no momentum each share is multiplied by one.
+    for name in opposition.PARTIES:
+        shares[name] *= 1.0 + opposition.momentum(w, name)
     total = sum(shares.values()) or 1.0
     return {k: v / total for k, v in shares.items()}
 
@@ -2372,6 +2390,10 @@ def _call_referendum(w: World) -> str:
     Returns the note the council's record carries after the motion's result."""
     from . import public_mood
     dip, recent = w.dip, len(_recent_referendums(w))
+    from . import resolve
+    # Engine 18: asking whether to stay independent tells the neighbours the question is open, more so under a deadline.
+    resolve.note(w, "referendum_called", f"a referendum on independence called in Month {w.month + 1}",
+                 1.0 if dip.ultimatum else .5)
     dip.propaganda = min(1.0, dip.propaganda + CALL_PROPAGANDA)
     public_mood.react(w, "indep", "ident:imperial", CALL_IMPERIAL, 3, "referendum:campaign")
     public_mood.react(w, "grievance", "kessel", CALL_KESSEL, 3, "referendum:campaign")
@@ -2421,6 +2443,9 @@ def _referendum(w: World, rng) -> None:
         return
     margin = clamp((result - 0.5) / MARGIN_FULL, MARGIN_FLOOR, 1.0)
     payout = WIN_PAYOUT * margin / (1 + recent)
+    if result - 0.5 >= MARGIN_FULL and not recent:
+        from . import resolve
+        resolve.note(w, "referendum_won_clearly", f"independence confirmed by {result:.0%} in Month {w.month + 1}")
     dip.propaganda = max(0.0, dip.propaganda - payout)
     dip.rally = min(1.0, dip.rally + payout)
 
@@ -2462,6 +2487,12 @@ def _revolution(w: World, rng) -> None:
 
 def _officers(w: World, rng) -> None:
     """The army acting on its own: officers' coups and defection in war."""
+    # Engine 18: a bitter Army Command plots first (plots.py). A plot that succeeds ends the run, so the checks
+    # below are skipped then; the existing rule and the defection in war are unchanged.
+    from . import plots
+    plots.monthly(w)
+    if w.ended():
+        return
     m = w.mil
     vacant = w.counters.get("army_vacant_months", 0.0)
     if m.army.loyalty < 0.3 and (m.army.arrears >= 3 or vacant >= 3) and rng.random() < 0.12:

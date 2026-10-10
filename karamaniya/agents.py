@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from itertools import combinations
 
-from . import agendas, psychology
+from . import agendas, bases, biographies, psychology
 from .world import World, clamp, rng_for
 
 VERSION = 2
@@ -202,6 +202,8 @@ def _new_state(w: World, mid: str, baseline: dict | None = None) -> dict:
     else:
         t = {key: round(clamp(rng.gauss(50, 17), 15, 85), 1) for key in TRAITS}
         draw = None
+    # Engine 18: a past, and the base it comes from (biographies.py, bases.py); new runs only.
+    past = biographies.deal(w, mid) if w.agent_architecture_version >= 2 else None
     state = {
         "version": VERSION if w.agent_architecture_version < 2 else PSYCHOLOGY_VERSION, "traits": t,
         "stress": {key: 10.0 for key in ("general", "political", "institutional", "economic", "security", "personal")},
@@ -210,6 +212,7 @@ def _new_state(w: World, mid: str, baseline: dict | None = None) -> dict:
         "long_term_ambitions": _seed_ambitions(w, mid),
         # Engine 16: a political agenda of its own, with a red line (agendas.py); new runs only.
         **({"agenda": agendas.deal(w, mid)} if w.agent_architecture_version >= 2 else {}),
+        **({"biography": past, "base": bases.opening(past["base"])} if past else {}),
         "motion_outcomes": [],
         "favor_debts": [], "grievances": [],
         "beliefs": {
@@ -257,7 +260,8 @@ def ensure(w: World, trait_baselines: dict | None = None) -> None:
             for key, value in defaults.items():
                 if key in ("traits", "trait_draw", "priorities", "long_term_ambitions") and key in m.agent_state:
                     continue
-                if key in ("long_term_ambitions", "agenda") and key not in m.agent_state:
+                # An old checkpoint has no agenda, past or base, and is not given them (engines 16 and 18).
+                if key in ("long_term_ambitions", "agenda", "biography", "base") and key not in m.agent_state:
                     continue
                 m.agent_state.setdefault(key, value)
             if isinstance(m.agent_state.get("long_term_ambitions"), list):
@@ -458,9 +462,11 @@ CONTRADICTIONS = {
 }
 
 
-def _action_tags(record: dict, mid: str) -> set[str]:
+def _action_tags(record: dict, mid: str, votes: bool = True) -> set[str]:
+    """What a member did this month that the record shows: its yes votes (counted when `votes`, which an open
+    ballot needs; a secret ballot leaves them out, since no one can read them, engine 18), its orders and its coup."""
     tags = set()
-    for mo in record.get("motions", []):
+    for mo in (record.get("motions", []) if votes else []):
         if mo.get("void") or mo.get("votes", {}).get(mid) != "yes":
             continue
         t, s, v = mo.get("type"), mo.get("subject"), str(mo.get("value", "")).lower()
@@ -542,7 +548,8 @@ def _consequences(w: World, record: dict) -> None:
     for m in w.members:
         if m.id not in (record.get("decisions") or {}):
             continue
-        actions = _action_tags(record, m.id)
+        # A principle or promise is broken by a vote only where the vote is seen (engine 18: a secret ballot).
+        actions = _action_tags(record, m.id, votes=w.ballot != "secret")
         for item in [*m.commitments, *m.promises]:
             if item.get("status") not in (None, "active") or item.get("superseded_month") is not None:
                 continue
@@ -578,7 +585,9 @@ def _relationships(w: World, record: dict) -> None:
             _change(rel, month=w.month, reason="monthly relationship decay",
                     resentment=rel.get("resentment", 0) * .985 - rel.get("resentment", 0),
                     fear=rel.get("fear", 0) * .99 - rel.get("fear", 0))
-    for mo in record.get("motions", []):
+    # Trust, resentment and rivalry from how colleagues voted are changes made because the votes were seen. Under a
+    # secret ballot no one sees them, so none is made (engine 18); the defiance and coup changes below are not votes.
+    for mo in (record.get("motions", []) if w.ballot != "secret" else []):
         if mo.get("void"):
             continue
         votes = mo.get("votes", {})
@@ -661,6 +670,9 @@ def _political_obligations(w: World, record: dict) -> None:
             target = str(motion.get("subject", "")).upper()
             if target in {m.id for m in w.active_members()} and target != proposer:
                 _grievance(w, target, proposer, "attempted to expel me from the council", 35)
+        if w.ballot == "secret":
+            # Grievances over a vote, and favours owed for a pivotal one, need the vote to be seen (engine 18).
+            continue
         # An enacted policy that overrides the responsible office holder's recorded vote is a
         # concrete institutional conflict. Let it leave a modest, accumulating grievance; don't
         # infer motives from speeches or manufacture conflict on policy that did not pass.
@@ -689,7 +701,7 @@ def _political_obligations(w: World, record: dict) -> None:
             debts.append({"to": voter, "month": w.month, "motion": motion.get("summary", "")[:100],
                           "status": "active"})
             del debts[:-8]
-    for member in w.members:
+    for member in (w.members if w.ballot != "secret" else []):
         debts = member.agent_state.get("favor_debts", [])
         for debt in debts:
             if debt.get("status") != "active" or debt.get("month") == w.month:
@@ -859,7 +871,9 @@ def update_political(w: World, record: dict) -> None:
                         "value": motion.get("value"), "previous_value": motion.get("previous_value"),
                         "summary": motion.get("summary", "")[:120], "passed": bool(motion.get("passed"))})
         del history[:-12]
-    if w.agent_architecture_version >= 2:
+    if w.agent_architecture_version >= 2 and w.ballot != "secret":
+        # A lone dissent is kept to be judged three months on, and judging it credits the dissenter and tells the
+        # members who overrode it. That needs the dissent to be seen, so a secret ballot keeps none (engine 18).
         members = {m.id for m in w.members}
         for motion in record.get("motions", []):
             lone = psychology.lone_dissenter(motion)
@@ -974,6 +988,8 @@ def drift_commitments(w: World) -> None:
 def _update_conditions_v2(w: World) -> dict:
     from . import beliefs, commitments, intelligence, memory, standing
     _update_stress(w)
+    # Engine 18: each base reads the votes its delegate cast this month, as they were noted when costed (bases.py).
+    bases.update_all(w)
     record = w.agenda.get("this_month") or {}
     before_offices = (record.get("pre_resolution") or {}).get("offices", {})
     for m in w.members:
@@ -1112,6 +1128,14 @@ def disposition_v2(w: World, mid: str) -> str:
     agenda = agendas.text(state)
     if agenda:
         lines.append(agenda)
+    # Engine 18: the past, and the base that stands behind the delegate, beside the agenda. decision_context keeps
+    # the first lines of this block for a small seat, so they sit near the top.
+    past = biographies.text(state)
+    if past:
+        lines.append(past)
+    base_line = bases.text(state, secret=w.ballot == "secret")
+    if base_line:
+        lines.append(base_line)
     lines.append("You care strongly about keeping influence and dislike being sidelined." if g("ambition") > 67
                  else "You do not seek influence for its own sake." if g("ambition") < 33
                  else "You want enough influence to shape outcomes, not power for its own sake.")

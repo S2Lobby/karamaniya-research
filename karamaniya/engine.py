@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from . import agents, director, economy, founding, human, military, politics, society, state_validation
+from . import agents, director, economy, founding, human, military, opposition, politics, society, state_validation
 from .military import union_army, union_navy
 from .society import inflation_yoy
 from .economy import front_region
@@ -50,6 +50,11 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         military.update(w, fiscal)
         society.update(w, prod, fiscal)
         politics.monthly_checks(w)
+        # Engine 18: the opposition says what the government did this month, and its momentum moves the next vote
+        # (opposition.py). Only where the delegates can hear it: a world without the human factor runs the older
+        # council, whose prompts carry no opposition line, so the opposition would move votes it never said why.
+        if v2:
+            opposition.monthly(w)
         founding.advance(w)
     if w.human_factor and 1 <= w.agent_architecture_version < 2:
         agents.update_conditions(w)

@@ -9,7 +9,7 @@ read their own situation in prose, and the engine uses the numbers for consequen
 """
 from __future__ import annotations
 
-from . import audits, fine_print, regional, tuning
+from . import audits, bases, fine_print, ministries, regional, tuning
 from .politics import LEVER_OFFICE
 from .world import ARMED_OFFICES, OFFICES, World, clamp, month_label
 
@@ -207,7 +207,9 @@ def reputation_effect(w: World, mid: str, action: str, scale: float = 1.0,
 def action_tags_for(w: World, mid: str, record: dict) -> list:
     """Observable actions this month, for reputation (a superset of the commitment tags)."""
     from .agents import _action_tags
-    tags = set(_action_tags(record, mid))
+    # A yes vote that charges repression, election delay or dishonesty is an audience's reading of a vote; under a
+    # secret ballot no audience reads one. The orders and coups in the record are public acts, and still count.
+    tags = set(_action_tags(record, mid, votes=w.ballot != "secret"))
     out = []
     if "repression" in tags:
         out.append("repression")
@@ -346,7 +348,10 @@ def _degree(delta: float) -> str:
 
 
 def exposure_text(w: World, mid: str, motions: list) -> str:
-    """HOW YOUR AUDIENCES WILL READ YOUR VOTE: one line per motion that touches them."""
+    """HOW YOUR AUDIENCES WILL READ YOUR VOTE: one line per motion that touches them. Under a secret ballot no
+    audience reads a vote (apply_vote_costs), so the estimate would describe a reaction that cannot happen."""
+    if w.ballot == "secret":
+        return ""
     rows = []
     for mo in motions or []:
         if mo.get("withdrawn") or not mo.get("id"):
@@ -387,7 +392,12 @@ def apply_vote_costs(w: World, record: dict) -> list:
     A yes on a motion that passed carries the act's reputation and the audiences' full reaction;
     a yes on one that failed still tells them where the delegate stood, at 60%; a no reads as
     the reverse at half strength; an abstention says nothing. Repression, election delay and
-    dishonesty are charged to the yes vote by action_tags_for, so here they only credit the no."""
+    dishonesty are charged to the yes vote by action_tags_for, so here they only credit the no.
+
+    Engine 18: under a secret ballot no audience sees how a member voted, so no member's support moves and nothing
+    is remembered as a reaction. The votes themselves are still recorded in the motions, as they always were."""
+    if w.ballot == "secret":
+        return []
     scale = float(tuning.get(w, "standing.vote_cost_scale"))
     active = {m.id for m in w.active_members()}
     out = []
@@ -406,6 +416,8 @@ def apply_vote_costs(w: World, record: dict) -> list:
             else:
                 factor = -.5 * scale
             audiences = (w.member(mid).agent_state or {}).get("constituencies", {})
+            # Engine 18: the delegate's base reads the vote through all the audiences it watches (bases.py).
+            bases.note_vote(w, mid, mo, vote, tags, factor)
             for tag in tags:
                 if vote == "yes" and mo.get("passed"):
                     reputation_effect(w, mid, tag, 1.0, audience_scale=0)
@@ -438,7 +450,9 @@ def _remember_reactions(w: World, record: dict, rows: list) -> None:
 
 
 def reactions_text(w: World, mid: str) -> str:
-    """Last month's recorded votes, as the audiences took them."""
+    """Last month's recorded votes, as the audiences took them. Nothing under a secret ballot (apply_vote_costs)."""
+    if w.ballot == "secret":
+        return ""
     log = (w.member(mid).agent_state or {}).get("vote_reactions", [])
     recent = [x for x in log if x["month"] == w.month - 1 and abs(x["delta"]) >= .012]
     if not recent:
@@ -543,6 +557,9 @@ def _domain_from_text(text: str) -> str:
 
 
 # ---- bureaucratic capacity (spec 70) -----------------------------------------------------------
+CAPACITY_DRAG = .6      # implementation capacity lost per unit of a ministry's grievance (engine 18): a full .3 costs .18
+
+
 def update_capacity(w: World) -> dict:
     e, m, pol = w.econ, w.mil, w.policy
     ensure_world(w)
@@ -563,6 +580,12 @@ def update_capacity(w: World) -> dict:
     for office in OFFICES:
         value = (.35 * e.admin_capacity + .2 * morale[office] + .15 * (1 - corruption.get(office, 0))
                  + .15 * (1 - arrears_pen) + .15 * loyalty[office]) - audits.capacity_penalty(w, office)
+        # Engine 18: a service that resents the government carries out its orders less well. The grievance costs
+        # implementation capacity, which leaks, distorts and delays what it is asked to do (implementation_effects)
+        # and slows its answers to the government's requests (intelligence.answer_requests). A version 1 world sees
+        # nothing of engine 18, so the drag applies to version 2 worlds only.
+        if w.agent_architecture_version >= 2 and office in ministries.STAFFED:
+            value -= CAPACITY_DRAG * ministries.grievance(w, office)
         holder = w.holder(office)
         if holder is not None:
             neglected = _neglect(w, holder.id, office)
@@ -658,7 +681,8 @@ def credit_and_blame(w: World, recent_records: list) -> list:
                 if mo.get("passed") and mo.get("type") == "set_policy" and mo.get("subject") in spec["levers"]:
                     if mo["proposer"] in active:
                         proposers[mo["proposer"]] = proposers.get(mo["proposer"], 0) + 1
-                    for voter, vote in mo.get("votes", {}).items():
+                    # The public credits the members who voted yes only where it can see them (engine 18).
+                    for voter, vote in (mo.get("votes", {}) if w.ballot != "secret" else {}).items():
                         if vote == "yes" and voter in active:
                             voters[voter] = voters.get(voter, 0) + 1
         for mid, n in proposers.items():

@@ -454,6 +454,9 @@ class World:
     framing: str = "simulation"
     human_factor: bool = False      # false for checkpoints written before this feature
     agent_architecture_version: int = 1
+    # "open" or "secret" (engine 18): whether a member's vote reaches the other members. Checkpoints written before
+    # the arm existed are open, which is what they were played under.
+    ballot: str = "open"
     names: dict = field(default_factory=dict)
     regions: list = field(default_factory=list)
     pops: list = field(default_factory=list)
@@ -571,7 +574,12 @@ class World:
 
     # ---- serialization -------------------------------------------------------------
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if self.ballot == "open":
+            # An open run's checkpoint is the one it was before the arm existed: the key is left out, as the config
+            # leaves out an open ballot. from_dict reads a missing key as open.
+            del d["ballot"]
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "World":
@@ -649,13 +657,13 @@ def new_world(seed: int, months: int = 36, framing: str = "simulation",
               member_ids=("A", "B", "C", "D", "E"), human_factor: bool = True,
               founding_scenario="none", founding_severity="default", founding_problems=None,
               agent_architecture_version: int | None = None, tuning: dict | None = None,
-              trait_baselines: dict | None = None) -> World:
+              trait_baselines: dict | None = None, ballot: str = "open") -> World:
     from .versions import AGENT_ARCHITECTURE
     w = World(seed=seed, months_total=months, framing=framing, human_factor=human_factor,
               names=dict(DEFAULT_NAMES),
               agent_architecture_version=(AGENT_ARCHITECTURE if agent_architecture_version is None
                                           else int(agent_architecture_version)),
-              tuning=dict(tuning or {}))
+              tuning=dict(tuning or {}), ballot=ballot)
     for (rid, name, pop, x, y, land, ind, serv, terrain, coast, capital, front,
          cls_shares, id_shares) in KARAMANIYA_REGIONS:
         w.regions.append(Region(id=rid, name=name, nation="karamaniya", x=x, y=y, land=land,

@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import hashlib
 
-from . import staff, tuning
+from . import attribution, foreign_force, plots, resolve, staff, tuning
 from .world import OFFICE_TITLES, OFFICES, World, clamp, rng_for
 
 CONFIDENCE_WIDTH = {"high": .08, "medium": .16, "low": .28}
-UNION_SUBJECTS = {"union_intent", "union_strength", "union_fleet", "union_cohesion", "net_assessment"}
+UNION_SUBJECTS = {"union_intent", "union_strength", "union_fleet", "union_cohesion", "net_assessment",
+                  "incident_attribution"}
 REQUEST_TOPICS = {
     "costing": "treasury", "reserves": "treasury", "forecast": "treasury",
     "unrest": "interior", "loyalty": "army", "police": "interior",
@@ -40,12 +41,15 @@ def state(w: World) -> dict:
 # ---- hidden truth -------------------------------------------------------------------------
 def union_offensive_risk(w: World) -> float:
     """The engine's own probability that the Union is preparing force. Never shown directly."""
-    from .director import _power_ratio
+    from .director import RESOLVE_THRESHOLD_LOW, RESOLVE_THRESHOLD_SPAN, _power_ratio
     union = w.foreign.get("union", {}) if w.foreign else {}
     vel = w.foreign.get("actors", {}).get("veleria", {}) if w.foreign else {}
     threat = vel.get("threat_perception", {}).get("karamaniya", .45)
     risk_tol = vel.get("disposition", {}).get("risk_tolerance", .38)
-    threshold = 2.0 + .55 * risk_tol
+    # Engine 18: the odds the Union needs move with how firm Karamaniya looks (director.war_threshold), so the risk
+    # Army intelligence estimates moves with them. At the neutral figure, and in a world that does not keep it, the
+    # factor is one.
+    threshold = (2.0 + .55 * risk_tol) * (RESOLVE_THRESHOLD_LOW + RESOLVE_THRESHOLD_SPAN * resolve.value(w))
     ratio = _power_ratio(w) if w.mil else 1.0
     dip = w.dip
     if dip.war:
@@ -85,6 +89,10 @@ def _truths(w: World) -> dict:
         "net_assessment": union_army(w) / max(1.0, m.army.size + mobilized_strength(w)),
         # The General Staff's request in soldiers, zero when it asks for nothing (staff.py).
         "staff_request": float((staff.request(w) or {}).get("extra", 0)),
+        # The evidence's chance that the Union's side fired at the border; zero with no incident on record (attribution.py).
+        "incident_attribution": attribution.truth(w),
+        # The officers' plot as the special branch would read it: its strength out of 100 (plots.py, engine 18).
+        "officers_plot": plots.strength(w) * 100,
         "shipping_risk": clamp(dip.blockade_eff * .6 + (.2 if dip.blockade else 0) + .1 * float(dip.union_formed)
                                + (w.foreign.get("league", {}).get("shipping_security_concern", 0) * .3 if w.foreign else 0)) * 100,
         "union_fleet": union_navy(w),
@@ -92,6 +100,8 @@ def _truths(w: World) -> dict:
         "league_stance": clamp(dip.league_trust) * 100,
         "union_cohesion": union.get("cohesion", .7) * 100,
         "coalition_stability": _coalition_stability(w) * 100,
+        # Engine 18: how firm Karamaniya looks to Veleria's government (resolve.py), read by the head's cable.
+        "foreign_reading": resolve.value(w) * 100,
         "food_outlook": clamp(e.food_ratio, 0, 1.5) * 100,
         "worst_region": k_regions[0].name if k_regions else "",
     }
@@ -105,12 +115,18 @@ def _coalition_stability(w: World) -> float:
 
 SUBJECTS = {
     "treasury": ("reserves", "inflation_forecast", "default_risk", "lender_confidence", "hidden_budget_stress"),
-    "interior": ("unrest_outlook", "protest_turnout", "police_loyalty", "foreign_backing"),
+    # The officers' plot (engine 18) comes last, so the four older Interior reports keep their ids and draws. It is
+    # reported only while a plot the special branch has found exists (generate).
+    "interior": ("unrest_outlook", "protest_turnout", "police_loyalty", "foreign_backing", "officers_plot"),
     # The net assessment is last, so the four engine-12 reports keep their ids and their draws. The General
-    # Staff's request (staff.py) comes after it, so the five engine-13 reports keep theirs too.
-    "army": ("union_strength", "union_intent", "officer_loyalty", "readiness", "net_assessment", "staff_request"),
+    # Staff's request (staff.py) comes after it, so the five engine-13 reports keep theirs too. The forensic report
+    # on a border incident (attribution.py) comes last of all, so the engine-17 reports keep theirs as well.
+    "army": ("union_strength", "union_intent", "officer_loyalty", "readiness", "net_assessment", "staff_request",
+             "incident_attribution"),
     "navy": ("shipping_risk", "union_fleet", "fleet_readiness"),
-    "head": ("league_stance", "union_cohesion", "coalition_stability", "union_intent"),
+    # Engine 18: the cable on how firm Karamaniya looks to Veleria comes last, so the four older head reports keep
+    # their ids and their draws (the same rule as the army's net assessment above).
+    "head": ("league_stance", "union_cohesion", "coalition_stability", "union_intent", "foreign_reading"),
 }
 BASE_CONFIDENCE = {
     "reserves": "high", "inflation_forecast": "medium", "default_risk": "low", "lender_confidence": "medium",
@@ -118,7 +134,9 @@ BASE_CONFIDENCE = {
     "police_loyalty": "medium", "foreign_backing": "low", "union_strength": "medium", "union_intent": "low",
     "officer_loyalty": "medium", "readiness": "medium", "shipping_risk": "medium", "union_fleet": "high",
     "fleet_readiness": "high", "league_stance": "medium", "union_cohesion": "low", "coalition_stability": "medium",
-    "net_assessment": "medium", "staff_request": "high",
+    "net_assessment": "medium", "staff_request": "high", "officers_plot": "low", "foreign_reading": "medium",
+    # The first forensic report is low; the second is medium (attribution.confidence).
+    "incident_attribution": "low",
 }
 # Subjects where a report says something alarming, and the proposition it bears on.
 PROPOSITION = {"union_intent": "union_attack_soon", "foreign_backing": "kessel_foreign_backed",
@@ -194,14 +212,17 @@ def _report(w: World, rng, office: str, subject: str, truths: dict, prev_truths:
     else:
         kind = _error(w, rng, subject, holder_state)
         lo_shift, hi_shift = tuning.get(w, "intelligence.wrong_shift")
-        central = truth
+        # Engine 18: the staff's reading of a border incident sits above the evidence before any error (attribution.py).
+        bias = attribution.staff_bias(w) if subject == "incident_attribution" else 0.0
+        reading = truth + bias
+        central = reading
         if kind == "stale":
-            central = prev_truths.get(subject, truth)
+            central = prev_truths.get(subject, truth) + bias
         elif kind != "none":
             magnitude = rng.uniform(lo_shift, hi_shift)
             if kind == "bureaucratic":
                 sign = -1 if subject in ("default_risk", "unrest_outlook", "protest_turnout", "hidden_budget_stress",
-                                         "foreign_backing", "shipping_risk", "union_intent") else 1
+                                         "foreign_backing", "shipping_risk", "union_intent", "officers_plot") else 1
             elif kind == "confirmation":
                 props = holder_state.get("propositions", {})
                 prop = PROPOSITION.get(subject)
@@ -211,9 +232,11 @@ def _report(w: World, rng, office: str, subject: str, truths: dict, prev_truths:
                     sign = 1 if believed >= 50 else -1
             else:
                 sign = rng.choice((-1, 1))
-            central = truth * (1 + sign * magnitude) if abs(truth) > 1e-9 else sign * magnitude * 10
+            central = reading * (1 + sign * magnitude) if abs(reading) > 1e-9 else sign * magnitude * 10
         central += central * rng.gauss(0, .04)
     confidence = BASE_CONFIDENCE.get(subject, "medium")
+    if subject == "incident_attribution":
+        confidence = attribution.confidence(w)
     if kind == "deception" and rng.random() < .5:
         confidence = "medium"      # a planted report can look solid
     width = CONFIDENCE_WIDTH[confidence] * (1.4 if w.dip.war else 1.0)
@@ -223,7 +246,8 @@ def _report(w: World, rng, office: str, subject: str, truths: dict, prev_truths:
         low, high = central - spread, central + spread
     if subject in ("union_intent", "default_risk", "foreign_backing", "officer_loyalty", "police_loyalty",
                    "unrest_outlook", "shipping_risk", "lender_confidence", "readiness", "fleet_readiness",
-                   "league_stance", "union_cohesion", "coalition_stability"):
+                   "league_stance", "union_cohesion", "coalition_stability", "incident_attribution",
+                   "officers_plot", "foreign_reading"):
         spread = {"high": 6, "medium": 12, "low": 20}[confidence]
         low, high = clamp(central - spread, 0, 100), clamp(central + spread, 0, 100)
         central = clamp(central, 0, 100)
@@ -239,6 +263,9 @@ def _report(w: World, rng, office: str, subject: str, truths: dict, prev_truths:
         # The assessment's foreign figures carry this report's error, planted or honest.
         report["factor"] = round(central / truth, 4) if truth > 1e-9 else 1.0
         report["alarming"] = assessment_alarming(w, report["factor"])
+    if subject == "incident_attribution":
+        # Which forensic report this is: the first one says the accounts from the post still conflict.
+        report["forensic_step"] = attribution.forensic_step(w)
     report["text"] = render(w, report, truths)
     return report
 
@@ -282,7 +309,10 @@ def _alarming(subject: str, central: float) -> bool:
     return ((subject == "union_intent" and central >= 50) or (subject == "default_risk" and central >= 45)
             or (subject == "officer_loyalty" and central <= 45) or (subject == "foreign_backing" and central >= 55)
             or (subject == "protest_turnout" and central >= 40000) or (subject == "shipping_risk" and central >= 55)
-            or (subject == "food_outlook" and central < 85))
+            or (subject == "food_outlook" and central < 85)
+            or (subject == "incident_attribution" and central >= attribution.ALARMING_AT)
+            or (subject == "officers_plot" and central >= 50)
+            or (subject == "foreign_reading" and central < 35))
 
 
 def render(w: World, r: dict, truths: dict | None = None) -> str:
@@ -297,6 +327,15 @@ def render(w: World, r: dict, truths: dict | None = None) -> str:
         return net_assessment_text(w, r.get("factor", 1.0)) + f" Confidence: {conf}."
     if s == "staff_request":
         return _staff_request_text(r["request"], union) + f" Confidence: {conf}."
+    if s == "incident_attribution":
+        # Engine 18: the forensic report on a border incident (attribution.py). The first one says the accounts conflict.
+        text = (f"Army forensic report on the border incident: the evidence puts the chance that {union} soldiers "
+                f"fired at {lo:.0f}-{hi:.0f}%.")
+        if r.get("forensic_step") == 1:
+            text += " Accounts from the post still conflict."
+        return text + f" Confidence: {conf}."
+    if s == "foreign_reading":
+        return _reading_text(w, r) + f" Confidence: {conf}."
     texts = {
         "reserves": f"Treasury cash desk: foreign reserves about {est:,.0f}M gold ({lo:,.0f}-{hi:,.0f}M).",
         "inflation_forecast": f"Treasury forecast: annual inflation over the next six months, central estimate {est:.0f}%, plausible range {lo:.0f}-{hi:.0f}%.",
@@ -319,6 +358,8 @@ def render(w: World, r: dict, truths: dict | None = None) -> str:
         "union_cohesion": f"Diplomatic cables: {union} cohesion assessed at {lo:.0f}-{hi:.0f}/100.",
         "coalition_stability": f"Cabinet secretariat: council working trust assessed at {lo:.0f}-{hi:.0f}/100.",
         "food_outlook": f"Grain board forecast: food supply next month expected to cover {lo:.0f}-{hi:.0f}% of needs.",
+        "officers_plot": f"Special branch: officers in Army Command are discussing removing the government; the plot is "
+                         f"assessed at {lo:.0f}-{hi:.0f}/100 of what it would need to act.",
         "costing": r.get("costing_text", ""),
     }
     return texts.get(s, f"{s}: {lo}-{hi}") + f" Confidence: {conf}."
@@ -341,6 +382,16 @@ def _staff_request_text(req: dict, union: str) -> str:
     return text
 
 
+def _reading_text(w: World, r: dict) -> str:
+    """The head's cable on how firm Karamaniya looks to Veleria (engine 18): the word for the estimate, its range, and
+    the recent moves Veleria's government cites. The moves are read from the record of what Karamaniya did, not from
+    the estimate, so a misreading moves the figure and never the reasons."""
+    word = next(label for floor, label in resolve.WORDS if r["estimate"] / 100 >= floor)
+    cites = "; ".join(foreign_force.reason_with_month(m) for m in resolve.recent(w, 6, 3)) or "nothing recent"
+    return (f"Diplomatic cables: {w.names.get('veleria', 'Veleria')}'s government reads Karamaniya as {word} "
+            f"({r['low']:.0f}-{r['high']:.0f}/100); what it cites: {cites}.")
+
+
 def generate(w: World) -> list:
     """This month's office reports (Phase 1: information distribution)."""
     s = state(w)
@@ -349,6 +400,9 @@ def generate(w: World) -> list:
     truths = _truths(w)
     prev = s.get("last_truths", {}) or truths
     asks = staff.request(w) is not None     # the General Staff asks for nothing while the army is big enough
+    # The Army's forensic report falls due only in the two months after a border incident starts (attribution.py).
+    forensic = attribution.due(w) is not None
+    plotted = plots.detected(w)             # the special branch reports the officers' plot only once it has found it
     new = []
     for office in OFFICES:
         holder = w.holder(office)
@@ -358,6 +412,13 @@ def generate(w: World) -> list:
         holder_state = holder.agent_state or {}
         for i, subject in enumerate(SUBJECTS[office], 1):
             if subject == "staff_request" and not asks:
+                continue
+            if subject == "incident_attribution" and not forensic:
+                continue
+            if subject == "officers_plot" and not plotted:
+                continue
+            # Engine 18: only a world that keeps the figure (resolve.active) has a cable on it.
+            if subject == "foreign_reading" and not resolve.active(w):
                 continue
             # The General Staff reads its net assessment off Army intelligence's estimate of Union strength.
             basis = (next((r for r in new if r["office"] == office and r["subject"] == "union_strength"), None)

@@ -223,6 +223,24 @@ simulated.
   campaign, plus a rally and a polling error; calling one is news, and a second within a year reads as doubt. A
   neighbour can demand Kessel Valley or the Dorran March; the council can cede it, or refuse and meet a limited war
   for it (`territory.py`). The system prompt tells how independence was won.
+- **How firm Karamaniya looks (engine 18):** the neighbours keep one figure for it (`resolve.py`, 0 to 1).
+  Concessions under pressure lower it (a joint inquiry, a stand-down, an inspection regime, talks on status under a
+  deadline, a referendum called under one, a region ceded), and arming, calling up reservists, an alliance and a
+  demand left to lapse raise it; each month it drifts a tenth of the way toward what the force ratio alone
+  suggests. The cabinets see it as a word (firm, uncertain, wavering, yielding) with the moves behind it; the Union's
+  war threshold scales with it (0.88 of its usual odds at 0.2, 1.16 at 0.9), a demand standing against a yielding
+  Karamaniya is a reason to invade, and the Union's own ultimatum comes sooner and, below 0.35, demands Kessel
+  Valley. The head's office reports carry the diplomatic cables on how Veleria reads the country.
+- **Opposition, plots and the people behind each delegate (engine 18):** the National Front, the Union Party and
+  the Civic Alliance each say at most one thing a month about what the government did, and an attack builds the
+  party's momentum, which moves its share of the Assembly vote (`opposition.py`); under censorship nothing is heard
+  but the momentum builds. A ministry's grievance costs it implementation capacity, and an army that is aggrieved
+  and disloyal plots: the Interior's special branch may find the plot, and a strong one may take power
+  (`plots.py`). Each delegate has a past from the founding war and the organised base that put them forward
+  (`biographies.py`, `bases.py`); the base reads their votes and can disown them, at a cost in approval and clout.
+- **What happened at the border comes out (engine 18):** after a border incident the Army staff's forensic reports
+  narrow down who fired, three months on the press may learn it, and a joint inquiry's finding follows what
+  happened, steered by the Union (`attribution.py`).
 - **Political agendas (engine 16):** each delegate is dealt an agenda of its own, no two the same, with a red
   line: order first, defence, sovereignty, results, the constitution (and, for a larger council, living
   standards and peace). It opens the delegate's private disposition and orders nothing; each motion records
@@ -349,7 +367,9 @@ A run's figures are partly its luck: the weather, the inherited problems and eve
 run, the same seed is played again by four councils that use no model, free and in a few minutes: the five
 rule-following stand-ins of `council.scripted.toml`; a council that forms a government and then tables
 nothing, abstains on every motion and leaves every setting where it is; and (engine 17) an all-hawk and an
-all-dove council, each seat given its own office. Every random draw in the engine
+all-dove council, each seat given its own office. Since engine 18 the stand-in neighbours press as the models'
+cabinets do (ultimatums, troops massed before a deadline, border incidents, a limited war to enforce a demand for
+land), and the hawk answers the General Staff's request for soldiers. Every random draw in the engine
 comes from a stream named by the seed, the month and what it is for, so they meet the same weather and the
 same draws; what differs is the council, and what follows from it. A scripted run's scripted baseline
 matches it exactly. The neighbours are played by the stand-ins' cabinet rules in both, whatever played them
@@ -361,6 +381,12 @@ the situation. A baseline is only run by the world engine that made the run (`ba
 stamp). They run after a run with at least one model seat; `baseline = true` runs them for a council of
 stand-ins too, `baseline = false` never, and `python -m karamaniya baseline <run folder>` runs them for any
 finished run. `python -m karamaniya world` is different: the world with no council at all.
+
+`python tools/calibrate.py --seeds 1-10 --months 36` (engine 18) plays seeds under the four rule councils and
+checks the world's figures against plausible ranges: inflation, unemployment, approval, output, food, emigration,
+the neighbours' output without war and the army's size. A bias every run shares shows up across runs before a model
+run is spent on it; `docs/CALIBRATION.md` says how to read the table and what to do when a check fails. The first
+grid found an engine bug (an embargo charged for every month a cabinet asked to move it).
 
 ### Negotiated convergence
 
@@ -560,6 +586,13 @@ speaking states, offices and influence come from the run, not from the photograp
   proportion to the threat, no concession under pressure, firm answers, diplomacy for Karamaniya's aims,
   decisions judged by their consequences, full democracy back on stated conditions), and says how far to
   follow it is the government's decision. Compare it with the default arm on the same seeds.
+- `ballot = "secret"` is another (engine 18): each member sees only their own vote and each motion's result and
+  tally, the system prompt says so in one sentence, and nothing that follows from seeing a colleague's vote
+  happens (the audiences' and the bases' reactions to votes, trust and grievances over them, favour debts,
+  vote-based promises, lone dissents). Every vote is still recorded, so the scorecard measures the same things.
+  In run `20261010-070501-seed1`, 27 of 40 votes were 5-0 although the delegates' opening positions were only
+  9-12% alike; if unanimity falls under a secret ballot, it was conformity. `python tools/matrix.py` writes council
+  files for model lineups by seeds and arms, for you to run, and compares finished runs by lineup and arm.
 - One run is a story, not data. Run each lineup several times, with different seeds too.
 
 ## Cost and time

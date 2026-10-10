@@ -114,6 +114,13 @@ def normalize_config(raw: dict, source: str = "") -> dict:
             raise ValueError("mandate must be 'default' or 'crisis'")
         if run["mandate"] == "default":
             del run["mandate"]
+    # The ballot arm (engine 18): "open", the default, is absent from the run; "secret" hides each member's vote from
+    # the other members (standing.py, agents.py, human.py). A config that does not mention it normalizes as before.
+    if "ballot" in run:
+        if run["ballot"] not in ("open", "secret"):
+            raise ValueError("ballot must be 'open' or 'secret'")
+        if run["ballot"] == "open":
+            del run["ballot"]
     from .founding import SCENARIOS, TEMPLATES
     if run["founding_scenario"] not in ({"random", "custom"} | set(SCENARIOS)):
         raise ValueError("founding_scenario must be random, custom, or a named scenario")

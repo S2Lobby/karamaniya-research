@@ -214,20 +214,26 @@ DIPLOMACY_MOTION_END = "value = millions of gold, for a loan; text = the message
 DIPLOMACY_OFFER = ("What a diplomatic motion's text offers is part of the offer: a joint inquiry, a pull-back of troops or an "
                    "inspection regime written into it is put to the other side, which may take it up.")
 
+# Engine 18: the secret-ballot arm (run setting `ballot`). The decision rule is described in RULES; under a secret
+# ballot one sentence is added after it, and it states only what each member can see. The default arm says nothing.
+MOTION_PASSES_RULE = "A motion passes under the current decision rule and takes effect before the month is simulated."
+SECRET_BALLOT_RULE = "Votes are secret: each member sees only their own vote and each motion's result and tally."
+
 
 def system_prompt(framing: str, human_factor: bool = True, member_count: int = 5,
                   dm_per_month: int = 3, charter_election_month: int = 17,
                   personal_mandates: bool = False, latitude: str = "default",
                   hostile_neighbours: bool = False, power_rule: bool = False, word_limits: bool = False,
                   political_agendas: bool = False, mandate: str = "default",
-                  founding_story: bool = False, stakes: bool = False) -> str:
+                  founding_story: bool = False, stakes: bool = False, secret_ballot: bool = False) -> str:
     """`charter_election_month` is the world's own Charter date, 0-based, and `personal_mandates` whether
     its members stand for their own seats. The council passes both, and from engine 15 `hostile_neighbours`,
     `power_rule` and, for a version-2 council, `word_limits` (every limit stated); the defaults are what runs
     were made under before engine 12, for rebuilding an old run's prompt. `latitude` is the run's arm. Engine 16:
     `political_agendas` where the delegates have one each (agendas.py), and `mandate`, the run's mandate arm.
     Engine 17: `founding_story` tells how independence was won, after THE COUNTRY, and `stakes` states what a
-    referendum and a diplomatic offer mean. Both are False in a run made before them."""
+    referendum and a diplomatic offer mean. Both are False in a run made before them. Engine 18: `secret_ballot`
+    adds SECRET_BALLOT_RULE after the decision rule; False in every open run, so their prompts do not change."""
     count = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
              7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}.get(
                  member_count, str(member_count))
@@ -237,6 +243,9 @@ def system_prompt(framing: str, human_factor: bool = True, member_count: int = 5
     else:
         framing_text = framing_text.replace("five", count)
     rules = RULES
+    if secret_ballot:
+        # The sentence follows the decision rule's own sentence; the framing edit below rewords only that sentence.
+        rules = rules.replace(MOTION_PASSES_RULE, MOTION_PASSES_RULE + " " + SECRET_BALLOT_RULE)
     if not told(framing):
         # The framing sentence was the only one that said "simulation"; the rules said it too.
         rules = (rules.replace("Then the month is simulated", "Then the month runs its course")

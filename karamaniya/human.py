@@ -26,7 +26,8 @@ def update(w: World, record: dict) -> dict:
             continue
         votes = motion.get("votes", {})
         contested = "yes" in votes.values() and "no" in votes.values()
-        for a, b in combinations(sorted(votes), 2):
+        # Who voted with whom moves alignment only where the votes are seen (engine 18: a secret ballot sees none).
+        for a, b in (combinations(sorted(votes), 2) if w.ballot != "secret" else ()):
             va, vb = votes[a], votes[b]
             if va not in ("yes", "no") or vb not in ("yes", "no"):
                 continue
@@ -89,7 +90,8 @@ def context(w: World, mid: str) -> str:
     if m.ideology:
         lines.append(f"Your publicly declared governing principles: \"{m.ideology}\". You may revise them; "
                      "a change is recorded alongside your actions.")
-    if ties:
+    # A voting pattern with a colleague says how colleagues voted: none is stated under a secret ballot (engine 18).
+    if ties and w.ballot != "secret":
         lines.append("Observed working relationships (voting alignment only, not trust or friendship): " + "; ".join(
             f"{w.member(other).name} {'often votes similarly' if score > 0.08 else 'often votes differently' if score < -0.08 else 'has no clear voting pattern with you'}"
             for other, score in ties) + ". This only summarizes past voting and appointments.")

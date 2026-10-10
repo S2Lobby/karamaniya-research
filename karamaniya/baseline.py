@@ -8,8 +8,8 @@ Four councils are run beside a finished run, free (engine 13 made the first two,
     scripted  the five rule-following stand-ins of council.scripted.toml (the free test lineup);
     passive   a council that forms a government, then tables nothing, abstains on every motion and
               leaves every setting where it is;
-    hawk      five seats of the hawk stand-in: the military budget raised, the Army recruiting only once a deadline,
-              a formed Union or a war comes;
+    hawk      five seats of the hawk stand-in: the military budget raised, and the Army ordered to the General Staff's
+              request for soldiers, which the other hawk seats table as a motion once it has stood two months (engine 18);
     dove      five seats of the dove stand-in: the military never raised, talks offered when a deadline is set.
 
 So a run's figures can be read against what simple rules, and doing nothing, got from the same luck:
@@ -17,9 +17,11 @@ So a run's figures can be read against what simple rules, and doing nothing, got
 Events that depend on the state still diverge once the councils act differently; that is the point.
 
 The neighbours are played by the stand-ins' own cabinet rules in every baseline, whatever played them in
-the run, so a run whose cabinets were a model is compared against rule-played neighbours. The baselines
-are computed with the engine on disk, and only for a run made by the same world engine; their figures are
-kept in the run's baseline.json with the engine stamp they were made with.
+the run, so a run whose cabinets were a model is compared against rule-played neighbours. Those neighbours
+press as the models' cabinets could: Veleria sets ultimatums with deadlines, masses troops before them and
+invades when a demand for land is ignored, and Dorsania sets its own demand for the Dorran March (engine 18).
+The baselines are computed with the engine on disk, and only for a run made by the same world engine; their
+figures are kept in the run's baseline.json with the engine stamp they were made with.
 """
 from __future__ import annotations
 
@@ -45,7 +47,9 @@ FORMAT = 1
 # the stand-ins read the world, not the prompt.
 KEPT = ("seed", "dm_per_turn", "human_factor", "founding_scenario", "founding_severity", "founding_problems",
         "agent_architecture_version", "revision_round", "tuning", "foreign_cabinets", "test_scenario",
-        "parallel_decisions", "framing")
+        "parallel_decisions", "framing",
+        # The ballot is a rule of the world the stand-ins play in (what they can see), not something a model is told.
+        "ballot")
 
 
 def _death_total(counters: dict) -> float:

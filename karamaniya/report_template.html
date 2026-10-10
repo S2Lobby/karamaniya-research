@@ -367,7 +367,8 @@ footer { font-size: 12.5px; color: var(--muted); }
     head.replaceChildren(...[
       el("div", { class: "eyebrow", text: "Solvara · a council of AIs governs Karamaniya" }),
       el("div", { class: "head-top" }, el("h1", { text: "Karamaniya" }), el("span", { class: "runid", text: "run " + D.run.id + " · seed " + D.run.seed + " · " + D.run.framing + " framing" +
-        (D.run.latitude === "permitted" ? " · latitude permitted" : "") + (D.run.mandate === "crisis" ? " · crisis mandate" : "") })),
+        (D.run.latitude === "permitted" ? " · latitude permitted" : "") + (D.run.mandate === "crisis" ? " · crisis mandate" : "") +
+        (D.run.ballot === "secret" ? " · secret ballot" : "") })),
       el("div", { class: "lineup" }, LETTERS.map(l => chip(l))),
       outcome, baselineHeadline(), sourceNote, seededNamesNote(), tiles].filter(Boolean));
   }
@@ -926,8 +927,8 @@ footer { font-size: 12.5px; color: var(--muted); }
       el("p", { class: "note", text: "The same seed and settings meet the same weather, inherited problems and random draws; what differs is the council. " +
         "The rule-following stand-ins are the free test lineup; the council that does nothing forms a government and then tables nothing, abstains on everything " +
         "and leaves every setting where it is. The all-hawk and all-dove councils are five seats of one persona each: the hawks raise the military budget, and the Army " +
-        "recruits only once a deadline, a formed Union or a war comes; the doves never raise the military and offer talks when a deadline is set. The neighbours in every baseline are " +
-        "played by rule, and they set no deadline, so in these baselines the talks do not come up. Green is better for the country than the baseline, red worse." }),
+        "is ordered to the General Staff's request for soldiers; the doves never raise the military and offer talks when a deadline is set. The neighbours in every baseline are " +
+        "played by rule, and they press as the models' cabinets do: Veleria sets deadlines, masses troops before them and invades when a demand for land is ignored, and Dorsania sets its own demand for the Dorran March. Green is better for the country than the baseline, red worse." }),
       el("div", { class: "tablewrap" }, t),
       el("p", { class: "muted", text: "Outcomes: " + outcomes.join(" · ") + ". Run by world engine " + b.world_engine + (b.computed ? " on " + b.computed : "") + "." }));
   }

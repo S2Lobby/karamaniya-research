@@ -301,7 +301,7 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
     with the two that depend on the phase (the phase name, and the pending line that lists the motions
     in this session) taken out into the second part, so the first is identical for every delegate and
     phase of the month."""
-    from . import audits, deliberation, dilemmas, freshness, regional
+    from . import audits, deliberation, dilemmas, freshness, opposition, regional
     from .politics import SHARES, election_outlook, fmt_value
     from .society import inflation_yoy
     c, e, mil, dip = w.const, w.econ, w.mil, w.dip
@@ -337,6 +337,7 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
                    "lose": "the government would lose power and all its members would leave office",
                    "union": "the Union Party would have a majority and take Karamaniya into the Union"}[outlook["verdict"]]
         lines.append(f"If the election were held now: {table}; {verdict}.")
+    lines.extend(opposition.lines(w))  # engine 18: last month's opposition statements, if any (opposition.py)
     lines.append(f"Rules: decisions by {c.decision_rule}; press {c.press}; assembly {c.assembly}; emergency powers "
                  f"{'ON' if c.emergency else 'OFF'}; minority rights {c.minority}.")
     measures = dilemmas.emergency_text(w)

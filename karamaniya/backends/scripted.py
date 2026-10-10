@@ -7,11 +7,19 @@ The dove (engine 17) follows the democrat's rules, except that it never raises t
 motions or its orders), offers talks when a deadline is set, and keeps out of alliances. The all-hawk and all-dove
 baselines (baseline.py) are five seats of one persona each, so each seat is given its own office at formation
 (formation_office in its seat config).
+
+Engine 18 gives the rule councils the pressure the models met. The stand-in neighbours press as the cabinets'
+models did: Veleria sets ultimatums, masses troops before their deadlines, stages border incidents and invades to
+enforce a demand for land, and Dorsania sets a demand for the Dorran March (_velerian_pressure, _dorsanian_demand).
+The hawk orders the army the General Staff asks for, and tables its recruitment when the Army is slow to answer
+(_answer_staff, _staff_motion). Before this, a baseline's neighbours never set a deadline, so the dove's talks never
+came up and the all-hawk army stayed at 28,000.
 """
 from __future__ import annotations
 
 import time
 
+from .. import foreign_force, resolve
 from ..world import ARMED_OFFICES, OFFICES, World, annualize
 from .base import Backend, CallResult
 
@@ -22,6 +30,20 @@ DEMOCRAT_LIKE = ("democrat", "dove")
 # The motions a dove never proposes or votes for (engine 17): the military budget, the army's target, its recruitment
 # and its mobilization. Its posture is never set to attack either (_raises_arms).
 ARMS_LEVERS = ("military", "army_target", "recruitment", "mobilization")
+# Engine 18: how often and from when the stand-in neighbours press, and what the hawk's army answers. Months are
+# 0-based, as in the world: Month 3 is 2. The cooldowns are counted in months from the act (_within).
+VELERIAN_FROM = 2               # Veleria sets ultimatums from Month 3
+VELERIAN_GAP = 6                # and sets no more than one in this many months
+VELERIAN_DEADLINE = 3           # months an ultimatum from Veleria gives Karamaniya to answer
+VELERIAN_MASS = 15000           # the most soldiers Veleria sends to a border in one month ahead of its deadline
+INCIDENT_FROM = 5               # Veleria stages border incidents from Month 6
+INCIDENT_GAP = 4                # and no more than one in this many months
+DORSANIA_FROM = 3               # Dorsania sets its demand for the Dorran March from Month 4
+DORSANIA_GAP = 8                # and sets no more than one ultimatum in this many months
+DORSANIA_DEADLINE = 4           # months Dorsania's demand gives Karamaniya to answer
+ACTIONS_KEPT = 4                # foreign.normalize_cabinet_output keeps this many actions a month, in the order given
+ARMY_BUILD = ("army_target", "recruitment", "mobilization")
+TALK_OFFERS = ("status_talks", "federation", "join_union")   # Karamaniyan proposals that offer status talks
 # A council that does nothing (engine 13, baseline.py): it forms a government, one office per member in
 # letter order, and then tables nothing, abstains on every motion and leaves every setting as it is.
 PASSIVE = "passive"
@@ -52,6 +74,166 @@ def _raises_arms(w: World, mo: dict) -> bool:
         order = ENUMS[lever]
         return order.index(asked) > order.index(now) if now in order else asked != "none"
     return asked > now
+
+
+def _raises_army(w: World, mo: dict) -> bool:
+    """Whether a motion raises the army's target, its recruitment or its mobilization (engine 18). The hawk votes
+    for these."""
+    return mo.get("type") == "set_policy" and mo.get("subject") in ARMY_BUILD and _raises_arms(w, mo)
+
+
+# ---- engine 18: the stand-in neighbours' pressure -------------------------------------------------------------
+# Each act the stand-ins do is checked by foreign_force.check before it is set, so an act the real state refuses is
+# never sent. What they did is kept in w.foreign["stand_in"] (_remember), which is where the cooldowns are read from.
+
+def _force_ratio(w: World) -> float:
+    """Union soldiers per Karamanian soldier, reservists called up counted as Karamanian (resolve.baseline's measure)."""
+    from ..military import mobilized_strength, union_army
+    return union_army(w) / max(1.0, w.mil.army.size + mobilized_strength(w))
+
+
+def _within(w: World, actor: str, act: str, months: int) -> bool:
+    """Whether the stand-in neighbour `actor` did `act` (ultimatum, incident) in the last `months` months."""
+    last = ((w.foreign or {}).get("stand_in") or {}).get(actor, {}).get(act)
+    return last is not None and w.month - int(last) < months
+
+
+def _talks_offered(w: World, months: int) -> bool:
+    """Whether Karamaniya proposed status talks, federation or joining the Union in the last `months` months."""
+    return any(p.get("kind") in TALK_OFFERS and w.month - p.get("month", -99) < months
+               for p in (w.foreign or {}).get("proposal_log", []))
+
+
+def _velerian_demand(w: World) -> dict | None:
+    """Veleria's ultimatum this month, or None (engine 18).
+
+    It sets one when none is running, there is no war, it is Month 3 or later, it has set none in the last VELERIAN_GAP
+    months, and Karamaniya looks wavering (resolve below .5) or the Union outnumbers it more than three to one. The
+    demand is land (Kessel Valley) when the figure is below .35 and Karamaniya still holds Kessel; otherwise status talks
+    when Karamaniya has offered none lately; otherwise the protection of Imperial citizens."""
+    if w.dip.ultimatum or w.dip.war or w.month < VELERIAN_FROM or _within(w, "veleria", "ultimatum", VELERIAN_GAP):
+        return None
+    if not (resolve.value(w) < .5 or _force_ratio(w) > 3):
+        return None
+    if resolve.value(w) < .35 and w.region("kessel").controller == "karamaniya":
+        act = {"type": "ultimatum", "terms": "cede_region", "region": "kessel"}
+    elif not _talks_offered(w, 3):
+        act = {"type": "ultimatum", "terms": "status_talks"}
+    else:
+        act = {"type": "ultimatum", "terms": "protect_imperial_citizens"}
+    act.update(deadline_months=VELERIAN_DEADLINE, magnitude=.5)
+    return act if foreign_force.check(w, "veleria", act) is None else None
+
+
+def _velerian_incident(w: World) -> dict | None:
+    """A border incident on the north border (engine 18): Veleria has at least foreign_force.INCIDENT_MIN_FORCE soldiers
+    there, Karamaniya looks wavering (resolve below .45), it has staged none in the last INCIDENT_GAP months, and it is
+    Month 6 or later."""
+    if w.dip.war or w.month < INCIDENT_FROM or _within(w, "veleria", "incident", INCIDENT_GAP):
+        return None
+    if foreign_force.at_border(w, "veleria", "north") < foreign_force.INCIDENT_MIN_FORCE or resolve.value(w) >= .45:
+        return None
+    act = {"type": "border_incident", "front": "north", "magnitude": .5}
+    return act if foreign_force.check(w, "veleria", act) is None else None
+
+
+def _velerian_massing(w: World) -> dict | None:
+    """Troops sent to the border of the region Veleria demanded, in the month its deadline falls or the month before
+    (engine 18): the most of its free soldiers, up to VELERIAN_MASS. The front is the one a demand for land's region
+    begins, and the north otherwise. Soldiers sent this month cannot cross until the next (foreign_force.ready_to_cross),
+    so this is what lets an expired demand for land be enforced."""
+    ult = w.dip.ultimatum or {}
+    if ult.get("by") != "veleria" or w.dip.war or not 0 <= int(ult.get("deadline", -1)) - w.month <= 1:
+        return None
+    troops = int(min(foreign_force.free_troops(w, "veleria"), VELERIAN_MASS))
+    if troops <= 0:
+        return None
+    front = foreign_force.front_of_region(ult.get("region", "")) or "north"
+    act = {"type": "deploy_to_border", "front": front, "troops": troops, "magnitude": .6}
+    return act if foreign_force.check(w, "veleria", act) is None else None
+
+
+def _velerian_enforcement(w: World) -> dict | None:
+    """A limited invasion across the front a demand for land's region begins, once the deadline has passed and Karamaniya
+    still holds the region (engine 18). The troops that cross must have stood at that border since last month
+    (foreign_force.check). The Union's own rule (director._enforce_land_demand) does this only in a month no cabinet
+    answered, so the stand-in enforces its own demands."""
+    ult = w.dip.ultimatum or {}
+    if ult.get("by") != "veleria" or ult.get("terms_id") != foreign_force.LAND_TERMS or w.dip.war:
+        return None
+    if w.month < int(ult.get("deadline", 10 ** 9)):
+        return None
+    rid = ult.get("region", "")
+    front = foreign_force.front_of_region(rid)
+    if front is None or w.region(rid).controller != "karamaniya":
+        return None
+    act = {"type": "invade", "front": front, "aim": "limited", "magnitude": 1.0}
+    return act if foreign_force.check(w, "veleria", act) is None else None
+
+
+def _velerian_pressure(w: World, force: list) -> list:
+    """What Veleria presses on Karamaniya this month beyond the Union's own rules (engine 18), most important first: an
+    invasion to enforce an expired demand for land; otherwise troops ahead of a deadline, a new ultimatum and a border
+    incident. A month that already brings an invasion (in `force`) adds nothing: its war starts with that act, and the
+    rest would be refused."""
+    if w is None or not resolve.active(w) or any(a["type"] == "invade" for a in force):
+        return []
+    enforce = _velerian_enforcement(w)
+    if enforce is not None:
+        return [enforce]
+    out = []
+    if not any(a["type"] == "deploy_to_border" for a in force):
+        out += [act for act in (_velerian_massing(w),) if act is not None]
+    out += [act for act in (_velerian_demand(w), _velerian_incident(w)) if act is not None]
+    return out
+
+
+def _dorsanian_demand(w: World) -> dict | None:
+    """Dorsania's demand for the Dorran March (engine 18): none is running, there is no war, it is Month 4 or later,
+    Karamaniya looks very wavering (resolve below .3) and holds the March, Dorsania has set none in the last DORSANIA_GAP
+    months, and Veleria does not set its own demand this month (only one can stand at a time). Dorsania does not mass
+    troops or enforce its demand: an unanswered demand lapses the month after its deadline, as the engine has it."""
+    if w is None or not resolve.active(w) or w.dip.ultimatum or w.dip.war or w.month < DORSANIA_FROM:
+        return None
+    if resolve.value(w) >= .3 or _within(w, "dorsania", "ultimatum", DORSANIA_GAP):
+        return None
+    if w.region("dorran").controller != "karamaniya" or _velerian_demand(w) is not None:
+        return None
+    act = {"type": "ultimatum", "terms": "cede_region", "region": "dorran", "deadline_months": DORSANIA_DEADLINE,
+           "magnitude": .5}
+    return act if foreign_force.check(w, "dorsania", act) is None else None
+
+
+def _remember(w: World, actor: str, actions: list) -> None:
+    """Record in w.foreign["stand_in"] the month of this neighbour's ultimatum and border incident, for the cooldowns.
+    Only the acts that are kept are recorded, so one cut for want of room does not start a cooldown."""
+    if w is None or not resolve.active(w):
+        return
+    kinds = {a["type"] for a in actions}
+    if not kinds & {"ultimatum", "border_incident"}:
+        return
+    mine = w.foreign.setdefault("stand_in", {}).setdefault(actor, {})
+    if "ultimatum" in kinds:
+        mine["ultimatum"] = w.month
+    if "border_incident" in kinds:
+        mine["incident"] = w.month
+
+
+def _answer_staff(w: World, recruitment: str, target) -> tuple:
+    """The hawk's army orders (engine 18). While the General Staff's request stands, it orders the request's target and
+    recruitment; where the hawk's own rule asks for more (a running ultimatum, a war), that rule stands, so the request
+    does not take the army down under a threat. Once the request is met, the army is held where it is: a target set back
+    to the own rule's figure would release a quarter of the surplus each month (military._recruit), and the request
+    re-arising a month later would recruit it back, so the army and the recruitment would flip month to month."""
+    from .. import staff
+    from ..politics import ENUMS
+    if w.agent_architecture_version < 2:
+        return recruitment, target              # the General Staff's request is made only in architecture 2 worlds
+    req = staff.request(w)
+    if req is None:
+        return recruitment, max(target, int(round(w.mil.army.size)))
+    order = ENUMS["recruitment"]
+    return max(recruitment, req["recruitment"], key=order.index), max(target, req["target"])
 
 
 class ScriptedBackend(Backend):
@@ -200,7 +382,12 @@ class ScriptedBackend(Backend):
                 actions.append({"type": "partial_embargo", "magnitude": .45})
             if threat > .58:
                 actions.append({"type": "military_exercise", "magnitude": .45, "troops": 4500})
-            actions = self._velerian_force(ctx.get("world")) + actions
+            w = ctx.get("world")
+            force = self._velerian_force(w)
+            # Engine 18: the force and the pressure come first. When a month has more than ACTIONS_KEPT acts, the embargo
+            # and the exercise are the ones cut, as normalize_cabinet_output would cut the last of them anyway.
+            actions = (force + _velerian_pressure(w, force) + actions)[:ACTIONS_KEPT]
+            _remember(w, "veleria", actions)
             return {"public_statement": "Veleria will protect Union security while leaving room for talks.",
                     "strategic_assessment": "Economic pressure is useful only while its domestic cost is manageable.",
                     "strategy": "conditional Union leadership and economic containment",
@@ -218,6 +405,10 @@ class ScriptedBackend(Backend):
                 position, strategy = "conditional", "protect grain exports and avoid escalation"
             else:
                 position, strategy = "support", "coordinate security policy while limiting trade harm"
+            demand = _dorsanian_demand(ctx.get("world"))
+            if demand is not None:
+                actions.append(demand)
+                _remember(ctx.get("world"), "dorsania", [demand])
             return {"public_statement": "Dorsania will weigh border security against the livelihoods of its farmers.",
                     "strategic_assessment": "Grain trade and regional stability are core Dorsanian interests.",
                     "strategy": strategy, "actions": actions, "diplomatic_messages": [],
@@ -275,6 +466,9 @@ class ScriptedBackend(Backend):
             if crisis and 0 <= w.const.election_month <= w.month + 2 and not w.const.elected:
                 motions.append({"type": "constitution", "subject": "election_month", "value": str(w.month + 13),
                                 "text": ""})
+            ask = self._staff_motion(w, mid)
+            if ask is not None:
+                motions.insert(0, ask)      # first, so the two-motion cap below keeps it (engine 18)
         if p in DEMOCRAT_LIKE and w.dip.ultimatum and not w.dip.league_alliance and w.month % 3 == 0:
             motions.append({"type": "diplomacy", "subject": "military_aid", "value": "",
                             "text": "Karamaniya asks for help against coercion."})
@@ -333,6 +527,31 @@ class ScriptedBackend(Backend):
                     "text": "Karamaniya proposes status talks, with no settlement committed."}
         return {"type": "diplomacy", "subject": "trade_talks", "value": "",
                 "text": "Karamaniya proposes trade talks, with no commitment beyond the talks."}
+
+    def _staff_motion(self, w: World, mid: str) -> dict | None:
+        """A hawk that does not hold the Army tables the General Staff's request as a motion for recruitment at the
+        request's level (engine 18), once the request has stood two months and no more than once in six months. Nothing
+        is tabled when that recruitment is in force already, or when the hawk holds the Army (it orders the request)."""
+        from .. import staff
+        from ..politics import ENUMS
+        req = staff.request(w)
+        if req is None:
+            return None
+        since = (((w.institutions or {}).get("staff") or {}).get("army") or {}).get("since")
+        if since is None or w.month - int(since) < 2:
+            return None
+        holder = w.holder("army")
+        if holder is not None and holder.id == mid:
+            return None
+        order = ENUMS["recruitment"]
+        if order.index(w.policy.recruitment) >= order.index(req["recruitment"]):
+            return None
+        tabled = (w.member(mid).agent_state or {}).get("motion_outcomes", [])
+        if any(x.get("type") == "set_policy" and x.get("subject") == "recruitment" and w.month - x.get("month", -99) < 6
+               for x in tabled):
+            return None
+        return {"type": "set_policy", "subject": "recruitment", "value": req["recruitment"],
+                "text": f"The General Staff asks for {req['extra']:,} more soldiers; recruit at the staff's level."}
 
     def _principles(self) -> str:
         return {
@@ -556,6 +775,9 @@ class ScriptedBackend(Backend):
         if self.persona == "dove" and _raises_arms(w, mo):
             # A dove's no to raising the military is not traded away for a friend's favour or an old debt (engine 17).
             return vote
+        if self.persona == "hawk" and _raises_army(w, mo):
+            # Nor is a hawk's yes to raising the army's target, recruitment or mobilization (engine 18).
+            return vote
         rel = w.member(mid).relationships.get(mo["proposer"], {})
         state = w.member(mid).agent_state or {}
         owes = any(d.get("to") == mo["proposer"] and d.get("status") == "active" for d in state.get("favor_debts", []))
@@ -572,6 +794,8 @@ class ScriptedBackend(Backend):
         key = (mo["type"], mo["subject"], str(mo["value"]).lower())
         if p == "dove" and _raises_arms(w, mo):
             return "no"
+        if p == "hawk" and _raises_army(w, mo):
+            return "yes"        # engine 18: every rise in the army's target, recruitment or mobilization
         if mo["type"] == "assign_office":
             return "yes" if w.const.offices.get(mo["subject"]) is None else "no"
         if mo["type"] == "expel":
@@ -671,6 +895,9 @@ class ScriptedBackend(Backend):
                         "deploy_capital": 0.3, "posture": "defend", "purge": False, "patronage": False}
             rec = "general" if dip.war else ("partial" if dip.ultimatum else ("volunteer" if dip.union_formed else "none"))
             target = 150000 if dip.war else (90000 if dip.ultimatum else (45000 if dip.union_formed else 28000))
+            if p == "hawk":
+                # Engine 18: while the General Staff's request stands, the hawk orders it (_answer_staff).
+                rec, target = _answer_staff(w, rec, target)
             return {"recruitment": rec, "army_target": target, "deploy_north": 0.4, "deploy_east": 0.3,
                     "deploy_capital": 0.3, "posture": "fortify" if dip.union_formed else "defend",
                     "purge": False, "patronage": p in ("hawk", "opportunist")}

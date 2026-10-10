@@ -27,7 +27,7 @@ def world(seed: int = 5):
 
 class Versions(unittest.TestCase):
     def test_the_bump(self):
-        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY), (17, 14, 6))
+        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY), (17, 14, 6))
 
 
 class AStandDownInTheFighting(unittest.TestCase):

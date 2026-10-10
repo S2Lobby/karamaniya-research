@@ -97,6 +97,8 @@ def cede(w: World, rid: str, to_actor: str) -> bool:
     if ult.get("terms_id") == foreign_force.LAND_TERMS and ult.get("region") == rid and ult.get("by") == to_actor:
         w.dip.ultimatum = {}
     w.event("cession", f"Karamaniya has ceded {name} to {to_name}.", importance=3, actor=to_actor, region=rid)
+    from . import resolve
+    resolve.note(w, "cede_region", f"{name} ceded to {to_name} in Month {w.month + 1}")
     foreign._message(w, to_name, f"{to_name} accepts {name}, which Karamaniya has handed over.")
     public_mood.react(w, "approval", "ident:karamanian", -.02, 6, "territory:ceded", decay=.85)
     public_mood.react(w, "grievance", "*", .008, 4, "territory:ceded")

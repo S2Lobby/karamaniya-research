@@ -10,6 +10,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -269,16 +270,29 @@ class QuietMonths(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
     def run_months(self, extra, n=6, foreign_cabinets=False):
-        # Without foreign cabinets: the scripted Dorsania proposes trade every month, and a message
-        # from abroad always brings the council together (test_a_message_from_abroad_...).
+        # Without foreign cabinets: a message from abroad always brings the council together
+        # (test_a_message_from_abroad_...).
         council, w = scripted_council(self.tmp, {"wakeups": "on_events", "max_quiet_months": 2}, extra,
                                       foreign_cabinets=foreign_cabinets)
         records = [council.run_month() for _ in range(n)]
         return council, w, records
 
     def test_a_message_from_abroad_every_month_keeps_the_council_meeting(self):
-        _, _, records = self.run_months(lambda ctx: {"stand_by": {"months": "2", "wake_if": []}}, n=5,
-                                        foreign_cabinets=True)
+        # Until engine 18 the scripted Dorsania wrote every month on its own ("restoring some grain trade"), but
+        # that message came from easing a grain embargo that stood at zero (foreign.EMBARGO_COST). Here its
+        # cabinet writes to Karamaniya every month on purpose.
+        real = ScriptedBackend._foreign
+
+        def writes(backend, ctx):
+            out = real(backend, ctx)
+            if ctx.get("actor") == "dorsania":
+                out = {**out, "diplomatic_messages": [
+                    {"recipient": "karamaniya", "text": "Dorsania asks to discuss grain prices this month."}]}
+            return out
+
+        with mock.patch.object(ScriptedBackend, "_foreign", writes):
+            _, _, records = self.run_months(lambda ctx: {"stand_by": {"months": "2", "wake_if": []}}, n=5,
+                                            foreign_cabinets=True)
         self.assertFalse([r for r in records if r.get("quiet_month")])
 
     def test_a_quiet_month_leaves_the_notebooks_and_their_dates_as_written(self):

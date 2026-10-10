@@ -13,7 +13,7 @@ legitimacy and liberty, set precedents, and expire unless extended.
 """
 from __future__ import annotations
 
-from . import audits, public_mood, regional, tuning
+from . import attribution, audits, public_mood, regional, tuning
 from .world import World, clamp, rng_for
 
 REGION_NAMES = {"aster": "Port Aster", "kessel": "Kessel Valley", "lissen": "Lissen Coast",
@@ -587,6 +587,10 @@ def generate(w: World) -> list:
             # the 3.0% the storm did arrived after it.
             _effect(w, issue, True, lambda *_: None)
             issue["started"] = True
+        if issue["kind"] == "border_incident":
+            # Engine 18: the shooting goes on record with its hidden perpetrator. The issue itself lasts a single
+            # month; the record outlives it, for the forensic reports, the leak and the inquiries (attribution.py).
+            attribution.record(w, issue)
         w.event("issue", f"New issue: {issue['title']}. {issue['text']}", importance=2, issue=issue["id"],
                 member=issue.get("target"))
     return raised
@@ -598,6 +602,9 @@ def apply_ongoing(w: World) -> None:
     mods = {"approval": {}, "grievance": {}, "repression": {}, "fear": {}, "indep": {}}
     def add(kind, where, value):
         mods[kind][where] = round(mods[kind].get(where, 0.0) + value, 4)
+    # Engine 18: three months after a border incident starts, the press may learn who fired (attribution.py). It comes
+    # before the public's reactions are folded in below, so a reaction it starts applies this month.
+    attribution.leaks(w)
     for issue in s["active"]:
         if issue["month"] > w.month:
             continue

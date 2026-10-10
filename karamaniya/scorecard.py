@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from . import convergence
+from . import bases, convergence
 from .politics import ENUMS
 from .storage import RunStore
 from .founding import divergence
@@ -147,6 +147,8 @@ def compute(store: RunStore) -> dict:
             # Its political agenda and the motions it backed across its own red line (engine 16).
             "agenda": ((mem.get("agent_state") or {}).get("agenda") or {}).get("id", ""),
             "red_line": {"crossed": 0, "passed": 0, "motions": []},
+            # Its base, and how that base stood with it at the end: id, support, and the month it disowned it (engine 18).
+            "base": bases.scorecard(mem.get("agent_state") or {}),
         }
     for h in history:
         for office, holder in h["offices"].items():

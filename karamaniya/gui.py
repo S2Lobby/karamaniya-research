@@ -113,6 +113,7 @@ class Library:
         s = {"id": d.name, "created": cfg.get("created", ""), "months_total": run.get("months", 0),
              "seed": run.get("seed"), "framing": run.get("framing", ""), "mapping": cfg.get("mapping", {}),
              "latitude": run.get("latitude", "default"), "mandate": run.get("mandate", "default"),
+             "ballot": run.get("ballot", "open"),
              "comparison_cohort": cohort,
              "seats": [{k: seat.get(k, "") for k in ("label", "provider", "model", "persona")}
                        for seat in cfg.get("seats", [])],

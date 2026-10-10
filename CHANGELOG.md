@@ -4,6 +4,79 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 18, agent prompt 15 and psychology 7
+
+`WORLD_ENGINE` 18, `AGENT_PROMPT` 15 and `PSYCHOLOGY` 7: the neighbours read how firm Karamaniya looks, an opposition
+speaks, bitter officers plot, each delegate has a past and a base, the truth about a border incident comes out, and the
+world's figures are checked across seeds. In run `20261010-070501-seed1` the council met three ultimatums with talks,
+invited the Union into a joint inquiry, stood its patrols down and left the army at 28,000 against 100,000, and 27 of
+its 40 votes were 5-0: appeasement cost nothing strategically, nobody in the country argued, and no one of the
+delegates' own watched how they voted. The delegates are still told nothing about what to decide. The prompts changed
+on purpose, so the prompt-freeze fixture was rewritten with this bump. Each feature was built by its own agent on shared
+groundwork and then reviewed, merged and fixed; backlog T83-T93, tests in `tests/test_engine18*.py`.
+
+- **How firm Karamaniya looks** (`resolve.py`). The neighbours keep one figure, from 0 to 1. A joint inquiry, a
+  stand-down, an inspection regime, talks on status offered under a deadline, a referendum called under one and a
+  region ceded lower it; arming, calling up reservists, an alliance with the League and a demand left to lapse raise
+  it; each month it drifts a tenth of the way toward what the force ratio alone suggests. The cabinets see it as a
+  word (firm, uncertain, wavering, yielding) with the moves behind it. The Union's war threshold scales with it (0.88
+  of its usual odds at 0.2, 1.16 at 0.9), a demand standing against a yielding Karamaniya is a reason to invade, and
+  the Union's own ultimatum comes sooner and, below 0.35, demands Kessel Valley. The head's office reports carry the
+  diplomatic cables on how Veleria reads the country, and Army intelligence's estimate of the Union's intent moves
+  with the same threshold.
+- **Baselines under pressure.** The stand-in neighbours that play every baseline press as the models' cabinets do:
+  from Month 3 Veleria sets a demand (no more than one in six months) when Karamaniya looks wavering or is outnumbered
+  three to one, demands Kessel when the figure is below 0.35, masses troops before its deadline, stages border
+  incidents, and enforces a demand for land with a limited war; Dorsania demands the Dorran March below 0.3. The
+  scripted hawk orders the army the General Staff asks for. Over 6 seeds and 36 months the do-nothing and all-dove
+  councils (28,000 soldiers) now meet six demands each, and the hawk's army reaches 38,000 to 49,000 (28,000 on
+  engine 17). Their figures moved with it: the do-nothing council's approval after 36 months averaged 0.46 (0.40 on
+  engine 17) and it kept power in 3 of 6 seeds (none on engine 17), because each demand rallies the country; the
+  hawk's averaged 0.22 (0.27), the army's cost. No rule council ceded a region, fought a war, met a plot or was
+  disowned: those follow concessions, which the rule councils do not make.
+- **An opposition** (`opposition.py`). The National Front, the Union Party and the Civic Alliance each say at most one
+  thing a month about what the government did, naming the act ("The National Front calls the joint inquiry the
+  government offered the Solvaran Union in Month 5 a surrender of our border."). An attack builds the party's
+  momentum (0.02 to 0.05, capped at 0.15, fading 15% a month; the same attack the next month counts half), which
+  multiplies its share of the Assembly vote, so the monthly election line moves with it; the public reacts a little.
+  Under censorship nothing is heard, but the momentum builds. The delegates read last month's statements in the
+  canonical state. Nothing the opposition does moves the election.
+- **Grievance with teeth** (`plots.py`). A ministry's grievance costs it implementation capacity (0.18 at the full
+  0.3). An army aggrieved past 0.18 and less than half loyal plots; the plot grows while both hold and fades when
+  either lapses. The Interior's special branch may find it (more likely with loyal police and more surveillance) and
+  then reports it to the Interior minister; at strength 0.8 the officers act half the time (0.15 once the plot is
+  found and a purge runs). The older coup rule is unchanged.
+- **A past and a base** (`biographies.py`, `bases.py`). Each delegate is dealt one of eight pasts from the founding
+  war (a militia commander from the Dorran March, an officer who brought his regiment over, a Kessel engineer and
+  union steward, a Port Aster shipowner, ...) and the base it comes from: veterans, the officers' association, the
+  administrators' union, the Kessel unions, the shipping houses, the farmers' cooperative, the Vell council, the
+  Charter's founders. The base reads every vote the delegate casts through its own mix of audiences, whatever the
+  seat, grows uneasy (personal approval -0.005 a month) and can disown the delegate in public (-0.03 approval, -0.1
+  clout). It never removes anyone. The private disposition says both, as facts.
+- **What happened at the border comes out** (`attribution.py`). After a border incident the Army staff's forensic
+  reports narrow down who fired (one and two months on, low then medium confidence, and a staff slow to blame its own
+  soldiers reads high when they fired); three months on the press may learn it (half the time, 80% with a free
+  press), rallying the country if a Union patrol fired and costing approval if Karamanian soldiers did; and a joint
+  inquiry's finding follows what happened, steered by the Union (85% blame on Karamanian soldiers if they fired, 30%
+  if a Union patrol did).
+- **A secret-ballot arm** (`ballot = "secret"`). Each member sees only their own vote and every result and tally; the
+  system prompt says so in one sentence; nothing that follows from seeing a colleague's vote happens. Every vote is
+  still recorded. In the scripted runs checked (seeds 1 and 2, 12 months) every vote is the same in both arms; the
+  scorecard differs only where seeing votes matters (trust, promises, the votes that cost a delegate with an
+  audience). An open run's
+  prompts are unchanged by the arm. `tools/matrix.py` writes council files for model lineups by seeds and arms and
+  compares finished runs.
+- **The calibration harness** (`calibration.py`, `tools/calibrate.py`, `docs/CALIBRATION.md`) plays seeds under the
+  four rule councils and checks nine figures against plausible ranges. On 6 seeds by 4 councils by 36 months every check passes in at least
+  90% of the runs but one: `inflation_mean` fails in three runs of seed 3 (-5.7% to -2.5% a year), a seed that starts
+  with a food surplus and consumer prices 30% below the year before, as it does on engine 17. The range is left as
+  it is and the finding is open (T93).
+- **An embargo's cost follows its level.** The first calibration grid found Dorsania's output falling in a straight
+  line to 0.892 of its start in 36 months, on every seed and council. The stand-in Dorsania asked to ease a grain
+  embargo that stood at zero in every month, and engine 17 charged each ask against its output, for good (4.9% in the
+  first year). Veleria's coal embargo was charged the same way at its ceiling, and never gave the trade back when
+  eased. The exporter's output now follows the embargo's level.
+
 ## World engine 17, agent prompt 14 and psychology 6
 
 `WORLD_ENGINE` 17, `AGENT_PROMPT` 14 and `PSYCHOLOGY` 6: the world reacts to what the government does. In run

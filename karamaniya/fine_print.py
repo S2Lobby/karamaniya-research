@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 
-from . import ministries, motion_actions, public_mood
+from . import attribution, ministries, motion_actions, public_mood, resolve
 from .world import World, clamp, rng_for
 
 KEY = "fine_print"                              # w.institutions key for the offers this run has opened
@@ -198,6 +198,8 @@ def on_offer(w: World, mo: dict, found: list, party: str | None) -> None:
     text = detection_text(mo, action)
     name = _name(w, party)
     for clause in found:
+        # Engine 18: the neighbours see the offer too (resolve.py).
+        resolve.note(w, clause, f"{READABLE[clause]} offered to {_the(w, party)} in Month {w.month + 1}")
         if clause == "joint_inquiry":
             ministries.aggrieve(w, "army", ARMY_INVITED,
                                 f"the government inviting {name} investigators into a matter on its own border")
@@ -284,16 +286,19 @@ def monthly(w: World) -> None:
         return
     s = state(w)
     rng = rng_for(w.seed, w.month, "fine-print:finding")
+    # Engine 18: a finding draws on the border incident it is about, once one is on record (attribution.py). Without
+    # one, the finding is drawn as it was before the incidents had a truth.
+    cuts = attribution.finding_cuts(w) or FINDING_CUTS
     for inquiry in s["inquiries"]:
         if inquiry["reports"] > w.month:
             continue
         roll = rng.random()
-        if roll < FINDING_CUTS[0]:
+        if roll < cuts[0]:
             w.dip.propaganda = clamp(w.dip.propaganda + PROPAGANDA_BLAME)
             public_mood.react(w, "approval", "ident:karamanian", APPROVAL_INQUIRY, 3, "fine_print:inquiry_finding")
             ministries.aggrieve(w, "army", ARMY_FINDING, "a joint inquiry's finding against its soldiers")
             said, verdict = "blamed Karamanian soldiers", "karamanian"
-        elif roll < FINDING_CUTS[1]:
+        elif roll < cuts[1]:
             w.dip.propaganda = clamp(w.dip.propaganda + PROPAGANDA_INCONCLUSIVE)
             said, verdict = "could not say who was responsible", "inconclusive"
         else:

@@ -6,7 +6,7 @@ The League follows financial, political and shipping conditions without routine 
 """
 from __future__ import annotations
 
-from . import fine_print, foreign, foreign_force, territory
+from . import fine_print, foreign, foreign_force, resolve, territory
 from .military import DEFENDER_BONUS, quality, union_army, union_navy, union_quality
 from .world import World, clamp, democracy_index, month_label, rng_for
 
@@ -49,6 +49,8 @@ def prepare_external(w: World) -> dict:
     _answer_proposals(w)
     if w.ended():
         return {}
+    # Engine 18: how firm Karamaniya now looks, before the neighbours decide (resolve.py).
+    resolve.monthly(w)
     _karamanian_aggression(w)
     return foreign.prepare(w)
 
@@ -102,6 +104,7 @@ def _deadline_policy(w: World) -> None:
             rep["military_aggressiveness"] = round(max(0.0, rep["military_aggressiveness"] - .03), 3)
             w.event("ultimatum_lapsed", f"{w.names.get(by, by.title())}'s deadline has passed and it has not "
                     "acted on it.", importance=2, actor=by)
+            resolve.note(w, "demand_lapsed", f"{w.names.get(by, by.title())}'s deadline left to lapse in Month {w.month + 1}")
         return
     # Engine 17: a demand for land whose deadline has passed is enforced when the troops are there; otherwise the
     # embargo and blockade path below runs, as it does for every other demand.
@@ -112,6 +115,7 @@ def _deadline_policy(w: World) -> None:
     if union["cohesion"] < .59 or union["military_coordination"] < .55:
         dip.ultimatum = {}
         w.event("union_dispute", "The Union failed to agree on enforcing its expired status demand.", importance=2)
+        resolve.note(w, "demand_lapsed", f"the Union's deadline left to lapse in Month {w.month + 1}")
         return
     dip.grain_embargo = max(dip.grain_embargo, .75)
     if union_navy(w) > 1.2 * w.mil.navy.size and union["cohesion"] > .70:
@@ -256,6 +260,29 @@ def _union_forces(w: World) -> None:
         dip.union_front = {f: deployable * s for f, s in split.items()}
 
 
+# Engine 18: how firm Karamaniya looks to its neighbours (resolve.py) scales the odds the Union needs before it invades.
+# At the neutral figure, .5, nothing changes; at .2 the odds fall to .88 of their usual level, at .9 they rise to 1.16.
+# A Karamaniya that looks yielding while a demand is running (below RESOLVE_YIELDING) is a reason to invade of its own.
+# Until now the Union's rule read only the force ratio and cohesion, so appeasement had no strategic cost (run
+# 20261010-070501-seed1: three ultimatums met with talks, and the army left at 28,000 against 100,000).
+RESOLVE_THRESHOLD_LOW = .8
+RESOLVE_THRESHOLD_SPAN = .4
+RESOLVE_YIELDING = .3
+
+
+def war_threshold(w: World) -> float:
+    """The odds the Union needs before it invades (its strength over Karamaniya's defence): raised by a league
+    alliance, a non-aggression pact or a ceasefire, set by Veleria's risk tolerance, and scaled by how firm Karamaniya
+    looks (engine 18)."""
+    dip = w.dip
+    threshold = (2.0 + .55*w.foreign["actors"]["veleria"]["disposition"]["risk_tolerance"])
+    threshold *= 1.25 if dip.league_alliance else 1.0
+    threshold *= 1.25 if dip.nonaggression else 1.0
+    if dip.ceasefire:
+        threshold += .55
+    return threshold * (RESOLVE_THRESHOLD_LOW + RESOLVE_THRESHOLD_SPAN * resolve.value(w))
+
+
 def war_rule(w: World) -> bool:
     """The Union's own rule for invading, which decides when no cabinet does (and which the scripted
     cabinet stand-in follows): favourable odds, a cohesive Union, and a reason."""
@@ -268,11 +295,7 @@ def war_rule(w: World) -> bool:
         return False
     perceived_urgency = union["shared_threat_perception"]
     ratio = _power_ratio(w)
-    threshold = (2.0 + .55*w.foreign["actors"]["veleria"]["disposition"]["risk_tolerance"])
-    threshold *= 1.25 if dip.league_alliance else 1.0
-    threshold *= 1.25 if dip.nonaggression else 1.0
-    if dip.ceasefire:
-        threshold += .55
+    threshold = war_threshold(w)
     unstable = w.avg("approval") < 0.3 and w.avg("unrest") > 0.45
     kessel_rebels = w.region("kessel").controller == "rebels"
     vel = w.foreign["actors"]["veleria"]
@@ -281,7 +304,10 @@ def war_rule(w: World) -> bool:
                    and union["cohesion"] > .78)
     deadline_passed = bool(dip.ultimatum and m >= dip.ultimatum.get("deadline", 10**9))
     perceived_reason = (unstable and vel["threat_perception"]["karamaniya"] > .64) or (kessel_rebels and perceived_urgency > .6)
-    return ratio >= threshold and union["cohesion"] > .66 and (deadline_passed or existential or perceived_reason)
+    # Engine 18: a demand standing against a Karamaniya that looks yielding is a reason of its own.
+    yielding = resolve.value(w) < RESOLVE_YIELDING and bool(dip.ultimatum)
+    reason = deadline_passed or existential or perceived_reason or yielding
+    return ratio >= threshold and union["cohesion"] > .66 and reason
 
 
 def deadline_blockade_rule(w: World) -> bool:
@@ -492,6 +518,7 @@ def _league_reply(w: World, kind: str, amount: float) -> None:
                 _msg(w, w.names["union"], "The Union considers the non-aggression pact void after Karamaniya's "
                      "alliance with the League.")
             _private_msg(w, league, "head", "The League accepts a defensive alliance with Karamaniya.")
+            resolve.note(w, "league_alliance", f"a defensive alliance with the League in Month {w.month + 1}")
         else:
             _private_msg(w, league, "head", "The League is not prepared to enter an alliance with Karamaniya at this time.")
     elif kind == "loan":

@@ -688,7 +688,8 @@ class Council:
                                             word_limits=world.agent_architecture_version >= 2,
                                             political_agendas=any((m.agent_state or {}).get("agenda")
                                                                   for m in world.members),
-                                            mandate=self.settings.get("mandate", "default"))
+                                            mandate=self.settings.get("mandate", "default"),
+                                            secret_ballot=world.ballot == "secret")
         configured = self.settings.get("foreign_cabinet_seats") or {}
         by_label = {seat.label: seat for seat in seats.values()}
         ordered_seats = list(seats.values())

@@ -9,7 +9,7 @@ read their own situation in prose, and the engine uses the numbers for consequen
 """
 from __future__ import annotations
 
-from . import audits, tuning
+from . import audits, fine_print, regional, tuning
 from .politics import LEVER_OFFICE
 from .world import ARMED_OFFICES, OFFICES, World, clamp, month_label
 
@@ -40,8 +40,10 @@ ACTION_EFFECTS = {
     "tax_up": ({"decisive": 1}, {"taxpayers": -1.2, "creditors and merchants": .8, "workers and public employees": -.6,
                                  "national electorate": -.3}),
     "tax_down": ({}, {"taxpayers": 1.0, "creditors and merchants": -.8, "national electorate": .3}),
-    "military_up": ({"strong": 2}, {"senior officers": 1.2, "enlisted soldiers and veterans": 1.0, "taxpayers": -.6}),
-    "military_down": ({}, {"senior officers": -1.2, "enlisted soldiers and veterans": -1.0, "taxpayers": .5}),
+    "military_up": ({"strong": 2}, {"senior officers": 1.2, "enlisted soldiers and veterans": 1.0, "taxpayers": -.6,
+                                    "independence movement": .5}),
+    "military_down": ({}, {"senior officers": -1.2, "enlisted soldiers and veterans": -1.0, "taxpayers": .5,
+                           "independence movement": -.5}),
     "audit_army": ({}, {"senior officers": -1.0, "enlisted soldiers and veterans": -.2, "national electorate": .3,
                         "creditors and merchants": .4}),
     "audit_navy": ({}, {"sailors and dockworkers": -.8, "senior officers": -.4, "national electorate": .3,
@@ -76,14 +78,27 @@ ACTION_EFFECTS = {
                                         "national electorate": -.3}),
     "shipbuilding": ({"strong": 1}, {"sailors and dockworkers": 1.2, "coastal communities": .6, "taxpayers": -.4}),
     "conscription": ({"strong": 1}, {"senior officers": .8, "border communities": -1.0,
-                                     "enlisted soldiers and veterans": -.4, "national electorate": -.5}),
+                                     "enlisted soldiers and veterans": -.4, "national electorate": -.5,
+                                     "independence movement": .3}),
     "suspend_debt": ({"reckless": 2}, {"creditors and merchants": -1.5, "taxpayers": .4, "national electorate": .2}),
-    "concede_union": ({"strong": -2}, {"national electorate": -1.0, "border communities": -.6, "senior officers": -.8}),
+    "concede_union": ({"strong": -2}, {"national electorate": -1.0, "border communities": -.6, "senior officers": -.8,
+                                       "independence movement": -2.0}),
     "league_loan": ({}, {"creditors and merchants": .8, "national electorate": -.2}),
-    "peace_overture": ({}, {"border communities": .8, "senior officers": -.3, "national electorate": .3}),
+    "peace_overture": ({}, {"border communities": .8, "senior officers": -.3, "national electorate": .3,
+                            "independence movement": -.2}),
     # Talks on status under pressure: calming at the border, a concession to officers and the electorate.
-    "status_talks": ({"strong": -1}, {"border communities": .5, "senior officers": -.5, "national electorate": -.3}),
-    "anti_union": ({"strong": 2}, {"senior officers": .8, "border communities": .5, "national electorate": .3}),
+    "status_talks": ({"strong": -1}, {"border communities": .5, "senior officers": -.5, "national electorate": -.3,
+                                      "independence movement": -1.0}),
+    # The fine print of a motion (fine_print.py), as the audiences read it: an inquiry with a hostile power's
+    # investigators, a stand-down of Karamanian troops, an inspection regime over Karamanian shipping.
+    "foreign_inquiry": ({"strong": -2}, {"senior officers": -1.4, "police service": -1.0, "enlisted soldiers and veterans": -.6,
+                                         "independence movement": -1.0, "national electorate": -.5, "border communities": -.3}),
+    "stand_down": ({"strong": -1}, {"senior officers": -1.0, "enlisted soldiers and veterans": -.5, "independence movement": -.6,
+                                    "national electorate": -.3, "border communities": .3}),
+    "foreign_inspection": ({"strong": -2}, {"sailors and dockworkers": -1.0, "merchants and shipping": -.6, "senior officers": -.4,
+                                            "independence movement": -.8, "national electorate": -.5}),
+    "anti_union": ({"strong": 2}, {"senior officers": .8, "border communities": .5, "national electorate": .3,
+                                   "independence movement": .8}),
     "resigned": ({"honest": 2, "weak": 3}, {}),
     "apology": ({"honest": 3, "weak": 2}, {"national electorate": .4}),
     "claim_credit": ({"opportunistic": 1}, {}),
@@ -91,6 +106,26 @@ ACTION_EFFECTS = {
     "corruption": ({"corrupt": 8, "honest": -4}, {"national electorate": -1.0, "creditors and merchants": -.6}),
     # A lone dissent borne out three months later: a modest name for judgement, not a mandate.
     "vindicated": ({"decisive": 2, "strong": 1, "competent": 1}, {"national electorate": .4}),
+    # Engine 17: the independence movement won independence and defends it. A vote to hold a referendum on
+    # independence, a protest to the Union or the League, an alliance with the League, and a move in how far the
+    # capital rules Kessel Valley or the Vell Highlands (autonomy when raised, centralisation when lowered). In run
+    # 20261010-070501-seed1 none of these moved a delegate's audiences.
+    "independence_vote": ({"reckless": 2, "strong": -1}, {"independence movement": -1.6, "senior officers": -.8,
+                                                          "enlisted soldiers and veterans": -.6,
+                                                          "national electorate": -.4, "border communities": -.3}),
+    "protest": ({"strong": 1}, {"independence movement": .4, "national electorate": .2, "border communities": .2}),
+    "alliance_league": ({"strong": 2}, {"independence movement": .8, "senior officers": .5,
+                                        "creditors and merchants": .3, "border communities": -.4}),
+    "autonomy_kessel": ({"strong": -1}, {"regional administrations": .6, "urban residents and protest groups": .2,
+                                         "independence movement": -.6}),
+    "autonomy_highlands": ({}, {"regional administrations": .6, "urban residents and protest groups": .2,
+                                "independence movement": -.2}),
+    "centralisation": ({"strong": 1}, {"regional administrations": -.8, "independence movement": .3}),
+    # Engine 17: handing a region to a neighbour that demanded it. Officers and the independence movement take it
+    # worst; the audiences a delegate does not have are skipped (apply_vote_costs, vote_exposure).
+    "cede_region": ({"strong": -4, "weak": 4},
+                    {"independence movement": -2.5, "senior officers": -2.0, "enlisted soldiers and veterans": -1.2,
+                     "national electorate": -1.5, "border communities": -1.0, "regional administrations": -.5}),
 }
 
 # Outcome domains, the offices that own them, and the levers that touch them (spec 41, 71).
@@ -211,7 +246,26 @@ LEVER_TAGS = {
     "debt_service": ("suspend_debt", None), "officer_pay": ("officer_pay_up", "officer_pay_down"),
 }
 DIPLOMACY_TAGS = {"join_union": "concede_union", "federation": "concede_union", "loan": "league_loan",
-                  "ceasefire": "peace_overture", "non_aggression": "peace_overture", "status_talks": "status_talks"}
+                  "ceasefire": "peace_overture", "non_aggression": "peace_overture", "status_talks": "status_talks",
+                  "diplomatic_protest": "protest", "alliance": "alliance_league", "cede_region": "cede_region"}
+FINE_PRINT_TAGS = {"joint_inquiry": "foreign_inquiry", "stand_down": "stand_down",
+                   "foreign_inspection": "foreign_inspection"}
+
+
+def _fine_print_tags(w: World, mo: dict) -> list:
+    """What the clauses in a motion's text say to the audiences that read votes (fine_print.py)."""
+    return [FINE_PRINT_TAGS[c] for c in fine_print.motion_clauses(w, mo) if c in FINE_PRINT_TAGS]
+
+
+def _status_tags(w: World, mo: dict, rid: str) -> list:
+    """A region's status raised is autonomy for it, lowered is centralisation (engine 17). Before the vote the
+    status it would replace is the setting as it stands; once taken, the record keeps the value it replaced."""
+    before = mo["previous_value"] if mo.get("previous_value") is not None else regional.status(w, rid)
+    new = str(mo.get("value") or "").strip().lower()
+    if new not in regional.RANK or before not in regional.RANK:
+        return []
+    step = regional.RANK[new] - regional.RANK[before]
+    return [f"autonomy_{rid}"] if step > 0 else ["centralisation"] if step < 0 else []
 
 
 def motion_tags(w: World, mo: dict) -> list:
@@ -221,12 +275,19 @@ def motion_tags(w: World, mo: dict) -> list:
     on the vote itself, so they add nothing here."""
     from .politics import BOOLS, ENUMS, SHARES, parse_lever
     t, s = mo.get("type"), mo.get("subject") or ""
+    if t == "referendum":
+        # A vote to hold a referendum on independence: the movement that won independence reads it as a risk.
+        return ["independence_vote"]
     if t == "constitution":
+        if s in ("kessel_status", "highlands_status"):
+            return _status_tags(w, mo, s[:-len("_status")])
         return ["emergency"] if s == "emergency" and str(mo.get("value", "")).strip().lower() == "on" else []
     if t == "diplomacy":
-        return [DIPLOMACY_TAGS[s]] if s in DIPLOMACY_TAGS else []
+        return ([DIPLOMACY_TAGS[s]] if s in DIPLOMACY_TAGS else []) + _fine_print_tags(w, mo)
     if t == "investigation":
-        return [audits.AUDIT_TAGS[s]] if s in audits.AUDIT_TAGS and audits.parse_action(mo.get("value")) == "open" else []
+        if audits.parse_action(mo.get("value")) != "open":
+            return []
+        return ([audits.AUDIT_TAGS[s]] if s in audits.AUDIT_TAGS else []) + _fine_print_tags(w, mo)
     if t != "set_policy" or (s not in LEVER_TAGS and s != "protest_response"):
         return []
     before = mo["previous_value"] if "previous_value" in mo else getattr(w.policy, s, None)

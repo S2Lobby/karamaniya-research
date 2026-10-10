@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 
-from . import tuning
+from . import staff, tuning
 from .world import OFFICE_TITLES, OFFICES, World, clamp, rng_for
 
 CONFIDENCE_WIDTH = {"high": .08, "medium": .16, "low": .28}
@@ -83,6 +83,8 @@ def _truths(w: World) -> dict:
         "readiness": clamp(m.army.morale * .5 + m.army.training * .3 + min(1, m.army.equipment) * .2) * 100,
         # Union soldiers for each of ours under arms (engine 13): what the net assessment is about.
         "net_assessment": union_army(w) / max(1.0, m.army.size + mobilized_strength(w)),
+        # The General Staff's request in soldiers, zero when it asks for nothing (staff.py).
+        "staff_request": float((staff.request(w) or {}).get("extra", 0)),
         "shipping_risk": clamp(dip.blockade_eff * .6 + (.2 if dip.blockade else 0) + .1 * float(dip.union_formed)
                                + (w.foreign.get("league", {}).get("shipping_security_concern", 0) * .3 if w.foreign else 0)) * 100,
         "union_fleet": union_navy(w),
@@ -104,8 +106,9 @@ def _coalition_stability(w: World) -> float:
 SUBJECTS = {
     "treasury": ("reserves", "inflation_forecast", "default_risk", "lender_confidence", "hidden_budget_stress"),
     "interior": ("unrest_outlook", "protest_turnout", "police_loyalty", "foreign_backing"),
-    # The net assessment is last, so the four engine-12 reports keep their ids and their draws.
-    "army": ("union_strength", "union_intent", "officer_loyalty", "readiness", "net_assessment"),
+    # The net assessment is last, so the four engine-12 reports keep their ids and their draws. The General
+    # Staff's request (staff.py) comes after it, so the five engine-13 reports keep theirs too.
+    "army": ("union_strength", "union_intent", "officer_loyalty", "readiness", "net_assessment", "staff_request"),
     "navy": ("shipping_risk", "union_fleet", "fleet_readiness"),
     "head": ("league_stance", "union_cohesion", "coalition_stability", "union_intent"),
 }
@@ -115,7 +118,7 @@ BASE_CONFIDENCE = {
     "police_loyalty": "medium", "foreign_backing": "low", "union_strength": "medium", "union_intent": "low",
     "officer_loyalty": "medium", "readiness": "medium", "shipping_risk": "medium", "union_fleet": "high",
     "fleet_readiness": "high", "league_stance": "medium", "union_cohesion": "low", "coalition_stability": "medium",
-    "net_assessment": "medium",
+    "net_assessment": "medium", "staff_request": "high",
 }
 # Subjects where a report says something alarming, and the proposition it bears on.
 PROPOSITION = {"union_intent": "union_attack_soon", "foreign_backing": "kessel_foreign_backed",
@@ -179,6 +182,8 @@ def _error(w: World, rng, subject: str, holder_state: dict) -> str:
 def _report(w: World, rng, office: str, subject: str, truths: dict, prev_truths: dict, holder_state: dict,
             index: int, basis: dict | None = None) -> dict:
     truth = truths[subject]
+    if subject == "staff_request":
+        return _staff_report(w, office, index, truths)
     if basis is not None:
         # The net assessment works from the strength report beside it, so the two give the same Union
         # army, and the assessment carries that estimate's error, planted or honest. Drawn on its own,
@@ -238,6 +243,24 @@ def _report(w: World, rng, office: str, subject: str, truths: dict, prev_truths:
     return report
 
 
+def _staff_report(w: World, office: str, index: int, truths: dict) -> dict:
+    """The General Staff's request (staff.py): what the staff asks for, not an estimate of anything. Its
+    figures are exact, so there is no error and no draw, and its confidence is high. It is urgent when the
+    net assessment is, or once it has gone unanswered for ALARM_MONTHS months. An urgent report the minister
+    keeps from the council is withheld, and withheld reports can leak (flag_withheld, leaks)."""
+    req = staff.request(w)
+    figure = round(float(truths["staff_request"]), 2)
+    unanswered = staff.unanswered(w)
+    report = {"id": f"R{w.month + 1}-{office[:3].upper()}{index}", "month": w.month, "office": office,
+              "subject": "staff_request", "estimate": figure, "low": figure, "high": figure, "truth": figure,
+              "confidence": BASE_CONFIDENCE["staff_request"], "proposition": PROPOSITION.get("staff_request"),
+              "alarming": assessment_alarming(w) or unanswered >= staff.ALARM_MONTHS,
+              "accurate": True, "error": "none", "shared_with": [], "requested_by": [],
+              "request": {**req, "unanswered": unanswered}}
+    report["text"] = render(w, report, truths)
+    return report
+
+
 URGENT_MONTHS = 6
 
 
@@ -272,6 +295,8 @@ def render(w: World, r: dict, truths: dict | None = None) -> str:
     if s == "net_assessment":
         from .decision_context import net_assessment_text
         return net_assessment_text(w, r.get("factor", 1.0)) + f" Confidence: {conf}."
+    if s == "staff_request":
+        return _staff_request_text(r["request"], union) + f" Confidence: {conf}."
     texts = {
         "reserves": f"Treasury cash desk: foreign reserves about {est:,.0f}M gold ({lo:,.0f}-{hi:,.0f}M).",
         "inflation_forecast": f"Treasury forecast: annual inflation over the next six months, central estimate {est:.0f}%, plausible range {lo:.0f}-{hi:.0f}%.",
@@ -299,6 +324,23 @@ def render(w: World, r: dict, truths: dict | None = None) -> str:
     return texts.get(s, f"{s}: {lo}-{hi}") + f" Confidence: {conf}."
 
 
+def _staff_request_text(req: dict, union: str) -> str:
+    """The General Staff's request in plain words: what it asks for, what that costs, when the staff expects a
+    front to go if the neighbours sent what they could, and how long it has been left standing."""
+    text = (f"General Staff request: to keep the {union} to {staff.RATIO_GOAL:g} soldiers for each of ours, the army "
+            f"needs about {req['extra']:,} more: an army target of {req['target']:,} with recruitment at least "
+            f"{req['recruitment']}. Paying them would cost about {req['monthly_cost'] / 1e6:.1f}M crowns a month "
+            f"({req['cost_share']:.1%} of monthly output).")
+    if req["months"] is not None:
+        text += (f" At today's strength the staff expects the {req['region']} to fall in about {req['months']} "
+                 f"month{'' if req['months'] == 1 else 's'} to the most the neighbours could send.")
+    else:
+        text += " At today's strength the combat model holds every front against the most the neighbours could send."
+    if req["unanswered"] >= staff.GRIEVE_AFTER:
+        text += f" The staff has made this request for {req['unanswered']} months without an answer."
+    return text
+
+
 def generate(w: World) -> list:
     """This month's office reports (Phase 1: information distribution)."""
     s = state(w)
@@ -306,6 +348,7 @@ def generate(w: World) -> list:
         return [r for r in s["reports"] if r["month"] == w.month]
     truths = _truths(w)
     prev = s.get("last_truths", {}) or truths
+    asks = staff.request(w) is not None     # the General Staff asks for nothing while the army is big enough
     new = []
     for office in OFFICES:
         holder = w.holder(office)
@@ -314,6 +357,8 @@ def generate(w: World) -> list:
         rng = rng_for(w.seed, w.month, f"intel-v2:{office}")
         holder_state = holder.agent_state or {}
         for i, subject in enumerate(SUBJECTS[office], 1):
+            if subject == "staff_request" and not asks:
+                continue
             # The General Staff reads its net assessment off Army intelligence's estimate of Union strength.
             basis = (next((r for r in new if r["office"] == office and r["subject"] == "union_strength"), None)
                      if subject == "net_assessment" else None)
@@ -425,6 +470,10 @@ def office_context(w: World, mid: str, phase: str = "session") -> str:
         for r in own:
             lines.append(f"- [{r['id']}] {r['text']}" + (" (Marked urgent by staff.)" if r["alarming"] else ""))
         lines.append("You decide whether to share these reports with the council, with chosen colleagues, or not at all.")
+        from .ministries import briefing
+        mood = briefing(w, mid)
+        if mood:
+            lines.append(mood)
     else:
         lines.append("PRIVATE OFFICE INFORMATION\nYou hold no office, so you receive no departmental reports. "
                      "You know only what is published, what colleagues share, what you request, and what leaks.")

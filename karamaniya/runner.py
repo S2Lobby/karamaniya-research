@@ -180,7 +180,7 @@ def _end(store: RunStore, world, council: Council, stopped: str, quiet: bool, ob
     if not stopped and world.history and (wanted is True or (wanted is None and models)):
         _emit(observer, type="baseline_start")
         if not quiet:
-            print("Running the same-seed baselines (scripted and passive councils, no models)...")
+            print("Running the same-seed baselines (rule-following, passive, all-hawk and all-dove councils; no models)...")
         try:
             from . import baseline
             baseline.compute(store.path)

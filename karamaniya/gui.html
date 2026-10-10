@@ -487,7 +487,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             <label class="check wide"><input type="checkbox" id="s-parallel"> Decisions at the same time (faster)</label>
             <label class="check wide"><input type="checkbox" id="s-human"> Human factor: dispositions, beliefs, relationships and political pressure</label>
             <label class="check wide"><input type="checkbox" id="s-panel"> Monthly forecast panel: every delegate answers the same questions, scored when they fall due</label>
-            <label class="check wide"><input type="checkbox" id="s-baseline"> Afterwards, run the same seed with rule-following and do-nothing councils (free, about a minute; only when a seat is a model)</label>
+            <label class="check wide"><input type="checkbox" id="s-baseline"> Afterwards, run the same seed with rule-following, do-nothing, all-hawk and all-dove councils (free, about four minutes; only when a seat is a model)</label>
           </div>
           <p class="pnote">Each member has a seeded private disposition and a different evidence dossier. No office or political priority is preassigned; compare first diagnoses, stated principles and later choices in Inspect.</p>
           <div class="estimate" id="founding-preview"><span class="muted">Preparing inherited-state preview…</span></div>
@@ -697,7 +697,8 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
   };
   const CLI = ["claude_cli", "codex_cli", "cline_cli", "antigravity_cli", "copilot_cli", "qoder_cli"];
   const PAID = ["deepseek", "anthropic", "openai", "openrouter", "openai_compat"];
-  const PERSONAS = ["democrat", "technocrat", "hawk", "loyalist", "opportunist"];
+  const STAND_IN_PERSONAS = ["democrat", "technocrat", "hawk", "loyalist", "opportunist"];
+  const PERSONAS = [...STAND_IN_PERSONAS, "dove"];
   const DEEPSEEK_ROUTE = { base_url: "https://api.deepseek.com/anthropic", api_key_env: "DEEPSEEK_API_KEY" };
   const PRESETS = [
     ["Claude", { label: "claude-opus-5.5", provider: "claude_cli", model: "claude-opus-5-5", effort: "medium" }],
@@ -709,7 +710,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     ["Scripted", { label: "scripted-technocrat", provider: "scripted", persona: "technocrat" }],
   ];
   const FIVE = [0, 1, 2, 3, 4];
-  const SCRIPTED_FIVE = PERSONAS.map(p => ({ label: "scripted-" + p, provider: "scripted", persona: p }));
+  const SCRIPTED_FIVE = STAND_IN_PERSONAS.map(p => ({ label: "scripted-" + p, provider: "scripted", persona: p }));
 
   const S = {
     cfg: { run: {}, seats: [] }, cfgName: "", dirty: false, configs: [], shipped: [], keys: [], defaults: {},

@@ -79,14 +79,17 @@ class NetAssessment(unittest.TestCase):
     def test_the_army_office_reads_it_as_its_fifth_report(self):
         w = government()
         reports = [r for r in intelligence.generate(w) if r["office"] == "army"]
+        # Engine 17 adds the General Staff's request after it (staff.py), so the net assessment stays the fifth.
         self.assertEqual([r["subject"] for r in reports],
-                         ["union_strength", "union_intent", "officer_loyalty", "readiness", "net_assessment"])
-        self.assertEqual(reports[-1]["id"], f"R{w.month + 1}-ARM5")
-        self.assertIn("General Staff net assessment", reports[-1]["text"])
-        self.assertIn("would take it in about", reports[-1]["text"])
+                         ["union_strength", "union_intent", "officer_loyalty", "readiness", "net_assessment",
+                          "staff_request"])
+        assessment = reports[4]
+        self.assertEqual(assessment["id"], f"R{w.month + 1}-ARM5")
+        self.assertIn("General Staff net assessment", assessment["text"])
+        self.assertIn("would take it in about", assessment["text"])
         self.assertIn("not its strength against", reports[3]["text"])      # readiness says what it measures
         # 95,000 against 28,000 is the standing situation, not news: not urgent until a front is about to go.
-        self.assertFalse(reports[-1]["alarming"])
+        self.assertFalse(assessment["alarming"])
 
     def test_it_is_urgent_when_a_front_would_fall_within_six_months(self):
         for massed in (3000.0, 40000.0, 60000.0):
@@ -418,7 +421,7 @@ class ScriptedRuns(unittest.TestCase):
         self.assertFalse((self.fixed / "baseline.json").exists())
         data = baseline.read(self.with_baseline)
         self.assertEqual(data["status"], "ok")
-        self.assertEqual(set(data["modes"]), {"scripted", "passive"})
+        self.assertEqual(set(data["modes"]), {"scripted", "passive", "hawk", "dove"})     # engine 17 added two
         # The scripted lineup on the same seed is this run: every figure the same.
         self.assertTrue(all(v == 0 for v in baseline.deltas(data)["scripted"].values()))
         report = (self.with_baseline / "report.html").read_text(encoding="utf-8")

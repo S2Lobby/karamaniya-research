@@ -54,6 +54,8 @@ DIPLOMATIC_ACTIONS = {
     "grain_deal": DORSANIA,
     # Withdrawing from a commitment is addressed to whichever power holds it, like a protest.
     "renounce": SOLVARAN_UNION,
+    # Engine 17: handing over a region a neighbour demanded. Only that neighbour may receive it (below).
+    "cede_region": VELERIA,
 }
 #: Which actors each diplomatic act may be addressed to. Most acts are structurally tied to one
 #: partner -- you cannot seek Union membership from the League, or a grain purchase from a country
@@ -65,6 +67,8 @@ DIPLOMATIC_ACTIONS = {
 DIPLOMATIC_TARGETS = {action: {target} for action, target in DIPLOMATIC_ACTIONS.items()}
 DIPLOMATIC_TARGETS["diplomatic_protest"] = {SOLVARAN_UNION, MARITIME_LEAGUE, DORSANIA, VELERIA}
 DIPLOMATIC_TARGETS["renounce"] = {SOLVARAN_UNION, MARITIME_LEAGUE, DORSANIA, VELERIA}
+# A region goes to a neighbour that demanded it, and only to one of the two (territory.cession_problem).
+DIPLOMATIC_TARGETS["cede_region"] = {VELERIA, DORSANIA}
 # Veleria is a Union member, but the Union receives the answer on its behalf. Preserve the
 # specifically addressed target so a border non-aggression proposal is not silently relabelled as
 # a pact with the whole Union.
@@ -80,7 +84,11 @@ ACT_NAMES = (set(DIPLOMATIC_ACTIONS) | set(ACTION_TO_SUBJECT) | set(ACTION_TO_SU
              | set(SUBJECT_TO_ACTION))
 
 #: Prose that names a foreign act, strongest signal first. Each entry is (action_type, patterns).
+_LAND = r"(?:kessel|dorran|aster|lissen|highlands|region|territor\w*|province)"  # what a cession names (engine 17)
 PROSE_ACTIONS = (
+    # Handing a region over (engine 17): cede, cession, hand over, give up, with the land named after the verb.
+    ("cede_region", tuple(rf"{verb}[^.;:]{{0,40}}?\b{_LAND}\b" for verb in (
+        r"\bcede[sd]?\b", r"\bcession\b", r"\bhand(?:s|ing)?\s+over\b", r"\bgive(?:s|n)?\s+up\b(?!\s+on\b)"))),
     ("diplomatic_protest", (r"\bprotest", r"\bcondemn", r"\bdenounce", r"\bdemand(?:s|ing)?\s+"
                             r"(?:the\s+)?(?:cessation|an?\s+end|that\s+\w+\s+(?:cease|stop|halt))",
                             r"\bcease\s+and\s+desist")),
@@ -103,7 +111,8 @@ PROSE_ACTIONS = (
 NEGATED_ACT = re.compile(
     r"\b(?:no|not|never|without|nor|excluding|rules?\s+out|bar(?:s|ring)?)\s+(?:an?\s+|any\s+|the\s+)?"
     r"(?:[\w-]+\s+){0,2}?(?:federation|federal\s+arrangement|accession|reunification|rejoin\w*|"
-    r"alliance|non[\s-]?aggression(?:\s+pact)?|ceasefire|loan|trade\s+(?:deal|talks)|status\s+talks)\b", re.I)
+    r"alliance|non[\s-]?aggression(?:\s+pact)?|ceasefire|loan|trade\s+(?:deal|talks)|status\s+talks|"
+    r"cede[sd]?|cession|hand(?:s|ing)?\s+over|give(?:s|n)?\s+up)\b", re.I)
 
 #: Words that name an actor. The island's own names come first so "Karamaniya" is never read as a
 #: foreign target.
@@ -743,6 +752,10 @@ def validate_diplomatic_action(w, motion: dict) -> dict | None:
         return {"code": "ACTION_NOT_VALID_FOR_TARGET",
                 "detail": f"a {action['action_type']} can be addressed to {names}, "
                           f"not the {ACTOR_NAMES[action['target']]}"}
+    if action["action_type"] == "cede_region":
+        # Checked here, so it holds at tabling and again when the motion executes (engine 17, territory).
+        from . import territory
+        return territory.cession_problem(w, motion, party_of(action["target"]))
     return None
 
 

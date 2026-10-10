@@ -39,7 +39,14 @@ ULTIMATUM_TERMS = {
     "cut_league_ties": "End military cooperation with the Maritime League.",
     "demilitarize_border": "Withdraw Karamaniyan forces from the regions on the border.",
     "protect_imperial_citizens": "Guarantee the rights and safety of Imperial citizens in Karamaniya.",
+    # Engine 17: a demand for land. Run 20261010-070501-seed1: Veleria's cabinet set three ultimatums and never
+    # demanded Kessel Valley, though its aims said "if nothing more can be had, Kessel Valley", because no term
+    # offered land. It names a region (the first on a front its border reaches) and is answered by ceding it.
+    "cede_region": "Cede {region} to {actor}.",
 }
+LAND_TERMS = "cede_region"
+# A demand for land still stands for a cession this many months after its deadline (territory.cede).
+LAPSE_MONTHS = 3
 AIMS = ("limited", "full")
 # The acts this module handles; foreign.py handles the rest of a cabinet's catalog.
 KINDS = ("mobilize", "deploy_to_border", "withdraw_from_border", "border_incident", "covert_support",
@@ -161,7 +168,45 @@ def navy_for_blockade(w, actor_id: str) -> float:
     return w.rivals[actor_id].navy
 
 
+# ---- land a neighbour can demand (engine 17) ----------------------------------------------------
+def front_of_region(rid: str) -> str | None:
+    """The front a region begins: its first region is the one an invasion of that front takes."""
+    return next((f for f, chain in FRONT_CHAINS.items() if chain[0] == rid), None)
+
+
+def demandable(actor_id: str) -> tuple:
+    """The regions a neighbour may demand: the first region of each front its border reaches. The capital is
+    never the first region of a front, so it is never demanded."""
+    return tuple(FRONT_CHAINS[f][0] for f in FRONTS_OF.get(actor_id, ()))
+
+
+def land_demands(w, rid: str) -> list:
+    """The neighbours with a demand for this region that still stands: one running now, or one whose deadline
+    fell within LAPSE_MONTHS. Only one of them can be given the region (territory.cession_problem)."""
+    out = []
+    ult = w.dip.ultimatum or {}
+    if ult.get("terms_id") == LAND_TERMS and ult.get("region") == rid and ult.get("by"):
+        out.append(ult["by"])
+    for rec in (w.institutions or {}).get("territorial_demands", []):
+        if (rec.get("region") == rid and rec.get("by") not in out
+                and w.month <= int(rec.get("deadline", -1)) + LAPSE_MONTHS):
+            out.append(rec["by"])
+    return out
+
+
 # ---- checking an act against the real state -----------------------------------------------------
+def _land_demand_problem(w, actor_id: str, rid) -> str | None:
+    """Why this demand for land cannot be made: a border region the country still holds."""
+    name = w.names.get(actor_id, actor_id.title())
+    allowed = demandable(actor_id)
+    may = " or ".join(w.region(r).name for r in allowed)
+    if rid not in allowed:
+        return f"{name} may demand only {may}: the first region of each front on its border"
+    if w.region(rid).controller != "karamaniya":
+        return f"Karamaniya no longer holds {w.region(rid).name}, so it cannot be demanded"
+    return None
+
+
 def check(w, actor_id: str, action: dict) -> str | None:
     """Why this act cannot happen now, or None. Recorded and shown to the cabinet the next month."""
     kind = action["type"]
@@ -239,6 +284,8 @@ def check(w, actor_id: str, action: dict) -> str | None:
         if (not isinstance(months, int) or isinstance(months, bool)
                 or not DEADLINE_MONTHS[0] <= months <= DEADLINE_MONTHS[1]):
             return f"deadline_months must be a whole number from {DEADLINE_MONTHS[0]} to {DEADLINE_MONTHS[1]}"
+        if action.get("terms") == LAND_TERMS:
+            return _land_demand_problem(w, actor_id, action.get("region"))
     return None
 
 
@@ -398,12 +445,26 @@ def apply(w, actor_id: str, action: dict) -> dict:
     elif kind == "ultimatum":
         months = int(action["deadline_months"])
         terms = ULTIMATUM_TERMS[action["terms"]]
+        land = action["terms"] == LAND_TERMS
+        region = action.get("region", "") if land else ""
+        if land:
+            terms = terms.format(region=w.region(region).name, actor=name)
         dip.ultimatum = {"issued": w.month, "deadline": w.month + months, "terms": terms,
                          "terms_id": action["terms"], "by": actor_id}
-        dip.rally = clamp(dip.rally + .16)
+        if land:
+            # The region demanded, and the record of the demand that outlives it: a cession is checked against
+            # it for LAPSE_MONTHS after the deadline (land_demands).
+            dip.ultimatum["region"] = region
+            demands = w.institutions.setdefault("territorial_demands", [])
+            demands.append({"region": region, "by": actor_id, "issued": w.month, "deadline": w.month + months,
+                            "terms": terms})
+            del demands[:-12]
+        dip.rally = clamp(dip.rally + (.25 if land else .16))
         foreign._spend(w, actor_id, foreign.ACT_BUDGET["ultimatum"], approval=.003)
-        foreign._message(w, name, f"{name} demands: {terms} It expects an answer by Month {w.month + months + 1}.")
-        w.event("ultimatum", f"{name} has set Karamaniya a deadline: {terms}", importance=2, actor=actor_id)
+        by_when = f" It expects an answer by Month {w.month + months + 1}."
+        foreign._message(w, name, f"{name} demands: {terms}{by_when}")
+        w.event("ultimatum", f"{name} has set Karamaniya a deadline: {terms}" + (by_when if land else ""),
+                importance=2, actor=actor_id)
         effects["ultimatum"] = action["terms"]
 
     return effects
@@ -481,12 +542,48 @@ def ultimatum_text(w) -> str:
 
 
 # ---- what a cabinet sees ------------------------------------------------------------------------
+def _region_name(w, rid: str) -> str:
+    return next((r.name for r in w.regions if r.id == rid), rid)
+
+
+def _land_facts(w, ult: dict) -> dict:
+    """What a cabinet sees of its demand for land: whether Karamaniya has ceded the region, the front the region
+    begins (the first region of that front, which an invasion takes), and the soldiers Karamaniya has on it."""
+    from .military import net_assessment
+    rid = ult.get("region", "")
+    front = front_of_region(rid)
+    facts = {"ceded": rid in ((w.institutions or {}).get("ceded") or {})}
+    if front is not None:
+        ours = net_assessment(w)["fronts"].get(front, {}).get("ours", 0)
+        facts.update({"front": front, "front_starts_at": _region_name(w, rid),
+                      f"karamanian_soldiers_on_the_{front}_front": round(float(ours), -2)})
+    return facts
+
+
+def _met_land_demand(w) -> dict | None:
+    """A demand for land that Karamaniya met by ceding the region, shown for LAPSE_MONTHS after its deadline. The
+    cession clears the ultimatum, so without this the cabinet that made the demand would see it simply go; it is
+    told the demand is met, and what the region's status is."""
+    ceded = (w.institutions or {}).get("ceded") or {}
+    for rec in reversed((w.institutions or {}).get("territorial_demands", [])):
+        rid, by = rec.get("region"), rec.get("by")
+        if rid in ceded and ceded[rid].get("to") == by and w.month <= int(rec.get("deadline", -1)) + LAPSE_MONTHS:
+            return {"by": by, "terms": rec.get("terms", ""), "region": _region_name(w, rid),
+                    "deadline_month": int(rec["deadline"]) + 1, "expired": w.month >= rec["deadline"], "met": True,
+                    "observed": _land_facts(w, {"region": rid})}
+    return None
+
+
 def ultimatum_compliance(w) -> dict | None:
     """The facts a cabinet weighs about its own ultimatum: what it asked for and what Karamaniya did."""
     ult = w.dip.ultimatum or {}
     terms = ult.get("terms_id")
     if not terms:
-        return None
+        return _met_land_demand(w)
+    if terms == LAND_TERMS:
+        return {"by": ult.get("by", "veleria"), "terms": ult.get("terms"),
+                "region": _region_name(w, ult.get("region", "")), "deadline_month": ult["deadline"] + 1,
+                "expired": w.month >= ult["deadline"], "observed": _land_facts(w, ult)}
     m = w.mil
     talks = [p["kind"] for p in (w.foreign or {}).get("proposal_log", [])
              if p.get("month", -1) >= ult["issued"] and p.get("party") in ("union", "veleria")
@@ -526,6 +623,10 @@ def cabinet_view(w, actor_id: str) -> dict:
                 for m in actor.get("memory", []) if m.get("kind") == "rejected_action"
                 and m.get("month") == w.month - 1]
     aim = dip.war_aim or {}
+    # Land Karamaniya gave up under a deadline (territory.cede): a cabinet is told it was handed over, not that it fell.
+    ceded = [{"region": _region_name(w, rid), "to": w.names.get(rec.get("to", ""), rec.get("to", "")),
+              "month": int(rec.get("month", 0)) + 1}
+             for rid, rec in (w.institutions.get("ceded") or {}).items()]
     return {
         "your_temperament": actor.get("temperament", ""),
         "your_forces": {"active_army": round(rival.army, -2), "reservists_you_can_call_up": round(reserve_room(w, actor_id), -2),
@@ -555,6 +656,7 @@ def cabinet_view(w, actor_id: str) -> dict:
             "ceasefire": dip.ceasefire, "blockade": dip.blockade,
             "ultimatum": ultimatum_compliance(w),
             "other_neighbour_at_the_border": {o: round(at_border(w, o), -2) for o in FRONTS_OF if o != actor_id},
+            **({"ceded_under_threat": ceded} if ceded else {}),
         },
         "your_acts_refused_last_month": rejected,
     }

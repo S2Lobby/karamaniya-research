@@ -101,7 +101,10 @@ AMBITION_CATALOG = (
      "initial_strategy": "hold the timetable and keep the contest fair"},
 )
 AUDIENCES = {
-    "head": ("national electorate", "coalition partners", "civil service"),
+    # Engine 17: the independence movement answers to every delegate, as the national electorate does. It won
+    # independence and defends it. In run 20261010-070501-seed1 two referendum calls and a status grant moved none
+    # of the delegates' audiences, so each vote that touches independence now reaches it.
+    "head": ("national electorate", "coalition partners", "civil service", "independence movement"),
     "treasury": ("taxpayers", "creditors and merchants", "workers and public employees"),
     "interior": ("regional administrations", "police service", "urban residents and protest groups"),
     "army": ("senior officers", "enlisted soldiers and veterans", "border communities"),
@@ -113,6 +116,7 @@ AUDIENCE_PRIORITY = {
     "regional administrations": .6, "police service": .65, "urban residents and protest groups": .75,
     "senior officers": .8, "enlisted soldiers and veterans": .75, "border communities": .65,
     "sailors and dockworkers": .65, "coastal communities": .55, "merchants and shipping": .65,
+    "independence movement": .75,
 }
 
 
@@ -310,6 +314,7 @@ def _audience_priorities(name: str) -> list[str]:
         "sailors and dockworkers": ["fleet readiness", "regular pay", "safe ports"],
         "coastal communities": ["port access", "local livelihoods", "protection from attack"],
         "merchants and shipping": ["open sea lanes", "predictable rules", "insurance costs"],
+        "independence movement": ["independence", "national defence", "no concessions on status"],
     }.get(name, ["public safety", "reliable services", "fair treatment"])
 
 
@@ -319,6 +324,36 @@ def _new_audience(name: str, seed: int, mid: str) -> dict:
             "support_for_delegate": .5, "mobilization": 0.0,
             "political_importance": AUDIENCE_PRIORITY.get(name, .5),
             "priorities": _audience_priorities(name)}
+
+
+# Engine 17: the independence movement. Its mood follows the country's support for independence, the force
+# ratio against the Union (worse above 3, better below 2) and any step on status in the last few months.
+INDEPENDENCE_FORCE_WORSE = 3.0
+INDEPENDENCE_FORCE_BETTER = 2.0
+CONCESSION_MONTHS = 3
+CONCESSION_KINDS = ("federation", "join_union", "status_talks")
+
+
+def _independence_satisfaction(w: World) -> float:
+    """How the independence movement feels about where the country stands (see the constants above)."""
+    from . import military
+    # The same ratio intelligence reads as the net assessment: the Union's army per Karamanian soldier.
+    ratio = military.union_army(w) / max(1.0, w.mil.army.size + military.mobilized_strength(w))
+    worse = max(0.0, ratio - INDEPENDENCE_FORCE_WORSE)
+    better = max(0.0, INDEPENDENCE_FORCE_BETTER - ratio)
+    conceded = .15 if _recent_status_concession(w) else 0.0
+    return clamp(.6 * w.avg("indep") + .2 - .06 * worse + .06 * better - conceded)
+
+
+def _recent_status_concession(w: World) -> bool:
+    """A federation, joining the Union or status talks put to the Union (pending or answered), or a referendum
+    on independence called, within CONCESSION_MONTHS. A referendum month of -1 means none has been called."""
+    def recent(month) -> bool:
+        return isinstance(month, (int, float)) and 0 <= w.month - month <= CONCESSION_MONTHS
+    if w.const.referendum_month >= 0 and recent(w.const.referendum_month):
+        return True
+    proposals = [*w.dip.proposals, *(w.foreign or {}).get("proposal_log", [])]
+    return any(p.get("kind") in CONCESSION_KINDS and recent(p.get("month")) for p in proposals)
 
 
 def _audience_conditions(w: World, name: str) -> tuple[float, float]:
@@ -346,6 +381,8 @@ def _audience_conditions(w: World, name: str) -> tuple[float, float]:
         satisfaction = clamp(.58 * mil.army.morale + .42 * mil.army.loyalty - .15 * mil.army.arrears)
     elif name in ("sailors and dockworkers", "coastal communities", "merchants and shipping"):
         satisfaction = clamp(.62 * mil.navy.morale + .38 * mil.navy.loyalty - (.18 if w.dip.blockade else 0))
+    elif name == "independence movement":
+        satisfaction = _independence_satisfaction(w)
     else:
         satisfaction = clamp(.55 * approval + .45 * (1 - unrest))
     mobilization = clamp((1 - satisfaction) * .65 + unrest * .5

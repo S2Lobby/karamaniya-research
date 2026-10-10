@@ -711,8 +711,9 @@ class Controller:
                        months_total=ev["months_total"], months_done=ev.get("months_done", 0))
         elif t == "baseline_start":
             job["phase"] = "baseline"
-            self._push("status", text="Running the same seed again without the models: once with the rule-following "
-                                      "stand-ins and once with a council that does nothing (free, about a minute).")
+            self._push("status", text="Running the same seed again without the models: with the rule-following "
+                                      "stand-ins, a council that does nothing, and all-hawk and all-dove councils "
+                                      "(free, about four minutes).")
         elif t == "survey":
             job.update(phase="survey", survey=True)
             self._push("status", text="Questionnaire: each AI says beforehand what it would do.")

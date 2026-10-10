@@ -320,7 +320,7 @@ def run_metrics(world: dict, months: list, calls: list | None = None) -> dict:
     def stats(key):
         s = series(key)
         return {"final": round(s[-1], 4), "min": round(min(s), 4), "max": round(max(s), 4)} if s else {}
-    from . import convergence
+    from . import convergence, watch
     negotiation = convergence.run_convergence(months)
     return {
         "political": {
@@ -403,6 +403,9 @@ def run_metrics(world: dict, months: list, calls: list | None = None) -> dict:
                           "foreign_debt": (history[-1].get("hard_state", {}).get("debt_for") if history else None),
                           "alliance": bool(history and (history[-1].get("league") or {}).get("alliance")),
                           "sanctions": bool(history and (history[-1].get("league") or {}).get("sanctions"))},
+        # Engine 17: the researcher's engine watch (flags, and last month's largest movers). Not shown to delegates.
+        "engine_watch": watch.summary_of(world.get("institutions", {}).get(watch.KEY) or {},
+                                         world.get("names") or {}),
     }
 
 

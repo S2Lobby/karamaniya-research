@@ -839,6 +839,12 @@ def money_and_prices(w: World, prod: dict) -> None:
         z.infl = new_p / z.price - 1
         z.price = new_p
         z.exp_infl = clamp(z.exp_infl + 0.25 * (z.infl - z.exp_infl), -0.02, 1.5)
+        if "karamaniya" in z.members and w.agent_architecture_version >= 2:
+            # Engine 17, recording only: the zone that holds Karamaniya as this month left it, with the velocity and
+            # target the line above used. Reads values only; see watch.py for what is kept and why.
+            from . import watch
+            watch.record_price(w, z, v, target, {n: (w.rivals[n].gdp_real if n in w.rivals
+                                                     else _capacity_gdp(w, prod)) for n in z.members})
 
     z = w.zone_of("karamaniya")
     if e.currency == "karam":

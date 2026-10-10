@@ -1126,11 +1126,18 @@ def _private_message(w, sender: str, office: str, text: str, channel: str | None
     w.dip.log.append(item)
 
 
-def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "") -> None:
+def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "", region: str = "") -> None:
     """Independent Dorsanian response to Karamaniya's bilateral trade proposal."""
     actor = w.foreign["actors"]["dorsania"]
     relation = actor["relations"]["karamaniya"]
     pressure = actor["political_pressures"].get("exporter_opposition", .2)
+    if kind == "cede_region":
+        # Dorsania takes the region it demanded (territory.cede), as Veleria does in director._union_reply.
+        from . import territory
+        if not territory.cede(w, region, "dorsania"):
+            _message(w, w.names["dorsania"],
+                     "Karamaniya no longer holds the region the motion names, so nothing is handed over.")
+        return
     if kind != "grain_deal":
         _message(w, w.names["dorsania"], "Dorsania has no standing to answer that proposal on behalf of the Union.")
         return
@@ -1454,7 +1461,8 @@ FORCE_CATALOG = [
      "risk": "League escorts and sanctions; a naval battle"},
     {"type": "lift_blockade", "needs": "", "cost": "gives up leverage", "risk": "looks like retreat"},
     {"type": "ultimatum",
-     "needs": "terms (" + ", ".join(foreign_force.ULTIMATUM_TERMS) + "), deadline_months (2 to 6)",
+     "needs": ("terms (" + ", ".join(foreign_force.ULTIMATUM_TERMS) + "), region (for cede_region: a border region "
+               "you claim), deadline_months (2 to 6)"),
      "cost": "credibility if it is ignored and nothing follows", "risk": "hardens Karamaniyan resistance"},
 ]
 

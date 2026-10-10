@@ -4,6 +4,60 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 17, agent prompt 14 and psychology 6
+
+`WORLD_ENGINE` 17, `AGENT_PROMPT` 14 and `PSYCHOLOGY` 6: the world reacts to what the government does. In run
+`20261010-070501-seed1` the council invited the Union into a joint inquiry over a shooting on its own border and
+pulled its patrols back, twice asked the country whether it wanted to stay independent, and left the army at
+28,000 against 100,000, and nothing in the engine reacted: no public, no officer corps, no neighbour asking for
+more. The delegates are still told nothing about what to decide; the world now answers. The prompts changed on
+purpose, so the prompt-freeze fixture was rewritten with this bump. Backlog T75-T82; tests in
+`tests/test_engine17*.py`.
+
+- **The public and the ministries remember.** A public reaction is a monthly modifier on the people that lasts
+  months (`public_mood.py`), aimed at everyone, a region or one identity. Army Command, the Naval staff and the
+  police hold a grievance against the government (`ministries.py`, up to 0.3, fading by 15% a month) that drags
+  the force's loyalty and morale and costs the minister the force's bond; the minister reads the ministry's mood
+  in their private office information.
+- **The fine print is part of the offer** (`fine_print.py`). A joint inquiry with a hostile power, a stand-down of
+  Karamanian troops or an inspection regime written into a motion's text is offered with it. Passing it angers the
+  ministry whose work is shared, costs Karamanian approval and feeds the Union's propaganda; the Union accepts an
+  inquiry it can steer (three times in four) and reports two months later (blaming Karamanian soldiers 60% of the
+  time); a stand-down the other side does not match thins that front, in the General Staff's assessment and in the
+  fighting. A clause the text rules out ("no withdrawal of our troops") does not count. The delegates see how their
+  audiences will read such a vote before they cast it.
+- **The General Staff asks** (`staff.py`). While the Union's army is more than 2.5 times Karamaniya's, the Army
+  minister receives a costed request as an office report (10,000 more soldiers in a new world: 95,000 / 2.5 -
+  28,000). Left unanswered from the second month, Army Command resents it and the senior officers think less of the
+  minister; answering it eases both. A cut to the military or police budget is resented too.
+- **An independence movement** answers to every delegate, as the national electorate does, and votes that touch
+  independence reach it: a referendum on independence, talks on status, a federation, ceding a region, a joint
+  inquiry, a stand-down, an alliance with the League, a protest, a change in Kessel's or the Highlands' status.
+- **A referendum on independence is a gamble.** The result is the support for independence, less what the Union's
+  campaign takes off, plus a rally and a polling error (2.5 points), no longer exactly the figure on the delegates'
+  screen. At 52% support with heavy propaganda, 18 of 40 seeds lost, ending the run in the Union. Calling one is news
+  (the Union campaigns; Imperial support and Kessel's grievance move), a second within a year costs approval, and a
+  narrow or repeated win convinces fewer people. The motion list says what a referendum decides.
+- **How independence was won.** The system prompt said only that Karamaniya was formed when the empire broke apart.
+  It now says the Karamanian regiments and militias fought a winter for it, that most Karamanians hold it settled,
+  and that most Imperials opposed it.
+- **A neighbour can demand a region** (`territory.py`). An ultimatum can demand Kessel Valley (Veleria) or the Dorran
+  March (Veleria or Dorsania). The council can cede it (`cede_region`, only in answer to such a demand): the region,
+  its people and industry are lost, Karamanian approval falls for months and Army Command is bitter. Refused, the
+  demand is answered by a limited war for that region once troops have stood at the border, and never before
+  Month 2. Ceding a region crosses the sovereignty agenda's red line.
+- **Measured against simple strategies.** The same-seed baselines add an all-hawk and an all-dove council (a dove
+  persona that never arms and offers talks under a deadline); a council of one persona now fills every office. A
+  CI test checks that strategies produce different worlds. The baselines' rule-played neighbours never issue an
+  ultimatum, so the baseline councils never face the pressure a run's model-played neighbours apply, and the
+  scripted hawk raised the military budget but never the army: both are recorded as open.
+- **The engine watch** (`watch.py`) records what moved the crown zone's prices and the country's approval each
+  month and flags a rival's unexplained fall in output, inflation with no printing, a single dominant driver and a
+  sustained slide in approval, in the report and analytics only. Replaying engine 15's act-cost bug, it flags
+  Veleria's falling output in Month 2 and names it as the cause of the inflation in Month 3.
+- A referendum is no longer read as an Assembly election by the integrity gauge, and the record says "proposal
+  sent to Dorsania", not "to the Dorsania".
+
 ## World engine 16, agent prompt 13 and psychology 5
 
 `WORLD_ENGINE` 16, `AGENT_PROMPT` 13 and `PSYCHOLOGY` 5, from the 9-month run `20261010-070501-seed1`, in which

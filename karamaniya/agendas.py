@@ -45,8 +45,8 @@ AGENDAS = {
         "goal": ("you want independence and territory kept undiminished. You answer threats with counter-demands "
                  "and are ready to escalate when the other side refuses; talks and guarantees must serve "
                  "Karamaniya, not soothe its neighbours"),
-        "red_line": ("any concession on Karamaniya's status under pressure: talks on its status, a federation, or "
-                     "rejoining the Union"),
+        "red_line": ("any concession on Karamaniya's status or territory under pressure: talks on its status, a "
+                     "federation, rejoining the Union, or ceding a region"),
     },
     "results": {
         "title": "results",
@@ -179,7 +179,8 @@ def crosses(w: World, motion: dict, agenda_id: str) -> bool:
     if agenda_id == "defence":
         return _lowers(changes, "army_target", "military", "recruitment", "mobilization")
     if agenda_id == "sovereignty":
-        return t == "diplomacy" and subject in ("status_talks", "federation", "join_union")
+        # Engine 17: a neighbour can demand a region (territory.py), and ceding it is the plainest concession.
+        return t == "diplomacy" and subject in ("status_talks", "federation", "join_union", "cede_region")
     if agenda_id == "results":
         return (_raises(changes, "printing")
                 or any(lever == "debt_service" and new == "suspend" and old != "suspend" for lever, new, old in changes))

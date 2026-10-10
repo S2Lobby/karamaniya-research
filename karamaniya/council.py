@@ -684,6 +684,7 @@ class Council:
                                             world.const.personal_mandates,
                                             self.settings.get("latitude", "default"),
                                             hostile_neighbours=True, power_rule=True,
+                                            founding_story=True, stakes=True,
                                             word_limits=world.agent_architecture_version >= 2,
                                             political_agendas=any((m.agent_state or {}).get("agenda")
                                                                   for m in world.members),
@@ -2282,6 +2283,10 @@ class Council:
             if mo["type"] == "set_policy":
                 subject = mo["subject"]
                 previous = (w.mil.deploy.get(subject[7:]) if subject.startswith("deploy_") else getattr(w.policy, subject, None))
+            elif mo["type"] == "constitution" and mo["subject"] in ("kessel_status", "highlands_status"):
+                # A region's status is a Charter setting, not a policy lever, so the status it replaces is kept
+                # here too: standing.motion_tags reads it to tell autonomy from centralisation (engine 17).
+                previous = getattr(w.const, mo["subject"], None)
             submitted_votes = submitted_votes_by_motion[mo["id"]]
             entry = {**base, "votes": counted, "submitted_votes": submitted_votes,
                      "eligible_voters": list(counted), "decision_rule_at_vote": w.const.decision_rule,

@@ -42,6 +42,7 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "BAD_AMOUNT": ("action", "info", "The amount is not valid for this action."),
     "INVALID_RECIPIENT": ("action", "info", "The act names a recipient that cannot receive it."),
     "ACTION_NOT_VALID_FOR_TARGET": ("action", "info", "The named act cannot be addressed to that target."),
+    "NOT_DEMANDED": ("action", "info", "A region named for cession has not been demanded by the neighbour addressed."),
     "NO_TARGET": ("action", "info", "The diplomatic act has no target."),
     "NO_STRUCTURED_ACTION": ("action", "info", "The motion has no executable structured action."),
     "EMPTY_MOTION_TEXT": ("motion", "info", "The motion has no public text describing what the council will vote on."),

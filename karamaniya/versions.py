@@ -51,10 +51,18 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # and who printed); no delegate there ever named the shared crown, and the council met imported inflation with
 # taxes. The motion list has status_talks, and says federation and rejoining the Union are final. A run in the
 # "crisis" mandate arm has the founding conference's stabilisation mandate in its system prompt (MANDATE_TEXT).
-AGENT_PROMPT = 13
+# 14 goes with world engine 17. The system prompt tells how independence was won (it said only that the empire
+# broke apart), the referendum's place in the motion list says what it decides and that the result can differ
+# from the polls, the diplomacy line says a motion's text is part of its offer and lists cede_region. Every
+# delegate answers to the independence movement too, so the staff estimate of a vote can name it; the Army
+# minister's office reports include the General Staff's request and the mood of the ministry; the sovereignty
+# agenda's red line names ceding a region.
+AGENT_PROMPT = 14
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
-PSYCHOLOGY = 5
+# 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose
+# satisfaction follows support for independence, the force ratio and recent concessions on status.
+PSYCHOLOGY = 6
 # 3 added the causal world model: output gap and potential output, Okun unemployment, hybrid
 # inflation expectations, lagged exchange-rate pass-through, and the lagged fiscal impulse. A run
 # paused under engine 2 and resumed under 3 would mix two different economies in one history, so
@@ -142,7 +150,19 @@ PSYCHOLOGY = 5
 # capped says what limited it and what the other source could pay. An empty answer from a CLI that ended
 # cleanly is asked again before the run pauses. Members who back a motion across their own red line are
 # recorded with it (red_lines).
-WORLD_ENGINE = 16
+# 17: the world reacts to what the government does. In run 20261010-070501-seed1 the council invited the Union
+# into a joint inquiry over a shooting on its own border, pulled its patrols back, twice asked the country
+# whether it wanted to stay independent and left the army at 28,000 against 100,000, and nothing reacted. Now
+# the public's reactions last months (public_mood.py) and the ministries hold grievances against the government
+# that drag loyalty and morale (ministries.py); a motion's fine print (a joint inquiry, a stand-down, an
+# inspection regime) is part of its offer and has consequences (fine_print.py); the General Staff asks for
+# soldiers in proportion to the threat and resents being ignored, and the services resent budget cuts
+# (staff.py); a referendum's result can differ from the polls, calling one is news and a second within a year
+# reads as doubt; a neighbour can demand a border region and enforce it with a limited war, and the council can
+# cede it (territory.py); the engine watch records what moved prices and approval each month and flags a
+# mechanism that dominates (watch.py). Baselines add all-hawk and all-dove councils. A referendum no longer
+# counts as an Assembly election in the integrity gauge.
+WORLD_ENGINE = 17
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

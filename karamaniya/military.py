@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from dataclasses import asdict, dataclass, fields as dataclass_fields
 
-from . import audits
+from . import audits, fine_print, ministries, staff
 from .economy import front_region, labor
 from .world import FRONT_CHAINS, World, clamp, rng_for
 
@@ -209,11 +209,13 @@ def update(w: World, fiscal: dict) -> None:
     for force, office, pay_ratio in ((m.army, "army", paid), (m.navy, "navy", paid),
                                      (m.police, "interior", police_paid)):
         arrears_pain = min(1.0, force.arrears / 2)
+        # Engine 17: what the ministry holds against the government (ministries.py) weighs on both.
+        loyalty_drag, morale_drag = ministries.drag(w, office)
         morale_t = (0.45 + 0.2 * (1 - arrears_pain) + 0.2 * (patriot - 0.5) + 0.1 * dip.rally
                     - (1.5 * recent_loss if force is m.army else 0.0)
-                    + (pay["morale"] + focus["morale"] if force is m.army else 0.0))
+                    + (pay["morale"] + focus["morale"] if force is m.army else 0.0) - morale_drag)
         force.morale = clamp(force.morale + 0.12 * (morale_t - force.morale), 0.05, 0.95)
-        loyal_t = 0.45 + 0.15 * (1 - arrears_pain) + 0.2 * legit - 0.15 * arrears_pain
+        loyal_t = 0.45 + 0.15 * (1 - arrears_pain) + 0.2 * legit - 0.15 * arrears_pain - loyalty_drag
         if force is m.army:
             loyal_t -= 0.12 * dip.propaganda          # the old imperial officer corps
             loyal_t += pay["loyalty"] * (PATRONAGE_PAY_CREDIT if pay["loyalty"] > 0 and pol.patronage.get("army") else 1.0)
@@ -230,6 +232,10 @@ def update(w: World, fiscal: dict) -> None:
         m.army.training = clamp(m.army.training - 0.02)
         m.army.morale = clamp(m.army.morale - 0.02, 0.05, 0.95)
         w.count("purge_months", 1)
+    ministries.monthly(w)
+    # Engine 17: the General Staff's request and the budget cuts the services resent (staff.py). It runs after
+    # the ministries' decay, so a grievance raised this month is not faded in the month it arises.
+    staff.monthly(w)
 
     _naval(w, rng)
     update_readiness(w)
@@ -415,7 +421,9 @@ def _combat(w: World, rng) -> None:
         k_sold = active_sold + reserve_sold
         k_sold = max(k_sold, 1.0)
         fort = m.fort.get(front, 0.0) if r.id == FRONT_CHAINS[front][0] else 0.3 * m.fort.get(front, 0.0)
-        k_str = k_sold * kq * r.terrain * (1 + fort) * supply
+        # Engine 17: a stand-down the other side has not matched thins the front in the fighting too, as it does in
+        # the General Staff's assessment (_front_defence, fine_print.py).
+        k_str = k_sold * kq * r.terrain * (1 + fort) * supply * fine_print.defence_factor(w, front)
         u_str = u_sold * uq * drag
         ratio = u_str / (k_str * DEFENDER_BONUS)
         k_loss = 0.015 * k_sold * min(4.0, ratio) ** 0.5 * intensity * (1.3 if attack else 1.0)
@@ -483,7 +491,8 @@ def _front_defence(w: World, front: str):
     fort = m.fort.get(front, 0.0) if r.id == FRONT_CHAINS[front][0] else 0.3 * m.fort.get(front, 0.0)
     supply = clamp(1 - 0.15 * min(3.0, m.army.arrears), 0.5, 1.0)
     strength = soldiers * quality(m.army.equipment, m.army.training, m.army.morale) * r.terrain * (1 + fort) * supply
-    return r, soldiers, fort, strength
+    # Engine 17: a stand-down on this front that the other side has not matched leaves it thinner (fine_print.py).
+    return r, soldiers, fort, strength * fine_print.defence_factor(w, front)
 
 
 def _months_to_take(w: World, front: str, attackers: float, defence: float, intensity: float) -> int | None:

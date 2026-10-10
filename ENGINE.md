@@ -213,6 +213,16 @@ simulated.
   the office exposes it. Once public it costs the holder reputation and personal approval, and the seat:
   the bonus becomes a penalty of 0.03. Before engine 13 corruption only ever happened to a delegate, as an
   allegation or as patronage in the armed offices.
+- **The world reacts (engine 17):** the public's reactions last months (`public_mood.py`, monthly modifiers on
+  everyone, a region or one identity), and Army Command, the Naval staff and the police hold grievances against the
+  government that drag loyalty and morale and cost the minister bond (`ministries.py`). A motion's fine print (a
+  joint inquiry, a stand-down, an inspection regime) is offered with it and answered (`fine_print.py`); the General
+  Staff asks for soldiers while the Union's army is more than 2.5 times ours, and resents being ignored or cut
+  (`staff.py`); every delegate answers to an independence movement too.
+- **Referendums and land (engine 17):** a referendum's result is the support for independence less the Union's
+  campaign, plus a rally and a polling error; calling one is news, and a second within a year reads as doubt. A
+  neighbour can demand Kessel Valley or the Dorran March; the council can cede it, or refuse and meet a limited war
+  for it (`territory.py`). The system prompt tells how independence was won.
 - **Political agendas (engine 16):** each delegate is dealt an agenda of its own, no two the same, with a red
   line: order first, defence, sovereignty, results, the constitution (and, for a larger council, living
   standards and peace). It opens the delegate's private disposition and orders nothing; each motion records
@@ -336,15 +346,16 @@ the report.
 ### The same seed without the models
 
 A run's figures are partly its luck: the weather, the inherited problems and every random draw. After a
-run, the same seed is played again by two councils that use no model, free and in about a minute: the five
-rule-following stand-ins of `council.scripted.toml`, and a council that forms a government and then tables
-nothing, abstains on every motion and leaves every setting where it is. Every random draw in the engine
+run, the same seed is played again by four councils that use no model, free and in a few minutes: the five
+rule-following stand-ins of `council.scripted.toml`; a council that forms a government and then tables
+nothing, abstains on every motion and leaves every setting where it is; and (engine 17) an all-hawk and an
+all-dove council, each seat given its own office. Every random draw in the engine
 comes from a stream named by the seed, the month and what it is for, so they meet the same weather and the
 same draws; what differs is the council, and what follows from it. A scripted run's scripted baseline
 matches it exactly. The neighbours are played by the stand-ins' cabinet rules in both, whatever played them
 in the run.
 
-The report sets the run's figures beside both: average and peak inflation, food against need, unemployment,
+The report sets the run's figures beside all four, with a headline line at the top: average and peak inflation, food against need, unemployment,
 approval and the democracy score at the end, output, the army, months at war, regions lost and deaths from
 the situation. A baseline is only run by the world engine that made the run (`baseline.json` keeps its
 stamp). They run after a run with at least one model seat; `baseline = true` runs them for a council of
@@ -557,7 +568,7 @@ A 36-month five-seat run can make roughly 375–555 council calls: five members 
 phases, plus founding diagnoses, government formation and an optional questionnaire. Targeted diagnosis
 repairs and the default foreign cabinets add calls. CLI seats can take several minutes per month, especially
 when a connector serializes its requests. A long run can take hours and count against subscription limits.
-The same-seed baselines after a run are computed locally, with no calls, in about a minute. Only
+The same-seed baselines after a run are computed locally, with no calls, in about four minutes for 36 months. Only
 pay-per-token seats cost money: set their `price_in` and `price_out` so `max_cost_usd` can stop the run
 (and `price_cache_read` / `price_cache_write` to bill cached input at its own price).
 

@@ -13,7 +13,7 @@ legitimacy and liberty, set precedents, and expire unless extended.
 """
 from __future__ import annotations
 
-from . import audits, regional, tuning
+from . import audits, public_mood, regional, tuning
 from .world import World, clamp, rng_for
 
 REGION_NAMES = {"aster": "Port Aster", "kessel": "Kessel Valley", "lissen": "Lissen Coast",
@@ -606,6 +606,7 @@ def apply_ongoing(w: World) -> None:
         _effect(w, issue, first, add)
     _emergency_effects(w, add)
     regional.effects(w, add)
+    public_mood.effects(w, add)          # engine 17: how the public takes what the government did
     s["modifiers"] = mods
 
 

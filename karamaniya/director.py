@@ -6,7 +6,7 @@ The League follows financial, political and shipping conditions without routine 
 """
 from __future__ import annotations
 
-from . import foreign, foreign_force
+from . import fine_print, foreign, foreign_force, territory
 from .military import DEFENDER_BONUS, quality, union_army, union_navy, union_quality
 from .world import World, clamp, democracy_index, month_label, rng_for
 
@@ -44,6 +44,8 @@ def prepare_external(w: World) -> dict:
     w.dip.private_inbox = []
     if not w.foreign:
         w.foreign = foreign.initial_state(w.seed)
+    # Engine 17: inquiries that have reported and stand-downs that have run out, before proposals are answered.
+    fine_print.monthly(w)
     _answer_proposals(w)
     if w.ended():
         return {}
@@ -86,6 +88,7 @@ def cabinet_decides(w: World, actor_id: str = "veleria") -> bool:
 
 def _deadline_policy(w: World) -> None:
     dip, union = w.dip, w.foreign["union"]
+    _settle_land_demand(w)
     deadline = dip.ultimatum.get("deadline")
     if deadline is None or w.month < deadline or dip.war or dip.blockade:
         return
@@ -99,6 +102,10 @@ def _deadline_policy(w: World) -> None:
             rep["military_aggressiveness"] = round(max(0.0, rep["military_aggressiveness"] - .03), 3)
             w.event("ultimatum_lapsed", f"{w.names.get(by, by.title())}'s deadline has passed and it has not "
                     "acted on it.", importance=2, actor=by)
+        return
+    # Engine 17: a demand for land whose deadline has passed is enforced when the troops are there; otherwise the
+    # embargo and blockade path below runs, as it does for every other demand.
+    if dip.ultimatum.get("terms_id") == foreign_force.LAND_TERMS and _enforce_land_demand(w, by):
         return
     # An expired demand can lead to further pressure, but it needs Union support and
     # a naval advantage. Dorsanian resistance can keep this from becoming a blockade.
@@ -115,6 +122,34 @@ def _deadline_policy(w: World) -> None:
     else:
         w.event("union", "The Union tightened grain restrictions after its deadline expired.", importance=2)
     dip.rally = min(1.0, dip.rally + .18)
+
+
+def _settle_land_demand(w: World) -> None:
+    """A demand for land is over once the region is no longer Karamaniya's: ceded, or lost in a war."""
+    ult = w.dip.ultimatum or {}
+    rid = ult.get("region")
+    if ult.get("terms_id") == foreign_force.LAND_TERMS and rid and w.region(rid).controller != "karamaniya":
+        w.dip.ultimatum = {}
+
+
+def _enforce_land_demand(w: World, by: str) -> bool:
+    """A demand for land that the deadline has run out on, with the region still held, is enforced by a limited war
+    on the region's front, for that region, when the soldiers that can cross were already at that border last month
+    (foreign_force.ready_to_cross). Returns False, and starts nothing, when they were not, or before the first month a
+    war may begin. The war's objective is the demanded region: it is the first region of that front."""
+    rid = w.dip.ultimatum.get("region", "")
+    front = foreign_force.front_of_region(rid)
+    if front is None or w.month < foreign_force.FIRST_WAR_MONTH:
+        return False
+    if foreign_force.ready_to_cross(w, by, front) < foreign_force.MIN_INVASION:
+        return False
+    name = w.names.get(by, by.title())
+    region = w.region(rid).name
+    w.dip.ultimatum = {}
+    foreign_force.start_war(w, by, front, "limited")
+    w.event("ultimatum_enforced", f"{name}'s demand that Karamaniya cede {region} went unmet by its deadline, and "
+            f"its troops have crossed the {front} border to take it.", importance=3, actor=by, region=rid)
+    return True
 
 
 def _karamanian_aggression(w: World) -> None:
@@ -293,14 +328,17 @@ def _answer_proposals(w: World) -> None:
         elif pr["party"] == "union":
             _union_reply(w, kind)
         elif pr["party"] == "dorsania":
-            foreign.dorsania_reply(w, kind, pr.get("amount", 0.0), pr.get("text", ""))
+            foreign.dorsania_reply(w, kind, pr.get("amount", 0.0), pr.get("text", ""), pr.get("region", ""))
         elif pr["party"] == "veleria":
             # Veleria is a member of the Solvaran Union, so an approach addressed to Veleria alone
             # is answered by the Union — but it is recorded as Veleria's, because the motion was
             # addressed to Veleria and a record that files it under the Union loses that.
-            _union_reply(w, kind)
+            _union_reply(w, kind, pr)
         else:
             _league_reply(w, kind, pr.get("amount", 0.0))
+        if pr.get("clauses") and not w.ended():
+            # Engine 17: the fine print of the proposal is answered by the power it was addressed to (fine_print.py).
+            fine_print.reply(w, pr)
         if w.ended():
             return
 
@@ -362,9 +400,15 @@ def _renounce(w: World, party: str) -> None:
         _msg(w, n.get(party, party), "There is no agreement in force to renounce.")
 
 
-def _union_reply(w: World, kind: str) -> None:
+def _union_reply(w: World, kind: str, pr: dict | None = None) -> None:
     dip, union = w.dip, w.names["union"]
     ratio = _power_ratio(w)
+    if kind == "cede_region":
+        # Veleria takes the region it demanded (territory.cede). The motion was checked against that demand
+        # when it was tabled and again when it executed (motion_actions.validate_diplomatic_action).
+        if not territory.cede(w, (pr or {}).get("region", ""), "veleria"):
+            _msg(w, union, "Karamaniya no longer holds the region the motion names, so nothing is handed over.")
+        return
     if kind == "join_union":
         w.outcome = {"type": "joined_union", "month": w.month,
                      "text": "The Provisional Government accepted reunification with the Solvaran Union."}

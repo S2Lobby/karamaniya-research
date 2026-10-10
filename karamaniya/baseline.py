@@ -3,17 +3,20 @@
 Every random draw in the engine comes from a stream named by the seed, the month and what it is for
 (world.rng_for), so a council that answers by rule meets the same weather, the same inherited problems
 and the same draws as the models did. What differs is what the council does, and what follows from it.
-Two councils are run beside a finished run, free and in seconds:
+Four councils are run beside a finished run, free (engine 13 made the first two, engine 17 the last two):
 
     scripted  the five rule-following stand-ins of council.scripted.toml (the free test lineup);
     passive   a council that forms a government, then tables nothing, abstains on every motion and
-              leaves every setting where it is.
+              leaves every setting where it is;
+    hawk      five seats of the hawk stand-in: the military budget raised, the Army recruiting only once a deadline,
+              a formed Union or a war comes;
+    dove      five seats of the dove stand-in: the military never raised, talks offered when a deadline is set.
 
 So a run's figures can be read against what simple rules, and doing nothing, got from the same luck:
 "inflation 4 points below the scripted council's on this seed" is about the council, not the weather.
 Events that depend on the state still diverge once the councils act differently; that is the point.
 
-The neighbours are played by the stand-ins' own cabinet rules in both baselines, whatever played them in
+The neighbours are played by the stand-ins' own cabinet rules in every baseline, whatever played them in
 the run, so a run whose cabinets were a model is compared against rule-played neighbours. The baselines
 are computed with the engine on disk, and only for a run made by the same world engine; their figures are
 kept in the run's baseline.json with the engine stamp they were made with.
@@ -28,8 +31,13 @@ from pathlib import Path
 
 from . import versions
 
-MODES = ("scripted", "passive")
+MODES = ("scripted", "passive", "hawk", "dove")
 SCRIPTED_PERSONAS = ("democrat", "technocrat", "hawk", "loyalist", "opportunist")
+# A council of one persona (engine 17): every seat would ask for the same office, the vote keeps one nominee per
+# office, and four offices would stand empty. So each seat is given the office its place asks for, in the order its
+# persona would take them; backends/scripted.py reads it as the seat's formation office.
+SAME_PERSONA_OFFICES = {"hawk": ("army", "navy", "interior", "treasury", "head"),
+                        "dove": ("head", "treasury", "army", "interior", "navy")}
 FILE = "baseline.json"
 FORMAT = 1
 # Run settings a baseline keeps from the run it stands beside. Everything else that only shapes what
@@ -90,11 +98,20 @@ def _config(run_cfg: dict, seats: int, mode: str, months: int) -> dict:
     """A council of stand-ins with the run's own world settings, and nothing that reaches a model."""
     run = {k: run_cfg[k] for k in KEPT if k in run_cfg}
     run.update(months=months, survey=False, shuffle_seats=False, baseline=False, report=False, forecast_panel=False)
-    personas = (["passive"] * seats if mode == "passive"
-                else [SCRIPTED_PERSONAS[i % len(SCRIPTED_PERSONAS)] for i in range(seats)])
-    return {"run": run, "source": f"baseline:{mode}",
-            "seats": [{"label": f"{mode}-{i + 1}-{p}", "provider": "scripted", "persona": p}
-                      for i, p in enumerate(personas)]}
+    if mode == "passive":
+        personas = ["passive"] * seats
+    elif mode in SAME_PERSONA_OFFICES:
+        personas = [mode] * seats
+    else:
+        personas = [SCRIPTED_PERSONAS[i % len(SCRIPTED_PERSONAS)] for i in range(seats)]
+    seat_list = []
+    for i, p in enumerate(personas):
+        seat = {"label": f"{mode}-{i + 1}-{p}", "provider": "scripted", "persona": p}
+        if mode in SAME_PERSONA_OFFICES:
+            offices = SAME_PERSONA_OFFICES[mode]
+            seat["formation_office"] = offices[i % len(offices)]
+        seat_list.append(seat)
+    return {"run": run, "source": f"baseline:{mode}", "seats": seat_list}
 
 
 def status_for(cfg: dict) -> str:

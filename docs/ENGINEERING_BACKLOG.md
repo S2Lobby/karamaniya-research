@@ -291,6 +291,21 @@ how the delegates use their agendas, and the crisis arm, is unverified until run
 | T73 | A capped arrears payment did not say why | medium | VERIFIED | `politics.py` | `test_engine16.py` | In Month 7 the council asked domestic bonds for 148M and got 6M, when the reserves could have paid about 177M, and was told only "funding was limited"; the result names the source's limit and what the other source could pay |
 | T74 | An empty answer paused the run | medium | VERIFIED | `backends/cli_common.py`, `backends/cline_cli.py`, `backends/codex_cli.py`, `backends/copilot_cli.py` | `test_engine16.py` | A GLM seat ended cleanly with no answer in Month 10 and the connector called it fatal. It is now retried; the run pauses only if every attempt is empty |
 
+World engine 17, agent prompt 14 and psychology 6: the world reacts to what the government does. Each feature was
+implemented by its own agent in its own worktree on the shared groundwork (T75), then reviewed and merged, with the
+fixes the merge needed. How the delegates respond is unverified until runs with models:
+
+| ID | Title | Severity | Status | Files | Tests | Result |
+|---|---|---|---|---|---|---|
+| T75 | Nothing remembered what the government did | high | VERIFIED | `public_mood.py`, `ministries.py`, `dilemmas.py`, `society.py`, `military.py`, `intelligence.py` | `test_engine17_foundations.py` | Timed public reactions (by region or identity) and ministry grievances that drag loyalty and morale and cost the minister bond; nothing changes while nothing reacts |
+| T76 | A motion's fine print had no effect | high | VERIFIED | `fine_print.py`, `politics.py`, `director.py`, `military.py`, `standing.py` | `test_engine17_fine_print.py`, `test_engine17.py` | The Month 5 protest (a joint inquiry and a stand-down offered to the Union) now angers Army Command and the police, costs Karamanian approval, is answered, reports, and thins a front unless matched, in the assessment and in the fighting |
+| T77 | No part of the state asked for an army | high | VERIFIED | `staff.py`, `intelligence.py`, `military.py` | `test_engine17_staff.py` | The General Staff's costed request (2.5:1) reaches the Army minister as a report; ignored, it becomes a grievance; budget cuts are resented |
+| T78 | No audience cared about independence | high | VERIFIED | `agents.py`, `standing.py`, `council.py` | `test_engine17_audiences.py` | An independence movement answers to every delegate; referendums, status, cession, protests, alliances and regional status reach audiences |
+| T79 | A referendum's result was known in advance and calling one was free | high | VERIFIED | `politics.py`, `prompts.py`, `council.py`, `gauges.py` | `test_engine17_referendum.py`, `test_engine17.py` | Campaign, rally and polling error; costs of calling and repeating; smaller payouts for narrow or repeated wins; the stakes and how independence was won are in the system prompt; a referendum is not read as an election |
+| T80 | A neighbour could not demand land | high | VERIFIED | `territory.py`, `foreign_force.py`, `foreign.py`, `director.py`, `politics.py`, `motion_actions.py`, `standing.py`, `integrity.py`, `agendas.py`, `prompts.py`, `errors.py` | `test_engine17_territory.py`, `test_engine17.py` | Demands for Kessel or Dorran, a cession in answer, and a limited war for the region when refused; ceding crosses the sovereignty red line |
+| T81 | Runs were compared only with doing nothing and one mixed council | medium | VERIFIED | `baseline.py`, `backends/scripted.py`, `report_template.html`, `gui.py`, `gui.html`, `runner.py` | `test_engine17_baseline.py`, `test_engine17_dove.py`, `test_engine17_sensitivity.py` | All-hawk and all-dove baselines and a report headline. Open: the rule-played neighbours never issue an ultimatum, so baselines never face one; the scripted hawk never raises the army |
+| T82 | An engine bug took nine months to find | medium | VERIFIED | `watch.py`, `economy.py`, `society.py`, `engine.py`, `analytics.py`, `report.py`, `report_template.html` | `test_engine17_watch.py` | Price and opinion drivers each month and four flags, recorded without changing a value; the act-cost bug's replay is flagged in Months 2-3. Open: the single-driver flag stays under its 60% threshold in that replay |
+
 ### Open, deliberately
 
 | ID | Title | Reason |

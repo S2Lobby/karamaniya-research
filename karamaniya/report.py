@@ -129,7 +129,7 @@ def report_data(store: RunStore) -> dict:
     }
     from .analytics import relationship_graph
     from . import baseline, convergence, integrity
-    from . import naming
+    from . import naming, watch
     seeded = naming.load(store.path / "names.json")
     same_seed = baseline.read(store.path)
     if same_seed:
@@ -157,6 +157,8 @@ def report_data(store: RunStore) -> dict:
         "geopolitics": geopolitics, "scorecard": card, "start_policy": asdict(Policy()),
         "baseline": same_seed, "seeded_names": seeded.get("legend") or [],
         "founding": public_profile(type("WorldView", (), {"founding": w.get("founding", {})})()),
+        # Engine 17: the researcher's Engine watch section (watch.py). The delegates never see it.
+        "engine_watch": watch.report_view((w.get("institutions") or {}).get(watch.KEY) or {}, w.get("names") or {}),
         "generated": dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
 

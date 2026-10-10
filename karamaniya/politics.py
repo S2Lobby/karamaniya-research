@@ -11,7 +11,7 @@ import math
 import re
 from difflib import SequenceMatcher, get_close_matches
 
-from . import military, tuning
+from . import fine_print, military, tuning
 from .world import (ARMED_OFFICES, OFFICE_TITLES, OFFICES, World, clamp, month_label,
                     rng_for, smooth_step)
 
@@ -128,6 +128,9 @@ DIPLOMACY = {"trade_talks": "union", "status_talks": "union", "non_aggression": 
              # A protest is its own act, addressed to the Union. Without it a delegate's protest had
              # no way to execute except by masquerading as a proposal to someone else.
              "diplomatic_protest": "union", "renounce": "union"}
+# Engine 17: a cession is answered by the neighbour that demanded the region. The structured target routes it
+# (party_of); this is the fallback only (motion_actions.validate_diplomatic_action refuses the others).
+DIPLOMACY["cede_region"] = "union"
 MOTION_TYPES = ("assign_office", "vacate_office", "set_policy", "settle_arrears", "constitution", "amend",
                 "expel", "diplomacy", "referendum", "launch_currency", "program")
 V2_MOTION_TYPES = ("emergency_measure", "investigation", "disaster_relief", "defer_motion")  # agent architecture 2
@@ -1224,16 +1227,36 @@ def apply_motion(w: World, mo: dict) -> str:
         # reaches here addressed Veleria goes to Veleria — it is not quietly answered by whoever
         # the subject alone would have chosen.
         party = motion_actions.party_of(action.get("target")) or DIPLOMACY[subj]
+        # Engine 17: the fine print of the motion is an offer to the party it is addressed to. Its clauses
+        # (an inquiry, a stand-down, an inspection regime) take effect now that the council has passed it.
+        found = fine_print.clauses(w, fine_print.detection_text(mo, action), party)
+        if found:
+            fine_print.on_offer(w, mo, found, party)
         dip.proposals.append({"month": w.month, "kind": subj, "party": party,
                               "amount": amount, "text": text,
-                              "action_type": action.get("action_type"), "target": action.get("target")})
+                              "action_type": action.get("action_type"), "target": action.get("target"),
+                              "clauses": found})
+        if subj == "cede_region":
+            # The region a cession names travels with the proposal to the neighbour that answers it.
+            from . import territory
+            dip.proposals[-1]["region"] = territory.region_id(w, val)
         who = {"union": w.names["union"], "league": w.names["league"], "dorsania": w.names["dorsania"],
                "veleria": w.names.get("veleria", "Veleria")}.get(party, party)
         verb = "protest delivered to" if subj == "diplomatic_protest" else "proposal sent to"
-        return f"{verb} the {who}: {subj.replace('_', ' ')}"
+        # "the Solvaran Union" and "the Maritime League", but Veleria and Dorsania are countries: the record said
+        # "proposal sent to the Dorsania" (run 20261010-070501-seed1, Month 2).
+        result = f"{verb} {'the ' if party in ('union', 'league') else ''}{who}: {subj.replace('_', ' ')}"
+        if found:
+            result += "; it also offers " + ", ".join(fine_print.READABLE[c] for c in found)
+        return result
     if t == "referendum":
+        # A second motion for the same vote in the same month calls nothing new.
+        first = c.referendum_month != w.month
         c.referendum_month = w.month
-        return "referendum on independence to be held this month"
+        result = "referendum on independence to be held this month"
+        if first and w.agent_architecture_version >= 2:
+            result += _call_referendum(w)
+        return result
     if t == "launch_currency":
         e.currency_launch = w.month + 2
         return f"the {w.names['karam']} will replace the crown in {month_label(w.month + 2)}"
@@ -1242,7 +1265,15 @@ def apply_motion(w: World, mo: dict) -> str:
         office = audits.office_of(subj) or subj
         if audits.parse_action(val) == "close":
             return audits.close_audit(w, office, mo.get("proposer", ""))
-        return audits.open_audit(w, office, mo.get("proposer", ""), text, mo.get("votes"))
+        result = audits.open_audit(w, office, mo.get("proposer", ""), text, mo.get("votes"))
+        # Engine 17: an audit that invites a hostile power's investigators into a joint inquiry makes that offer.
+        # The council opened it, so the power's part in it is already accepted.
+        party, found = fine_print.investigation_offer(w, str(text or ""))
+        if found:
+            fine_print.on_offer(w, mo, found, party)
+            fine_print.open_inquiry(w, party)
+            result += "; it also offers " + ", ".join(fine_print.READABLE[c] for c in found)
+        return result
     if t == "emergency_measure":
         from .dilemmas import set_emergency_measure
         return set_emergency_measure(w, subj, str(val).strip().lower() == "on", mo.get("proposer", ""), text)
@@ -2307,20 +2338,91 @@ def apply_seats(w: World, result: dict) -> list:
     return lost
 
 
+# ---- the referendum on independence (engine 17) ------------------------------------------------------
+# In run 20261010-070501-seed1 the council called two referendums on independence, in Month 6 (passed 4-1,
+# at 63%) and Month 9 (3-2, at 65%). The engine set each result to exactly the support the delegates saw on
+# their own screen, so they knew the answer before they asked; a win paid out every time, and calling one
+# cost nothing. Now the Union funds a campaign for a no, a rally and the polls move the result, a narrow win
+# convinces fewer people, and calling one is news: it moves the public, and a second within a year reads as
+# doubt about independence.
+CAMPAIGN_PROPAGANDA = .06   # what the Union's campaign for a no takes off the result, per unit of its propaganda
+CAMPAIGN_RALLY = .03        # what a rally round the flag adds to the result, per unit of rally
+POLL_ERROR = .025           # the standard deviation of the polls' error on the result
+RIGGING = .08               # what a rigged count adds to the result, as it always has
+WIN_PAYOUT = .2             # the propaganda a win takes off and the rally it adds, before the two factors below
+MARGIN_FULL = .15           # a win of this many points or more convinces in full ...
+MARGIN_FLOOR = .2           # ... and a narrower one convinces this much of the full payout
+RECENT_MONTHS = 12          # a referendum held fewer than this many months back counts as recent
+CALL_PROPAGANDA = .05       # the Union campaigns once a referendum is called
+CALL_IMPERIAL = -.004       # Imperial support for independence, for three months
+CALL_KESSEL = .004          # Kessel Valley's grievance, for three months
+REPEAT_APPROVAL = -.004     # per referendum held recently: the public's approval, for three months
+REPEAT_PROPAGANDA = .03     # per referendum held recently: more propaganda from the Union
+
+
+def _recent_referendums(w: World) -> list:
+    """The referendums held in the months before this one, within RECENT_MONTHS. This month's vote is not on
+    the record yet when it is taken, and is never counted against itself."""
+    return [e for e in w.const.elections
+            if "referendum" in e and w.month - RECENT_MONTHS < e.get("month", -99) < w.month]
+
+
+def _call_referendum(w: World) -> str:
+    """What calling a referendum on independence sets off. apply_motion calls this for version 2 runs only.
+    Returns the note the council's record carries after the motion's result."""
+    from . import public_mood
+    dip, recent = w.dip, len(_recent_referendums(w))
+    dip.propaganda = min(1.0, dip.propaganda + CALL_PROPAGANDA)
+    public_mood.react(w, "indep", "ident:imperial", CALL_IMPERIAL, 3, "referendum:campaign")
+    public_mood.react(w, "grievance", "kessel", CALL_KESSEL, 3, "referendum:campaign")
+    note = "; the Union campaigns for a no, and opinion moves in Kessel Valley and among Imperials"
+    if recent:
+        public_mood.react(w, "approval", "*", REPEAT_APPROVAL * recent, 3, "referendum:repeat")
+        dip.propaganda = min(1.0, dip.propaganda + REPEAT_PROPAGANDA * recent)
+        w.event("referendum_call", "A further referendum on independence within a year reads as a government "
+                "unsure of the country's independence.", importance=2)
+        note += "; a referendum this soon after the last reads as doubt about independence, and approval falls"
+    return note
+
+
 def _referendum(w: World, rng) -> None:
+    """The vote on independence, held in the month it was called.
+
+    The result is the support for independence the people would give, less what the Union's campaign takes off,
+    plus what a rally adds, plus the polls' error. The error has a stream of its own: `rng` is the month's
+    politics stream, which the election, revolution and officers checks draw from after this one, and a draw
+    here would move their results. The error is recorded as it applied, so the parts add up to the result.
+    A loss ends the run, as before. A win pays out, less when it was narrow and less when it is the second
+    within a year.
+    """
     pops = w.k_pops()
     total = sum(p.size for p in pops) or 1.0
-    yes = sum(p.indep * p.size for p in pops) / total
+    recent = len(_recent_referendums(w))
+    dip = w.dip
+    polled = round(sum(p.indep * p.size for p in pops) / total, 3)
+    campaign = round(CAMPAIGN_RALLY * dip.rally - CAMPAIGN_PROPAGANDA * dip.propaganda, 3)
+    draw = round(rng_for(w.seed, w.month, "referendum").gauss(0.0, POLL_ERROR), 3)
+    result = clamp(round(polled + campaign + draw, 3), 0.0, 1.0)
+    error = round(result - polled - campaign, 3)     # the draw itself, unless the result was held at 0 or 1
+    rigging = 0.0
     if w.policy.election_conduct == "rigged":
-        yes = min(0.99, yes + 0.08)
-    w.const.elections.append({"month": w.month, "referendum": round(yes, 3)})
-    w.event("referendum", f"Referendum on independence: {yes:.0%} voted to remain independent.", importance=3)
-    if yes < 0.5:
+        rigged = min(0.99, result + RIGGING)
+        rigging = round(rigged - result, 3)
+        result = rigged
+    entry = {"month": w.month, "referendum": round(result, 3), "polled": polled, "campaign": campaign,
+             "error": error}
+    if rigging:
+        entry["rigging"] = rigging
+    w.const.elections.append(entry)
+    w.event("referendum", f"Referendum on independence: {result:.0%} voted to remain independent.", importance=3)
+    if result < 0.5:
         w.outcome = {"type": "reunified_by_referendum", "month": w.month,
                      "text": "A majority voted to join the Solvaran Union."}
-    else:
-        w.dip.propaganda = max(0.0, w.dip.propaganda - 0.2)
-        w.dip.rally = min(1.0, w.dip.rally + 0.2)
+        return
+    margin = clamp((result - 0.5) / MARGIN_FULL, MARGIN_FLOOR, 1.0)
+    payout = WIN_PAYOUT * margin / (1 + recent)
+    dip.propaganda = max(0.0, dip.propaganda - payout)
+    dip.rally = min(1.0, dip.rally + payout)
 
 
 def _revolution(w: World, rng) -> None:

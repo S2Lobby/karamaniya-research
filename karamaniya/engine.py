@@ -61,6 +61,11 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         audits.deliver(w)
         dilemmas.review(w, w.agenda.get("this_month"))
         dilemmas.generate(w)
+    if w.agent_architecture_version >= 2:
+        # Engine 17: the engine watch reads this month's snapshot and the price and opinion records written above,
+        # and appends any flag (see watch.py). It changes no value the simulation reads.
+        from . import watch
+        watch.evaluate(w)
     if not w.ended() and w.month + 1 >= w.months_total:
         c = w.const
         configured = int(w.counters.setdefault("months_configured", float(w.months_total)))

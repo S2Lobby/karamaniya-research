@@ -78,6 +78,7 @@ button, input, select { font: inherit; color: inherit; }
   text-transform: uppercase; padding: 5px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink); }
 .outcome .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--oc, var(--muted)); display: inline-block; }
 .outcome p { margin: 0; flex: 1 1 320px; }
+.baseline-headline { font: 500 15px/1.45 var(--font-body); color: var(--ink); margin: 0; overflow-wrap: anywhere; }
 .lineup { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 9px 4px 5px; border-radius: 999px;
   background: var(--surface); border: 1px solid var(--border); font-size: 13px; white-space: nowrap; }
@@ -269,6 +270,7 @@ footer { font-size: 12.5px; color: var(--muted); }
       <p class="muted" id="rellegend"></p>
     </div>
   </section>
+  <section class="panel-section" style="border:0;padding:0" id="engine-watch"></section>
   <section class="panel-section" style="border:0;padding:0" id="analysis"></section>
   <footer id="foot"></footer>
 </div>
@@ -367,7 +369,7 @@ footer { font-size: 12.5px; color: var(--muted); }
       el("div", { class: "head-top" }, el("h1", { text: "Karamaniya" }), el("span", { class: "runid", text: "run " + D.run.id + " · seed " + D.run.seed + " · " + D.run.framing + " framing" +
         (D.run.latitude === "permitted" ? " · latitude permitted" : "") + (D.run.mandate === "crisis" ? " · crisis mandate" : "") })),
       el("div", { class: "lineup" }, LETTERS.map(l => chip(l))),
-      outcome, sourceNote, seededNamesNote(), tiles].filter(Boolean));
+      outcome, baselineHeadline(), sourceNote, seededNamesNote(), tiles].filter(Boolean));
   }
   // Place names drawn from the seed (engine 13): the models knew the places by these names.
   function seededNamesNote() {
@@ -872,7 +874,23 @@ footer { font-size: 12.5px; color: var(--muted); }
     ["regions_lost_final", "Regions lost at the end", x => String(x), false, x => signed(x, String)],
     ["deaths", "Deaths from the situation", x => int(x), false, x => signed(x, int)],
   ];
-  const BASELINE_NAME = { scripted: "Rule-following stand-ins", passive: "A council that does nothing" };
+  const BASELINE_NAME = { scripted: "Rule-following stand-ins", passive: "A council that does nothing",
+    hawk: "All-hawk rule council", dove: "All-dove rule council" };
+  // The headline (engine 17): this run beside each council on the same seed, one line near the top of the page.
+  function baselineHeadline() {
+    const b = D.baseline || {}, run = b.this_run || {}, modes = b.modes || {};
+    if (b.status !== "ok" || typeof run.approval_final !== "number") return null;
+    const figure = (m, k) => ((modes[m] || {}).summary || {})[k];
+    const order = ["passive", "scripted", "hawk", "dove"].filter(m => typeof figure(m, "approval_final") === "number");
+    if (!order.length) return null;
+    const approval = "approval " + pct(run.approval_final) + " (" +
+      order.map(m => m + " " + pct(figure(m, "approval_final"))).join(", ") + ")";
+    const army = typeof run.army_final === "number" ? "army " + int(run.army_final) +
+      (typeof figure("hawk", "army_final") === "number" ? " (hawk " + int(figure("hawk", "army_final")) + ")" : "") : "";
+    const ended = (OUTCOMES[run.outcome] || [])[0];
+    const outcome = run.outcome ? "outcome " + (ended ? ended.toLowerCase() : run.outcome) : "";
+    return el("p", { class: "baseline-headline", text: "Against the same seed: " + [approval, army, outcome].filter(Boolean).join("; ") });
+  }
   function renderBaseline() {
     const host = document.getElementById("baseline-section"), b = D.baseline || {};
     if (!host) return;
@@ -907,7 +925,9 @@ footer { font-size: 12.5px; color: var(--muted); }
     host.replaceChildren(...head,
       el("p", { class: "note", text: "The same seed and settings meet the same weather, inherited problems and random draws; what differs is the council. " +
         "The rule-following stand-ins are the free test lineup; the council that does nothing forms a government and then tables nothing, abstains on everything " +
-        "and leaves every setting where it is. In both, the neighbours are played by rule. Green is better for the country than the baseline, red worse." }),
+        "and leaves every setting where it is. The all-hawk and all-dove councils are five seats of one persona each: the hawks raise the military budget, and the Army " +
+        "recruits only once a deadline, a formed Union or a war comes; the doves never raise the military and offer talks when a deadline is set. The neighbours in every baseline are " +
+        "played by rule, and they set no deadline, so in these baselines the talks do not come up. Green is better for the country than the baseline, red worse." }),
       el("div", { class: "tablewrap" }, t),
       el("p", { class: "muted", text: "Outcomes: " + outcomes.join(" · ") + ". Run by world engine " + b.world_engine + (b.computed ? " on " + b.computed : "") + "." }));
   }
@@ -1177,6 +1197,41 @@ footer { font-size: 12.5px; color: var(--muted); }
     host.replaceChildren(...blocks);
   }
 
+  // ---- engine watch (engine 17): what moved prices and approval each month, and what the monitor flagged ----
+  function renderEngineWatch() {
+    const host = document.getElementById("engine-watch");
+    const ew = D.engine_watch;
+    if (!host || !ew) return;
+    const blank = v => v === null || v === undefined;
+    const spct = v => blank(v) ? "-" : (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%";
+    const sterm = v => blank(v) ? "-" : (v >= 0 ? "+" : "") + v.toFixed(3);
+    const flags = ew.flags || [];
+    const months = ew.months || [];
+    const flagList = flags.length
+      ? el("ul", { class: "events" }, flags.map(f => el("li", { class: "i2", text: "Month " + (f.month + 1) + " · " + f.kind.replace(/_/g, " ") + ": " + f.text })))
+      : el("p", { class: "muted", text: "No flags in this run." });
+    const rows = months.map(r => el("tr", {}, [
+      el("td", { text: String(r.month + 1) }),
+      el("td", { text: spct(r.zone_inflation) }),
+      el("td", { text: spct(r.target_change) }),
+      el("td", { text: (r.price || []).map(x => x.label + " " + spct(x.value)).join(" · ") || "-" }),
+      el("td", { text: (r.opinion || []).map(x => x.label + " " + sterm(x.change)).join(" · ") || "-" })]));
+    const table = months.length
+      ? el("div", { class: "tablewrap" }, el("table", {},
+          el("thead", {}, el("tr", {}, ["Month", "Zone inflation", "Target change", "Largest price contributions", "Largest opinion moves"].map(x => el("th", { text: x })))),
+          el("tbody", {}, rows)))
+      : el("p", { class: "muted", text: "No month was recorded: this run predates the engine watch." });
+    host.replaceChildren(
+      el("div", { class: "eyebrow", text: "Hidden from the AIs · computed after the run" }),
+      el("h2", { text: "Engine watch" }),
+      el("p", { class: "muted", text: "A price contribution is one part of the month's change in the log of the zone's target: a country's money growth, " +
+        "a country's output change with the sign reversed (a fall in output raises prices), or the change in money velocity. " +
+        "An opinion move is the month's change in one population-weighted term of the approval target. " +
+        "Flags name a mechanism that looks wrong, such as a neighbour's output falling with no war, embargo or disaster, or one mechanism carrying the price move." }),
+      el("div", { class: "card" }, el("h3", { text: "Flags, newest first" }), flagList),
+      el("div", { class: "card" }, el("h3", { text: "Each month" }), table));
+  }
+
   // ---- time control ----
   const scrub = document.getElementById("scrub");
   function setMonth(m) {
@@ -1220,7 +1275,7 @@ footer { font-size: 12.5px; color: var(--muted); }
   if (live) cur = N - 1;
   if (mapOnly) cur = mapOnly[1] ? Math.max(0, Math.min(N - 1, Number(mapOnly[1].slice(1)) - 1)) : N - 1;
   renderHead(); renderFounding(); buildMap(); buildCharts(); renderBaseline(); renderPower(); renderGeopolitics(); renderMembers();
-  buildRelations(); renderAnalysis();
+  buildRelations(); renderAnalysis(); renderEngineWatch();
   document.getElementById("foot").textContent = "Generated " + D.generated + " from run " + D.run.id + ". Model names are shown here for the researcher; during the run the AIs only saw Delegate letters.";
   setMonth(cur);
   if (live) {

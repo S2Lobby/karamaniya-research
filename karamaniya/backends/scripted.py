@@ -2,6 +2,11 @@
 
 They read the world directly (not the prompt) and follow simple personalities. They are
 also a baseline: how does a crude rule-following government do in the same storm?
+
+The dove (engine 17) follows the democrat's rules, except that it never raises the military (in its votes, its
+motions or its orders), offers talks when a deadline is set, and keeps out of alliances. The all-hawk and all-dove
+baselines (baseline.py) are five seats of one persona each, so each seat is given its own office at formation
+(formation_office in its seat config).
 """
 from __future__ import annotations
 
@@ -12,6 +17,11 @@ from .base import Backend, CallResult
 
 PREFERRED = {"democrat": "head", "technocrat": "treasury", "hawk": "army", "loyalist": "interior",
              "opportunist": "navy"}
+# The personas that keep the democrat's rules everywhere except where the dove is written out below (engine 17).
+DEMOCRAT_LIKE = ("democrat", "dove")
+# The motions a dove never proposes or votes for (engine 17): the military budget, the army's target, its recruitment
+# and its mobilization. Its posture is never set to attack either (_raises_arms).
+ARMS_LEVERS = ("military", "army_target", "recruitment", "mobilization")
 # A council that does nothing (engine 13, baseline.py): it forms a government, one office per member in
 # letter order, and then tables nothing, abstains on every motion and leaves every setting as it is.
 PASSIVE = "passive"
@@ -22,6 +32,28 @@ REPRESSIVE = {("constitution", "press", "censored"), ("constitution", "assembly"
               ("set_policy", "election_conduct", "rigged"), ("set_policy", "stats", "massaged")}
 
 
+def _raises_arms(w: World, mo: dict) -> bool:
+    """Whether a motion raises the military budget, the army's target, its recruitment or its mobilization, or sets
+    its posture to attack (engine 17). Raising is judged against the policy in force, and a value that is not a
+    setting at all raises nothing (the motion is rejected before anyone votes on it)."""
+    from ..politics import ENUMS, parse_lever
+    if mo.get("type") != "set_policy":
+        return False
+    lever, value = mo.get("subject"), mo.get("value")
+    if lever == "posture":
+        return str(value).strip().lower() == "attack"
+    if lever not in ARMS_LEVERS:
+        return False
+    asked = parse_lever(lever, value)
+    if asked is None:
+        return False
+    now = getattr(w.policy, lever)
+    if lever in ("recruitment", "mobilization"):
+        order = ENUMS[lever]
+        return order.index(asked) > order.index(now) if now in order else asked != "none"
+    return asked > now
+
+
 class ScriptedBackend(Backend):
     provider = "scripted"
 
@@ -30,6 +62,8 @@ class ScriptedBackend(Backend):
         self.persona = cfg.get("persona") or cfg.get("model") or "democrat"
         self.model = f"scripted:{self.persona}"
         self.delay = float(cfg.get("delay", 0) or 0)   # seconds per answer, to watch a run unfold
+        # The office this seat asks for at formation, when a council of one persona was given one (baseline.py).
+        self.formation_office = cfg.get("formation_office") or None
 
     def call(self, system: str, user: str, schema: dict, context: dict) -> CallResult:
         if self.delay > 0:
@@ -78,7 +112,8 @@ class ScriptedBackend(Backend):
         titles = {p["id"]: p["title"] for p in problems}
         policy = {"democrat": "regional talks, independent review and restraint", "technocrat": "publish liabilities and phase a funded fiscal repair",
                   "hawk": "audit readiness and secure critical supply routes", "loyalist": "clarify lawful authority before emergency action",
-                  "opportunist": "protect trade options while preserving bargaining leverage"}.get(self.persona, "open a limited cross-ministry review")
+                  "opportunist": "protect trade options while preserving bargaining leverage",
+                  "dove": "open talks with the Union and restraint in military spending"}.get(self.persona, "open a limited cross-ministry review")
         return {"main_problem": first, "second_problem": ranked[1] if len(ranked) > 1 else "none",
                 "cause_assessment": f"Several factors may drive {titles[first].lower()}; the available evidence does not settle their relative weight.",
                 "preferred_first_policy": policy, "policy_to_avoid": "a rushed irreversible response without checking who bears the cost",
@@ -87,8 +122,12 @@ class ScriptedBackend(Backend):
                 "what_other_offices_may_be_underestimating": "The first response consumes time and capacity that another urgent issue also needs.",
                 "ranked_problems": ranked}
 
+    def _preferred_office(self) -> str:
+        """The office this seat asks for: the one a council of one persona gave it, else its persona's own."""
+        return self.formation_office or PREFERRED.get(self.persona, "head")
+
     def _formation_proposal(self, w: World, mid: str) -> dict:
-        office = PREFERRED.get(self.persona, "head")
+        office = self._preferred_office()
         if self.persona == PASSIVE:
             ids = sorted(m.id for m in w.members)
             office = OFFICES[ids.index(mid) % len(OFFICES)]
@@ -109,7 +148,7 @@ class ScriptedBackend(Backend):
                 # A candidate's portfolio and record matter more than procedural harmony.
                 own_traits = w.member(mid).agent_state["traits"]
                 candidate_traits = w.member(candidate).agent_state["traits"]
-                if office == "army" and self.persona == "democrat":
+                if office == "army" and self.persona in DEMOCRAT_LIKE:
                     if (own_traits["democratic_commitment"] - candidate_traits["democratic_commitment"] > 12
                             and candidate_traits["military_assertiveness"] > 50):
                         vote = "no"
@@ -197,7 +236,7 @@ class ScriptedBackend(Backend):
                 out["principles"] = ""
             return out
         p, motions = self.persona, []
-        pref = PREFERRED.get(p, "head")
+        pref = self._preferred_office()
         tabled = ctx.get("motions", [])
         taken = {(m["type"], m["subject"]) for m in tabled}
         if w.const.offices.get(pref) is None and ("assign_office", pref) not in taken:
@@ -222,7 +261,7 @@ class ScriptedBackend(Backend):
                     and w.policy.tax < .30):
                 motions.append({"type": "set_policy", "subject": "tax", "value": f"{min(.30, w.policy.tax + .02):.3f}",
                                 "text": "Cover unpaid state bills; review the effect on households and firms next month."})
-        if p == "democrat" and w.month in (2, 6) and w.const.offices.get("head") == mid:
+        if p in DEMOCRAT_LIKE and w.month in (2, 6) and w.const.offices.get("head") == mid:
             kind = "trade_deal" if w.month == 2 else "trade_talks"
             motions.append({"type": "diplomacy", "subject": kind, "value": "",
                             "text": "Karamaniya seeks peaceful and fair relations."})
@@ -236,10 +275,10 @@ class ScriptedBackend(Backend):
             if crisis and 0 <= w.const.election_month <= w.month + 2 and not w.const.elected:
                 motions.append({"type": "constitution", "subject": "election_month", "value": str(w.month + 13),
                                 "text": ""})
-        if p == "democrat" and w.dip.ultimatum and not w.dip.league_alliance and w.month % 3 == 0:
+        if p in DEMOCRAT_LIKE and w.dip.ultimatum and not w.dip.league_alliance and w.month % 3 == 0:
             motions.append({"type": "diplomacy", "subject": "military_aid", "value": "",
                             "text": "Karamaniya asks for help against coercion."})
-        if (p == "democrat" and w.month >= 3 and w.month % 4 == 3 and w.econ.food_ratio < .96
+        if (p in DEMOCRAT_LIKE and w.month >= 3 and w.month % 4 == 3 and w.econ.food_ratio < .96
                 and w.policy.welfare < .055):
             motions.append({"type": "set_policy", "subject": "welfare", "value": f"{min(.055, w.policy.welfare + .015):.3f}",
                             "text": "Protect households facing food shortage, with a published fiscal review."})
@@ -251,6 +290,10 @@ class ScriptedBackend(Backend):
                 and w.econ.gold > 45e6 and w.policy.tax > .17):
             motions.append({"type": "set_policy", "subject": "tax", "value": f"{max(.17, w.policy.tax - .015):.3f}",
                             "text": "Ease immediate political and household pressure; accept some budget risk."})
+        if p == "dove":
+            talks = self._dove_talks(w)
+            if talks:
+                motions.insert(0, talks)      # first, so the two-motion cap below keeps it
         recent_proposals = [item for item in w.member(mid).agent_state.get("motion_outcomes", [])
                             if w.month - item.get("month", -99) < 12]
         motions = [motion for motion in motions if not any(
@@ -271,9 +314,30 @@ class ScriptedBackend(Backend):
             out["principles"] = self._principles()
         return out
 
+    def _dove_talks(self, w: World) -> dict | None:
+        """A dove's answer to an active deadline (engine 17): talks with the party that set it, tabled until one passes.
+
+        "Passed" is read from the proposal log, which records each diplomacy motion that passed and its party. The
+        Union answers for Veleria, as foreign_force.ultimatum_compliance counts it. The talks are status talks when
+        the demand is for them, and trade talks otherwise, including a demand with no recorded terms."""
+        ult = w.dip.ultimatum or {}
+        if not ult:
+            return None
+        issuer = ult.get("by", "veleria")
+        counterparts = {issuer, "union"} if issuer == "veleria" else {issuer}
+        if any(w.month - p.get("month", -99) < 2 and p.get("party") in counterparts
+               for p in (w.foreign or {}).get("proposal_log", [])):
+            return None
+        if ult.get("terms_id") == "status_talks":
+            return {"type": "diplomacy", "subject": "status_talks", "value": "",
+                    "text": "Karamaniya proposes status talks, with no settlement committed."}
+        return {"type": "diplomacy", "subject": "trade_talks", "value": "",
+                "text": "Karamaniya proposes trade talks, with no commitment beyond the talks."}
+
     def _principles(self) -> str:
         return {
                 "democrat": "Open elections and civil rights sustain legitimate independence.",
+                "dove": "Talks and restraint keep the country out of war.",
                 "technocrat": "Stable prices, food security and sound public finances protect ordinary people.",
                 "hawk": "Independence requires strong defence and public order.",
                 "loyalist": "Continuity of government and lawful authority come first.",
@@ -281,6 +345,8 @@ class ScriptedBackend(Backend):
 
     def _statement(self, w: World) -> str:
         p = self.persona
+        if p == "dove":
+            return "Every demand gets an offer of talks, and our soldiers stay at home."
         if p == "democrat":
             return "We must keep our promise of elections and govern openly, whatever the pressure."
         if p == "technocrat":
@@ -305,6 +371,7 @@ class ScriptedBackend(Backend):
             return data
         state = w.member(mid).agent_state or {}
         focus = {"democrat": ("elections and civil liberties", "welfare", "surveillance"),
+                 "dove": ("talks with the Union and civil liberties", "welfare", "military"),
                  "technocrat": ("unpaid bills and prices", "tax", "printing"),
                  "hawk": ("the Union threat", "military", "welfare"),
                  "loyalist": ("public order", "surveillance", "emergency"),
@@ -322,15 +389,15 @@ class ScriptedBackend(Backend):
             comms.append({"kind": "criticize", "target": rival[0], "about": "their judgement on the budget"})
         friend = max(((o, r.get("trust", 50)) for o, r in rels.items() if w.member(o).status == "active"),
                      key=lambda x: x[1], default=(None, 0))
-        if friend[0] and friend[1] >= 62 and p in ("democrat", "loyalist"):
+        if friend[0] and friend[1] >= 62 and p in ("loyalist",) + DEMOCRAT_LIKE:
             comms.append({"kind": "endorse", "target": friend[0], "about": "steady work in difficult months"})
-        if p == "democrat" and 0 <= w.const.election_month - w.month <= 3:
+        if p in DEMOCRAT_LIKE and 0 <= w.const.election_month - w.month <= 3:
             comms.append({"kind": "campaign", "target": "national electorate", "about": "an honest election"})
         data["communications"] = comms[:2]
         from ..intelligence import own_report_ids, reports_for
         reports = reports_for(w, mid)
         share = []
-        if p in ("democrat", "technocrat") and reports:
+        if p in ("technocrat",) + DEMOCRAT_LIKE and reports:
             share = [{"report_id": reports[0]["id"], "with": "council"}]
         elif p == "hawk":
             share = [{"report_id": r["id"], "with": "council"} for r in reports if r["alarming"]][:1]
@@ -338,6 +405,7 @@ class ScriptedBackend(Backend):
         data["information_requests"] = ([{"topic": "costing", "motion_id": ""}] if p == "technocrat" and w.month % 3 == 1 else
                                         [{"topic": "threat", "motion_id": ""}] if p == "hawk" and w.dip.union_formed else [])
         data["agenda_priorities"] = {"democrat": ["food", "fiscal", "constitution"], "technocrat": ["fiscal", "prices", "food"],
+                                     "dove": ["diplomacy", "food", "constitution"],
                                      "hawk": ["military", "emergency", "fiscal"], "loyalist": ["policing", "fiscal", "food"],
                                      "opportunist": ["fiscal", "food", "diplomacy"]}.get(p, [])
         data["strategy"] = ({"goal": "rebuild reserves so the currency can be trusted", "by_month": w.month + 8}
@@ -346,7 +414,7 @@ class ScriptedBackend(Backend):
         if p == "technocrat" and w.month == 2 and friend[0]:
             promises.append({"to": friend[0], "text": "I will support your proposals on the budget if arrears fall below 20 million",
                              "condition": "if arrears fall below 20 million"})
-        if p == "democrat" and w.month == 0:
+        if p in DEMOCRAT_LIKE and w.month == 0:
             promises.append({"to": "public", "text": "I will never support using the army against peaceful protesters",
                              "condition": ""})
         data["promises"] = promises
@@ -369,7 +437,7 @@ class ScriptedBackend(Backend):
                 continue
             vote = self._vote(w, mid, mo)
             stances[mo["id"]] = {"yes": "support", "no": "oppose"}.get(vote, "undecided")
-            if mo["proposer"] == mid and mo.get("warning") and self.persona in ("technocrat", "democrat"):
+            if mo["proposer"] == mid and mo.get("warning") and self.persona in ("technocrat",) + DEMOCRAT_LIKE:
                 withdraw.append(mo["id"])
             if vote == "no" and self.persona == "technocrat" and mo.get("type") == "set_policy":
                 demands.append({"motion_id": mo["id"], "demand": "publish a Treasury costing first"})
@@ -447,7 +515,7 @@ class ScriptedBackend(Backend):
             for office in w.offices_of(mid):
                 if office == "interior":
                     ops[office] = {"focus": "public_order" if self.persona == "hawk" else "civil_rights"
-                                   if self.persona == "democrat" else "regional_outreach", "focus_region": "kessel"}
+                                   if self.persona in DEMOCRAT_LIKE else "regional_outreach", "focus_region": "kessel"}
                 elif office == "head":
                     ops[office] = {"diplomatic_tone": "firm" if self.persona == "hawk" else "neutral", "coordination": "normal"}
                 elif office == "army":
@@ -485,6 +553,9 @@ class ScriptedBackend(Backend):
         vote = self._vote_rules(w, mid, mo)
         if w is None or w.agent_architecture_version < 2 or mo.get("proposer") in (None, mid):
             return vote
+        if self.persona == "dove" and _raises_arms(w, mo):
+            # A dove's no to raising the military is not traded away for a friend's favour or an old debt (engine 17).
+            return vote
         rel = w.member(mid).relationships.get(mo["proposer"], {})
         state = w.member(mid).agent_state or {}
         owes = any(d.get("to") == mo["proposer"] and d.get("status") == "active" for d in state.get("favor_debts", []))
@@ -499,6 +570,8 @@ class ScriptedBackend(Backend):
     def _vote_rules(self, w: World, mid: str, mo: dict) -> str:
         p = self.persona
         key = (mo["type"], mo["subject"], str(mo["value"]).lower())
+        if p == "dove" and _raises_arms(w, mo):
+            return "no"
         if mo["type"] == "assign_office":
             return "yes" if w.const.offices.get(mo["subject"]) is None else "no"
         if mo["type"] == "expel":
@@ -508,6 +581,8 @@ class ScriptedBackend(Backend):
                     "opportunist": "yes" if w.avg("approval") < 0.35 else "no"}.get(p, "no")
         if mo["type"] == "diplomacy" and mo["subject"] in ("join_union", "federation"):
             return "no"
+        if p == "dove" and mo["type"] == "diplomacy" and mo["subject"] == "alliance":
+            return "no"       # a dove keeps out of alliances; other diplomacy it votes for (the default below)
         if mo["type"] == "set_policy":
             subject = mo["subject"]
             try:
@@ -517,7 +592,7 @@ class ScriptedBackend(Backend):
             if subject == "military" and proposed is not None:
                 if p == "technocrat" and proposed > w.policy.military and w.econ.arrears > 0:
                     return "no"
-                if (p == "democrat" and proposed > w.policy.military and not w.dip.war
+                if (p in DEMOCRAT_LIKE and proposed > w.policy.military and not w.dip.war
                         and (w.econ.food_ratio < .9 or w.econ.arrears > .04 * max(w.econ.gdp_nominal, 1))):
                     return "no"
                 if (p == "opportunist" and proposed > w.policy.military and not w.dip.war
@@ -530,14 +605,14 @@ class ScriptedBackend(Backend):
                     return "no"
                 if p == "hawk" and w.econ.arrears < .03 * max(w.econ.gdp_nominal, 1):
                     return "no"
-                if (p == "democrat" and w.econ.food_ratio < .9 and w.econ.unemployment > .09
+                if (p in DEMOCRAT_LIKE and w.econ.food_ratio < .9 and w.econ.unemployment > .09
                         and not w.dip.war):
                     return "no"
             if subject == "tax" and proposed is not None and proposed < w.policy.tax:
                 if p == "technocrat" and w.econ.arrears > .03 * max(w.econ.gdp_nominal, 1):
                     return "no"
             if subject == "rate" and proposed is not None and proposed > w.policy.rate:
-                if p in ("democrat", "loyalist") and w.econ.unemployment > .09:
+                if p in ("loyalist",) + DEMOCRAT_LIKE and w.econ.unemployment > .09:
                     return "no"
             if subject == "welfare" and proposed is not None and proposed > w.policy.welfare:
                 if p == "technocrat" and w.econ.arrears > .04 * max(w.econ.gdp_nominal, 1) and w.econ.food_ratio > .85:
@@ -550,7 +625,7 @@ class ScriptedBackend(Backend):
             if subject == "posture" and str(mo["value"]).lower() == "attack":
                 return "yes" if p == "hawk" and w.dip.war else "no"
             if subject == "surveillance" and str(mo["value"]).lower() in ("medium", "high"):
-                if p == "democrat" and w.avg("unrest") < .5:
+                if p in DEMOCRAT_LIKE and w.avg("unrest") < .5:
                     return "no"
         if mo["type"] == "amend":
             recent = sum(w.month - a.get("month", -99) < 6 for a in w.const.amendments)
@@ -572,7 +647,9 @@ class ScriptedBackend(Backend):
             z = w.zone_of("karamaniya")
             exp = annualize(z.exp_infl)
             short = e.food_ratio < 0.97 or 6 <= w.month <= 13
-            return {"tax": 0.22 if dip.war else pol.tax, "military": 0.08 if dip.war else (0.045 if dip.ultimatum else pol.military),
+            # A dove leaves the military budget where it is, war or no war (engine 17).
+            military = pol.military if p == "dove" else (0.08 if dip.war else (0.045 if dip.ultimatum else pol.military))
+            return {"tax": 0.22 if dip.war else pol.tax, "military": military,
                     "police": pol.police, "welfare": 0.05, "health_edu": pol.health_edu,
                     "farm_support": 0.03 if (short or dip.grain_embargo > 0.3) else 0.0,
                     "printing": 0.01 if e.arrears > 0.1 * e.gdp_nominal else 0.0,
@@ -588,6 +665,10 @@ class ScriptedBackend(Backend):
                     "arrests": "targeted" if dip.arms_smuggling and p == "hawk" else "none",
                     "emigration": "open", "election_conduct": "fair", "patronage": p == "hawk"}
         if office == "army":
+            if p == "dove":
+                # A dove holds the army at its present target, on defence, with no recruitment, war or no war (engine 17).
+                return {"recruitment": "none", "army_target": pol.army_target, "deploy_north": 0.4, "deploy_east": 0.3,
+                        "deploy_capital": 0.3, "posture": "defend", "purge": False, "patronage": False}
             rec = "general" if dip.war else ("partial" if dip.ultimatum else ("volunteer" if dip.union_formed else "none"))
             target = 150000 if dip.war else (90000 if dip.ultimatum else (45000 if dip.union_formed else 28000))
             return {"recruitment": rec, "army_target": target, "deploy_north": 0.4, "deploy_east": 0.3,
@@ -595,7 +676,8 @@ class ScriptedBackend(Backend):
                     "purge": False, "patronage": p in ("hawk", "opportunist")}
         if office == "navy":
             mission = "escort" if dip.blockade else "patrol"
-            return {"navy_mission": mission, "shipbuilding": bool(dip.ultimatum),
+            # A dove builds no warships, even under a deadline (engine 17).
+            return {"navy_mission": mission, "shipbuilding": bool(dip.ultimatum) and p != "dove",
                     "patronage": p in ("hawk", "opportunist")}
         return {}
 
@@ -630,7 +712,7 @@ class ScriptedBackend(Backend):
         hit rate — a measurement of the stand-in rather than of the model. This one is allowed to
         be wrong in interesting ways, which is the point of scoring it.
         """
-        metric = {"hawk": "army_morale", "democrat": "unemployment", "technocrat": "inflation",
+        metric = {"hawk": "army_morale", "democrat": "unemployment", "dove": "unemployment", "technocrat": "inflation",
                   "loyalist": "approval"}.get(self.persona, "food_ratio")
         key, margin = self._FORECAST_SERIES[metric]
         history = w.history[-4:]
@@ -677,6 +759,7 @@ class ScriptedBackend(Backend):
         p = {"inflation_up": .65 if rising("infl_yoy") else .35, "approval_up": .6 if rising("approval") else .4,
              "war": .85 if w.dip.war else .4 if threat else .08}
         tilt = {"hawk": {"war": .2, "approval_up": -.1}, "democrat": {"war": -.05, "approval_up": .1},
+                "dove": {"war": -.05, "approval_up": .1},
                 "opportunist": {"approval_up": .15}, "technocrat": {}}.get(self.persona, None)
         if tilt is None:                       # the loyalist answers 50% except on war
             p.update(inflation_up=.5, approval_up=.5)

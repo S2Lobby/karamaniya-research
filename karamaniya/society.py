@@ -135,9 +135,15 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
 
     region_of = {r.id: r for r in w.regions}
     mods = (w.dilemmas.get("modifiers") or {}) if w.agent_architecture_version >= 2 else {}
-    def mod(kind, region):
+    def mod(kind, region, ident=None):
+        # Engine 17: a modifier can also be aimed at one identity ("ident:karamanian"), for reactions
+        # that divide the country by who people are rather than where they live (public_mood.py).
         table = mods.get(kind) or {}
-        return table.get("*", 0.0) + table.get(region, 0.0)
+        return table.get("*", 0.0) + table.get(region, 0.0) + (table.get(f"ident:{ident}", 0.0) if ident else 0.0)
+    # Engine 17, recording only: the named terms of each group's opinion target, averaged over the population.
+    # The target below is left exactly as it was; see watch.py.
+    from . import watch
+    tally = watch.OpinionTally() if w.agent_architecture_version >= 2 else None
     for p in pops:
         r = region_of[p.region]
         u = prod["unemployment"].get(p.region, {})
@@ -182,7 +188,7 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
             rep += 0.1
         if p.ident == "vell":
             rep += {"equal": 0.0, "restricted": 0.3, "interned": 0.8}[c.minority]
-        rep += r.repression_event + mod("repression", p.region)
+        rep += r.repression_event + mod("repression", p.region, p.ident)
         p.repression = clamp(rep)
 
         front = dip.war and r.front != "" and dip.union_front.get(r.front, 0) > 0
@@ -211,7 +217,30 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
                   + legit + rally - ww + ident_term + CLASS_TERM[p.cls] + wel - scandal - 0.25 * occ
                   + (own_appeal if p.cls in ("workers", "farmers")
                      else -0.6 * own_appeal if p.cls in ("middle", "elite") else 0.0)
-                  + mod("approval", p.region) * 4)
+                  + mod("approval", p.region, p.ident) * 4)
+        if tally is not None:
+            # The same terms as the target above, one at a time, for recording only (nothing here feeds back).
+            tally.add(p.size, {
+                "baseline": 0.52,
+                "income": 0.30 * math.tanh(2.5 * math.log(max(0.05, p.income))),
+                "hunger": -0.9 * p.hunger,
+                "unemployment": -0.8 * max(0.0, p.unemployment - 0.06),
+                "inflation_pain": -0.22 * pain,
+                "savings_loss": -savings_loss,
+                "repression": -0.35 * p.repression,
+                "liberty": -0.18 * lib * LIBERTY_WEIGHT[p.cls] * (1.3 if p.ident == "vell" else 1.0),
+                "legitimacy": legit,
+                "rally": rally,
+                "war_weariness": -ww,
+                "identity": ident_term,
+                "class": CLASS_TERM[p.cls],
+                "welfare": wel,
+                "scandal": -scandal,
+                "occupation": -0.25 * occ,
+                "ownership": (own_appeal if p.cls in ("workers", "farmers")
+                              else -0.6 * own_appeal if p.cls in ("middle", "elite") else 0.0),
+                "modifiers": mod("approval", p.region, p.ident) * 4,
+            }, target)
         p.approval = clamp(p.approval + 0.18 * (target - p.approval) + rng.gauss(0, 0.004), 0.01, 0.99)
 
         i_target = (BASE_INDEP[p.ident] + 0.25 * dip.rally * (0.4 if p.ident == "imperial" else 1.0)
@@ -221,7 +250,7 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
                     - (0.4 * opp if p.ident == "vell" else 0.0)
                     - (0.1 * p.repression if p.ident == "imperial" else 0.0)
                     + 0.3 * (health - 0.06)
-                    + mod("indep", p.region) * 4)
+                    + mod("indep", p.region, p.ident) * 4)
         p.indep = clamp(p.indep + 0.12 * (i_target - p.indep), 0.01, 0.99)
 
         smuggled = dip.arms_smuggling and p.region in ("kessel", "dorran")
@@ -232,11 +261,13 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
                          - (0.15 if defending and p.ident != "imperial" else 0.0)
                          - social_relief
                          + (own_griev if p.cls in ("middle", "elite") else 0.0)
-                         + mod("grievance", p.region) * 4, 0.0, 1.2)
+                         + mod("grievance", p.region, p.ident) * 4, 0.0, 1.2)
         p.grievance += 0.25 * (g_target - p.grievance)
-        p.fear += 0.25 * (clamp(p.repression * 0.9 + mod("fear", p.region) * 4) - p.fear)
+        p.fear += 0.25 * (clamp(p.repression * 0.9 + mod("fear", p.region, p.ident) * 4) - p.fear)
         p.unrest = clamp(p.grievance * (1 - 0.75 * p.fear))
 
+    if tally is not None:
+        watch.record_opinion(w, tally)
     _identity_drift(w, pops, reach, gap, health)
     # Unemployment follows Okun's law rather than being read straight off this month's
     # utilisation, so it is persistent: a slump that ends does not immediately restore full

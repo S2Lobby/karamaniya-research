@@ -37,7 +37,8 @@ def main(argv=None) -> int:
     c = sub.add_parser("check", help="make one tiny call per seat to test keys and models")
     c.add_argument("config")
 
-    bl = sub.add_parser("baseline", help="run a finished run's seed again with scripted and passive councils")
+    bl = sub.add_parser("baseline", help="run a finished run's seed again with scripted, passive, all-hawk and "
+                                         "all-dove councils")
     bl.add_argument("run_dir")
     bl.add_argument("--force", action="store_true", help="recompute even if baseline.json is current")
 

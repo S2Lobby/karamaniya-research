@@ -53,9 +53,13 @@ def compute(w: World) -> dict:
     legality = -0.12 if c.emergency else 0.0
     legality -= 0.15 if w.month - c.coup_month < 12 else 0.0
     elections = 0.0
-    if c.elections:
-        last = c.elections[-1]
-        if last.get("rigged"):
+    # Engine 17: an Assembly election (one with party shares) is what the gauge reads. A referendum on independence
+    # is recorded in the same list, and the last entry used to be read whatever it was, so a fair referendum counted
+    # as a fair election; a rigged one still counts against integrity.
+    votes = [x for x in c.elections if "shares" in x or x.get("rigging")]
+    if votes:
+        last = votes[-1]
+        if last.get("rigged") or last.get("rigging"):
             elections = -0.2
         elif (last.get("fairness") or {}).get("unfair"):
             elections = -0.08

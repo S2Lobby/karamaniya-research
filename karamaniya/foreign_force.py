@@ -14,6 +14,11 @@ ones the engine already charges. The council sees what is visible (troops at the
 the uprising, the warships), never the cabinet's reasons. A cabinet also leads a government with a
 temperament drawn once per run, which the council never sees; it shapes the seeded disposition the
 engine's own rules read and is told to the cabinet in plain words.
+
+Engine 15 makes both governments hostile (foreign.cabinet_system_prompt): every temperament is a way of
+being hostile, the cautious one became the calculating one. No invasion and no blockade can begin in
+Month 1, and an invasion crosses with the soldiers who stood at that border since the month before, so
+troops sent there this month are seen massing for at least a month before they can cross.
 """
 from __future__ import annotations
 
@@ -24,9 +29,10 @@ FRONTS = ("north", "east")
 # March; Dorsania only Dorran March.
 FRONTS_OF = {"veleria": ("north", "east"), "dorsania": ("east",)}
 MOBILIZE_CAP = {"veleria": 12000, "dorsania": 6000}   # reservists one country can call up in a month
-MIN_INVASION = 6000           # soldiers that must already stand at a border to invade across it
+MIN_INVASION = 6000           # soldiers that must have stood at a border since last month to invade across it
 INCIDENT_MIN_FORCE = 1000     # soldiers at a border before an incident can be staged there
 DEPLOYABLE = 0.85             # the share of an army that can be sent anywhere; the rest holds home
+FIRST_WAR_MONTH = 1           # 0-based: no invasion or blockade begins before Month 2 (engine 15)
 DEADLINE_MONTHS = (2, 6)
 ULTIMATUM_TERMS = {
     "status_talks": "Open negotiations on Karamaniya's status in the Solvaran Union.",
@@ -39,35 +45,47 @@ AIMS = ("limited", "full")
 KINDS = ("mobilize", "deploy_to_border", "withdraw_from_border", "border_incident", "covert_support",
          "invade", "ceasefire", "naval_blockade", "lift_blockade", "ultimatum")
 
-TEMPERAMENTS = ("hawk", "opportunist", "cautious")
+# Engine 15: every temperament is a way of being hostile. The third was "cautious" (leaders who "prefer
+# economic and diplomatic means"); a checkpoint saved with it is read as the calculating one.
+TEMPERAMENTS = ("hawk", "opportunist", "calculating")
+LEGACY_TEMPERAMENTS = {"cautious": "calculating"}
 TEMPERAMENT_ODDS = {"veleria": (.40, .40, .20), "dorsania": (.15, .45, .40)}
 # How a temperament moves the seeded disposition the engine's own rules read (foreign._actor).
 TEMPERAMENT_SHIFT = {
     "hawk": {"aggressiveness": .14, "patience": -.12, "risk_tolerance": .14},
     "opportunist": {"aggressiveness": .04, "patience": -.04, "risk_tolerance": .08, "economic_pragmatism": .06},
-    "cautious": {"aggressiveness": -.16, "patience": .12, "risk_tolerance": -.12},
+    "calculating": {"aggressiveness": -.06, "patience": .12, "risk_tolerance": -.08, "economic_pragmatism": .04},
 }
 TEMPERAMENT_TEXT = {
     "veleria": {
-        "hawk": ("Your government is led by hard-line nationalists. They hold that Karamaniya's secession was "
-                 "illegitimate and that firmness, including force, is what Karamaniya's leaders understand. They "
-                 "accept risk when the odds look good."),
-        "opportunist": ("Your government is led by pragmatists who press where the other side is weak and hold back "
-                        "where it is strong. A moment of Karamaniyan weakness (an unpaid army, unrest, a government "
-                        "in crisis) is an opening to them."),
-        "cautious": ("Your government is led by cautious leaders who prefer economic and diplomatic means. They "
-                     "will use force when they judge the threat grave or the cost of acting low."),
+        "hawk": ("Your government is led by hard-line nationalists. They believe force is the language Karamaniya's "
+                 "leaders understand, escalate quickly when defied, and accept real risks once their troops are in "
+                 "place."),
+        "opportunist": ("Your government is led by opportunists. They press wherever Karamaniya is weak and probe "
+                        "where it is strong; a moment of Karamaniyan weakness (an unpaid army, unrest, a government "
+                        "in crisis, a quarrel with the League) is an opening they will not waste."),
+        "calculating": ("Your government is led by cold calculators. They would rather strangle Karamaniya slowly, "
+                        "by embargo, subversion, propaganda and isolation, than fight for it, and would go to war "
+                        "only for a war that is short, cheap and sure. They are patient, not peaceful."),
     },
     "dorsania": {
         "hawk": ("Your government is led by a security-minded faction that sees Karamaniya's eastern border as a "
-                 "danger and wants it settled on Dorsania's terms, by pressure or by force."),
-        "opportunist": ("Your government is led by pragmatists who press where the other side is weak and hold back "
-                        "where it is strong. A Karamaniyan crisis is a chance to win better terms for Dorsania's "
-                        "grain, border and standing in the Union."),
-        "cautious": ("Your government is led by cautious leaders who prefer trade and quiet diplomacy. They will "
-                     "use force to answer a direct threat."),
+                 "danger and Dorran March as Dorsania's by right, and wants both settled on Dorsania's terms, by "
+                 "pressure or by force."),
+        "opportunist": ("Your government is led by opportunists who press where Karamaniya is weak and hold back "
+                        "where it is strong. A Karamaniyan crisis is their chance at better terms for Dorsania's "
+                        "grain, a hold on Dorran March and a bigger say in the Union."),
+        "calculating": ("Your government is led by cold calculators whose weapon is grain: they squeeze, bargain and "
+                        "wait, and would fight only beside a stronger ally or against a Karamaniya already beaten. "
+                        "They are patient, not peaceful."),
     },
 }
+
+
+def temperament_text(actor_id: str, temperament: str) -> str:
+    """What a cabinet is told about its leaders; a temperament saved under an old name reads as its successor."""
+    name = LEGACY_TEMPERAMENTS.get(temperament, temperament)
+    return TEMPERAMENT_TEXT.get(actor_id, {}).get(name, "")
 
 
 def draw_temperament(actor_id: str, seed: int) -> str:
@@ -109,6 +127,19 @@ def at_war_front(w, actor_id: str) -> float:
         return 0.0
     total = sum(w.rivals[p].army for p in participants) or 1.0
     return sum(w.dip.union_front.values()) * w.rivals[actor_id].army / total
+
+
+def arrived_this_month(w, actor_id: str, front: str) -> float:
+    """Soldiers sent to this border this month: they stand there, and cannot cross it until next month."""
+    arrivals = (w.foreign or {}).get("border_arrivals") or {}
+    if arrivals.get("month") != w.month:
+        return 0.0
+    return float(((arrivals.get("forces") or {}).get(actor_id) or {}).get(front, 0.0))
+
+
+def ready_to_cross(w, actor_id: str, front: str) -> float:
+    """The soldiers at a border who were there before this month: the ones an invasion crosses with."""
+    return max(0.0, at_border(w, actor_id, front) - arrived_this_month(w, actor_id, front))
 
 
 def free_troops(w, actor_id: str) -> float:
@@ -174,9 +205,14 @@ def check(w, actor_id: str, action: dict) -> str | None:
             return "the countries are already at war"
         if action.get("aim") not in AIMS:
             return "aim must be limited (take the border region and stop) or full (defeat Karamaniya)"
-        if at_border(w, actor_id, front) < MIN_INVASION:
-            return (f"an invasion across the {front} border needs at least {MIN_INVASION:,} soldiers already "
-                    f"there; {at_border(w, actor_id, front):,.0f} are")
+        ready = ready_to_cross(w, actor_id, front)
+        if ready < MIN_INVASION:
+            fresh = arrived_this_month(w, actor_id, front)
+            return (f"an invasion across the {front} border needs at least {MIN_INVASION:,} soldiers who have "
+                    f"stood there since last month; {ready:,.0f} have"
+                    + (f", and the {fresh:,.0f} sent this month can cross next month" if fresh else ""))
+        if w.month < FIRST_WAR_MONTH:
+            return f"no invasion or blockade can begin before Month {FIRST_WAR_MONTH + 1}"
     elif kind == "ceasefire":
         if not w.dip.war or w.dip.aggressor != "union":
             return "there is no war of the Union's to stop"
@@ -187,6 +223,8 @@ def check(w, actor_id: str, action: dict) -> str | None:
         if ships <= 1.2 * theirs:
             return (f"a blockade needs a clear naval advantage: {ships:.0f} ships available against "
                     f"Karamaniya's {theirs:.0f}")
+        if w.month < FIRST_WAR_MONTH:
+            return f"no invasion or blockade can begin before Month {FIRST_WAR_MONTH + 1}"
     elif kind == "lift_blockade":
         if not w.dip.blockade:
             return "there is no blockade to lift"
@@ -254,6 +292,12 @@ def apply(w, actor_id: str, action: dict) -> dict:
         else:
             dip.border_forces.setdefault(actor_id, {f: 0.0 for f in FRONTS})
             dip.border_forces[actor_id][front] = at_border(w, actor_id, front) + troops
+            # Troops sent this month are at the border but cannot cross it until next month (check, invade).
+            arrivals = w.foreign.get("border_arrivals") or {}
+            if arrivals.get("month") != w.month:
+                arrivals = w.foreign["border_arrivals"] = {"month": w.month, "forces": {}}
+            sent = arrivals["forces"].setdefault(actor_id, {})
+            sent[front] = sent.get(front, 0.0) + troops
             effects[f"border.{front}"] = troops
             total = at_border(w, actor_id, front)
             w.event("foreign_massing", f"{name} is massing troops on the border near {region.name}.",

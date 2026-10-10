@@ -386,7 +386,7 @@ class Settings(unittest.TestCase):
             normalize_config({"run": {"forecast_panel": "yes"}, "seat": seat})
 
     def test_the_versions(self):
-        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT), (14, 11))
+        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT), (14, 11))
 
 
 # ---- runs: 2 (the panel), 3 (the baselines) and 5 (names) end to end ------------------------------

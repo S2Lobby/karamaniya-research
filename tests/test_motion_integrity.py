@@ -169,6 +169,11 @@ class Execution(unittest.TestCase):
         from karamaniya import director
         w = world()
         w.dip.grain_embargo = 0.3
+        # Since engine 15 Dorsania starts hostile (trust .30) and rejects a protest; one that has come to
+        # trust Karamaniya more eases its embargo.
+        director._protest_reply(w, "dorsania")
+        self.assertEqual(w.dip.grain_embargo, 0.3)
+        w.foreign["actors"]["dorsania"]["relations"]["karamaniya"]["trust"] = .5
         director._protest_reply(w, "dorsania")
         self.assertLess(w.dip.grain_embargo, 0.3)
 

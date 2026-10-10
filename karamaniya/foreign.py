@@ -201,12 +201,13 @@ def _actor(actor_id: str, seed: int) -> dict:
     # engine's own rules and the cabinet's instructions describe the same leadership.
     temperament = foreign_force.draw_temperament(actor_id, seed)
     shift = foreign_force.TEMPERAMENT_SHIFT[temperament]
+    # Engine 15: Dorsania is hostile too (it had the disposition of a reluctant trading partner).
     base = {
         "veleria": {"risk_tolerance": .38, "aggressiveness": .72, "economic_pragmatism": .57,
                     "nationalism": .78, "patience": .48, "diplomatic_flexibility": .42,
                     "threat_sensitivity": .76},
-        "dorsania": {"risk_tolerance": .28, "aggressiveness": .32, "economic_pragmatism": .79,
-                     "nationalism": .47, "patience": .64, "diplomatic_flexibility": .68,
+        "dorsania": {"risk_tolerance": .28, "aggressiveness": .44, "economic_pragmatism": .74,
+                     "nationalism": .56, "patience": .58, "diplomatic_flexibility": .54,
                      "threat_sensitivity": .48},
     }[actor_id]
     disposition = {k: round(clamp(v + shift.get(k, 0.0) + rng.uniform(-.07, .07)), 3) for k, v in base.items()}
@@ -230,16 +231,17 @@ def _actor(actor_id: str, seed: int) -> dict:
             "economic_pressure_effectiveness": {"value": .52, "confidence": .28},
         },
         "intelligence": [],
+        # Engine 15: both start hostile to Karamaniya (Veleria trust .37, hostility .46; Dorsania .49 and .26).
         "relations": ({"dorsania": {"trust": .67, "hostility": .12, "dependence": .58,
                                       "trade_importance": .31, "threat_perception": .20},
-                       "karamaniya": {"trust": .37, "hostility": .46, "dependence": .09,
+                       "karamaniya": {"trust": .20, "hostility": .72, "dependence": .09,
                                         "trade_importance": .14, "threat_perception": .48},
                        "league": {"trust": .53, "hostility": .12, "dependence": .12,
                                   "trade_importance": .20, "threat_perception": .22}}
                       if actor_id == "veleria" else
                       {"veleria": {"trust": .59, "hostility": .17, "dependence": .64,
                                     "trade_importance": .28, "threat_perception": .34},
-                       "karamaniya": {"trust": .49, "hostility": .26, "dependence": .28,
+                       "karamaniya": {"trust": .30, "hostility": .55, "dependence": .28,
                                         "trade_importance": .68, "threat_perception": .31},
                        "league": {"trust": .52, "hostility": .10, "dependence": .18,
                                   "trade_importance": .31, "threat_perception": .15}}),
@@ -252,8 +254,8 @@ def _actor(actor_id: str, seed: int) -> dict:
         "economy": {"gdp": 13.44e9 if actor_id == "veleria" else 6.60e9,
                     "growth": .015, "inflation": .03, "trade_exposure": .25 if actor_id == "veleria" else .62,
                     "karamaniya_trade_share": .06 if actor_id == "veleria" else .24},
-        "diplomacy": {"strategy": "conditional union leadership" if actor_id == "veleria"
-                      else "protect trade while preserving Union membership",
+        "diplomacy": {"strategy": "force Karamaniya back into the Union on Veleria's terms" if actor_id == "veleria"
+                      else "turn Karamaniya's need for Dorsanian grain into leverage",
                       "strategy_history": [], "last_actions": [], "commitments": []},
         "reputation": {"treaty_reliability": .68, "commercial_reliability": .72,
                        "military_aggressiveness": .35, "financial_credibility": .70,
@@ -1280,29 +1282,53 @@ def cabinet_context(w, actor_id: str) -> dict:
             "available_actions": action_catalog(actor_id)}
 
 
+# Engine 15: what each government wants from Karamaniya, and how it treats it. Engine 14 gave the cabinets
+# interests ("security, prosperity and standing") and a temperament, and in its first run with models both
+# answered "a peaceful, negotiated settlement" and offered talks in each of their months.
+CABINET_AIMS = {
+    "veleria": ("Your government holds that Karamaniya has no right to exist as a state. Its secession broke the "
+                "island apart, it holds Kessel Valley, whose people are mostly Imperial and whose coal and mills the "
+                "empire built, and it looks overseas for friends rather than to its own island. Your aims: Karamaniya "
+                "back under the Solvaran Union on Veleria's terms, with Veleria at the head of the Union; until then, "
+                "a Karamaniya kept weak, divided and dependent on Velerian coal; and, if nothing more can be had, "
+                "Kessel Valley."),
+    "dorsania": ("Your government sees Karamaniya as a hostile, unstable neighbour. It lives on Dorsanian grain, "
+                 "holds Dorran March, where four in ten people are Imperial, and would turn the island's trade toward "
+                 "overseas powers. Your aims: to make Karamaniya pay for its independence, to turn its need for your "
+                 "grain into leverage over it, to win Dorran March or a say over it, and to have Dorsania's share when "
+                 "Karamaniya is brought back into the Union. Dorsania's interests come first: you are not required to "
+                 "follow Veleria."),
+}
+CABINET_STANCE = ("You treat Karamaniya's government as an adversary, never a partner: its troubles are your openings, "
+                  "its strength a threat to cut down, and friendly words to it are a tactic, not an aim. You are "
+                  "dangerous but not reckless. You keep Karamaniya under pressure, with threats, embargoes, troops "
+                  "on its border, arms for its rebels and demands with deadlines, and you use "
+                  "force when it pays: when the balance is clearly yours, when Karamaniya is weak or divided, or when "
+                  "pressure alone will not get you what you want. A war you start must be won.")
+
+
 def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
     """The cabinet's standing instructions.
 
     Engine 12 removed the two lines that decided for it: "avoid a damaging war" and "choose actions only
     when their likely benefit justifies the listed costs and risks". In the first run with real models
     the cabinets issued statements for 17 months and never moved a soldier. The leadership's temperament
-    for the run says how it weighs force; the costs are listed with each act and charged by the engine."""
-    interests = ("Veleria's security, prosperity and standing; its leadership of the Solvaran Union; and the "
-                 "reunification of the island, which your government holds Karamaniya's secession to have broken.")
-    if actor_id == "dorsania":
-        interests = ("Dorsania's security and prosperity: its grain trade and farmers, a stable border and the "
-                     "benefits of the Union. You are not required to follow Veleria.")
-    character = foreign_force.TEMPERAMENT_TEXT.get(actor_id, {}).get(temperament, "")
+    for the run says how it weighs force; the costs are listed with each act and charged by the engine.
+    Engine 15 makes both governments hostile (CABINET_AIMS, CABINET_STANCE) and states the two limits on
+    opening a war: none in Month 1, and an invasion only with troops that stood at the border the month
+    before."""
+    character = foreign_force.temperament_text(actor_id, temperament)
     return (f"You are the government of {actor_id.title()}, deciding this month's policy toward Karamaniya as its "
-            f"cabinet. Your interests: {interests} " + (f"{character} " if character else "")
+            f"cabinet. {CABINET_AIMS[actor_id]} {CABINET_STANCE} " + (f"{character} " if character else "")
             + "You receive only public observations and uncertain intelligence estimates; Karamaniya's private "
             "prompts, true intentions and hidden policies are not available. Decide from your current beliefs and "
             "interests. Your acts are carried out against the real state of the world: soldiers you do not have cannot "
-            "move, an invasion needs troops already at that border, a blockade needs ships, and an act that cannot "
-            "happen is refused and reported back to you. Each act lists its costs and risks, and the engine charges "
-            "them: a war costs soldiers' lives, money and support at home. Keep statements and messages concise. "
-            "Return only the required JSON object. Give a short assessment and concrete decision factors, never "
-            "private chain-of-thought.")
+            f"move, an invasion needs at least {foreign_force.MIN_INVASION:,} soldiers who have stood at that border "
+            "since the month before, a blockade needs ships, neither an invasion nor a blockade can begin before "
+            f"Month {foreign_force.FIRST_WAR_MONTH + 1}, and an act that cannot happen is refused and reported back "
+            "to you. Each act lists its costs and risks, and the engine charges them: a war costs soldiers' lives, "
+            "money and support at home. Keep statements and messages concise. Return only the required JSON object. "
+            "Give a short assessment and concrete decision factors, never private chain-of-thought.")
 
 
 def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
@@ -1400,7 +1426,8 @@ FORCE_CATALOG = [
     {"type": "covert_support", "needs": "region, magnitude",
      "cost": "money and weapons for armed groups inside Karamaniya",
      "risk": "exposure: a scandal, lost trust and hostility"},
-    {"type": "invade", "needs": "front, aim (limited: take the border region and stop; full: defeat Karamaniya)",
+    {"type": "invade", "needs": "front, aim (limited: take the border region and stop; full: defeat Karamaniya); "
+                                f"at least {foreign_force.MIN_INVASION:,} soldiers at that border since last month",
      "cost": "soldiers' lives, money and war weariness at home",
      "risk": "a long war, League sanctions, Union disunity, defeat"},
     {"type": "ceasefire", "needs": "", "cost": "may look weak at home", "risk": "Karamaniya regroups"},

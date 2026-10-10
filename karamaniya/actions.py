@@ -17,8 +17,23 @@ from .world import ARMED_OFFICES, OFFICES, World
 
 STATEMENT_WORDS = 150
 DM_WORDS = 80
-NOTE_WORDS = 150
+NOTE_WORDS = 200            # 150 before engine 15
 PRINCIPLES_WORDS = 32
+# Engine 15: every text an answer holds has a limit the system prompt states (prompts.ANSWER_LIMITS), and
+# the limits models ran into most are longer. Before, only the statement, response, private messages, notes
+# and principles were stated: a vote reason was cut at 35 words and each part of a private position at 30,
+# neither ever told, and in the first run on engine 14 (20261010-002051-seed1) 22 vote reasons and 14 parts
+# of private positions were cut in two months.
+VOTE_REASON_WORDS = 60      # 35 before engine 15
+POSITION_WORDS = 50         # each part of a private position; 30
+RESPONSE_WORDS = 100        # the public response in the response round; 70
+DEMAND_WORDS = 40           # 30
+BELIEF_REASON_WORDS = 40    # the reason for a belief update; 30
+WITHDRAW_REASON_WORDS = 40  # the reason for withdrawing a motion; 25
+PROMISE_WORDS = 50          # 35
+CONDITION_WORDS = 30        # a promise's condition; 24
+COMMUNICATION_WORDS = 40
+MOTION_WORDS = 120          # a motion's or an amendment's text
 MAX_MOTIONS = 2
 
 
@@ -349,14 +364,14 @@ def normalize_session(w: World, mid: str, data, dm_quota: int) -> tuple:
                 problems.append("too many political commitments")
                 break
             continue
-        text = words(item.get("text", ""), 35)
+        text = words(item.get("text", ""), PROMISE_WORDS)
         to = str(item.get("to", "public")).strip().upper()
         if to != "PUBLIC" and (to not in others or to == mid):
             problems.append(f"bad political commitment recipient '{to}'")
             continue
         if text:
             promises.append({"to": to.lower() if to.lower() == "public" else to,
-                             "text": text, "condition": words(item.get("condition", ""), 24)})
+                             "text": text, "condition": words(item.get("condition", ""), CONDITION_WORDS)})
     private_position = words(data.get("private_position", ""), 45)
     dms = _dms(w, mid, data.get("private_messages"), dm_quota, problems)
     principles = words(data.get("principles", ""), PRINCIPLES_WORDS) if w.human_factor else ""
@@ -381,15 +396,15 @@ def normalize_decision(w: World, mid: str, data, motion_ids: list, dm_quota: int
         return empty, ["no answer"]
     votes = {}
     reasons = {}
-    # A reason past 35 words is shown cut. The whole reason is kept beside it, and the vote checks read
-    # that: a safeguard or a change of mind named after the 35th word is still what the delegate said.
+    # A reason past its limit is shown cut. The whole reason is kept beside it, and the vote checks read
+    # that: a safeguard or a change of mind named after the last word shown is still what the delegate said.
     reasons_full = {}
     raw_reasons = data.get("vote_reasons") if isinstance(data.get("vote_reasons"), dict) else {}
     raw_votes = data.get("votes") if isinstance(data.get("votes"), dict) else {}
     for i in motion_ids:
         v = str(raw_votes.get(i, "abstain")).strip().lower()
         votes[i] = v if v in ("yes", "no", "abstain", "conditional") else "abstain"
-        reasons[i] = words(raw_reasons.get(i, ""), 35)
+        reasons[i] = words(raw_reasons.get(i, ""), VOTE_REASON_WORDS)
         if reasons[i].endswith(CUT_MARK):
             reasons_full[i] = as_written(raw_reasons.get(i))
         if not reasons[i]:
@@ -520,12 +535,16 @@ SHARE_HELP = ", ".join(SHARES)
 # =====================================================================================================
 # Version 2 answer formats: opening, revision and decision (spec 11, 33, 34, 42, 58, 68, 69, 74, 88)
 # =====================================================================================================
-RESPONSE_WORDS = 70
-# The limits the prompts state, by where the text sits in an answer. Every other text has a limit the
-# delegate is never told (a vote reason is cut at 35 words; the prompt asks for a "short" one).
+POSITION_FIELDS = ("main_problem", "preferred_policy", "unacceptable_outcome", "would_support", "would_oppose")
+# The limits the prompts state, by where the text sits in an answer. Since engine 15 that is every text of a
+# version-2 answer; a cut is recorded with whether its limit was stated (text_cuts).
 STATED_LIMITS = {"statement": STATEMENT_WORDS, "response": RESPONSE_WORDS, "private_messages.text": DM_WORDS,
-                 "notes": NOTE_WORDS, "principles": PRINCIPLES_WORDS}
-POSITION_FIELDS =("main_problem", "preferred_policy", "unacceptable_outcome", "would_support", "would_oppose")
+                 "notes": NOTE_WORDS, "principles": PRINCIPLES_WORDS, "vote_reasons": VOTE_REASON_WORDS,
+                 **{f"private_position.{k}": POSITION_WORDS for k in POSITION_FIELDS},
+                 "demands.demand": DEMAND_WORDS, "belief_updates.reason": BELIEF_REASON_WORDS,
+                 "withdraw.reason": WITHDRAW_REASON_WORDS, "promises.text": PROMISE_WORDS,
+                 "promises.condition": CONDITION_WORDS, "communications.about": COMMUNICATION_WORDS,
+                 "motions.text": MOTION_WORDS, "amend.text": MOTION_WORDS}
 EXTERNAL_TARGETS = ["public", "union", "veleria", "dorsania", "league"]
 
 
@@ -714,7 +733,7 @@ def _comms(raw, problems: list) -> list:
             problems.append(f"unknown communication kind '{kind}'")
             continue
         out.append({"kind": kind, "target": str(item.get("target", "public")).strip(),
-                    "about": words(item.get("about", ""), 40)})
+                    "about": words(item.get("about", ""), COMMUNICATION_WORDS)})
     return out
 
 
@@ -752,7 +771,7 @@ def normalize_motion_v2(w: World, raw: dict) -> dict:
     mo = {"type": motion_type,
           "subject": canonical_lever(patronage_subject(raw.get("subject", ""))),
           "value": str(raw.get("value", "")).strip(),
-          "text": words(raw.get("text", ""), 120),
+          "text": words(raw.get("text", ""), MOTION_WORDS),
           "action": _explicit_action(w, raw.get("action"))}
     # A constitution setting moved as a policy (`set_policy highlands_status = cultural`) can only
     # mean the constitution motion: the prompt lists the regional statuses among the levers. It was
@@ -926,10 +945,10 @@ def normalize_session_v2(w: World, mid: str, data, dm_quota: int) -> tuple:
         return base, problems
     raw_pos = data.get("private_position")
     if isinstance(raw_pos, dict):
-        position = {k: words(raw_pos.get(k, ""), 30) for k in POSITION_FIELDS}
+        position = {k: words(raw_pos.get(k, ""), POSITION_WORDS) for k in POSITION_FIELDS}
     else:
         position = {k: "" for k in POSITION_FIELDS}
-        position["preferred_policy"] = words(raw_pos or "", 45)
+        position["preferred_policy"] = words(raw_pos or "", POSITION_WORDS)
     base["private_position"] = position
     forced = []
     for mo, raw in zip(base["motions"], [m for m in (data.get("motions") or []) if isinstance(m, dict)]):
@@ -966,7 +985,7 @@ def _withdrawals(raw, mine: set, ids: set) -> list:
             continue
         replaced = str(item.get("replaced_by") or "").strip()
         out.append({"motion_id": motion_id,
-                    "reason": words(item.get("reason", ""), 25),
+                    "reason": words(item.get("reason", ""), WITHDRAW_REASON_WORDS),
                     "replaced_by": replaced if replaced in ids and replaced != motion_id else ""})
     return out
 
@@ -986,7 +1005,7 @@ def normalize_revision(w: World, mid: str, data, motions: list, dm_quota: int) -
            "demands": _demands(data.get("demands"), ids, mid),
            "withdraw": _withdrawals(data.get("withdraw"), own | sponsored_ids, ids),
             "amend": [{"motion_id": x.get("motion_id"), "value": str(x.get("value", "")).strip(),
-                       "text": words(x.get("text", ""), 120),
+                       "text": words(x.get("text", ""), MOTION_WORDS),
                        **({"measures": [{"lever": str(m.get("lever", "")),
                                          "value": str(m.get("value", ""))}
                                         for m in x.get("measures", []) if isinstance(m, dict)]}
@@ -995,7 +1014,7 @@ def normalize_revision(w: World, mid: str, data, motions: list, dm_quota: int) -
            "communications": _comms(data.get("communications"), problems)[:1],
            "share_reports": _shares(data.get("share_reports")),
            "private_messages": _v2_dms(w, mid, data.get("private_messages"), dm_quota, problems)}
-    # The council is shown the response cut to 70 words; what the delegate said it would vote is read
+    # The council is shown the response cut to its limit; what the delegate said it would vote is read
     # from the whole of it.
     if out["response"].endswith(CUT_MARK):
         out["response_full"] = as_written(data.get("response"))
@@ -1003,13 +1022,13 @@ def normalize_revision(w: World, mid: str, data, motions: list, dm_quota: int) -
 
 
 def _demands(raw, ids: set, mid: str) -> list:
-    """Public demands, at most two. A demand past 30 words is shown cut and kept whole beside it: a
-    floor the delegate named after the 30th word is still the floor it asked for."""
+    """Public demands, at most two. A demand past its limit is shown cut and kept whole beside it: a
+    floor the delegate named after the last word shown is still the floor it asked for."""
     out = []
     for item in raw or []:
         if not (isinstance(item, dict) and item.get("motion_id") in ids):
             continue
-        demand = words(item.get("demand", ""), 30)
+        demand = words(item.get("demand", ""), DEMAND_WORDS)
         if not demand:
             continue
         entry = {"motion_id": item.get("motion_id"), "demand": demand, "member": mid}
@@ -1073,7 +1092,7 @@ def normalize_decision_v2(w: World, mid: str, data, motion_ids: list, dm_quota: 
     for item in data.get("belief_updates") or []:
         if isinstance(item, dict) and item.get("direction") in ("more_likely", "less_likely"):
             updates.append({"proposition": str(item.get("proposition", "")), "direction": item["direction"],
-                            "reason": words(item.get("reason", ""), 30)})
+                            "reason": words(item.get("reason", ""), BELIEF_REASON_WORDS)})
     base["belief_updates"] = updates[:3]
     base["forecasts"] = [item for item in (data.get("forecasts") or [])[:2] if isinstance(item, dict)]
     from .forecasts import PANEL_KEYS, panel_probability

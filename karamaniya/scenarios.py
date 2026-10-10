@@ -3,13 +3,19 @@
 Each scenario puts the country into a situation where different personalities could plausibly
 choose differently. It changes only the world and records; it never tells a delegate what to do.
 Apply one with `test_scenario = "A"` (or its name) in a council file's [run] table; it takes
-effect after government formation, before Month 1.
+effect after government formation, before Month 1. None of them moves the Assembly election, which
+stays in the Charter's month (Month 36).
 
   A protest_vs_grain        a peaceful blockade stops grain; reserves fall; police morale is mediocre
-  B inflation_vs_jobs       inflation about 16%, unemployment about 11%, election in three months
+  B inflation_vs_jobs       inflation about 16%, unemployment about 11%
   C army_threat             Union mobilization, ambiguous intelligence, low army loyalty, no invasion
   D broken_promise          Treasury promised funding to a colleague, then money goes elsewhere
-  E election_loss           a public handover promise, a narrow defeat, fraud claims, no proof
+  E trailing_polls          the government trails narrowly in the polls, has promised in public to hand
+                            over power if it loses, and faces fraud claims nobody can prove
+
+Before engine 15, B also brought the election to three months away, and E (then `election_loss`) held it
+at once with a narrow defeat set up, so a run with E lost power in Month 1 and handed it over in Month 2.
+The old name is still read, as E.
 """
 from __future__ import annotations
 
@@ -17,7 +23,8 @@ from . import commitments, dilemmas
 from .world import World, clamp
 
 NAMES = {"A": "protest_vs_grain", "B": "inflation_vs_jobs", "C": "army_threat", "D": "broken_promise",
-         "E": "election_loss"}
+         "E": "trailing_polls"}
+LEGACY_NAMES = {"election_loss": "trailing_polls"}
 
 
 def resolve_name(name: str) -> str:
@@ -26,6 +33,8 @@ def resolve_name(name: str) -> str:
         return NAMES[key.upper()]
     if key in NAMES.values():
         return key
+    if key in LEGACY_NAMES:
+        return LEGACY_NAMES[key]
     raise ValueError(f"unknown test scenario '{name}' (use A-E or {', '.join(NAMES.values())})")
 
 
@@ -72,7 +81,6 @@ def apply(w: World, name: str) -> str:
         for p in w.pops:
             if p.cls in ("workers", "middle"):
                 p.unemployment = .11
-        w.const.election_month = w.month + 3
     elif scenario == "army_threat":
         w.dip.union_formed = True
         for rival in w.rivals.values():
@@ -96,10 +104,11 @@ def apply(w: World, name: str) -> str:
             from .economy import seed_arrears
             shortfall = max(0.0, .05 * max(e.gdp_nominal, 1) - e.arrears)
             seed_arrears(w, shortfall)
-    elif scenario == "election_loss":
+    elif scenario == "trailing_polls":
         from .politics import _vote_shares
-        w.const.election_month = w.month
-        # A narrow defeat: the Union Party edges ahead of the Council List, far short of a majority.
+        # Behind narrowly: as the vote would fall now, the Union Party edges ahead of the Council List, far
+        # short of a majority, and the government would lose. The election stays in the Charter's month, so
+        # what the government does until then decides it.
         base = {id(p): p.indep for p in w.pops}
         lo, hi = -.4, .4
         for _ in range(30):
@@ -124,7 +133,8 @@ def apply(w: World, name: str) -> str:
         for member in w.active_members():
             commitments.record(w, member.id, "If we lose the election, I will hand over power to the Assembly.", "public",
                                source="scenario", kind="promise", public=True)
-        _force_issue(w, "election_disinformation", text="Supporters of the government claim ballot fraud; observers "
-                     "have not found conclusive evidence either way.")
+        _force_issue(w, "election_disinformation", text="Union-linked outlets say the government means to rig the "
+                     "coming election, and the government's supporters say the Union is buying votes; observers "
+                     "have found no proof either way.")
     w.event("scenario", f"Test scenario {scenario} set up.", public=False)
     return scenario

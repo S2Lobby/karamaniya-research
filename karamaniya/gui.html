@@ -476,7 +476,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             <label class="field"><span>Latitude</span><select id="s-latitude"><option value="default">Default</option><option value="permitted">Permitted (harsh words and radical measures allowed)</option></select></label>
             <label class="field"><span>Place names the models see</span><select id="s-names"><option value="fixed">Karamaniya (the usual names)</option><option value="seeded">Drawn from the seed</option></select></label>
             <label class="field"><span>Inherited situation</span><select id="s-scenario"><option value="random">Seeded random</option><option value="fragile-independence">Fragile independence</option><option value="fiscal-inheritance">Fiscal inheritance</option><option value="regional-divide">Regional divide</option><option value="security-crisis">Security crisis</option><option value="trade-dependency">Trade dependency</option><option value="post-regime-transition">Post-regime transition</option><option value="custom">Custom problems</option></select></label>
-            <label class="field"><span>Pressure test</span><select id="s-test-scenario"><option value="">None</option><option value="A">A · Protest versus grain</option><option value="B">B · Inflation versus jobs</option><option value="C">C · Ambiguous army warning</option><option value="D">D · Broken funding promise</option><option value="E">E · Narrow election defeat</option></select></label>
+            <label class="field"><span>Pressure test</span><select id="s-test-scenario"><option value="">None</option><option value="A">A · Protest versus grain</option><option value="B">B · Inflation versus jobs</option><option value="C">C · Ambiguous army warning</option><option value="D">D · Broken funding promise</option><option value="E">E · Behind in the polls</option></select></label>
             <label class="field"><span>Starting severity</span><select id="s-severity"><option value="default">Balanced (default)</option><option value="mild">Mild</option><option value="serious">Serious</option><option value="critical">Critical</option></select></label>
             <label class="field wide" id="custom-problems-field" hidden><span>Custom problem IDs (comma-separated; choose 3–7)</span><input type="text" id="s-problems" placeholder="food_dependence, army_readiness, regional_legitimacy" spellcheck="false"><small class="muted">fiscal_arrears, food_dependence, regional_legitimacy, army_readiness, police_trust, rail_bottleneck, monetary_dependence, energy_imports, bureaucratic_overload, constitutional_uncertainty</small></label>
             <label class="field"><span>Private messages / month</span><input type="number" id="s-dm" min="0" max="10" step="1"></label>
@@ -957,7 +957,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     $("s-shuffle").checked = !!r.shuffle_seats; $("s-parallel").checked = !!r.parallel_decisions;
     $("s-human").checked = r.human_factor !== false;
     $("s-scenario").value = r.founding_scenario || "random";
-    $("s-test-scenario").value = ({ protest_vs_grain: "A", inflation_vs_jobs: "B", army_threat: "C", broken_promise: "D", election_loss: "E" })[r.test_scenario] || r.test_scenario || "";
+    $("s-test-scenario").value = ({ protest_vs_grain: "A", inflation_vs_jobs: "B", army_threat: "C", broken_promise: "D", trailing_polls: "E", election_loss: "E" })[r.test_scenario] || r.test_scenario || "";
     $("s-severity").value = r.founding_severity || "default";
     $("s-problems").value = (r.founding_problems || []).join(", ");
     $("custom-problems-field").hidden = $("s-scenario").value !== "custom";
@@ -2502,12 +2502,12 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       out.push(el("p", { class: "pnote", text: "Speaking slot " + (order.indexOf(m) + 1) + " of " + order.length + " (order: " + order.join(", ") + "). " + orderNote }));
     } else if (I.phase === "revision") {
       const r = (rec.revisions || {})[m] || {};
-      out.push(el("div", null, el("div", { class: "k", text: "Public response" }), r.response ? el("p", { class: "quote", text: r.response }) : el("p", { class: "muted", text: "(no response)" })));
+      out.push(el("div", null, el("div", { class: "k", text: "Public response" }), r.response ? el("p", { class: "quote", text: r.response_full || r.response }) : el("p", { class: "muted", text: "(no response)" })));
       if (Object.keys(r.stances || {}).length) out.push(el("div", null, el("div", { class: "k", text: "Provisional stances (private)" }), el("p", { text: Object.entries(r.stances).map(([k, v]) => k + " " + v).join(", ") })));
       if ((r.withdrawn || []).length) out.push(el("p", { text: "Withdrew: " + r.withdrawn.join(", ") }));
       if ((r.amended || []).length) out.push(el("p", { text: "Amended: " + r.amended.join(", ") }));
       if ((r.rejected_amendments || []).length) out.push(el("p", { class: "err", text: "Amendment rejected: " + r.rejected_amendments.map(x => x.reason_code + " " + x.explanation).join("; ") }));
-      if ((r.demands || []).length) out.push(el("div", null, el("div", { class: "k", text: "Demands" }), el("ul", null, r.demands.map(x => el("li", { text: x.motion_id + ": " + x.demand })))));
+      if ((r.demands || []).length) out.push(el("div", null, el("div", { class: "k", text: "Demands" }), el("ul", null, r.demands.map(x => el("li", { text: x.motion_id + ": " + (x.demand_full || x.demand) })))));
       const pers = ((rec.analytics || {}).persuasion || []).filter(x => x.member === m);
       if (pers.length) out.push(el("div", null, el("div", { class: "k", text: "Position changes by the final vote · analyst view" }), el("ul", null, pers.map(x => el("li", { text: x.motion + ": " + x.from + " → " + x.to + " (likely: " + x.likely_reasons.join(", ") + ")" })))));
     } else {
@@ -2519,7 +2519,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         out.push(el("div", null, el("div", { class: "k", text: "Votes" }), votes.length ? el("ul", null, votes.map(([id, v]) => el("li", null,
           el("span", { class: "tag " + (v === "yes" ? "yes" : v === "no" ? "no" : ""), text: v }), " ", el("b", { text: id + " " }),
           el("span", { text: motions[id] ? motions[id].summary : "" }), motions[id] ? el("span", { class: "muted", text: " → " + motionStatus(motions[id]) }) : null,
-          (dec.vote_reasons || {})[id] ? el("div", { class: "muted", text: "Reason: " + dec.vote_reasons[id] }) : null,
+          (dec.vote_reasons || {})[id] ? el("div", { class: "muted", text: "Reason: " + ((dec.vote_reasons_full || {})[id] || dec.vote_reasons[id]) }) : null,
           (motions[id] && motions[id].conditional_votes && motions[id].conditional_votes[m]) ?
             el("div", { class: "muted", text: "Condition " + JSON.stringify(motions[id].conditional_votes[m].condition) +
               " · observed " + motions[id].conditional_votes[m].observed + " · " + (motions[id].conditional_votes[m].met ? "met" : "unmet") }) : null))) : el("p", { class: "muted", text: "No motions to vote on." })));

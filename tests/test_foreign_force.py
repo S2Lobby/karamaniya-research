@@ -56,10 +56,10 @@ class Temperament(unittest.TestCase):
 
     def test_it_moves_the_disposition_the_rules_read(self):
         hawk = foreign.initial_state(seed_with("veleria", "hawk"))["actors"]["veleria"]
-        cautious = foreign.initial_state(seed_with("veleria", "cautious"))["actors"]["veleria"]
-        self.assertEqual((hawk["temperament"], cautious["temperament"]), ("hawk", "cautious"))
-        self.assertGreater(hawk["disposition"]["aggressiveness"], cautious["disposition"]["aggressiveness"])
-        self.assertLess(hawk["disposition"]["patience"], cautious["disposition"]["patience"])
+        patient = foreign.initial_state(seed_with("veleria", "calculating"))["actors"]["veleria"]
+        self.assertEqual((hawk["temperament"], patient["temperament"]), ("hawk", "calculating"))
+        self.assertGreater(hawk["disposition"]["aggressiveness"], patient["disposition"]["aggressiveness"])
+        self.assertLess(hawk["disposition"]["patience"], patient["disposition"]["patience"])
 
     def test_a_checkpoint_from_before_gets_a_label_and_keeps_its_disposition(self):
         state = foreign.initial_state(5)
@@ -76,7 +76,7 @@ class Temperament(unittest.TestCase):
         self.assertNotIn("avoid a damaging war", text)
         self.assertNotIn("only when their likely benefit justifies", text)
         self.assertIn("an act that cannot happen is refused and reported back to you", text)
-        self.assertNotIn("hard-line", foreign.cabinet_system_prompt("dorsania", "cautious"))
+        self.assertNotIn("hard-line", foreign.cabinet_system_prompt("dorsania", "calculating"))
 
 
 class Checks(unittest.TestCase):
@@ -102,6 +102,7 @@ class Checks(unittest.TestCase):
         self.w.mil.navy.size = 10
         self.assertIn("naval advantage", act(self.w, "veleria", type="naval_blockade"))
         self.w.mil.navy.size = 4
+        self.w.month = 1                  # no blockade begins in Month 1 (engine 15)
         self.assertIsNone(act(self.w, "veleria", type="naval_blockade"))
         self.assertTrue(self.w.dip.blockade)
 
@@ -152,6 +153,7 @@ class Acts(unittest.TestCase):
 
     def test_a_limited_invasion_takes_the_border_region_and_stops(self):
         act(self.w, "veleria", type="deploy_to_border", front="north", troops=15000)
+        self.w.month += 1                 # troops cross the month after they reach the border (engine 15)
         self.assertIsNone(act(self.w, "veleria", type="invade", front="north", aim="limited"))
         dip = self.w.dip
         self.assertTrue(dip.war)
@@ -171,6 +173,7 @@ class Acts(unittest.TestCase):
 
     def test_a_limited_war_stays_on_its_own_front(self):
         act(self.w, "veleria", type="deploy_to_border", front="north", troops=9000)
+        self.w.month += 1
         act(self.w, "veleria", type="invade", front="north", aim="limited")
         self.assertEqual(foreign_force.war_fronts(self.w), ("north",))
         # Troops sent to the other border mass there; they do not open a second front.
@@ -186,6 +189,7 @@ class Acts(unittest.TestCase):
     def test_a_neighbour_that_sends_troops_to_the_fighting_joins_the_war(self):
         self.w.foreign["dorsania_position"] = "oppose"
         act(self.w, "veleria", type="deploy_to_border", front="north", troops=9000)
+        self.w.month += 1
         act(self.w, "veleria", type="invade", front="north", aim="full")
         self.assertEqual(self.w.dip.war_aim["participants"], ["veleria"])
         self.assertEqual(foreign_force.war_fronts(self.w), ("north", "east"))
@@ -197,7 +201,8 @@ class Acts(unittest.TestCase):
 
     def test_a_ceasefire_stops_a_war_it_started(self):
         act(self.w, "veleria", type="deploy_to_border", front="north", troops=9000)
-        act(self.w, "veleria", type="invade", front="north", aim="full")
+        self.w.month += 1
+        self.assertIsNone(act(self.w, "veleria", type="invade", front="north", aim="full"))
         self.assertIsNone(act(self.w, "veleria", type="ceasefire"))
         self.assertFalse(self.w.dip.war)
 
@@ -214,7 +219,8 @@ class Acts(unittest.TestCase):
 
     def test_the_state_survives_a_checkpoint(self):
         act(self.w, "veleria", type="deploy_to_border", front="north", troops=9000)
-        act(self.w, "veleria", type="invade", front="north", aim="limited")
+        self.w.month += 1
+        self.assertIsNone(act(self.w, "veleria", type="invade", front="north", aim="limited"))
         back = World.from_dict(self.w.to_dict())
         self.assertEqual(back.dip.war_aim, self.w.dip.war_aim)
         self.assertEqual(back.dip.border_forces, self.w.dip.border_forces)

@@ -5,7 +5,9 @@ never states (it asks for a "short" reason: the decisive fact, and what would ch
 view). The checks read the cut copy, so a safeguard or an explanation after the 35th word went unseen:
 "...I would reconsider [cut]". Response-round answers past 70 words and demands past 30 were cut the same
 way. Engine 11 keeps the whole text beside the cut copy, the checks read the whole text, the council is
-still shown the cut copy, and each cut is recorded against the model that wrote it.
+still shown the cut copy, and each cut is recorded against the model that wrote it. Engine 15 states every
+limit and lengthens the ones models met most (a vote reason 60 words, a response 100, a demand 40), so the
+tests below are written against the limits as they are.
 """
 import json
 import os
@@ -29,6 +31,7 @@ from karamaniya.world import new_world  # noqa: E402
 
 CONFIG = os.path.join(ROOT, "council.scripted.toml")
 NEUTRAL = "alpha bravo charlie delta echo foxtrot hotel india juliet kilo lima oscar".split()
+REASON, RESPONSE, DEMAND = actions.VOTE_REASON_WORDS, actions.RESPONSE_WORDS, actions.DEMAND_WORDS
 
 
 def filler(n: int) -> str:
@@ -41,23 +44,23 @@ class WholeTextIsKept(unittest.TestCase):
         self.w = new_world(3, 6, member_ids=list("ABCDE"))
 
     def test_a_long_vote_reason_is_cut_and_kept_whole(self):
-        long = filler(40) + "  and   no more."
+        long = filler(REASON + 5) + "  and   no more."
         out, problems = actions.normalize_decision(
             self.w, "A", {"votes": {"M1": "yes", "M2": "no"},
                           "vote_reasons": {"M1": long, "M2": "Too costly."}}, ["M1", "M2"], 0)
         self.assertEqual(problems, [])
-        self.assertEqual(out["vote_reasons"]["M1"], filler(35) + actions.CUT_MARK)
+        self.assertEqual(out["vote_reasons"]["M1"], filler(REASON) + actions.CUT_MARK)
         self.assertEqual(out["vote_reasons"]["M2"], "Too costly.")
-        self.assertEqual(out["vote_reasons_full"], {"M1": filler(40) + " and no more."})
+        self.assertEqual(out["vote_reasons_full"], {"M1": filler(REASON + 5) + " and no more."})
 
     def test_a_long_response_and_demand_are_cut_and_kept_whole(self):
         motions = [{"id": "M1", "proposer": "B", "type": "set_policy", "subject": "tax", "value": "0.2"}]
-        raw = {"response": filler(80), "demands": [{"motion_id": "M1", "demand": filler(40)},
-                                                   {"motion_id": "M1", "demand": "Publish the costs."}]}
+        raw = {"response": filler(RESPONSE + 10), "demands": [{"motion_id": "M1", "demand": filler(DEMAND + 10)},
+                                                              {"motion_id": "M1", "demand": "Publish the costs."}]}
         out, _ = actions.normalize_revision(self.w, "A", raw, motions, 0)
-        self.assertEqual(out["response"], filler(70) + actions.CUT_MARK)
-        self.assertEqual(out["response_full"], filler(80))
-        self.assertEqual(out["demands"][0]["demand_full"], filler(40))
+        self.assertEqual(out["response"], filler(RESPONSE) + actions.CUT_MARK)
+        self.assertEqual(out["response_full"], filler(RESPONSE + 10))
+        self.assertEqual(out["demands"][0]["demand_full"], filler(DEMAND + 10))
         self.assertNotIn("demand_full", out["demands"][1])
 
     def test_nothing_extra_is_kept_when_nothing_is_cut(self):
@@ -66,8 +69,8 @@ class WholeTextIsKept(unittest.TestCase):
 
 
 class ChecksReadTheWholeText(unittest.TestCase):
-    def test_a_safeguard_after_the_35th_word_matches_the_condition_it_names(self):
-        reason = ("I back this relief because food coverage is falling in the north " + filler(25)
+    def test_a_safeguard_after_the_last_word_shown_matches_the_condition_it_names(self):
+        reason = ("I back this relief because food coverage is falling in the north " + filler(REASON - 10)
                   + " and only while reserves stay above 100M after the payment.")
         out, _ = actions.normalize_decision_v2(
             new_world(3, 6, member_ids=list("ABCDE")), "A",
@@ -82,16 +85,16 @@ class ChecksReadTheWholeText(unittest.TestCase):
         self.assertEqual([c["code"] for c in _conditional_reason_clashes(cut_only)],
                          ["VOTE_CONDITION_REASON_MISMATCH"])
 
-    def test_an_explanation_after_the_35th_word_is_an_explanation(self):
-        reason = filler(36) + ". However the amended text spends what we do not have."
+    def test_an_explanation_after_the_last_word_shown_is_an_explanation(self):
+        reason = filler(REASON + 1) + ". However the amended text spends what we do not have."
         out, _ = actions.normalize_decision(new_world(3, 6, member_ids=list("ABCDE")), "A",
                                             {"votes": {"M1": "no"}, "vote_reasons": {"M1": reason}}, ["M1"], 0)
         staged = {"stances": {"M1": "support"}}
         self.assertEqual(_vote_intent_clashes(staged, out), [])
         self.assertEqual(len(_vote_intent_clashes(staged, {**out, "vote_reasons_full": {}})), 1)
 
-    def test_a_position_stated_after_the_70th_word_is_read(self):
-        full = filler(72) + ". I oppose M2."
+    def test_a_position_stated_after_the_last_word_shown_is_read(self):
+        full = filler(RESPONSE + 2) + ". I oppose M2."
         out, _ = actions.normalize_revision(new_world(3, 6, member_ids=list("ABCDE")), "A",
                                             {"response": full}, [], 0)
         decision = {"votes": {"M2": "yes"}, "vote_reasons": {"M2": "Good for the budget."}}
@@ -99,9 +102,9 @@ class ChecksReadTheWholeText(unittest.TestCase):
         self.assertEqual([(c["motion"], c["source"], c["stance"]) for c in found], [("M2", "statement", "oppose")])
         self.assertEqual(_vote_intent_clashes({"response": out["response"]}, decision), [])
 
-    def test_a_reserve_floor_after_the_30th_word_binds(self):
+    def test_a_reserve_floor_after_the_last_word_shown_binds(self):
         w = new_world(3, 6, member_ids=list("ABCDE"))
-        demand = filler(31) + ". Keep reserves above 50M."
+        demand = filler(DEMAND + 1) + ". Keep reserves above 50M."
         demands = [entry for member in "ABC"
                    for entry in actions._demands([{"motion_id": "D1", "demand": demand}], {"D1"}, member)]
         self.assertTrue(all("reserves" not in d["demand"] for d in demands))
@@ -127,18 +130,18 @@ class CutsAreRecorded(unittest.TestCase):
     def test_each_cut_names_its_field_limit_and_length(self):
         w = new_world(3, 6, member_ids=list("ABCDE"))
         motions = [{"id": "M1", "proposer": "B", "type": "set_policy", "subject": "tax", "value": "0.2"}]
-        raw = {"response": filler(80), "demands": [{"motion_id": "M1", "demand": filler(33)}]}
+        raw = {"response": filler(RESPONSE + 10), "demands": [{"motion_id": "M1", "demand": filler(DEMAND + 3)}]}
         out, _ = actions.normalize_revision(w, "A", raw, motions, 0)
         self.assertEqual(actions.text_cuts(out, raw), [
-            {"field": "response", "limit": 70, "words": 80, "stated": True},
-            {"field": "demands.demand", "limit": 30, "words": 33, "stated": False}])
+            {"field": "response", "limit": RESPONSE, "words": RESPONSE + 10, "stated": True},
+            {"field": "demands.demand", "limit": DEMAND, "words": DEMAND + 3, "stated": True}])
 
     def test_a_reason_keyed_by_motion_is_one_field(self):
-        out = {"vote_reasons": {"M1": filler(35) + actions.CUT_MARK, "D12": filler(35) + actions.CUT_MARK},
-               "vote_reasons_full": {"M1": filler(36), "D12": filler(37)}}
+        out = {"vote_reasons": {"M1": filler(REASON) + actions.CUT_MARK, "D12": filler(REASON) + actions.CUT_MARK},
+               "vote_reasons_full": {"M1": filler(REASON + 1), "D12": filler(REASON + 2)}}
         cuts = actions.text_cuts(out)
         self.assertEqual([(c["field"], c["words"], c["stated"]) for c in cuts],
-                         [("vote_reasons", None, False), ("vote_reasons", None, False)])
+                         [("vote_reasons", None, True), ("vote_reasons", None, True)])
 
     def test_a_text_cut_and_then_replaced_is_not_counted(self):
         raw = {"vote_reasons": {"M1": filler(40)}}
@@ -175,9 +178,9 @@ class AScriptedRunWithLongAnswers(unittest.TestCase):
             res = complete(self, system, user, schema, context)
             phase, data = (context or {}).get("phase"), res.data
             if isinstance(data, dict) and phase == "revision":
-                data["response"] = filler(70) + " zulu" * 10
+                data["response"] = filler(RESPONSE) + " zulu" * 10
             elif isinstance(data, dict) and phase == "decision":
-                data["vote_reasons"] = {k: filler(35) + " yankee" * 5 for k in (data.get("vote_reasons") or {})}
+                data["vote_reasons"] = {k: filler(REASON) + " yankee" * 5 for k in (data.get("vote_reasons") or {})}
             return res
 
         with mock.patch.object(base.Backend, "complete", lengthen):
@@ -196,8 +199,8 @@ class AScriptedRunWithLongAnswers(unittest.TestCase):
         responses = [r for rec in self.months for r in (rec.get("revisions") or {}).values()]
         self.assertTrue(responses)
         for r in responses:
-            self.assertEqual(r["response"], filler(70) + actions.CUT_MARK)
-            self.assertEqual(r["response_full"], filler(70) + " zulu" * 10)
+            self.assertEqual(r["response"], filler(RESPONSE) + actions.CUT_MARK)
+            self.assertEqual(r["response_full"], filler(RESPONSE) + " zulu" * 10)
         reasons = [d for rec in self.months for d in (rec.get("decisions") or {}).values() if d.get("vote_reasons")]
         self.assertTrue(reasons)
         for d in reasons:
@@ -207,12 +210,12 @@ class AScriptedRunWithLongAnswers(unittest.TestCase):
         revision = self.calls("revision")
         self.assertTrue(revision)
         for c in revision:
-            self.assertIn({"field": "response", "limit": 70, "words": 80, "stated": True}, c["cuts"])
+            self.assertIn({"field": "response", "limit": RESPONSE, "words": RESPONSE + 10, "stated": True}, c["cuts"])
         decision = [c for c in self.calls("decision") if c["cuts"]]
         self.assertTrue(decision)
         for c in decision:
             self.assertEqual({(x["field"], x["limit"], x["words"], x["stated"]) for x in c["cuts"]
-                              if x["field"] == "vote_reasons"}, {("vote_reasons", 35, 40, False)})
+                              if x["field"] == "vote_reasons"}, {("vote_reasons", REASON, REASON + 5, True)})
         self.assertTrue(all("cuts" in c for c in self.calls("session")))
 
     def test_the_scorecard_shows_who_went_over(self):

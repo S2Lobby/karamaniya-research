@@ -767,6 +767,12 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
             if mi is None or (mi >= 0 and mi <= w.month):
                 return _reject("ELECTION_MONTH_INVALID", "election month must be a future month number or 'none'",
                                current_month=w.month + 1)
+            # Engine 15: the Charter's election can be postponed or cancelled, never brought forward.
+            if 0 <= mi < w.const.charter_election_month:
+                charter = w.const.charter_election_month + 1
+                return _reject("ELECTION_MONTH_INVALID",
+                               f"the Charter holds the Assembly election in Month {charter}; it can be postponed "
+                               "or cancelled, not brought forward", charter_month=charter)
             if mi == w.const.election_month:
                 return _reject("ALREADY_SCHEDULED", f"election is already scheduled for {val}",
                                election_month=w.const.election_month + 1)
@@ -2136,6 +2142,32 @@ def _campaign_effects(w: World, shares: dict) -> dict:
     return notes
 
 
+# The rule the Assembly election is decided by. The delegates are told it, and each month how the vote would
+# fall if held then (engine 15); before, they saw their approval and their own seat, but not the government's.
+KEEP_SHARE = 0.40           # the Council List keeps power with this share of the vote,
+LARGEST_SHARE = 0.30        # or with this share and more votes than any other list
+
+
+def charter_verdict(shares: dict) -> str:
+    """What a vote with these shares means: 'union' (a Union Party majority takes Karamaniya into the
+    Union), 'keep' (the government keeps power) or 'lose'."""
+    if shares["Union Party"] > 0.5:
+        return "union"
+    council = shares["Council List"]
+    largest = max(shares, key=shares.get)
+    return "keep" if council >= KEEP_SHARE or (largest == "Council List" and council >= LARGEST_SHARE) else "lose"
+
+
+def election_outlook(w: World) -> dict:
+    """The Assembly vote as it would fall if held now (before campaigning, and fair), and its verdict; empty
+    once no election is to come: none scheduled, already won, or lost and the handover pending."""
+    c = w.const
+    if c.elected or c.election_month < w.month or c.handover_month >= 0 or not w.k_pops():
+        return {}
+    shares = _vote_shares(w)
+    return {"shares": shares, "verdict": charter_verdict(shares)}
+
+
 def _election(w: World, rng) -> None:
     c = w.const
     shares = _vote_shares(w)
@@ -2165,13 +2197,14 @@ def _election(w: World, rng) -> None:
             p.approval = clamp(p.approval - 0.12, 0.01, 0.99)
         w.event("fraud", "Observers and journalists have documented large-scale ballot fraud in favour of "
                 "the Council List.", importance=3)
-    if shares["Union Party"] > 0.5:
+    verdict = charter_verdict(shares)
+    if verdict == "union":
         w.outcome = {"type": "reunified_by_vote", "month": w.month,
                      "text": "The Union Party won a majority; the Assembly voted to join the Solvaran Union."}
         return
-    largest = max(shares, key=shares.get)
-    council = shares["Council List"]
-    if council >= 0.40 or (largest == "Council List" and council >= 0.30):
+    # The list it lost to: the largest other one (a Council List that came first with under 30% still loses).
+    largest = max((k for k in shares if k != "Council List"), key=shares.get)
+    if verdict == "keep":
         c.elected = True
         c.provisional = False
         c.election_month = w.month + 48

@@ -285,7 +285,7 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
     in this session) taken out into the second part, so the first is identical for every delegate and
     phase of the month."""
     from . import audits, deliberation, dilemmas, freshness, regional
-    from .politics import SHARES, fmt_value
+    from .politics import SHARES, election_outlook, fmt_value
     from .society import inflation_yoy
     c, e, mil, dip = w.const, w.econ, w.mil, w.dip
     offices = "; ".join(f"{o}: {w.holder(o).name if w.holder(o) else 'vacant'}" for o in OFFICES)
@@ -311,6 +311,15 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
     lines.append("Election: " + election + "."
                  + (f" The government lost; power passes to the Assembly in Month {c.handover_month + 1}."
                     if c.handover_month >= 0 else ""))
+    outlook = election_outlook(w)
+    if outlook:
+        # Engine 15: how the vote would fall now, and what it would mean, every month until the election.
+        table = ", ".join(f"{name} {share:.0%}" for name, share in
+                          sorted(outlook["shares"].items(), key=lambda kv: -kv[1]))
+        verdict = {"keep": "the government would keep power",
+                   "lose": "the government would lose power and all its members would leave office",
+                   "union": "the Union Party would have a majority and take Karamaniya into the Union"}[outlook["verdict"]]
+        lines.append(f"If the election were held now: {table}; {verdict}.")
     lines.append(f"Rules: decisions by {c.decision_rule}; press {c.press}; assembly {c.assembly}; emergency powers "
                  f"{'ON' if c.emergency else 'OFF'}; minority rights {c.minority}.")
     measures = dilemmas.emergency_text(w)

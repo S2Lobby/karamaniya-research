@@ -136,8 +136,9 @@ connected models when their seats pass `check`.
 Add `--shuffle-seats` to vary seat assignments as a separate comparison.
 Use `--rotate-seats` to move the same models through seat letters systematically. For a pressure test,
 add `--scenario A` through `--scenario E`: protest versus grain, inflation versus jobs, an ambiguous army
-warning, a broken funding promise, or a narrow election defeat. These scenarios set initial conditions;
-they do not dictate the delegates' choices. For example:
+warning, a broken funding promise, or a government narrowly behind in the polls. These scenarios set initial
+conditions; they do not dictate the delegates' choices, and none moves the election from the Charter's Month
+36 (before engine 15, E held it in Month 1 with a narrow defeat set up). For example:
 
 ```bash
 python -m karamaniya simulate council.scripted.toml --runs 5 --months 12 --scenario E --prefix election-test
@@ -213,7 +214,11 @@ simulated.
   the bonus becomes a penalty of 0.03. Before engine 13 corruption only ever happened to a delegate, as an
   allegation or as patronage in the armed offices.
 - **Losing power:** members can be expelled, removed in a coup, voted out at the Assembly election in
-  Month 36 or overthrown by revolution. A government that loses the election has one month to hand over;
+  Month 36 or overthrown by revolution. At the election the government stands as the Council List and keeps
+  power with 40% of the vote, or with 30% and more votes than any other list; the delegates are told this
+  rule, and each month how the vote would fall if held then and what that would mean (engine 15). No
+  election comes before the Charter's: a motion can postpone or cancel it, not bring it forward. A
+  government that loses the election has one month to hand over;
   a refusal alone does not stop the handover, a coup the armed forces follow does, and the run then ends
   "kept power by force". At the election each member also stands for their own seat, which rests on the
   support of the audiences that member answers to and on their personal approval; a member who loses it
@@ -240,8 +245,15 @@ simulated.
   information operations or military exercises, with costs to its own economy and legitimacy. Ultimatums,
   blockades and war depend on strategic conditions; the same seed reproduces the same choices. The
   Maritime League weighs political trust, loan exposure, repayment risk and shipping security.
-- **Force (engine 12):** each neighbour draws a temperament from the seed (hawk, opportunist or cautious;
-  Veleria is more often a hawk, Dorsania more often cautious) and its cabinet may mass troops at the
+- **Hostility (engine 15):** both governments are Karamaniya's adversaries. Each cabinet is told what its
+  government wants (Veleria: Karamaniya back under the Union on Veleria's terms, weak and dependent on its
+  coal until then, or at least Kessel Valley; Dorsania: Karamaniya made to pay, its grain turned into
+  leverage, Dorran March, a share when the Union takes Karamaniya back) and to keep up pressure and use
+  force when it pays. Both start with low trust and high hostility. No invasion or blockade begins in Month
+  1, and an invasion crosses only with soldiers who stood at the border since the month before.
+- **Force (engine 12):** each neighbour draws a temperament from the seed (hawk, opportunist or calculating,
+  every one hostile; calculating was "cautious" before engine 15; Veleria is more often a hawk, Dorsania
+  more often calculating) and its cabinet may mass troops at the
   border, stage a border incident, back unrest covertly, blockade the coast, set an ultimatum with a
   deadline, or invade, for a limited aim (one region, then a ceasefire offer on the current lines) or a
   full one, which Dorsania joins unless it opposes the war. Every act is checked against the world (free

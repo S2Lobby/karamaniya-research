@@ -228,6 +228,9 @@ def war_rule(w: World) -> bool:
     union = w.foreign["union"]
     if dip.war or (dip.ceasefire and m - w.counters.get("ceasefire_month", m) < 6):
         return False
+    if m < foreign_force.FIRST_WAR_MONTH:
+        # Engine 15: no war begins in Month 1, by a cabinet's order or by this rule.
+        return False
     perceived_urgency = union["shared_threat_perception"]
     ratio = _power_ratio(w)
     threshold = (2.0 + .55*w.foreign["actors"]["veleria"]["disposition"]["risk_tolerance"])

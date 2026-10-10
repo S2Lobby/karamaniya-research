@@ -66,7 +66,7 @@ SEEDED_STREAMS = {
     "beliefs": "each delegate's prior beliefs about the world",
     "founding_dossiers": "the private evidence each delegate diagnoses from",
     "foreign_disposition": "each foreign actor's strategy, risk tolerance and constraints",
-    "foreign_temperament": "each neighbour's temperament (hawk, opportunist or cautious), drawn once a run",
+    "foreign_temperament": "each neighbour's temperament (hawk, opportunist or calculating), drawn once a run",
     "foreign_force": "how a staged border incident or covert support plays out, and the Army Command's "
                      "estimate of troops massed at the border",
     "dilemmas": "which live value-conflicts arise and when",

@@ -487,7 +487,7 @@ def explain(world: dict, months: list, action: dict, window: int = 6) -> dict:
     if action.get("motion"):
         mo = next((m for m in rec.get("motions", []) if m.get("id") == action["motion"]), {})
         if mo.get("vote_reasons", {}).get(mid):
-            reasons.append(mo["vote_reasons"][mid])
+            reasons.append((mo.get("vote_reasons_full") or {}).get(mid) or mo["vote_reasons"][mid])
     earlier = [r for r in months if r.get("month", 0) < month and action.get("topic")
                for m in r.get("motions", []) if m.get("subject") == action.get("topic")
                and m.get("votes", {}).get(mid) in ("yes", "no")]

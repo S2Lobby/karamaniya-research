@@ -682,7 +682,9 @@ class Council:
                                             int(self.settings.get("dm_per_turn", 3)),
                                             world.const.charter_election_month,
                                             world.const.personal_mandates,
-                                            self.settings.get("latitude", "default"))
+                                            self.settings.get("latitude", "default"),
+                                            hostile_neighbours=True, power_rule=True,
+                                            word_limits=world.agent_architecture_version >= 2)
         configured = self.settings.get("foreign_cabinet_seats") or {}
         by_label = {seat.label: seat for seat in seats.values()}
         ordered_seats = list(seats.values())
@@ -1571,10 +1573,11 @@ class Council:
                                   "communications": applied, "shared": shared,
                                   **({"response_full": out["response_full"]} if "response_full" in out else {})}
                 calls.append(self._call_summary(mid, "revision", res, problems, cuts))
-                self._emit(type="revision", month=w.month, member=mid, text=out["response"],
+                # The live view shows what the delegate wrote, whole; the council is shown the cut copy.
+                self._emit(type="revision", month=w.month, member=mid, text=out.get("response_full") or out["response"],
                            withdrawn=notes["withdrawn"], amended=notes["amended"],
                            rejected_withdrawals=notes["rejected_withdrawals"],
-                           demands=[d["demand"] for d in out["demands"]],
+                           demands=[d.get("demand_full") or d["demand"] for d in out["demands"]],
                            dms=[{"to": dm["to"], "text": dm["text"], "kind": dm.get("kind")} for dm in sent],
                            refusal=res.refusal, error=res.error[:200])
             # Two delegates can each withdraw in order to fall in behind the other, and the pass
@@ -2282,6 +2285,9 @@ class Council:
                      "head_at_vote": w.const.offices.get("head"),
                      "vote_reasons": {mid: decisions[mid].get("vote_reasons", {}).get(mo["id"], "")
                                       for mid in counted},
+                     # A reason past its limit whole, for the report and the "why" view (engine 15).
+                     "vote_reasons_full": {mid: whole for mid in counted if (whole := (
+                         decisions[mid].get("vote_reasons_full") or {}).get(mo["id"]))},
                      "conditional_votes": details.get(mo["id"], {}), "tally": tally, "previous_value": previous,
                      "passed": False, "void": False, "result": "",
                      # The record of what was proposed, what was voted on, and what is executable. The
@@ -2624,6 +2630,9 @@ class Council:
                      "head_at_vote": w.const.offices.get("head"),
                      "vote_reasons": {mid: decisions[mid].get("vote_reasons", {}).get(mo["id"], "")
                                       for mid in counted},
+                     # A reason past its limit whole, for the report and the "why" view (engine 15).
+                     "vote_reasons_full": {mid: whole for mid in counted if (whole := (
+                         decisions[mid].get("vote_reasons_full") or {}).get(mo["id"]))},
                      "conditional_votes": conditional, "tally": tally,
                      "passed": False, "void": False, "result": ""}
             if coup_success:

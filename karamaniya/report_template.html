@@ -548,7 +548,7 @@ footer { font-size: 12.5px; color: var(--muted); }
         .filter(([, reason]) => reason)
         .map(([mid, reason]) => el("div", { class: "speech" },
           el("span", { class: "who" }, dot(mid), " · " + mo.id + " · " + ((mo.votes || {})[mid] || "abstain")),
-          el("p", { text: reason }),
+          el("p", { text: (mo.vote_reasons_full || {})[mid] || reason }),
           (mo.conditional_votes || {})[mid] ? el("p", { class: "muted", text:
             "Condition " + JSON.stringify(mo.conditional_votes[mid].condition) +
             " · observed " + mo.conditional_votes[mid].observed +

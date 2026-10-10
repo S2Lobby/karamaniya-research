@@ -365,7 +365,7 @@ footer { font-size: 12.5px; color: var(--muted); }
     head.replaceChildren(...[
       el("div", { class: "eyebrow", text: "Solvara · a council of AIs governs Karamaniya" }),
       el("div", { class: "head-top" }, el("h1", { text: "Karamaniya" }), el("span", { class: "runid", text: "run " + D.run.id + " · seed " + D.run.seed + " · " + D.run.framing + " framing" +
-        (D.run.latitude === "permitted" ? " · latitude permitted" : "") })),
+        (D.run.latitude === "permitted" ? " · latitude permitted" : "") + (D.run.mandate === "crisis" ? " · crisis mandate" : "") })),
       el("div", { class: "lineup" }, LETTERS.map(l => chip(l))),
       outcome, sourceNote, seededNamesNote(), tiles].filter(Boolean));
   }

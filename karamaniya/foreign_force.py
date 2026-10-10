@@ -401,7 +401,7 @@ def apply(w, actor_id: str, action: dict) -> dict:
         dip.ultimatum = {"issued": w.month, "deadline": w.month + months, "terms": terms,
                          "terms_id": action["terms"], "by": actor_id}
         dip.rally = clamp(dip.rally + .16)
-        foreign._pay_action(w, actor_id, "ultimatum", .008, approval=.003)
+        foreign._spend(w, actor_id, foreign.ACT_BUDGET["ultimatum"], approval=.003)
         foreign._message(w, name, f"{name} demands: {terms} It expects an answer by Month {w.month + months + 1}.")
         w.event("ultimatum", f"{name} has set Karamaniya a deadline: {terms}", importance=2, actor=actor_id)
         effects["ultimatum"] = action["terms"]
@@ -490,7 +490,7 @@ def ultimatum_compliance(w) -> dict | None:
     m = w.mil
     talks = [p["kind"] for p in (w.foreign or {}).get("proposal_log", [])
              if p.get("month", -1) >= ult["issued"] and p.get("party") in ("union", "veleria")
-             and p.get("kind") in ("trade_talks", "federation", "join_union", "non_aggression")]
+             and p.get("kind") in ("trade_talks", "status_talks", "federation", "join_union", "non_aggression")]
     facts = {"status_talks": {"karamaniyan_proposals_since_the_ultimatum": talks},
              "cut_league_ties": {"league_alliance": w.dip.league_alliance, "league_military_aid": w.dip.league_aid > 0},
              "demilitarize_border": {"share_of_army_on_the_north_border": round(m.deploy.get("north", 0.0), 2),

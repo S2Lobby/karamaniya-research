@@ -4,6 +4,54 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 16, agent prompt 13 and psychology 5
+
+`WORLD_ENGINE` 16, `AGENT_PROMPT` 13 and `PSYCHOLOGY` 5, from the 9-month run `20261010-070501-seed1`, in which
+prices rose 3-8% a month, approval fell from 0.45 to 0.33 and 27 of the 40 votes were five to nothing. The
+prompts changed on purpose, so the prompt-freeze fixture was rewritten with this bump. Backlog T68-T74; tests
+in `tests/test_engine16.py`.
+
+- **The inflation was the engine's.** Each statement, offer of talks, intelligence operation, propaganda
+  campaign or ultimatum a neighbour's cabinet made was charged against that country's real output, 0.5% to 4%
+  of it, for good. The two cabinets acted one to four times a month each and shrank their economies by about 30% in
+  nine months; the three countries share the crown, whose price is the zone's money against the zone's output,
+  so prices rose 42% across the zone, and Karamaniya, which printed nothing, imported it. A council that does
+  nothing, facing the same acts replayed from the log, ended with the same crown price (1.419 against 1.418)
+  and the same approval (0.33); without the charge, 1.004 and 0.42. Those acts now cost budget, not output,
+  and an embargo costs in proportion to the trade it holds back (a fixed charge in every month it moved
+  compounded). With the old charge put back, nine months of three acts a month take the crown to 2.53; on
+  engine 16, 1.02.
+- **Where the inflation comes from.** No delegate ever named the shared crown, and the council met imported
+  inflation with taxes (18% to 29%) and rates (6% to 9%). From Month 2 the canonical state says how far prices
+  rose in Karamaniya and across the crown zone, and who printed crowns.
+- **Status talks.** Veleria demanded talks on Karamaniya's status; the council had no motion for them, filed
+  "talks only, no accession, no federation" as a `federation`, and the engine sent the Union a federation
+  proposal, which the Union could have accepted, ending the run as a federation. There is now a
+  `status_talks` subject (talks that commit to nothing; it meets a demand the Union's own rule set, and a
+  cabinet sees it), the motion list says federation and rejoining the Union are final, and an act the text
+  rules out ("no federation") no longer reads as naming it, so such a motion goes back for repair.
+- **Political agendas.** The delegates' private views differed (their independent opening positions were
+  9-12% alike) but they tabled only what all could accept, and their seeded ambitions were all civic. Each
+  delegate is now dealt a political agenda of its own, no two the same, with a red line: order first (a state
+  that acts, with power concentrated for the crisis and handed back on stated conditions), defence (an army
+  and reserve in proportion to the threat), sovereignty (no concession on status under pressure), results
+  (inflation, deficit, food and wages, judged by consequences), and the constitution (the election on time,
+  no rule by decree); a larger council also gets living standards and peace. The agenda opens the private
+  disposition and orders nothing; each motion records the members who backed it across their own red line,
+  and the scorecard counts them.
+- **A crisis mandate, as an arm.** `mandate = "crisis"` (the control room's "Mandate" setting) puts the
+  founding conference's stabilisation mandate in the system prompt: out of the crisis first, power
+  concentrated for its length, results first, an army in proportion to the threat, no concession under
+  pressure, firm answers to threats, diplomacy for Karamaniya's aims, decisions judged by their consequences,
+  and full democracy back on stated conditions. The default arm has none of it; compare the two on the same
+  seeds.
+- An arrears payment that was capped said "funding was limited"; it now says what the source could fund and
+  what the other could have paid (in Month 7 the council asked domestic bonds for 148M and got 6M, when the
+  reserves could have paid about 177M).
+- An empty answer from a CLI that ended cleanly is asked again before the run pauses (a GLM seat paused that
+  run in Month 10). Long prompts reached that run's Cline seats whole (30,000-56,000 characters), as engine 14
+  intended.
+
 ## World engine 15 and agent prompt 12
 
 `WORLD_ENGINE` 15 and `AGENT_PROMPT` 12, from the first run with models on engine 14

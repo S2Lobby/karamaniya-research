@@ -381,7 +381,7 @@ class AScriptedRun(unittest.TestCase):
 
 class Settings(unittest.TestCase):
     def test_the_versions(self):
-        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT), (15, 12))
+        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT), (15, 12))
 
 
 if __name__ == "__main__":

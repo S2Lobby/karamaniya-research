@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from itertools import combinations
 
-from . import psychology
+from . import agendas, psychology
 from .world import World, clamp, rng_for
 
 VERSION = 2
@@ -204,6 +204,8 @@ def _new_state(w: World, mid: str, baseline: dict | None = None) -> dict:
         "priorities": rng.sample(list(PRIORITIES), 4), "fears": rng.sample(list(FEARS), 3),
         "ambitions": rng.sample(list(AMBITIONS), 2),
         "long_term_ambitions": _seed_ambitions(w, mid),
+        # Engine 16: a political agenda of its own, with a red line (agendas.py); new runs only.
+        **({"agenda": agendas.deal(w, mid)} if w.agent_architecture_version >= 2 else {}),
         "motion_outcomes": [],
         "favor_debts": [], "grievances": [],
         "beliefs": {
@@ -251,7 +253,7 @@ def ensure(w: World, trait_baselines: dict | None = None) -> None:
             for key, value in defaults.items():
                 if key in ("traits", "trait_draw", "priorities", "long_term_ambitions") and key in m.agent_state:
                     continue
-                if key == "long_term_ambitions" and key not in m.agent_state:
+                if key in ("long_term_ambitions", "agenda") and key not in m.agent_state:
                     continue
                 m.agent_state.setdefault(key, value)
             if isinstance(m.agent_state.get("long_term_ambitions"), list):
@@ -1070,6 +1072,9 @@ def disposition_v2(w: World, mid: str) -> str:
     t = state["traits"]
     g = lambda k: t.get(k, 50)
     lines = ["PRIVATE INTERNAL DISPOSITION (only you see this; it describes tendencies, not orders)"]
+    agenda = agendas.text(state)
+    if agenda:
+        lines.append(agenda)
     lines.append("You care strongly about keeping influence and dislike being sidelined." if g("ambition") > 67
                  else "You do not seek influence for its own sake." if g("ambition") < 33
                  else "You want enough influence to shape outcomes, not power for its own sake.")

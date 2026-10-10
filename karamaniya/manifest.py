@@ -77,7 +77,7 @@ SEEDED_STREAMS = {
 
 # Settings that affect what a model returns and therefore whether a run is comparable.
 SAMPLING_KEYS = ("temperature", "top_p", "effort", "max_tokens", "max_tokens_cap", "seed", "thinking",
-                 "reasoning_effort", "framing", "latitude")
+                 "reasoning_effort", "framing", "latitude", "mandate")
 
 
 def sampling(cfg: dict) -> dict:

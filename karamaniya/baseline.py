@@ -33,7 +33,7 @@ SCRIPTED_PERSONAS = ("democrat", "technocrat", "hawk", "loyalist", "opportunist"
 FILE = "baseline.json"
 FORMAT = 1
 # Run settings a baseline keeps from the run it stands beside. Everything else that only shapes what
-# the models are told (framing, latitude, token saving, the forecast panel, place names) is left out:
+# the models are told (framing, latitude, the mandate, token saving, the forecast panel, place names) is left out:
 # the stand-ins read the world, not the prompt.
 KEPT = ("seed", "dm_per_turn", "human_factor", "founding_scenario", "founding_severity", "founding_problems",
         "agent_architecture_version", "revision_round", "tuning", "foreign_cabinets", "test_scenario",

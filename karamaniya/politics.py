@@ -120,7 +120,9 @@ CONSTITUTION_FIELDS = {
     "election_month": None,
     "regime_name": None,
 }
-DIPLOMACY = {"trade_talks": "union", "non_aggression": "union", "federation": "union",
+# status_talks (engine 16): talks on Karamaniya's status that commit to nothing. A council answering a demand
+# for them had no subject but federation, which the Union could accept, as such, for good.
+DIPLOMACY = {"trade_talks": "union", "status_talks": "union", "non_aggression": "union", "federation": "union",
              "join_union": "union", "ceasefire": "union", "alliance": "league", "loan": "league",
              "military_aid": "league", "trade_deal": "league", "grain_deal": "dorsania",
              # A protest is its own act, addressed to the Union. Without it a delegate's protest had
@@ -555,6 +557,7 @@ def canonical_office(subj) -> str:
 # first so "trade talks" is not read as "trade deal".
 _DIPLOMACY_PHRASES = (
     ("non aggression pact", "non_aggression"), ("non aggression", "non_aggression"),
+    ("status talks", "status_talks"), ("status negotiations", "status_talks"), ("talks on status", "status_talks"),
     ("trade talks", "trade_talks"), ("trade deal", "trade_deal"), ("trade agreement", "trade_deal"),
     ("grain deal", "grain_deal"), ("grain agreement", "grain_deal"), ("grain", "grain_deal"),
     ("join union", "join_union"), ("reunification", "join_union"), ("rejoin", "join_union"),
@@ -1179,7 +1182,16 @@ def apply_motion(w: World, mo: dict) -> str:
                 result += (f"; {intended / 1e6:.1f}M was requested but the payment was limited to keep reserves "
                            f"at the reserve floor of {floor / 1e6:.1f}M")
             else:
-                result += f"; {intended / 1e6:.1f}M was requested but funding was limited"
+                # Engine 16: say what limited it and what the other source could have paid. In run
+                # 20261010-070501-seed1 every arrears payment from domestic bonds was capped (in Month 7 the
+                # council asked for 148M and got 6M, when the reserves could have paid about 177M), and it
+                # was only ever told "funding was limited".
+                other = "reserves" if subj == "domestic_bonds" else "domestic_bonds"
+                other_capacity = _arrears_funding_capacity(w, other)
+                result += (f"; {intended / 1e6:.1f}M was requested, but {subj.replace('_', ' ')} could fund only "
+                           f"{capacity / 1e6:.1f}M this month")
+                if other_capacity > capacity + 1:
+                    result += f" ({other.replace('_', ' ')} could have paid up to {other_capacity / 1e6:.1f}M)"
         w.event("arrears_settlement", result, importance=2, categories=list(categories),
                 requested=round(intended, 2), executed=round(paid, 2),
                 remaining=round(max(0.0, intended - paid), 2),

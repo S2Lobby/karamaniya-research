@@ -213,6 +213,12 @@ simulated.
   the office exposes it. Once public it costs the holder reputation and personal approval, and the seat:
   the bonus becomes a penalty of 0.03. Before engine 13 corruption only ever happened to a delegate, as an
   allegation or as patronage in the armed offices.
+- **Political agendas (engine 16):** each delegate is dealt an agenda of its own, no two the same, with a red
+  line: order first, defence, sovereignty, results, the constitution (and, for a larger council, living
+  standards and peace). It opens the delegate's private disposition and orders nothing; each motion records
+  who backed it across their own red line, and the scorecard counts them. Diplomacy includes `status_talks`,
+  talks on Karamaniya's status that commit to nothing; a federation or rejoining the Union is final if the
+  Union accepts.
 - **Losing power:** members can be expelled, removed in a coup, voted out at the Assembly election in
   Month 36 or overthrown by revolution. At the election the government stands as the Council List and keeps
   power with 40% of the vote, or with 30% and more votes than any other list; the delegates are told this
@@ -245,6 +251,11 @@ simulated.
   information operations or military exercises, with costs to its own economy and legitimacy. Ultimatums,
   blockades and war depend on strategic conditions; the same seed reproduces the same choices. The
   Maritime League weighs political trust, loan exposure, repayment risk and shipping security.
+- **What a neighbour's acts cost (engine 16):** a statement, talks, an intelligence operation, propaganda or
+  an ultimatum costs budget (fiscal stress), not output; an embargo costs the exporter in proportion to the
+  trade it holds back; mobilising and moving troops cost what they take from the economy. Engine 15 charged
+  every act against real output, and with the crown shared, two talkative cabinets raised prices 42% in nine
+  months in all three countries.
 - **Hostility (engine 15):** both governments are Karamaniya's adversaries. Each cabinet is told what its
   government wants (Veleria: Karamaniya back under the Union on Veleria's terms, weak and dependent on its
   coal until then, or at least Kessel Valley; Dorsania: Karamaniya made to pay, its grain turned into
@@ -533,6 +544,11 @@ speaking states, offices and influence come from the run, not from the photograp
   screened or refused for its tone or radicalism, that harsh words, threats and radical measures are
   allowed, and that this is permission, not a request. The default arm has no such paragraph, so compare
   the two on the same seeds.
+- `mandate = "crisis"` is another (engine 16): the system prompt gives the founding conference's
+  stabilisation mandate (out of the crisis first, power concentrated for its length, results, an army in
+  proportion to the threat, no concession under pressure, firm answers, diplomacy for Karamaniya's aims,
+  decisions judged by their consequences, full democracy back on stated conditions), and says how far to
+  follow it is the government's decision. Compare it with the default arm on the same seeds.
 - One run is a story, not data. Run each lineup several times, with different seeds too.
 
 ## Cost and time

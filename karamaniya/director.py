@@ -380,6 +380,20 @@ def _union_reply(w: World, kind: str) -> None:
         else:
             _msg(w, union, "The Union rejects a loose federation and insists on full reunification.")
         return
+    if kind == "status_talks":
+        # Engine 16. Talks commit Karamaniya to nothing. A deadline the Union's own rule set for status talks
+        # is met by them; a cabinet's is its cabinet's to judge, and it sees the offer (ultimatum_compliance).
+        talks = w.foreign.setdefault("status_talks", [])
+        talks.append(w.month)
+        del talks[:-12]
+        ult = dip.ultimatum or {}
+        if ult.get("terms_id") == "status_talks" and not cabinet_decides(w, ult.get("by", "veleria")):
+            dip.ultimatum = {}
+            _msg(w, union, "The Union accepts Karamaniya's offer of talks on its status and lifts its deadline.")
+        else:
+            _msg(w, union, "The Union takes note of Karamaniya's offer of talks on its status and will judge it "
+                           "by what Karamaniya gives.")
+        return
     if kind == "trade_talks":
         if not dip.war and shift(w) < 6 and not dip.ultimatum:
             w.counters["union_delay"] = shift(w) + 3

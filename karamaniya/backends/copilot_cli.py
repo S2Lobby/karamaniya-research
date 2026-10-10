@@ -109,6 +109,8 @@ class CopilotCLIBackend(Backend):
         events = read_events(stdout)
         text = events["text"].strip()
         failed = code != 0 or (events["exit_code"] not in (None, 0))
+        if not failed and not text and not events["errors"] and not stderr.strip():
+            raise cli_common.no_answer("Copilot CLI", "exit code 0")
         if failed or not text:
             detail = "; ".join(events["errors"]) or stderr.strip() or f"exit code {code}, no answer"
             if any(marker.lower() in (detail + " " + stderr).lower() for marker in NOT_LOGGED_IN):

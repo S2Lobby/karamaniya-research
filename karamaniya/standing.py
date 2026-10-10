@@ -81,6 +81,8 @@ ACTION_EFFECTS = {
     "concede_union": ({"strong": -2}, {"national electorate": -1.0, "border communities": -.6, "senior officers": -.8}),
     "league_loan": ({}, {"creditors and merchants": .8, "national electorate": -.2}),
     "peace_overture": ({}, {"border communities": .8, "senior officers": -.3, "national electorate": .3}),
+    # Talks on status under pressure: calming at the border, a concession to officers and the electorate.
+    "status_talks": ({"strong": -1}, {"border communities": .5, "senior officers": -.5, "national electorate": -.3}),
     "anti_union": ({"strong": 2}, {"senior officers": .8, "border communities": .5, "national electorate": .3}),
     "resigned": ({"honest": 2, "weak": 3}, {}),
     "apology": ({"honest": 3, "weak": 2}, {"national electorate": .4}),
@@ -209,7 +211,7 @@ LEVER_TAGS = {
     "debt_service": ("suspend_debt", None), "officer_pay": ("officer_pay_up", "officer_pay_down"),
 }
 DIPLOMACY_TAGS = {"join_union": "concede_union", "federation": "concede_union", "loan": "league_loan",
-                  "ceasefire": "peace_overture", "non_aggression": "peace_overture"}
+                  "ceasefire": "peace_overture", "non_aggression": "peace_overture", "status_talks": "status_talks"}
 
 
 def motion_tags(w: World, mo: dict) -> list:

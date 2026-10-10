@@ -27,6 +27,7 @@ ACTION_EFFECTS = {
     "grain_deal": ("dip.grain_embargo", "foreign.actors.dorsania"),
     "non_aggression_pact": ("dip.nonaggression", "dip.union_weariness"),
     "trade_talks": ("counters.union_delay", "dip.grain_embargo"),
+    "status_talks": ("dip.ultimatum", "foreign.status_talks"),
     "ceasefire": ("dip.ceasefire", "dip.war"),
     "federation": ("dip.federation", "outcome"),
     "join_union": ("outcome",),

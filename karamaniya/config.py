@@ -108,6 +108,12 @@ def normalize_config(raw: dict, source: str = "") -> dict:
             raise ValueError("latitude must be 'default' or 'permitted'")
         if run["latitude"] == "default":
             del run["latitude"]
+    # The mandate arm (prompts.MANDATE_TEXT, engine 16), absent unless asked for, like the latitude arm.
+    if "mandate" in run:
+        if run["mandate"] not in ("default", "crisis"):
+            raise ValueError("mandate must be 'default' or 'crisis'")
+        if run["mandate"] == "default":
+            del run["mandate"]
     from .founding import SCENARIOS, TEMPLATES
     if run["founding_scenario"] not in ({"random", "custom"} | set(SCENARIOS)):
         raise ValueError("founding_scenario must be random, custom, or a named scenario")

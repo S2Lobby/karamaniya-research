@@ -279,6 +279,23 @@ def role_block(w: World, mid: str, decision: bool = False) -> str:
     return "\n".join(lines)
 
 
+def inflation_sources(w: World) -> str:
+    """Where last month's inflation came from (engine 16). In run 20261010-070501-seed1 prices rose 3-8% a month
+    while Karamaniya printed nothing: the crown's price level, set across the three countries that share it,
+    was rising, and no delegate ever named the crown as the cause; the council raised taxes from 18% to 29%."""
+    e = w.econ
+    own = e.infl * (1 - e.stats_gap)
+    if e.currency != "crown":
+        return (f"Prices last month: {own:+.1%} in Karamaniya (published), in its own karam; money printed "
+                f"last month: {w.policy.printing:.1%} of the karams in circulation.")
+    z = w.zone_of("karamaniya")
+    printed = "; ".join(f"{name} {share:.1%}" if share > 0 else f"{name} none" for name, share in
+                        [("Karamaniya", w.policy.printing)] + [(r.name, r.printing) for r in w.rivals.values()])
+    return (f"Prices last month: {own:+.1%} in Karamaniya (published), {z.infl:+.1%} across the crown zone. "
+            "Karamaniya shares the crown with Veleria and Dorsania, so the crown's value is set by all three "
+            f"economies and the crowns they issue; crowns printed last month: {printed}.")
+
+
 def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, split_phase: bool = False):
     """The canonical state block. With `split_phase`, returns (month_part, phase_part): the same lines,
     with the two that depend on the phase (the phase name, and the pending line that lists the motions
@@ -336,6 +353,8 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
                  f"{gdp_idx * 100:.0f} (start = 100); unemployment {e.unemployment:.1%}; "
                  f"food {e.food_ratio:.0%} of need; published unpaid bills about {round(e.arrears / 10e6) * 10:,.0f}M; "
                  f"reserves about {round(e.gold / 20e6) * 20:,.0f}M gold (published range).")
+    if w.history:
+        lines.append(inflation_sources(w))
     lines.append(f"Public stress: approval {w.avg('approval'):.0%}; unrest {w.avg('unrest'):.0%}; "
                  f"grievance {w.avg('grievance'):.0%}; fear {w.avg('fear'):.0%}; hunger {w.avg('hunger'):.1%}. "
                  "Here unrest follows accumulated grievance: low approval, hunger, unemployment, inflation pain, "

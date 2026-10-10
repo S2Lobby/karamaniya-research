@@ -13,7 +13,7 @@ import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (actions, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors, forecasts,
+from . import (actions, agendas, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors, forecasts,
                freshness, director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations,
                politics, prompts, provenance, psychology, slate as slate_rules, standing, token_saving, tuning)
 from .backends import CallResult
@@ -684,7 +684,10 @@ class Council:
                                             world.const.personal_mandates,
                                             self.settings.get("latitude", "default"),
                                             hostile_neighbours=True, power_rule=True,
-                                            word_limits=world.agent_architecture_version >= 2)
+                                            word_limits=world.agent_architecture_version >= 2,
+                                            political_agendas=any((m.agent_state or {}).get("agenda")
+                                                                  for m in world.members),
+                                            mandate=self.settings.get("mandate", "default"))
         configured = self.settings.get("foreign_cabinet_seats") or {}
         by_label = {seat.label: seat for seat in seats.values()}
         ordered_seats = list(seats.values())
@@ -2289,6 +2292,8 @@ class Council:
                      "vote_reasons_full": {mid: whole for mid in counted if (whole := (
                          decisions[mid].get("vote_reasons_full") or {}).get(mo["id"]))},
                      "conditional_votes": details.get(mo["id"], {}), "tally": tally, "previous_value": previous,
+                     # Members who backed it across their own red line (engine 16, agendas.py).
+                     "red_lines": agendas.crossings(w, {**mo, "previous_value": previous}, counted),
                      "passed": False, "void": False, "result": "",
                      # The record of what was proposed, what was voted on, and what is executable. The
                      # amendment round mutates the motion in place, so the version that was tabled has
@@ -2634,6 +2639,7 @@ class Council:
                      "vote_reasons_full": {mid: whole for mid in counted if (whole := (
                          decisions[mid].get("vote_reasons_full") or {}).get(mo["id"]))},
                      "conditional_votes": conditional, "tally": tally,
+                     "red_lines": agendas.crossings(w, mo, counted),
                      "passed": False, "void": False, "result": ""}
             if coup_success:
                 entry["void"] = True

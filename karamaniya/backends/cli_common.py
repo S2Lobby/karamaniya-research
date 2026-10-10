@@ -35,6 +35,13 @@ AUTH_RE = re.compile(r"not logged in|log ?in again|please (log|sign) ?in|unautho
                      r"|\b401\b|\b403\b|expired token|token (has )?expired|no credentials", re.I)
 
 
+def no_answer(name: str, detail: str):
+    """A CLI that ran to the end without an error and gave no answer: an empty final message, or the answer
+    left in the reasoning. A fresh attempt usually answers, so it is retried, where engine 15 classified the
+    exit status as a fatal error and paused the run (run 20261010-070501-seed1, Month 10, a GLM seat)."""
+    return TransientError(f"{name}: no answer ({detail.strip()[:300]})")
+
+
 def classify(text: str, name: str):
     """Turn a CLI's error text into the exception the retry logic understands."""
     msg = f"{name}: {text.strip()[:400]}"

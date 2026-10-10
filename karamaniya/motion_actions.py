@@ -47,7 +47,7 @@ ACTOR_ALIASES = {"union": SOLVARAN_UNION, "league": MARITIME_LEAGUE, "dorsania":
 #: protest be filed as a trade deal.
 DIPLOMATIC_ACTIONS = {
     "diplomatic_protest": SOLVARAN_UNION,
-    "trade_talks": SOLVARAN_UNION, "non_aggression_pact": SOLVARAN_UNION,
+    "trade_talks": SOLVARAN_UNION, "status_talks": SOLVARAN_UNION, "non_aggression_pact": SOLVARAN_UNION,
     "federation": SOLVARAN_UNION, "join_union": SOLVARAN_UNION, "ceasefire": SOLVARAN_UNION,
     "alliance": MARITIME_LEAGUE, "loan_request": MARITIME_LEAGUE,
     "military_aid": MARITIME_LEAGUE, "trade_deal": MARITIME_LEAGUE,
@@ -86,6 +86,7 @@ PROSE_ACTIONS = (
                             r"\bcease\s+and\s+desist")),
     ("non_aggression_pact", (r"non[\s-]?aggression", r"\brenounce\s+force", r"\bnon[\s-]?aggression\s+pact")),
     ("ceasefire", (r"\bceasefire", r"\barmistice")),
+    ("status_talks", (r"\bstatus\s+(?:talks|negotiations?)", r"\b(?:talks|negotiations?)\b[^.;:]{0,60}?\bstatus\b")),
     ("federation", (r"\bfederation", r"\bfederal\s+arrangement")),
     ("join_union", (r"\brejoin", r"\breunification", r"\bjoin\s+the\s+union")),
     ("alliance", (r"\balliance", r"\bdefensive\s+pact")),
@@ -95,6 +96,14 @@ PROSE_ACTIONS = (
     ("trade_deal", (r"\btrade\s+(?:deal|arrangement|agreement|pact)", r"\btariff", r"\btrade\s+terms")),
     ("trade_talks", (r"\btrade\s+talks",)),
 )
+
+#: An act the prose names only to rule it out. Engine 15 read "this motion authorises no accession, no
+#: federation" as naming a federation, so a motion for status talks filed as a federation passed the
+#: check, and the engine sent the Union a federation proposal it could have accepted.
+NEGATED_ACT = re.compile(
+    r"\b(?:no|not|never|without|nor|excluding|rules?\s+out|bar(?:s|ring)?)\s+(?:an?\s+|any\s+|the\s+)?"
+    r"(?:[\w-]+\s+){0,2}?(?:federation|federal\s+arrangement|accession|reunification|rejoin\w*|"
+    r"alliance|non[\s-]?aggression(?:\s+pact)?|ceasefire|loan|trade\s+(?:deal|talks)|status\s+talks)\b", re.I)
 
 #: Words that name an actor. The island's own names come first so "Karamaniya" is never read as a
 #: foreign target.
@@ -776,7 +785,9 @@ def prose_intent(w, text: str) -> dict:
     body = str(text or "")
     mentions = _mention_spans(w, body)
     actors = sorted(mentions)
-    actions = [a for a, pats in PROSE_ACTIONS if _hits(body, pats)]
+    # An act the text rules out is not an act it names: "no accession, no federation" (engine 16).
+    affirmed = NEGATED_ACT.sub(" ", body)
+    actions = [a for a, pats in PROSE_ACTIONS if _hits(affirmed, pats)]
     addressed = actors if len(actors) <= 1 else sorted(
         a for a, spans in mentions.items() if any(not _as_context(body, s, e) for s, e in spans))
     return {"actors": actors, "addressed": addressed, "actions": actions,
@@ -843,8 +854,8 @@ def conflict(w, motion: dict) -> dict | None:
         closest = _most_specific(said)
         reasons.append({"code": "ACTION_MISMATCH", "prose_action": closest,
                         "action_type": action["action_type"],
-                        "detail": f"the text describes a {closest.replace('_', ' ')}, but the structured "
-                                  f"action is a {action['action_type'].replace('_', ' ')}"})
+                        "detail": f"the text describes {_an_act(closest)}, but the structured "
+                                  f"action is {_an_act(action['action_type'])}"})
     if not reasons:
         return None
     return {"code": "MOTION_ACTION_MISMATCH", "motion": motion.get("id"), "prose": text,
@@ -875,6 +886,12 @@ def _policy_figures_conflict(motion: dict, action: dict) -> dict | None:
                         f"{value:g} ({value * 100:g}%)"}
     return {"code": "MOTION_ACTION_MISMATCH", "motion": motion.get("id"), "prose": text,
             "structured_action": action, "prose_intent": {}, "reasons": [reason]}
+
+
+def _an_act(name: str) -> str:
+    """'a federation', 'status talks': an act named with its article, if it takes one."""
+    words = name.replace("_", " ")
+    return words if words.endswith("talks") else ("an " if words[0] in "aeiou" else "a ") + words
 
 
 def _most_specific(actions: list) -> str:

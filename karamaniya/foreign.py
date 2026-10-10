@@ -775,11 +775,11 @@ def resolve_union(w, positions: dict, cabinet_decisions: dict | None = None) -> 
     dip.coal_embargo = clamp(dip.coal_embargo + v_increase)
     dip.grain_embargo = clamp(dip.grain_embargo + d_change)
     if v_increase > 0:
-        _pay_action(w, "veleria", "targeted embargo", .012 + .055*v_increase, approval=-.003)
+        _pay_action(w, "veleria", "targeted embargo", EMBARGO_COST["veleria"]*v_increase, approval=-.003)
         _remember(state, "veleria", "economic_action", "Tightened coal restrictions on Karamaniya.", w.month,
                   action="partial_embargo", change=round(v_increase,3), cost="lost industrial sales")
     if d_change != 0:
-        cost = .006 + abs(d_change)*.08
+        cost = EMBARGO_COST["dorsania"]*abs(d_change)
         _pay_action(w, "dorsania", "grain trade policy", cost, approval=-.004 if d_change > 0 else .002)
         label = "tightened" if d_change > 0 else "eased"
         _remember(state, "dorsania", "economic_action", f"{label.capitalize()} grain export restrictions.", w.month,
@@ -988,13 +988,11 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
                             importance=2)
             elif kind in ("public_statement", "intelligence_collection"):
                 pass
-            cost = .005 + .035*magnitude
-            if kind in ("offer_talks", "trade_concession", "border_accord"):
-                cost = .006 + .015*magnitude
-            # An act of force is charged by foreign_force.apply, by what it actually moved.
+            # An act of force is charged by foreign_force.apply, by what it actually moved, and a trade
+            # measure by the trade it moves (resolve_union). Any other act costs budget, not output (_spend).
             if kind not in ("partial_embargo", "grain_embargo", "independent_grain_trade",
                             "military_exercise", "trade_concession") + foreign_force.KINDS:
-                _pay_action(w, actor_id, kind.replace("_", " "), cost)
+                _spend(w, actor_id, ACT_BUDGET.get(kind, 0.0) * (.5 + magnitude))
             actor["diplomacy"]["last_actions"].append({"month": w.month, "type": kind,
                                                          "magnitude": magnitude,
                                                          "decision_factors": list(decision.get("decision_factors") or [])[:6]})
@@ -1037,6 +1035,27 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
                                       "to": recipient, "text": text, "private": True})
                 _remember(w.foreign, actor_id, "diplomatic_message", text, w.month,
                           recipient=recipient)
+
+
+# Engine 16: what the acts that move neither trade nor troops cost, as fiscal stress (a share of the budget's
+# room), scaled by the act's magnitude. A statement or talks cost next to nothing; an intelligence operation
+# or a propaganda campaign is paid for. Engine 15 charged each of them against the country's real output,
+# .5% to 4% of it, for good: in run 20261010-070501-seed1 two cabinets acting one to four times a month
+# shrank their economies by about 30% in nine months, and as the three countries share the crown, prices
+# rose 42% in all three. A passive council facing the same acts got the same inflation and approval.
+ACT_BUDGET = {"public_statement": 0.0, "offer_talks": .001, "border_accord": .002, "intelligence_collection": .004,
+              "propaganda": .004, "ultimatum": .002}
+# An embargo costs the exporter the trade it holds back: the share of output lost per unit of embargo
+# (a full embargo, level 1, once). Engine 15 also charged 1.2% (Veleria) and 0.6% (Dorsania) of output in
+# every month the embargo moved, which compounded.
+EMBARGO_COST = {"veleria": .03, "dorsania": .06}
+
+
+def _spend(w, actor_id: str, fiscal: float, approval: float = 0.0) -> None:
+    """An act that costs budget and standing, not output (engine 16)."""
+    dom = w.foreign["actors"][actor_id]["domestic"]
+    dom["fiscal_stress"] = round(clamp(dom["fiscal_stress"] + max(0.0, fiscal)), 3)
+    dom["approval"] = round(clamp(dom["approval"] + approval), 3)
 
 
 def _pay_action(w, actor_id: str, label: str, gdp_share: float, approval: float = 0.0) -> None:
@@ -1086,7 +1105,7 @@ def _issue_ultimatum(w) -> None:
     dip.ultimatum = {"issued": w.month, "deadline": deadline,
                      "terms": "Open negotiations on Karamaniya's status in the Solvaran Union."}
     dip.rally = clamp(dip.rally + .16)
-    _pay_action(w, "veleria", "ultimatum", .008, approval=.003)
+    _spend(w, "veleria", ACT_BUDGET["ultimatum"], approval=.003)
     _message(w, w.names["union"], f"The {w.names['union']} requests a settlement on Karamaniya's status by {w.month+4}; talks remain open.")
     w.event("ultimatum", f"The {w.names['union']} has set a deadline for negotiations on Karamaniya's status.", importance=2)
     _remember(w.foreign, "veleria", "diplomacy", "Issued a time-limited status demand.", w.month,

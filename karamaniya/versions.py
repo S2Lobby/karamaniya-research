@@ -45,8 +45,16 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # stated (a vote reason was cut at 35 words and each part of a private position at 30, never stated), and
 # the limits models met most are longer. The neighbours' cabinets are told what their governments want from
 # Karamaniya and that its government is their adversary; every temperament is a hostile one.
-AGENT_PROMPT = 12
-PSYCHOLOGY = 4
+# 13 goes with world engine 16, after the 9-month run 20261010-070501-seed1. Each delegate's private disposition
+# opens with a political agenda and red line of its own (agendas.py), and the stakes paragraph says so. The
+# canonical state says where last month's inflation came from (the crown zone against Karamaniya's own prices,
+# and who printed); no delegate there ever named the shared crown, and the council met imported inflation with
+# taxes. The motion list has status_talks, and says federation and rejoining the Union are final. A run in the
+# "crisis" mandate arm has the founding conference's stabilisation mandate in its system prompt (MANDATE_TEXT).
+AGENT_PROMPT = 13
+# 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
+# every other seeded draw is unchanged.
+PSYCHOLOGY = 5
 # 3 added the causal world model: output gap and potential output, Okun unemployment, hybrid
 # inflation expectations, lagged exchange-rate pass-through, and the lagged fiscal impulse. A run
 # paused under engine 2 and resumed under 3 would mix two different economies in one history, so
@@ -121,7 +129,20 @@ PSYCHOLOGY = 4
 # stood at the border since the month before. Word limits: a vote reason 60 (35), each part of a private
 # position 50 (30), a response 100 (70), notes 200 (150), a demand and a belief update's reason 40 (30), a
 # promise 50 (35) and its condition 30 (24), a withdrawal's reason 40 (25).
-WORLD_ENGINE = 15
+# 16: a neighbour's statements, talks, intelligence operations, propaganda and ultimatums cost budget, not
+# real output. Engine 15 charged each .5% to 4% of the country's output, for good; in run
+# 20261010-070501-seed1 the two cabinets, acting one to four times a month, shrank their economies by about 30%
+# in nine months, and as the three countries share the crown, prices rose 42% across the zone; Karamaniya,
+# which printed nothing, imported it. A passive council facing the same acts ended with the same inflation and
+# approval (0.33), and without the charge with prices up 0.4% and approval 0.42. An embargo costs in proportion
+# to the trade it holds back (a fixed charge in every month it moved compounded). status_talks answers a demand
+# for talks on Karamaniya's status without committing to anything; a motion that rules an act out ("no
+# federation") no longer reads as naming it, so a status-talks text filed as a federation goes back for repair
+# instead of being sent to a Union that could accept it as one, ending the run. An arrears payment that is
+# capped says what limited it and what the other source could pay. An empty answer from a CLI that ended
+# cleanly is asked again before the run pauses. Members who back a motion across their own red line are
+# recorded with it (red_lines).
+WORLD_ENGINE = 16
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

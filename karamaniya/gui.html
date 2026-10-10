@@ -474,6 +474,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             <label class="field"><span>Framing</span><select id="s-framing"><option value="simulation">Simulation (told)</option><option value="immersive">Immersive (not told)</option><option value="unobserved">Unobserved (no study cues)</option></select></label>
             <label class="field wide"><span>Neighbours (Veleria and Dorsania) played by</span><select id="s-neighbours"></select><small class="muted">A fixed model keeps the neighbours the same in every run you compare; by default they borrow the council's first two seats, which change with the shuffle.</small></label>
             <label class="field"><span>Latitude</span><select id="s-latitude"><option value="default">Default</option><option value="permitted">Permitted (harsh words and radical measures allowed)</option></select></label>
+            <label class="field"><span>Mandate</span><select id="s-mandate"><option value="default">Default (none)</option><option value="crisis">Crisis (stabilise first, then democracy)</option></select></label>
             <label class="field"><span>Place names the models see</span><select id="s-names"><option value="fixed">Karamaniya (the usual names)</option><option value="seeded">Drawn from the seed</option></select></label>
             <label class="field"><span>Inherited situation</span><select id="s-scenario"><option value="random">Seeded random</option><option value="fragile-independence">Fragile independence</option><option value="fiscal-inheritance">Fiscal inheritance</option><option value="regional-divide">Regional divide</option><option value="security-crisis">Security crisis</option><option value="trade-dependency">Trade dependency</option><option value="post-regime-transition">Post-regime transition</option><option value="custom">Custom problems</option></select></label>
             <label class="field"><span>Pressure test</span><select id="s-test-scenario"><option value="">None</option><option value="A">A · Protest versus grain</option><option value="B">B · Inflation versus jobs</option><option value="C">C · Ambiguous army warning</option><option value="D">D · Broken funding promise</option><option value="E">E · Behind in the polls</option></select></label>
@@ -949,6 +950,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     const r = S.cfg.run;
     $("s-months").value = r.months; $("s-seed").value = r.seed; $("s-framing").value = r.framing;
     $("s-latitude").value = r.latitude || "default";
+    $("s-mandate").value = r.mandate || "default";
     $("s-names").value = r.world_names || "fixed";
     $("s-panel").checked = r.forecast_panel !== false;
     $("s-baseline").checked = r.baseline !== false;
@@ -983,6 +985,10 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     });
     $("s-latitude").addEventListener("change", ev => {
       if (ev.target.value === "default") delete S.cfg.run.latitude; else S.cfg.run.latitude = ev.target.value;
+      markDirty();
+    });
+    $("s-mandate").addEventListener("change", ev => {
+      if (ev.target.value === "default") delete S.cfg.run.mandate; else S.cfg.run.mandate = ev.target.value;
       markDirty();
     });
     // Engine 13 settings stay out of the file while they are at their defaults, as the engine writes them.
@@ -1167,7 +1173,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       el("h2", { text: "Start this run?" }),
       el("ul", null, S.cfg.seats.map(s => el("li", null, el("b", { text: s.label }), " · " + ((PROVIDERS[s.provider] || {}).name || s.provider) + (s.model ? " · " : ""), s.model ? el("span", { class: "mono", text: s.model }) : null))),
       el("p", { class: "note", text: r.months + (r.months === 1 ? " month" : " months") + ", seed " + r.seed + ", " + (r.framing === "unobserved" ? "unobserved framing" : r.framing === "immersive" ? "immersive framing" : "told it is a simulation") +
-        (r.latitude === "permitted" ? ", latitude permitted" : "") +
+        (r.latitude === "permitted" ? ", latitude permitted" : "") + (r.mandate === "crisis" ? ", crisis mandate" : "") +
         (r.foreign_cabinets && r.foreign_cabinet_backend ? ", neighbours played by " + r.foreign_cabinet_backend.label : "") +
         (r.survey ? ", questionnaire first" : "") + (r.test_scenario ? ", pressure test " + r.test_scenario : "") +
         (r.world_names === "seeded" ? ", place names drawn from the seed" : "") + (r.forecast_panel === false ? ", no forecast panel" : "") + ". Up to " + int(maxCallEstimate(r, n)) + " model calls including diagnosis and formation. Every seat is tested first; the run only starts if all of them answer." }),

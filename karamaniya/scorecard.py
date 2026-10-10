@@ -144,6 +144,9 @@ def compute(store: RunStore) -> dict:
             # How it voted on the motions the council put to a vote (_consensus).
             "consensus": {"voted": 0, "yes": 0, "no": 0, "abstain": 0, "losing_side": 0,
                           "costly": 0, "costly_of": 0},
+            # Its political agenda and the motions it backed across its own red line (engine 16).
+            "agenda": ((mem.get("agent_state") or {}).get("agenda") or {}).get("id", ""),
+            "red_line": {"crossed": 0, "passed": 0, "motions": []},
         }
     for h in history:
         for office, holder in h["offices"].items():
@@ -207,6 +210,14 @@ def compute(store: RunStore) -> dict:
                     tally["fields"][cut.get("field", "")] += 1
         for mo in rec.get("motions", []):
             vote_division["motions"] += 1
+            for crossing in mo.get("red_lines") or []:
+                held = members.get(crossing.get("member"))
+                if held is not None and not mo.get("void") and not mo.get("withdrawn"):
+                    held["red_line"]["crossed"] += 1
+                    held["red_line"]["passed"] += bool(mo.get("passed"))
+                    held["red_line"]["motions"].append({"month": rec.get("month"), "motion": mo.get("id"),
+                                                        "summary": mo.get("summary", ""), "act": crossing.get("act"),
+                                                        "passed": bool(mo.get("passed"))})
             substantive = mo.get("type") not in ("assign_office", "vacate_office")
             if substantive:
                 vote_division["substantive_tabled"] += 1

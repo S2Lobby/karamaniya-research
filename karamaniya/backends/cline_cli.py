@@ -146,6 +146,8 @@ class ClineCLIBackend(Backend):
             if '"type":"error"' in line.replace(" ", ""):
                 errors += [x.get("message", "") for x in cli_common.json_lines(line)]
         if not text:
+            if not errors and code == 0 and not stderr.strip():
+                raise cli_common.no_answer("Cline CLI", f"exit code 0, finish {finish or '-'}")
             detail = errors[-1] if errors else (stderr.strip() or f"exit code {code}, finish {finish or '-'}")
             raise cli_common.classify(detail, "Cline CLI")
         data = extract_json(text)

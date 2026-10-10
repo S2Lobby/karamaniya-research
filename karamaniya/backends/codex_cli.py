@@ -153,6 +153,8 @@ class CodexCLIBackend(Backend):
                         s.get("text", "") for s in summary if isinstance(s, dict)))
         text = answer or text
         if not text:
+            if not errors and code == 0 and not stderr.strip():
+                raise cli_common.no_answer("Codex CLI", "exit code 0")
             detail = errors[-1] if errors else (stderr.strip() or stdout.strip() or f"exit code {code}")
             raise cli_common.classify(detail, "Codex CLI")
         # Codex fills these from the Responses API usage (codex-rs TokenUsage): input_tokens includes

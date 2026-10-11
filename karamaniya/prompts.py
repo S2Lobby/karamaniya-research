@@ -622,6 +622,8 @@ def opening_instructions_v2(w, mid: str, dm_left: int, order: list, capacity: in
         "target, the issue at stake and any terms you demand. The engine executes exactly what 'action' says, so "
         "it must match your motion text: a protest is action_type diplomatic_protest with the target being "
         "whoever you object to - the Union, Dorsania, Veleria or the League - not a proposal to somebody else. "
+        "An ultimatum_reply answers an ultimatum that stands: address it to the power that issued it, say in its "
+        "text whether it accepts, rejects or counters the demand, and that power reads it. "
         "If the two disagree the motion is sent back to you instead of being executed. Leave 'action' empty for "
         "motions that address no foreign country.",
         "MORE LEVERS. Regions: the constitution settings kessel_status and highlands_status (central, cultural, "

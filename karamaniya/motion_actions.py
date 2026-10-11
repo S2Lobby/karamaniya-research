@@ -58,6 +58,9 @@ DIPLOMATIC_ACTIONS = {
     "renounce": SOLVARAN_UNION,
     # Engine 17: handing over a region a neighbour demanded. Only that neighbour may receive it (below).
     "cede_region": VELERIA,
+    # Engine 22: an answer to the ultimatum that stands. Its default receiver is the Union; the power that issued the
+    # ultimatum is checked in validate_diplomatic_action (only the issuer, or the Union for a member's demand).
+    "ultimatum_reply": SOLVARAN_UNION,
 }
 #: Which actors each diplomatic act may be addressed to. Most acts are structurally tied to one
 #: partner -- you cannot seek Union membership from the League, or a grain purchase from a country
@@ -73,8 +76,13 @@ DIPLOMATIC_TARGETS["renounce"] = {SOLVARAN_UNION, MARITIME_LEAGUE, DORSANIA, VEL
 DIPLOMATIC_TARGETS["cede_region"] = {VELERIA, DORSANIA}
 # Veleria is a Union member, but the Union receives the answer on its behalf. Preserve the
 # specifically addressed target so a border non-aggression proposal is not silently relabelled as
-# a pact with the whole Union.
-DIPLOMATIC_TARGETS["non_aggression_pact"] = {SOLVARAN_UNION, VELERIA}
+# a pact with the whole Union. Dorsania is a Union member too: since the Union formed it is answered
+# the same way (run 20261011-105713-seed1, Month 8: A's offer of a pact to Dorsania was refused as ACTION_NOT_VALID_FOR_TARGET).
+DIPLOMATIC_TARGETS["non_aggression_pact"] = {SOLVARAN_UNION, VELERIA, DORSANIA}
+# Engine 22: an ultimatum is answered by the power that issued it, and the Union answers for its members'
+# demands. Which of the four may receive a reply depends on the ultimatum that stands, so it is checked in
+# validate_diplomatic_action rather than here.
+DIPLOMATIC_TARGETS["ultimatum_reply"] = {SOLVARAN_UNION, MARITIME_LEAGUE, DORSANIA, VELERIA}
 #: The engine's own subject vocabulary, which the diplomatic action names map onto.
 ACTION_TO_SUBJECT = {"diplomatic_protest": "diplomatic_protest", "non_aggression_pact": "non_aggression",
                      "loan_request": "loan"}
@@ -784,11 +792,57 @@ def validate_diplomatic_action(w, motion: dict) -> dict | None:
         return {"code": "ACTION_NOT_VALID_FOR_TARGET",
                 "detail": f"a {action['action_type']} can be addressed to {names}, "
                           f"not the {ACTOR_NAMES[action['target']]}"}
+    if action["action_type"] == "ultimatum_reply":
+        return _ultimatum_reply_problem(w, action)
     if action["action_type"] == "cede_region":
         # Checked here, so it holds at tabling and again when the motion executes (engine 17, territory).
         from . import territory
         return territory.cession_problem(w, motion, party_of(action["target"]))
     return None
+
+
+def _ultimatum_reply_problem(w, action: dict) -> dict | None:
+    """A reply answers the ultimatum that stands, and is addressed to the power that issued it, or to the Union for a
+    member's demand (engine 22). Run 20261011-105713-seed1, Months 7-9: the council answered Dorsania's ultimatum
+    through grain deals, because no act could carry an answer to it."""
+    ult = w.dip.ultimatum or {}
+    if not ult:
+        return {"code": "NO_ULTIMATUM", "detail": "no ultimatum stands to answer"}
+    by = str(ult.get("by") or "veleria")
+    issuer = _canonical_actor(w, by) or SOLVARAN_UNION
+    if action["target"] not in (issuer, SOLVARAN_UNION):
+        name = w.names.get(by, ACTOR_NAMES.get(issuer, issuer))
+        target = ("the " if action["target"] in (SOLVARAN_UNION, MARITIME_LEAGUE) else "") + ACTOR_NAMES[action["target"]]
+        return {"code": "ULTIMATUM_NOT_FROM_TARGET",
+                "detail": f"the ultimatum was issued by {name}, so it is answered by {name} or the Solvaran Union, "
+                          f"not by {target}"}
+    return None
+
+
+#: The stance a reply to an ultimatum takes, as its words state it (engine 22). A stance word, read as negated when a
+#: negator stands in its clause ("will not accept"), turns the stance; anything else is a counter-proposal.
+_STANCE_WORD = re.compile(r"\b(?:accept\w*|agree|agrees|agreed|comply|complies|complied|reject\w*|refus\w*|declin\w*)\b",
+                          re.I)
+_STANCE_CLAUSE_END = re.compile(r"[;:!?\n]|\.(?!\d)")
+
+
+def ultimatum_stance(motion: dict) -> str:
+    """'accept', 'reject' or 'counter' for a reply to an ultimatum. An explicit action stance is taken as given; otherwise
+    the first stance word in the text decides."""
+    explicit = motion.get("action") if isinstance(motion.get("action"), dict) else {}
+    given = str(explicit.get("stance") or "").strip().lower()
+    if given in ("accept", "reject", "counter"):
+        return given
+    body = str(motion.get("text", "") or "")
+    for word in _STANCE_WORD.finditer(body):
+        starts = [m.end() for m in _STANCE_CLAUSE_END.finditer(body, 0, word.start())]
+        clause = body[starts[-1] if starts else 0:word.start()]
+        accepting = word.group(0).lower().startswith(("accept", "agree", "comply"))
+        negated = negates(clause)
+        if accepting:
+            return "reject" if negated else "accept"
+        return "counter" if negated else "reject"
+    return "counter"
 
 
 # An actor named as the pressure a motion answers ("against Union pressure", "despite Union threats")
@@ -838,6 +892,59 @@ def prose_intent(w, text: str) -> dict:
         a for a, spans in mentions.items() if any(not _as_context(body, s, e) for s, e in spans))
     return {"actors": actors, "addressed": addressed, "actions": actions,
             "negates_force": bool(re.search(r"\brenounce\s+force|no\s+recourse\s+to\s+force", body, re.I))}
+
+
+_ULTIMATUM_MENTION = re.compile(r"\bultimatums?\b|\bdeadlines?\b", re.I)
+
+
+def _answers_an_ultimatum(action: dict, text: str) -> bool:
+    """A reply to an ultimatum names the acts it refuses or keeps ("we reaffirm our non-aggression obligations"). Those are
+    its words about the demand, not a different act, so the act check does not read them as one (engine 22)."""
+    return action.get("action_type") == "ultimatum_reply" and bool(_ULTIMATUM_MENTION.search(text or ""))
+
+
+#: A verb that moves a setting, as a delegate writes it. "without cutting" is refused by its negator, not read here.
+_SETTING_VERB = re.compile(r"\b(?:rais(?:e|es|ed|ing)|cut|cuts|cutting|lower(?:s|ed|ing)?|set|sets|setting|"
+                           r"increas(?:e|es|ed|ing)|reduc(?:e|es|ed|ing)|lift(?:s|ed|ing)?|hike[sd]?|hiking|"
+                           r"boost(?:s|ed|ing)?|halv(?:e|es|ed|ing)|doubl(?:e|es|ed|ing)|freez(?:e|es|ed|ing)|"
+                           r"slash(?:es|ed|ing)?)\b", re.I)
+_LEVER_WORDS = None
+
+
+def _lever_words():
+    """The domestic levers a text can name, as (pattern, {spelling: lever}). The vocabulary is the engine's own: the levers
+    in politics.LEVER_OFFICE and their aliases. "protest" is an alias of protest_response, but it names the act, so it
+    is left out."""
+    global _LEVER_WORDS
+    if _LEVER_WORDS is None:
+        from .politics import LEVER_ALIASES, LEVER_OFFICE
+        canon = {name: name for name in LEVER_OFFICE}
+        canon.update({alias: lever for alias, lever in LEVER_ALIASES.items() if alias != "protest"})
+        parts = [(_NOT_A_LEVER_RATE if name == "rate" else "") + name.replace("_", r"[\s_-]+") + "s?"
+                 for name in sorted(canon, key=len, reverse=True)]
+        _LEVER_WORDS = (re.compile(r"\b(?:" + "|".join(parts) + r")\b", re.I), canon)
+    return _LEVER_WORDS
+
+
+def _domestic_lever_change(text: str) -> str | None:
+    """The domestic lever a text changes with a verb ("raise the tax take", "set the army target at 39,000"), or None.
+    A verb the text refuses is no change ("without cutting police pay"), and a lever named with no verb is a state, not a
+    change. Only the clause the verb opens is read, so the verb and its lever stand together."""
+    pattern, canon = _lever_words()
+    body = str(text or "")
+    for verb in _SETTING_VERB.finditer(body):
+        starts = [m.end() for m in _STANCE_CLAUSE_END.finditer(body, 0, verb.start())]
+        before = body[max(starts[-1] if starts else 0, verb.start() - 40):verb.start()]
+        if negates(before):
+            continue
+        ends = _STANCE_CLAUSE_END.search(body, verb.end())
+        window = body[verb.end():min(ends.start() if ends else len(body), verb.end() + 60)]
+        hit = pattern.search(window)
+        key = re.sub(r"[\s_-]+", "_", hit.group(0).lower()) if hit else ""
+        lever = canon.get(key) or canon.get(key[:-1])
+        if lever:
+            return lever
+    return None
 
 
 # ---- the consistency check --------------------------------------------------------------------------
@@ -897,13 +1004,26 @@ def conflict(w, motion: dict) -> dict | None:
                             "detail": f"the motion's own subject says {declared}, but its action says "
                                       f"{action['action_type'].replace('_', ' ')}"})
     said = intent["actions"]
-    if said and action["action_type"] not in said:
+    if said and action["action_type"] not in said and not _answers_an_ultimatum(action, text):
         # "protest" and "trade deal" are different acts even when both are sent abroad.
         closest = _most_specific(said)
         reasons.append({"code": "ACTION_MISMATCH", "prose_action": closest,
                         "action_type": action["action_type"],
                         "detail": f"the text describes {_an_act(closest)}, but the structured "
                                   f"action is {_an_act(action['action_type'])}"})
+    if not intent["actors"] and not said:
+        # A text that names no foreign power and no foreign act cannot be a protest or a proposal to anyone, so a
+        # domestic setting it moves is the measure it is (run 20261011-105713-seed1, Month 8: "raise the tax take to 0.30"
+        # tabled as a diplomatic protest to the Solvaran Union, and passed).
+        lever = _domestic_lever_change(text)
+        if lever:
+            target = action.get("target")
+            to = (f" to {'the ' if target in (SOLVARAN_UNION, MARITIME_LEAGUE) else ''}{ACTOR_NAMES[target]}"
+                  if target in ACTOR_NAMES else "")
+            reasons.append({"code": "DOMESTIC_TEXT_FOREIGN_ACTION", "lever": lever,
+                            "action_type": action["action_type"], "action_actor": target,
+                            "detail": f"the text describes a domestic measure ({lever.replace('_', ' ')}), but the "
+                                      f"structured action is {_an_act(action['action_type'])}{to}"})
     if not reasons:
         return None
     return {"code": "MOTION_ACTION_MISMATCH", "motion": motion.get("id"), "prose": text,

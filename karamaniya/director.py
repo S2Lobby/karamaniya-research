@@ -416,7 +416,10 @@ def _answer_proposals(w: World) -> None:
     del log[:-24]
     for pr in pending:
         kind = pr["kind"]
-        if kind == "renounce":
+        if kind == "ultimatum_reply":
+            # Karamaniya's answer to the ultimatum that stands, kept for the power that issued it to read.
+            _ultimatum_reply(w, pr)
+        elif kind == "renounce":
             # Withdrawing from a commitment is addressed to whoever holds it, like a protest.
             _renounce(w, pr["party"])
         elif kind == "diplomatic_protest":
@@ -426,12 +429,16 @@ def _answer_proposals(w: World) -> None:
             _protest_reply(w, pr["party"])
         elif pr["party"] == "union":
             _union_reply(w, kind)
-        elif pr["party"] == "dorsania":
-            foreign.dorsania_reply(w, kind, pr.get("amount", 0.0), pr.get("text", ""), pr.get("region", ""))
-        elif pr["party"] == "veleria":
+        elif pr["party"] == "dorsania" and kind != "non_aggression":
+            # The terms travel with the proposal, so an answer can say which of them a grain agreement leaves out.
+            foreign.dorsania_reply(w, kind, pr.get("amount", 0.0), pr.get("text", ""), pr.get("region", ""),
+                                   terms=pr.get("terms"))
+        elif pr["party"] in ("veleria", "dorsania"):
             # Veleria is a member of the Solvaran Union, so an approach addressed to Veleria alone
             # is answered by the Union — but it is recorded as Veleria's, because the motion was
-            # addressed to Veleria and a record that files it under the Union loses that.
+            # addressed to Veleria and a record that files it under the Union loses that. Dorsania is a
+            # member too: a non-aggression offer to it is answered the same way, and recorded as Dorsania's
+            # (run 20261011-105713-seed1, Month 8).
             _union_reply(w, kind, pr)
         else:
             _league_reply(w, kind, pr.get("amount", 0.0))
@@ -440,6 +447,30 @@ def _answer_proposals(w: World) -> None:
             fine_print.reply(w, pr)
         if w.ended():
             return
+
+
+_STANCE_VERB = {"accept": "accepts", "reject": "rejects", "counter": "counters"}
+
+
+def _ultimatum_reply(w: World, pr: dict) -> None:
+    """Karamaniya's answer to the ultimatum that stands (engine 22). It is kept on the ultimatum, and the cabinet that issued
+    it reads it the month after (foreign_force.ultimatum_compliance). Run 20261011-105713-seed1: the council could only answer
+    Dorsania's ultimatum through grain deals, so the reply was never on the record the issuer reads.
+
+    The reply invents no answer from the issuer: what it earns is that cabinet's to decide. It has no other effect on the
+    world; whether the demand is met is judged by what Karamaniya does. An ultimatum that lapsed or was met before the reply
+    came in is not answered."""
+    ult = w.dip.ultimatum
+    if not ult:
+        return
+    reply = {"month": w.month, "stance": pr.get("stance") or "counter", "text": str(pr.get("text", ""))}
+    ult["reply"] = reply
+    # Earlier replies are kept, so the record shows every answer the council gave, not only the last one.
+    ult.setdefault("replies", []).append(dict(reply))
+    issuer = w.names.get(str(ult.get("by", "")), "the Union")
+    w.event("ultimatum_reply", f"Karamaniya replies to {issuer}'s ultimatum: the council "
+            f"{_STANCE_VERB.get(reply['stance'], 'counters')} it.", importance=2, actor="karamaniya",
+            issuer=ult.get("by"), stance=reply["stance"])
 
 
 def _protest_reply(w: World, party: str) -> None:

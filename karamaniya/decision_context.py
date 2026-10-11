@@ -407,8 +407,11 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
     lines.append(f"Forces: army about {round(mil.army.size, -3):,.0f} (actual strength, not the Army holder's target order, "
                  f"which is {w.policy.army_target:,.0f}); police about {round(mil.police.size, -3):,.0f}; "
                  f"navy {mil.navy.size:.0f} warships. Loyalty and readiness figures are office information.")
+    # Engine 22: the ultimatum names the power that issued it (Dorsania's was shown as the Union's, run 20261011-105713-seed1).
+    ultimatum_status = (f"ACTIVE, issued by {w.names.get(str(dip.ultimatum.get('by', 'veleria')), 'Veleria')}"
+                        if dip.ultimatum else "none")
     lines.append(f"Security and diplomacy: war {'YES' if dip.war else 'no'}; ceasefire {'yes' if dip.ceasefire else 'no'}; "
-                 f"blockade {'YES' if dip.blockade else 'no'}; Union ultimatum {'ACTIVE' if dip.ultimatum else 'none'}; "
+                 f"blockade {'YES' if dip.blockade else 'no'}; ultimatum {ultimatum_status}; "
                  f"Union formed {'yes' if dip.union_formed else 'no'}; League alliance {'yes' if dip.league_alliance else 'no'}; "
                  f"non-aggression pact {'yes' if dip.nonaggression else 'no'}.")
     if foreign_force.massing_text(w):

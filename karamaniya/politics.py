@@ -1298,7 +1298,9 @@ def apply_motion(w: World, mo: dict) -> str:
         from .economy import settle_arrears as _settle
         _settle(w, paid, categories)
         scope_text = f" to {', '.join(categories)}" if categories else ""
-        result = f"paid {paid / 1e6:.1f}M crowns in inherited bills{scope_text} using {subj.replace('_', ' ')}"
+        # Run 20261011-105713-seed1: arrears were 28M after Month 1 and 102M by Month 5, most of it run up by the
+        # government's own deficits, so "inherited" was wrong for every bill but the founding stock.
+        result = f"paid {paid / 1e6:.1f}M crowns in unpaid bills{scope_text} using {subj.replace('_', ' ')}"
         if paid + 1 < intended:
             if floor and unfloored > capacity + 1:
                 result += (f"; {intended / 1e6:.1f}M was requested but the payment was limited to keep reserves "

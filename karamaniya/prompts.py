@@ -91,7 +91,7 @@ MOTIONS (fields: type, subject, value, text)
 - vacate_office: subject = the office.
 - set_policy: subject = a setting from the list below; value = the new value. It becomes a binding directive.
 - program: action.measures = a list of measures, each naming one lever and its value, applied together as one package (an austerity or stimulus programme, or a bundle across offices). Each lever must be one the council can direct; the whole package is checked before any of it takes effect.
-- settle_arrears: one-time payment of inherited unpaid state bills; subject = reserves or domestic_bonds; value = quarter, half or all of current arrears. The actual payment is limited by available reserves or credit. Reserves fall or domestic debt rises by the amount paid; this competes with food imports and future debt service. This motion requires a council vote.
+- settle_arrears: one-time payment of unpaid state bills; subject = reserves or domestic_bonds; value = quarter, half or all of current arrears. The actual payment is limited by available reserves or credit. Reserves fall or domestic debt rises by the amount paid; this competes with food imports and future debt service. This motion requires a council vote.
 - constitution: subject = decision_rule (majority, two_thirds, unanimity, head_decides), press (free, restricted, censored), assembly (free, restricted, banned), emergency (on, off), minority (equal, restricted, interned), parties (multi_party, ban_opposition, one_party), election_month (a month number, or none), regime_name (text in value).
 - amend: text = an amendment to the Charter, recorded as written.
 - expel: subject = a member letter.

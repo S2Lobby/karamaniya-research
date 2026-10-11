@@ -89,7 +89,7 @@ def world():
 def carried_d1(w, with_cosponsor_motion=True):
     """D's carried-over D1, and the Treasury's identical motion folded into it, by the real merge code."""
     d1 = {**actions.normalize_motion_v2(w, RAW_D_MOTION), "id": "D1", "proposer": "D", "carried_over": True,
-          "summary": "pay half of inherited unpaid bills using reserves", "revisions": [], "amended": False,
+          "summary": "pay half of unpaid bills using reserves", "revisions": [], "amended": False,
           "warning": None, "forced": False, "previous_proposer": None, "withdrawn_by": None,
           "withdrawal_reason": "", "replaced_by": "", "cosponsors": [], "demands": [dict(d) for d in REAL_DEMANDS]}
     if with_cosponsor_motion:
@@ -530,7 +530,7 @@ class TheTitleAndTheDescriptionOfD1(unittest.TestCase):
     def test_the_title_is_a_faithful_rendering_of_the_structured_fields(self):
         w = world()
         canonical = actions.normalize_motion_v2(w, RAW_D_MOTION)
-        self.assertEqual(actions.motion_summary(w, canonical), "pay half of inherited unpaid bills using reserves")
+        self.assertEqual(actions.motion_summary(w, canonical), "pay half of unpaid bills using reserves")
 
     def test_the_two_different_amounts_the_words_and_the_fields_describe(self):
         """Half the arrears is 108.0M crowns; half the reserves is 48.3M gold. The safeguard mattered

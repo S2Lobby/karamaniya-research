@@ -530,7 +530,7 @@ def motion_summary(w: World, mo: dict) -> str:
     if t == "set_policy":
         return f"directive {s} = {v}"
     if t == "settle_arrears":
-        return f"pay {v} of inherited unpaid bills using {s.replace('_', ' ')}"
+        return f"pay {v} of unpaid bills using {s.replace('_', ' ')}"
     if t == "disaster_relief":
         payload = mo.get("action") if isinstance(mo.get("action"), dict) else {}
         places = payload.get("regions") or ([payload["region"]] if payload.get("region") else [])

@@ -88,6 +88,8 @@ class ADemandOnTheOtherSideIsNotAnOffer(unittest.TestCase):
                      "In return the Union withdraws troops from the border.",
                      "Dorsania must pull back its massed forces from the east border.",
                      "The Union proposes a stand-down of its patrols in the north.",
+                     "We demand a public explanation and a stand-down of patrols in the north.",
+                     "We ask the Union to pull back its troops from the north.",
                      "The Union's stand-down of patrols in the north would calm the border."):
             with self.subTest(text=text):
                 self.assertEqual(fine_print.clauses(world(), text, "union"), [])
@@ -129,7 +131,10 @@ class TheMixedTextFindsOnlyTheOffer(unittest.TestCase):
                      "We demand that the Union withdraw troops from the border, and we propose a stand-down of our "
                      "patrols in the north.",
                      "The Union must withdraw troops from the border, but we propose a stand-down of our patrols in "
-                     "the north."):
+                     "the north.",
+                     "We demand that the Union pull back its patrols and propose a stand-down of our patrols in the "
+                     "north.",
+                     "We ask for talks and propose a stand-down of our patrols in the north."):
             with self.subTest(text=text):
                 self.assertEqual(fine_print.clauses(world(), text, "union"), ["stand_down"])
 

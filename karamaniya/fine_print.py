@@ -109,11 +109,20 @@ _CLAUSE_BREAK = re.compile(r"[.;:!?]|\b(?:but|while)\b|(?:,|\band\b)\s*(?=(?:we|
 # pull-back).
 _ITEM_BREAK = re.compile(r"[,;:.!?]|\b(?:and|or|but|while)\b", re.I)
 _MUTUAL = re.compile(r"\b(?:mutual(?:ly)?|reciprocal(?:ly)?|both\s+sides|each\s+side)\b", re.I)
-# A demand on the other side governs the clause it stands in, as a refusal does (_asserted). "Must", "should" and "in
-# return" do so when the other side is the one pulling back: "in return ... withdraws" is a demand on it.
+# A demand on the other side governs the clause it stands in, as a refusal does (_asserted), up to a new predicate
+# (_PREDICATE_BREAK). "Must", "should" and "in return" do so when the other side is the one pulling back: "in return ...
+# withdraws" is a demand on it.
 _DEMAND = re.compile(r"\b(?:demand|require|insist|urge|expect|ask|invite)(?:s|ed|ing)?\b|"
                      r"\bcall(?:s|ed|ing)?\s+on\b", re.I)
 _OBLIGATION = re.compile(r"\b(?:must|should|shall)\b|\bin\s+return\b", re.I)
+# A coordinator that brings in a new predicate ends a demand's reach: "we demand that the Union pull back its patrols
+# and propose a stand-down of our patrols" demands the pull-back and offers the stand-down (engine 22). A noun phrase
+# after "and" ("and a stand-down") is still the demand's object, and "stand" is a predicate only when it is not the noun
+# "stand-down".
+_PREDICATE_BREAK = re.compile(r"\b(?:and|or)\s+(?=(?:(?:will|would|shall|should|must|can|may|propose|offer|suggest|"
+                              r"keep|accept|agree|table|open|seek|send|join|end|lift|renounce|reaffirm|pull|withdraw|"
+                              r"halt|suspend|ask|demand|require|insist|urge|expect|invite|call)s?\b)"
+                              r"|stand(?![\s-]*downs?\b))", re.I)
 # The party a clause names as the one that pulls back. A possessive ("the Union's invitation") and a party after a
 # preposition or a request ("with the Union", "ask the Union") is not the subject. "Karamaniya's shipping" is not us.
 _OUR_NAMES = r"(?:we|karamaniya|(?:the\s+|our\s+|this\s+)?(?:provisional\s+)?(?:government|council))"
@@ -122,7 +131,7 @@ _SUBJECT = re.compile(rf"\b(?:(?P<ours>{_OUR_NAMES})|(?P<theirs>{_THEIR_NAMES}|t
 _OBJECT_CUES = frozenset(
     "of to from with by for against on in at between under over about than into onto upon toward towards "
     "ask asks asked invite invites invited call calls called urge urges urged require requires demand demands "
-    "expect expects tell tells told warn warns warned".split())
+    "expect expects tell tells told warn warns warned that".split())
 # The forces a stand-down or pull-back names. Ours: "our", "Karamanian", "Karamaniya's" or "the army's" before them.
 # The other side's: "massed", the Union's, Veleria's or Dorsania's (or Dorsanian) before them, or "its" and "their" when
 # the subject is not ours.
@@ -179,7 +188,8 @@ def _stand_down_reads(text: str, match: re.Match, needs_side: bool) -> bool:
     massed forces to garrison levels"; Month 5 asked the Union to "withdraw troops massed on our borders". The words of
     the match's clause and its list item decide it, in this order:
     - "mutual", "reciprocal", "both sides" or "each side" in the item: an offer, whoever is named;
-    - a demand on the other side in the clause, or "must" and "in return" when the other side is the one pulling back;
+    - a demand on the other side in the clause, before any predicate a coordinator brings in, or "must" and "in return"
+      when the other side is the one pulling back;
     - the other side named as the one pulling back, or its forces named ("massed", "the Union's troops", "its patrols");
     - our forces named ("our", "Karamanian", "Karamaniya's" or "the army's" troops, forces, patrols, units or
       soldiers), or we, Karamaniya, the council or the government pulling back.
@@ -191,7 +201,8 @@ def _stand_down_reads(text: str, match: re.Match, needs_side: bool) -> bool:
     if _MUTUAL.search(_ITEM_BREAK.split(text[:start])[-1] + rest):
         return True
     who = _who_pulls_back(clause)
-    if _DEMAND.search(clause) or (_OBLIGATION.search(clause) and who != "ours"):
+    demanded = _PREDICATE_BREAK.split(clause)[-1]
+    if _DEMAND.search(demanded) or (_OBLIGATION.search(demanded) and who != "ours"):
         return False
     if who == "theirs" or _THEIR_POSSESSIVE_TAIL.search(clause):
         return False

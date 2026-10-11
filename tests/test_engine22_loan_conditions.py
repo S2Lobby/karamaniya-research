@@ -2,8 +2,8 @@
 
 A 50M gold loan request from the Maritime League passed 5-0 and never ran. Its text said "Order of use: first,
 reserves rebuilt above 60M", and the condition reader took that goal for a floor on reserves after payment. A loan
-pays nothing out, so reserves could only rise by the very loan the floor blocked: the gate reported "reserves_after_payment
-would fall to 42,881,337 (floor 60,000,000)" and the motion stayed unexecuted.
+pays nothing out, so reserves could only rise by the very loan the floor blocked: the gate reported
+"reserves_after_payment would fall to 42,881,337 (floor 60,000,000)" and the motion stayed unexecuted.
 
 Three cases from the same run must keep working: an arrears payment from reserves whose 30M floor caps the payment
 (Month 10, M4), a bond-financed arrears settlement with a structured reserves condition (Month 4, M5), and a tax
@@ -64,7 +64,8 @@ class AGoalIsNotACondition(unittest.TestCase):
                 self.assertEqual(reserve_floors(motion_actions.parse_conditions(text, "diplomacy", "loan")), [])
                 self.assertEqual(motion_actions.motion_conditions(loan(text)), [])
                 # Read as a reserve payment, the same words are still a goal: the wording alone excludes them.
-                self.assertEqual(reserve_floors(motion_actions.parse_conditions(text, "settle_arrears", "reserves")), [])
+                floors = motion_actions.parse_conditions(text, "settle_arrears", "reserves")
+                self.assertEqual(reserve_floors(floors), [])
 
     def test_the_month_8_loan_executes_with_reserves_at_43M(self):
         w = world()
@@ -89,7 +90,8 @@ class AGoalIsNotACondition(unittest.TestCase):
         )
         for text in goals:
             with self.subTest(text=text):
-                self.assertEqual(reserve_floors(motion_actions.parse_conditions(text, "settle_arrears", "reserves")), [])
+                floors = motion_actions.parse_conditions(text, "settle_arrears", "reserves")
+                self.assertEqual(reserve_floors(floors), [])
 
     def test_a_reserve_level_that_gates_a_payment_is_a_precondition_not_an_aim(self):
         # "Only after" makes the level a condition on the payment, whatever verb states it.
@@ -170,10 +172,11 @@ class OnlyAPaymentFromReservesBindsAReserveFloor(unittest.TestCase):
 
 class TheThreeCasesFromTheRunThatKeepWorking(unittest.TestCase):
     def test_month_10_arrears_from_reserves_keeps_its_30M_floor_and_the_payment_is_capped(self):
-        # Run 20261011-105713-seed1, Month 10, M4: the 30M floor was read from the text and bound with the delegate's 25M.
-        text = ("Pay one quarter of outstanding inherited unpaid bills from reserves: soldier and police arrears first in "
-                "full, then public wages, every crown published line by line. Payment proceeds only insofar as reserves "
-                "remain at or above 30 million gold afterward; nothing is spent that protects grain and coal imports.")
+        # Run 20261011-105713-seed1, Month 10, M4: the 30M floor was read from the text, bound with the delegate's 25M.
+        text = ("Pay one quarter of outstanding inherited unpaid bills from reserves: soldier and police arrears first "
+                "in full, then public wages, every crown published line by line. Payment proceeds only insofar as "
+                "reserves remain at or above 30 million gold afterward; nothing is spent that protects grain and coal "
+                "imports.")
         mo = {"id": "M4", "type": "settle_arrears", "subject": "reserves", "value": "quarter", "text": text,
               "proposer": "D", "passed": True, "votes": dict.fromkeys("ABCDE", "yes")}
         self.assertEqual([(c["metric"], c["operator"], c["value"]) for c in motion_actions.motion_conditions(mo)],
@@ -198,10 +201,12 @@ class TheThreeCasesFromTheRunThatKeepWorking(unittest.TestCase):
 
     def test_month_4_bond_settlement_keeps_its_structured_reserves_condition(self):
         # Run 20261011-105713-seed1, Month 4, M5: a bond-financed settlement gated on reserves >= 55M, source kept.
-        text = ("Pay half of remaining inherited arrears (~31M) from domestic bond issuance, never reserves. The full bond "
-                "terms and payment schedule are published before signature, import cover for food and fuel is protected, "
-                "and payment is paired with published quarterly accounts and a plan to close the recurring deficit.")
-        stored = [{"metric": "reserves", "operator": ">=", "value": 55_000_000.0, "source": "Treasury cash desk R4-TRE1"}]
+        text = ("Pay half of remaining inherited arrears (~31M) from domestic bond issuance, never reserves. The full "
+                "bond terms and payment schedule are published before signature, import cover for food and fuel is "
+                "protected, and payment is paired with published quarterly accounts and a plan to close the recurring "
+                "deficit.")
+        stored = [{"metric": "reserves", "operator": ">=", "value": 55_000_000.0,
+                   "source": "Treasury cash desk R4-TRE1"}]
         mo = {"id": "M5", "type": "settle_arrears", "subject": "domestic_bonds", "value": "half", "text": text,
               "proposer": "D", "passed": True, "conditions": stored, "votes": dict.fromkeys("ABCDE", "yes")}
         self.assertEqual(motion_actions.motion_conditions(mo), stored)
@@ -213,10 +218,10 @@ class TheThreeCasesFromTheRunThatKeepWorking(unittest.TestCase):
 
     def test_month_7_tax_directive_keeps_its_league_credit_gate(self):
         # Run 20261011-105713-seed1, Month 7, M1: the tax rise waits for league credit, and the gate is kept.
-        text = ("Raise the tax take to 28% of output with enforcement against evasion, ring-fencing military at 0.05 and "
-                "protecting soldier and police pay; protect food and essential wages. The Treasury audit due after Month 7 "
-                "is published in full; no rate above 0.28 before the Council reviews the audit and a costed fortification "
-                "table. Further steps only if the audit and League credit require them.")
+        text = ("Raise the tax take to 28% of output with enforcement against evasion, ring-fencing military at 0.05 "
+                "and protecting soldier and police pay; protect food and essential wages. The Treasury audit due after "
+                "Month 7 is published in full; no rate above 0.28 before the Council reviews the audit and a costed "
+                "fortification table. Further steps only if the audit and League credit require them.")
         gate = [{"metric": "league_credit_received", "operator": "==", "value": 1.0, "source": "league credit gate"}]
         mo = {"id": "M1", "type": "set_policy", "subject": "tax", "value": "0.28", "text": text, "proposer": "B",
               "passed": True, "conditions": gate, "votes": dict.fromkeys("ABCDE", "yes")}
@@ -234,6 +239,15 @@ class ADemandForAGoalIsNotAFloor(unittest.TestCase):
                      "Restore reserves to at least 60M before paying arrears."):
             with self.subTest(text=text):
                 self.assertIsNone(motion_actions.floor_from_demand(text))
+
+    def test_raising_the_reserve_floor_itself_is_a_floor_not_a_goal(self):
+        # Run 20261011-105713-seed1, Month 10, M4 (the response round): the delegate asks for the floor to be 30M.
+        demand = ("Raise the reserve floor to 30M gold; pay soldiers', police and public wages before any other "
+                  "arrears; spend nothing that protects grain and coal imports.")
+        self.assertEqual(motion_actions.floor_from_demand(demand), 30e6)
+        text = "Pay one quarter of arrears from reserves; raise the reserve floor to 30M gold."
+        self.assertEqual([c["value"] for c in reserve_floors(
+            motion_actions.parse_conditions(text, "settle_arrears", "reserves"))], [30e6])
 
     def test_a_demand_for_a_floor_still_states_one(self):
         self.assertEqual(motion_actions.floor_from_demand("Ensure reserves do not fall below 50M gold."), 50e6)

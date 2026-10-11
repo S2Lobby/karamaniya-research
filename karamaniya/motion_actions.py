@@ -258,8 +258,8 @@ def _is_non_payment_reserve_floor(cond, motion: dict) -> bool:
 
 
 #: A reserve level can be the aim of money rather than a level a payment must keep: "reserves rebuilt above 60M",
-#: "restore reserves to at least 60M", "order of use: ... reserves above 60M", "target", "aim". Run 20261011-105713-seed1,
-#: Month 8: the purpose of a 50M loan was read as a floor on that loan. A goal is not a condition.
+#: "restore reserves to at least 60M", "order of use: ... reserves above 60M", "target", "aim". Run
+#: 20261011-105713-seed1, Month 8: the purpose of a 50M loan was read as a floor on that loan. A goal is not a condition.
 _GOAL_VERB = re.compile(r"^(?:rebuil[dt]\w*|restor\w*|rais\w*|bring\w*|brought|build\w*|built|replenish\w*|recover\w*|"
                         r"lift\w*|increas\w*|grow\w*|grew|grown|boost\w*)$", re.I)
 _GOAL_PHRASE = re.compile(r"\b(?:order\s+of\s+use|targets?|aim(?:s|ed|ing)?|goals?)\b", re.I)
@@ -267,17 +267,23 @@ _GOAL_PHRASE = re.compile(r"\b(?:order\s+of\s+use|targets?|aim(?:s|ed|ing)?|goal
 
 #: A sequencing word before a reserve level makes it a precondition: "pay only after reserves are rebuilt above 60M".
 _GATE_WORDS = {"after", "once", "when", "if", "unless", "until", "while", "provided", "subject", "long", "condition"}
+_FLOOR_WORDS = {"floor", "minimum", "buffer", "threshold"}
 
 
 def _states_a_goal(sentence: str, start: int, end: int) -> bool:
     """Whether the reserve level at sentence[start:end] names what the money is for, not a level to keep.
 
     A goal verb in the two words before the reserve word, or inside the phrase, makes it a goal: "rebuild reserves above
-    60M", "reserves rebuilt above 60M", "raise reserves to a 60M floor". So does an "order of use", "target" or "aim"
-    earlier in the same sentence. A sequencing word before it ("only after reserves are rebuilt above 60M") makes it a
-    precondition instead. "Keep reserves above 60M" and "reserves remain at or above 30 million" are levels.
+    60M", "reserves rebuilt above 60M", "restore reserves to 60M". So does an "order of use", "target" or "aim" earlier
+    in the same sentence. A sequencing word before it ("only after reserves are rebuilt above 60M") makes it a
+    precondition instead, and "raise the reserve floor to 30M" sets the floor itself, not an aim. "Keep reserves above
+    60M" and "reserves remain at or above 30 million" are levels.
     """
-    words = [word.strip(",:;.()").lower() for word in sentence[:start].split()[-2:] + sentence[start:end].split()]
+    span = sentence[start:end].split()
+    # "raise the reserve floor to 30M" sets the floor itself, which is a condition, not an aim for the reserves.
+    if len(span) > 1 and span[1].strip(",:;.()").lower() in _FLOOR_WORDS:
+        return False
+    words = [word.strip(",:;.()").lower() for word in sentence[:start].split()[-2:] + span]
     for word in words:
         if word in _GATE_WORDS:
             return False    # a sequencing word comes first: the level is a precondition, whatever verb follows

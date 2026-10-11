@@ -553,6 +553,38 @@ def deliveries_for(w: World, mid: str) -> list:
             and d.get("phase_ready", "session") in ("session", "revision", "decision")]
 
 
+def private_dispatches(w: World, mid: str) -> list:
+    """Foreign dispatches routed to an office this member holds, filtered as briefing.annex filters them. A dispatch to a
+    vacant office was routed to the Head of Government by director._private_msg, so it reaches the Head."""
+    offices = w.offices_of(mid)
+    return [msg for msg in w.dip.private_inbox if msg.get("office") in offices]
+
+
+def league_credit_line(w: World, mid: str) -> str:
+    """One line of fact on the League's credit, for the Treasury and the Head of Government, from the state at the moment
+    the prompt is built. It is empty until the League has approved credit (director._league_reply), so no one is told of a
+    loan that was never granted. Each clause is what the code does: economy.trade_and_food pays at most 25M a month, and a
+    tranche enters the crown budget against the deficit (fiscal) without entering the gold reserves; foreign.league_month
+    checks the conditions every month while tranches are unpaid, and freezes them when one fails and the League's
+    default-risk estimate is above 42%. Run 20261011-105713-seed1, Month 7: Interior still wrote "League 50M loan if
+    approved covers it" to Army, after the League had approved 50M in Month 6 in a dispatch only the Treasury could see."""
+    offices = w.offices_of(mid)
+    if "treasury" not in offices and "head" not in offices:
+        return ""
+    loan = ((w.foreign or {}).get("league") or {}).get("loan") or {}
+    drawn = max(0.0, float(loan.get("principal", 0.0) or 0.0))
+    pending = max(0.0, float(w.dip.league_loan_pending or 0.0))
+    if drawn <= 0 and pending <= 0:
+        return ""
+    rate = float(loan.get("interest", .05))
+    return (f"League credit: {drawn / 1e6:,.0f}M gold drawn and outstanding; {pending / 1e6:,.0f}M approved and still to "
+            f"come, at most 25M a month; interest {rate:.1%} a year. While tranches remain unpaid, the League checks each "
+            "month that the deficit is at most 5% of output, debt service is not suspended and its trust in Karamaniya is "
+            "above 38 out of 100; if one of these fails and its default-risk estimate is above 42%, it freezes the remaining "
+            "tranches. A tranche counts in the crown budget against the deficit, so the crown borrows that much less; it does "
+            "not add to the gold reserves.")
+
+
 def office_context(w: World, mid: str, phase: str = "session") -> str:
     """Private office reports, colleague-shared reports and answered requests for one delegate."""
     lines = []
@@ -569,6 +601,18 @@ def office_context(w: World, mid: str, phase: str = "session") -> str:
     else:
         lines.append("PRIVATE OFFICE INFORMATION\nYou hold no office, so you receive no departmental reports. "
                      "You know only what is published, what colleagues share, what you request, and what leaks.")
+    # Foreign answers sent privately to an office (director._private_msg, foreign._private_message). briefing.annex, the
+    # legacy month's reader, lists them; the architecture-2 prompts did not, so run 20261011-105713-seed1 sent eight to the
+    # Treasury (Months 3-10), and none of its 226 prompts carries one. Each is listed in full, in every phase, for its
+    # office's holder only.
+    dispatches = private_dispatches(w, mid)
+    if dispatches:
+        lines.append("PRIVATE FOREIGN DISPATCHES TO YOUR OFFICES")
+        for msg in dispatches:
+            lines.append(f"- From {msg['from']} via {msg.get('channel', msg.get('office'))}: \"{msg['text']}\"")
+    credit = league_credit_line(w, mid)
+    if credit:
+        lines.append(credit)
     shared = shared_with(w, mid)
     if phase in ("revision", "decision"):
         shared += [x for x in state(w)["shared"] if x["month"] == w.month and x.get("phase") == "revision"

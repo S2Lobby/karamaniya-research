@@ -55,6 +55,31 @@ FRONT_NAMES = {"north": "northern", "east": "eastern"}
 
 # The words that say a joint commission looks into an incident (audit MO20): a standing commission on trade does not.
 _INCIDENT = r"\b(?:shooting|incident|investigat\w*|inquir\w*|findings)\b"
+# A stand-down that names no side: the zone or disengagement that names no forces, and the other wordings of a
+# stand-down (audit MO24: "stand our forces down", "halt our patrols", "suspend patrols"). Their reading is kept; only a
+# demand on the other side, or the other side as the one pulling back, takes it away (_stand_down_reads).
+_STAND_DOWN_NO_SIDE = (
+    r"\bstand[\s-]?downs?\b",
+    r"\bstand\s+(?:[\w-]+\s+){0,2}?(?:troops|forces|patrols|units|soldiers)\s+down\b",
+    r"\b(?:halt|suspend)(?:s|ed|ing)?\s+(?:our\s+|karamanian\s+|karamaniya['’]s\s+|(?:the\s+)?army['’]s\s+)?"
+    r"(?:troops|forces|patrols|units|soldiers)\b",
+    r"\bdemilitari[sz](?:ed|ation)\b",
+    r"\bbuffer\s+zone\b",
+    r"\bdisengage(?:ment)?\b",
+)
+# A pull-back or a withdrawal names the forces that move, so it is an offer only when its words make it ours or
+# mutual (_stand_down_reads). Other wordings of it (audit MO24): "pull our patrols back", a few words between "pull"
+# and "back", the forces before or after "back". "pull-back" and "pullback" are the same act written with a hyphen or
+# as one word; the engine did not read them at all, so a mutual pull-back was not an offer (run 20261011-105713-seed1,
+# Month 7).
+_STAND_DOWN_PULL_BACK = (
+    r"\bpull(?:s|ing|ed)?\s+(?:[\w'’-]+\s+){0,3}?back\b[^.;]{0,40}\b(?:troops|forces|patrols|units|soldiers)\b",
+    r"\bpull(?:s|ing|ed)?\s+(?:[\w'’-]+\s+){0,3}?(?:troops|forces|patrols|units|soldiers)\s+"
+    r"(?:[\w'’-]+\s+){0,2}?back\b",
+    r"\bpull-?backs?\b",
+    r"\bwithdraw(?:al|s|ing)?\s+(?:of\s+)?(?:(?:our|karamanian|karamaniya['’]s|(?:the\s+)?army['’]s)\s+)?"
+    r"(?:troops|forces|patrols|units|soldiers)\b",
+)
 CLAUSES = {
     "joint_inquiry": (
         r"\bjoint\s+(?:[\w-]+\s+){0,2}(?:investigation|inquiry|enquiry|probe)",
@@ -65,19 +90,7 @@ CLAUSES = {
         r"(?!\s+(?:aboard|on|at|of|in)\s+(?:our\s+|karamanian\s+)?(?:ships|shipping|vessels|ports?|cargo))",
         r"\bfact[\s-]?finding\s+(?:mission|commission|team|investigation|inquiry)\b",
     ),
-    "stand_down": (
-        r"\bstand[\s-]?downs?\b",
-        # Other wordings for the same act (audit MO24): "stand our forces down", "pull our patrols back" (a few words
-        # may come between "pull" and "back", and the forces may come before "back" or after it), "halt our patrols".
-        r"\bstand\s+(?:[\w-]+\s+){0,2}?(?:troops|forces|patrols|units|soldiers)\s+down\b",
-        r"\bpull(?:s|ing|ed)?\s+(?:[\w-]+\s+){0,3}?back\b[^.;]{0,40}\b(?:troops|forces|patrols|units|soldiers)\b",
-        r"\bpull(?:s|ing|ed)?\s+(?:[\w-]+\s+){0,3}?(?:troops|forces|patrols|units|soldiers)\s+(?:[\w-]+\s+){0,2}?back\b",
-        r"\b(?:halt|suspend)(?:s|ed|ing)?\s+(?:our\s+|karamanian\s+)?(?:troops|forces|patrols|units|soldiers)\b",
-        r"\bwithdraw(?:al|s|ing)?\s+(?:of\s+)?(?:our\s+|karamanian\s+)?(?:troops|forces|patrols|units|soldiers)\b",
-        r"\bdemilitari[sz](?:ed|ation)\b",
-        r"\bbuffer\s+zone\b",
-        r"\bdisengage(?:ment)?\b",
-    ),
+    "stand_down": _STAND_DOWN_NO_SIDE + _STAND_DOWN_PULL_BACK,
     "foreign_inspection": (
         r"\binspection\s+regime\b",
         r"\b(?:union|velerian|dorsanian|foreign)\s+inspect(?:ion|ions|ors?)\s+(?:of|on|at|aboard)\s+"
@@ -91,6 +104,46 @@ CLAUSES = {
 # ("Since the Union rejected our offer, we propose ...") does not rule out the offer that follows it.
 _CLAUSE_BREAK = re.compile(r"[.;:!?]|\b(?:but|while)\b|(?:,|\band\b)\s*(?=(?:we|the\s+council|this\s+council|"
                            r"the\s+government|our\s+government|karamaniya)\b)", re.I)
+# A list item runs between punctuation, "and" or "or". "Mutual" in the same item governs a pull-back ("a mutual troop
+# pull-back"); "mutual" in another item does not ("a mutual non-aggression undertaking", after a demand for a
+# pull-back).
+_ITEM_BREAK = re.compile(r"[,;:.!?]|\b(?:and|or|but|while)\b", re.I)
+_MUTUAL = re.compile(r"\b(?:mutual(?:ly)?|reciprocal(?:ly)?|both\s+sides|each\s+side)\b", re.I)
+# A demand on the other side governs the clause it stands in, as a refusal does (_asserted), up to a new predicate
+# (_PREDICATE_BREAK). "Must", "should" and "in return" do so when the other side is the one pulling back: "in return ...
+# withdraws" is a demand on it.
+_DEMAND = re.compile(r"\b(?:demand|require|insist|urge|expect|ask|invite)(?:s|ed|ing)?\b|"
+                     r"\bcall(?:s|ed|ing)?\s+on\b", re.I)
+_OBLIGATION = re.compile(r"\b(?:must|should|shall)\b|\bin\s+return\b", re.I)
+# A coordinator that brings in a new predicate ends a demand's reach: "we demand that the Union pull back its patrols
+# and propose a stand-down of our patrols" demands the pull-back and offers the stand-down (engine 22). A noun phrase
+# after "and" ("and a stand-down") is still the demand's object, and "stand" is a predicate only when it is not the noun
+# "stand-down".
+_PREDICATE_BREAK = re.compile(r"\b(?:and|or)\s+(?=(?:(?:will|would|shall|should|must|can|may|propose|offer|suggest|"
+                              r"keep|accept|agree|table|open|seek|send|join|end|lift|renounce|reaffirm|pull|withdraw|"
+                              r"halt|suspend|ask|demand|require|insist|urge|expect|invite|call)s?\b)"
+                              r"|stand(?![\s-]*downs?\b))", re.I)
+# The party a clause names as the one that pulls back. A possessive ("the Union's invitation") and a party after a
+# preposition or a request ("with the Union", "ask the Union") is not the subject. "Karamaniya's shipping" is not us.
+_OUR_NAMES = r"(?:we|karamaniya|(?:the\s+|our\s+|this\s+)?(?:provisional\s+)?(?:government|council))"
+_THEIR_NAMES = r"(?:(?:the\s+)?(?:solvaran\s+)?union|veleria|velerian|dorsania|dorsanian)"
+_SUBJECT = re.compile(rf"\b(?:(?P<ours>{_OUR_NAMES})|(?P<theirs>{_THEIR_NAMES}|they))\b(?!\s*['’]s)", re.I)
+_OBJECT_CUES = frozenset(
+    "of to from with by for against on in at between under over about than into onto upon toward towards "
+    "ask asks asked invite invites invited call calls called urge urges urged require requires demand demands "
+    "expect expects tell tells told warn warns warned that".split())
+# The forces a stand-down or pull-back names. Ours: "our", "Karamanian", "Karamaniya's" or "the army's" before them.
+# The other side's: "massed", the Union's, Veleria's or Dorsania's (or Dorsanian) before them, or "its" and "their" when
+# the subject is not ours.
+_FORCES = r"(?:troops|forces|patrols|units|soldiers)"
+_THEIR_BARE = r"(?:(?:solvaran\s+)?union|veleria|velerian|dorsania|dorsanian)"
+_OUR_FORCES = re.compile(rf"\b(?:our|karamanian|karamaniya['’]s|(?:the\s+)?army['’]s)\s+"
+                         rf"(?:[\w-]+\s+){{0,2}}?{_FORCES}\b", re.I)
+_MASSED = re.compile(r"\bmassed\b|\bmassing\b", re.I)
+_THEIR_NAMED_FORCES = re.compile(rf"\b{_THEIR_BARE}(?:['’]s)?\s+(?:[\w-]+\s+){{0,2}}?{_FORCES}\b", re.I)
+_ITS_FORCES = re.compile(rf"\b(?:its|their|them)\s+(?:[\w-]+\s+){{0,2}}?{_FORCES}\b", re.I)
+_ITS_TAIL = re.compile(rf"\b(?:its|their)\s+(?:[\w-]+\s+){{0,2}}?{_FORCES}\s+$", re.I)
+_THEIR_POSSESSIVE_TAIL = re.compile(rf"\b{_THEIR_BARE}['’]s\s+(?:[\w-]+\s+){{0,2}}$", re.I)
 
 
 def active(w: World) -> bool:
@@ -118,13 +171,62 @@ def _the(w: World, party: str) -> str:
 
 
 # ---- reading a text ----------------------------------------------------------------------------------
-def _asserted(text: str, pattern: str) -> bool:
+def _who_pulls_back(clause: str) -> str | None:
+    """"ours" or "theirs" for the party the clause names as its subject, or None when it names neither (engine 22)."""
+    who = None
+    for match in _SUBJECT.finditer(clause):
+        cues = clause[:match.start()].lower().split()[-2:]
+        if any(word.strip(",.;:") in _OBJECT_CUES for word in cues):
+            continue
+        who = "ours" if match.group("ours") else "theirs"
+    return who
+
+
+def _stand_down_reads(text: str, match: re.Match, needs_side: bool) -> bool:
+    """Whether a stand-down the text names is Karamaniya's offer (engine 22). Run 20261011-105713-seed1 read two demands
+    on the Union as ours: Month 4 demanded "an immediate pull-back to garrison levels" and carried the term "Pull back
+    massed forces to garrison levels"; Month 5 asked the Union to "withdraw troops massed on our borders". The words of
+    the match's clause and its list item decide it, in this order:
+    - "mutual", "reciprocal", "both sides" or "each side" in the item: an offer, whoever is named;
+    - a demand on the other side in the clause, before any predicate a coordinator brings in, or "must" and "in return"
+      when the other side is the one pulling back;
+    - the other side named as the one pulling back, or its forces named ("massed", "the Union's troops", "its patrols");
+    - our forces named ("our", "Karamanian", "Karamaniya's" or "the army's" troops, forces, patrols, units or
+      soldiers), or we, Karamaniya, the council or the government pulling back.
+    Otherwise a stand-down that names no side keeps its reading (needs_side is False), and a pull-back that names no
+    side, a bare imperative, is not ours (needs_side is True)."""
+    start, end = match.start(), match.end()
+    clause = _CLAUSE_BREAK.split(text[:start])[-1]
+    rest = match.group(0) + _ITEM_BREAK.split(text[end:])[0]
+    if _MUTUAL.search(_ITEM_BREAK.split(text[:start])[-1] + rest):
+        return True
+    who = _who_pulls_back(clause)
+    demanded = _PREDICATE_BREAK.split(clause)[-1]
+    if _DEMAND.search(demanded) or (_OBLIGATION.search(demanded) and who != "ours"):
+        return False
+    if who == "theirs" or _THEIR_POSSESSIVE_TAIL.search(clause):
+        return False
+    if _OUR_FORCES.search(rest):
+        return True
+    if _MASSED.search(rest) or _THEIR_NAMED_FORCES.search(rest):
+        return False
+    if who is None and (_ITS_FORCES.search(rest) or _ITS_TAIL.search(clause)):
+        return False
+    if who == "ours":
+        return True
+    return not needs_side
+
+
+def _asserted(text: str, pattern: str, stand_down: bool = False) -> bool:
     """Whether a pattern matches the text where the text asserts it. A match is ruled out when a negator stands
     anywhere from the start of its clause to the match, or inside the match: "we reject the Union's call for a
-    joint inquiry" offers none (audit MO1, which a window of four words missed)."""
+    joint inquiry" offers none (audit MO1, which a window of four words missed). A stand-down is ruled out too when
+    it is not Karamaniya's offer (_stand_down_reads)."""
     for match in re.finditer(pattern, text, re.I):
         clause = _CLAUSE_BREAK.split(text[:match.start()])[-1]
-        if not motion_actions.negates(clause + " " + match.group(0)):
+        if motion_actions.negates(clause + " " + match.group(0)):
+            continue
+        if not stand_down or _stand_down_reads(text, match, needs_side=pattern in _STAND_DOWN_PULL_BACK):
             return True
     return False
 
@@ -135,7 +237,8 @@ def clauses(w: World, text: str, party: str | None) -> list:
     if not active(w) or party not in ADVERSARIES:
         return []
     body = str(text or "")
-    return sorted(kind for kind, patterns in CLAUSES.items() if any(_asserted(body, p) for p in patterns))
+    return sorted(kind for kind, patterns in CLAUSES.items()
+                  if any(_asserted(body, p, stand_down=kind == "stand_down") for p in patterns))
 
 
 def detection_text(mo: dict, action: dict) -> str:

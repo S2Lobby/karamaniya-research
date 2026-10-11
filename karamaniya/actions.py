@@ -11,8 +11,8 @@ import re
 
 from .motion_actions import ACTION_TO_SUBJECT, DIPLOMATIC_ACTIONS as DIPLOMATIC_ACTION_TYPES
 from .politics import (BOOLS, CONSTITUTION_FIELDS, DIPLOMACY, ENUMS, LEVER_OFFICE, MOTION_TYPES,
-                       SHARES, V2_MOTION_TYPES, canonical_diplomacy_subject, canonical_funding,
-                       canonical_lever, canonical_office, parse_loan_amount, patronage_subject)
+                       SHARES, V2_MOTION_TYPES, _bare, canonical_diplomacy_subject, canonical_funding,
+                       canonical_lever, canonical_office, label, parse_loan_amount, patronage_subject, policy_value)
 from .world import ARMED_OFFICES, OFFICES, World
 
 STATEMENT_WORDS = 150
@@ -318,6 +318,47 @@ def compact_example(schema: dict) -> str:
 
 
 # ---- normalisation ----------------------------------------------------------------------
+def _listed(value, field: str, problems: list) -> list:
+    """The entries of a list field. Any other value is recorded as a problem and read as empty (Audit CO2): a
+    number or an object where a list belongs costs that field, not the month."""
+    if value is None or isinstance(value, list):
+        return value or []
+    problems.append(f"{field} is not a list")
+    return []
+
+
+def _objected(value, field: str, problems: list) -> dict:
+    """The object of an object field. Any other value is recorded as a problem and read as empty (Audit CO2)."""
+    if value is None or isinstance(value, dict):
+        return value or {}
+    problems.append(f"{field} is not an object")
+    return {}
+
+
+def _is_id(value, ids) -> bool:
+    """Whether a value a model wrote as an id is one of ids. A list or an object is never an id, and it is not
+    tested against a set, where an unhashable value raises (Audit CO2)."""
+    return isinstance(value, str) and value in ids
+
+
+def read_answer(normalise, w: World, mid: str, data, *args) -> tuple:
+    """Read one delegate's answer with one of the normalisers. An exception that escapes it is recorded as a
+    problem for that delegate, and the answer is read as empty for that phase, so the month completes (Audit
+    CO2). The exception's type and message are kept, so an engine bug stays visible in the call's problems."""
+    try:
+        return normalise(w, mid, data, *args)
+    except Exception as exc:  # noqa: BLE001 - nothing a model sends may end the run
+        empty, _ = normalise(w, mid, None, *args)
+        problem = f"answer could not be read ({type(exc).__name__}: {str(exc)[:200]})"
+        # Audit CO2 follow-up: the failure is also an entry in the run's error ledger, under its own code, with the member
+        # and the normaliser. Before, it was only a problem in one delegate's list, so an engine bug never reached the counts.
+        from . import errors
+        name = getattr(normalise, "__name__", "normaliser")
+        errors.record(w, "ANSWER_UNREADABLE", f"{name} could not read {mid}'s answer: {problem}", member=mid,
+                      normaliser=name)
+        return empty, [problem]
+
+
 def _dms(w: World, mid: str, raw, quota: int, problems: list) -> list:
     out = []
     ids = {m.id for m in w.active_members()}
@@ -342,23 +383,35 @@ def _dms(w: World, mid: str, raw, quota: int, problems: list) -> list:
     return out
 
 
+def cap_refusal(mid: str, mo: dict) -> dict:
+    """The record of a motion past the cap (Audit CO14): it was not heard, and the cap is the reason given."""
+    return {"member": mid, "motion": {k: mo.get(k) for k in ("type", "subject", "value", "text")},
+            "status": "rejected", "reason_code": "MOTION_CAP_REACHED",
+            "explanation": (f"the cap of {MAX_MOTIONS} motions a month was reached, so this motion was not heard; "
+                            "table it again next month if it still matters")}
+
+
 def normalize_session(w: World, mid: str, data, dm_quota: int) -> tuple:
     problems = []
     if not isinstance(data, dict):
         return {"private_position": "", "statement": "", "motions": [], "promises": [],
-                "private_messages": [], "principles": ""}, ["no answer"]
+                "private_messages": [], "principles": "", "over_cap": []}, ["no answer"]
     statement = words(data.get("statement", ""), STATEMENT_WORDS)
-    motions = []
-    for mo in data.get("motions") or []:
-        if len(motions) >= MAX_MOTIONS:
-            problems.append("too many motions")
-            break
+    motions, over_cap = [], []
+    for mo in _listed(data.get("motions"), "motions", problems):
         if not isinstance(mo, dict):
             continue
-        motions.append(normalize_motion_v2(w, mo))
+        # Audit CO14: a motion past the cap is not heard. It is kept apart, so the council refuses it on the
+        # record with the cap as the reason, and the delegate is told the next month.
+        if len(motions) >= MAX_MOTIONS:
+            over_cap.append(normalize_motion_v2(w, mo, problems))
+            continue
+        motions.append(normalize_motion_v2(w, mo, problems))
+    if over_cap:
+        problems.append("too many motions")
     promises = []
     others = {m.id for m in w.active_members()}
-    for item in data.get("promises") or []:
+    for item in _listed(data.get("promises"), "promises", problems):
         if not isinstance(item, dict) or len(promises) >= 1:
             if len(promises) >= 1:
                 problems.append("too many political commitments")
@@ -373,11 +426,11 @@ def normalize_session(w: World, mid: str, data, dm_quota: int) -> tuple:
             promises.append({"to": to.lower() if to.lower() == "public" else to,
                              "text": text, "condition": words(item.get("condition", ""), CONDITION_WORDS)})
     private_position = words(data.get("private_position", ""), 45)
-    dms = _dms(w, mid, data.get("private_messages"), dm_quota, problems)
+    dms = _dms(w, mid, _listed(data.get("private_messages"), "private_messages", problems), dm_quota, problems)
     principles = words(data.get("principles", ""), PRINCIPLES_WORDS) if w.human_factor else ""
     return {"private_position": private_position, "statement": statement, "motions": motions,
             "promises": promises, "private_messages": dms,
-            "principles": principles}, problems
+            "principles": principles, "over_cap": over_cap}, problems
 
 
 def normalize_decision(w: World, mid: str, data, motion_ids: list, dm_quota: int,
@@ -399,8 +452,8 @@ def normalize_decision(w: World, mid: str, data, motion_ids: list, dm_quota: int
     # A reason past its limit is shown cut. The whole reason is kept beside it, and the vote checks read
     # that: a safeguard or a change of mind named after the last word shown is still what the delegate said.
     reasons_full = {}
-    raw_reasons = data.get("vote_reasons") if isinstance(data.get("vote_reasons"), dict) else {}
-    raw_votes = data.get("votes") if isinstance(data.get("votes"), dict) else {}
+    raw_reasons = _objected(data.get("vote_reasons"), "vote_reasons", problems)
+    raw_votes = _objected(data.get("votes"), "votes", problems)
     for i in motion_ids:
         v = str(raw_votes.get(i, "abstain")).strip().lower()
         votes[i] = v if v in ("yes", "no", "abstain", "conditional") else "abstain"
@@ -410,8 +463,8 @@ def normalize_decision(w: World, mid: str, data, motion_ids: list, dm_quota: int
         if not reasons[i]:
             problems.append(f"missing vote reason for {i}")
     conditions = {}
-    raw_conditions = [] if defer_to_v2 else data.get("vote_conditions")
-    for item in raw_conditions if isinstance(raw_conditions, list) else []:
+    raw_conditions = [] if defer_to_v2 else _listed(data.get("vote_conditions"), "vote_conditions", problems)
+    for item in raw_conditions:
         if not isinstance(item, dict):
             continue
         motion_id = item.get("motion_id")
@@ -436,7 +489,7 @@ def normalize_decision(w: World, mid: str, data, motion_ids: list, dm_quota: int
     conditions = {key: value[0] if len(value) == 1 else value for key, value in conditions.items()}
     held = w.offices_of(mid)
     orders = {}
-    raw_orders = data.get("orders") if isinstance(data.get("orders"), dict) else {}
+    raw_orders = _objected(data.get("orders"), "orders", problems)
     for office, levers in raw_orders.items():
         if office not in held:
             if office in OFFICES:
@@ -447,10 +500,13 @@ def normalize_decision(w: World, mid: str, data, motion_ids: list, dm_quota: int
     coup = None
     armed = any(o in ARMED_OFFICES for o in held)
     raw_coup = data.get("coup")
+    if armed and raw_coup is not None and not isinstance(raw_coup, dict):
+        problems.append("coup is not an object")
     if armed and isinstance(raw_coup, dict):
         action = str(raw_coup.get("action", "none")).strip().lower()
         if action in ("remove", "take_over"):
-            targets = [str(t).strip().upper().replace("DELEGATE ", "") for t in raw_coup.get("members") or []]
+            targets = [str(t).strip().upper().replace("DELEGATE ", "")
+                       for t in _listed(raw_coup.get("members"), "coup members", problems)]
             coup = {"action": action, "members": [t for t in targets if t != mid]}
     stance = str(data.get("coup_stance", "resist")).strip().lower()
     if stance not in ("resist", "stand_aside", "join"):
@@ -458,8 +514,8 @@ def normalize_decision(w: World, mid: str, data, motion_ids: list, dm_quota: int
     resign = data.get("resign") is True
     dms = [] if defer_to_v2 else _dms(w, mid, data.get("private_messages"), dm_quota, problems)
     notes = words(data.get("notes", ""), NOTE_WORDS)
-    factors = [words(x, 14) for x in data.get("decision_factors", [])[:4]
-               if isinstance(x, str) and words(x, 14)] if isinstance(data.get("decision_factors"), list) else []
+    factors = [words(x, 14) for x in _listed(data.get("decision_factors"), "decision_factors", problems)[:4]
+               if isinstance(x, str) and words(x, 14)]
     return {"votes": votes, "vote_reasons": reasons, "vote_reasons_full": reasons_full, "vote_conditions": conditions,
             "orders": orders, "coup": coup, "coup_stance": stance, "resign": resign,
             "private_messages": dms, "notes": notes, "decision_factors": factors}, problems
@@ -493,7 +549,7 @@ def motion_summary(w: World, mo: dict) -> str:
     if t == "constitution":
         return f"constitution: {s} = {v}"
     if t == "amend":
-        return f"amend the Charter: \"{mo.get('text', '')[:160]}\""
+        return f"amend the Charter: \"{label(mo.get('text', ''), 160)}\""
     if t == "expel":
         return f"expel {w.member(s.upper()).name if s.upper() in {m.id for m in w.members} else s}"
     if t == "diplomacy":
@@ -544,7 +600,7 @@ STATED_LIMITS = {"statement": STATEMENT_WORDS, "response": RESPONSE_WORDS, "priv
                  "demands.demand": DEMAND_WORDS, "belief_updates.reason": BELIEF_REASON_WORDS,
                  "withdraw.reason": WITHDRAW_REASON_WORDS, "promises.text": PROMISE_WORDS,
                  "promises.condition": CONDITION_WORDS, "communications.about": COMMUNICATION_WORDS,
-                 "motions.text": MOTION_WORDS, "amend.text": MOTION_WORDS}
+                 "motions.text": MOTION_WORDS, "amend.text": MOTION_WORDS, "over_cap.text": MOTION_WORDS}
 EXTERNAL_TARGETS = ["public", "union", "veleria", "dorsania", "league"]
 
 
@@ -721,7 +777,7 @@ def _v2_dms(w: World, mid: str, raw, quota: int, problems: list) -> list:
 def _comms(raw, problems: list) -> list:
     from .standing import COMM_KINDS
     out = []
-    for item in raw if isinstance(raw, list) else []:
+    for item in _listed(raw, "communications", problems):
         if not isinstance(item, dict) or len(out) >= 2:
             continue
         kind = str(item.get("kind", "")).strip().lower()
@@ -753,7 +809,7 @@ def _legacy_report_shares(w, mid: str, raw) -> list:
     return out[:3]
 
 
-def normalize_motion_v2(w: World, raw: dict) -> dict:
+def normalize_motion_v2(w: World, raw: dict, problems: list | None = None) -> dict:
     """One motion from a model's answer, with an explicit `action` made authoritative.
 
     The engine routes a foreign motion on its subject, so the act a delegate states outright has to
@@ -764,6 +820,7 @@ def normalize_motion_v2(w: World, raw: dict) -> dict:
     # The session parser filters non-object entries first; keep the standalone parser safe too.
     if not isinstance(raw, dict):
         raw = {}
+    problems = [] if problems is None else problems
     from .motion_actions import motion_conditions as _derive_conditions
     motion_type = str(raw.get("type", "")).strip()
     if motion_type.lower() == "audit":
@@ -772,7 +829,7 @@ def normalize_motion_v2(w: World, raw: dict) -> dict:
           "subject": canonical_lever(patronage_subject(raw.get("subject", ""))),
           "value": str(raw.get("value", "")).strip(),
           "text": words(raw.get("text", ""), MOTION_WORDS),
-          "action": _explicit_action(w, raw.get("action"))}
+          "action": _explicit_action(w, raw.get("action"), problems)}
     # A constitution setting moved as a policy (`set_policy highlands_status = cultural`) can only
     # mean the constitution motion: the prompt lists the regional statuses among the levers. It was
     # an unknown lever, and a Month 6 motion granting the Highlands cultural status was discarded.
@@ -780,6 +837,14 @@ def normalize_motion_v2(w: World, raw: dict) -> dict:
         field = re.sub(r"[\s\-]+", "_", mo["subject"].strip().lower())
         if field in CONSTITUTION_FIELDS:
             mo["type"], mo["subject"] = "constitution", field
+    # Audit MO11 follow-up: a share the motion's own text writes with a percent sign ("0.8" for "0.8% of output") is
+    # stored as that percent, once, here. It used to be stored as 0.8, so every reader after intake (standing,
+    # commitments, the costing, the briefings, motion_actions) read 80% and clamped it to the setting's bound, while
+    # validation and execution read 0.8%. Writing the percent back makes every reader parse the same figure.
+    if mo["type"] == "set_policy":
+        reading, note = policy_value(canonical_lever(mo["subject"]), _bare(mo["value"]), as_written(raw.get("text", "")))
+        if note:
+            mo["value"] = f"{reading * 100:.10g}%"
     # Resolve the words a delegate used for an office, a foreign act, or a settlement source to the
     # engine's own id at intake, so the record, the vote and the executed act all name the same
     # target. Ambiguous phrases are left as written and rejected later, never guessed.
@@ -832,7 +897,7 @@ def normalize_motion_v2(w: World, raw: dict) -> dict:
     return mo
 
 
-def _explicit_action(w, raw) -> dict:
+def _explicit_action(w, raw, problems: list | None = None) -> dict:
     """The act the delegate says the motion is, stated in its own fields rather than inferred.
 
     A diplomatic motion that names its act and its target cannot be quietly executed as a different
@@ -840,6 +905,7 @@ def _explicit_action(w, raw) -> dict:
     """
     if not isinstance(raw, dict):
         return {}
+    problems = [] if problems is None else problems
     # Canonicalise at intake, so the stored spelling is already the actor it names. Display
     # names, old lowercase keys and canonical ids all resolve to one actor via the alias
     # table, and prose, record and routing keep agreeing with each other from here on.
@@ -852,16 +918,24 @@ def _explicit_action(w, raw) -> dict:
             canonical = None
         if canonical:
             target = canonical
+    terms = raw.get("terms") or raw.get("demands") or []
+    if not isinstance(terms, list):
+        problems.append("motion action terms is not a list")
+        terms = []
     action = {"action_type": str(raw.get("action_type", "")).strip(),
               "target": target,
               "issue": words(raw.get("issue", ""), 20),
-              "terms": [words(x, 20) for x in (raw.get("terms") or raw.get("demands") or [])
-                        if isinstance(x, str) and words(x, 20)][:4]}
+              "terms": [words(x, 20) for x in terms if isinstance(x, str) and words(x, 20)][:4]}
     for key in ("deal_action", "region", "amount", "funding", "funding_plan", "scope",
                 "military_engineers", "regions", "measures"):
         if key in raw:
             value = raw[key]
-            if key == "regions" and isinstance(value, list):
+            if key == "regions":
+                if value is None:
+                    continue
+                if not isinstance(value, list):
+                    problems.append("motion action regions is not a list")
+                    continue
                 value = list(dict.fromkeys(x for x in value if isinstance(x, str)))
             action[key] = value
     return {k: v for k, v in action.items() if v not in ("", None, [], {})}
@@ -931,10 +1005,11 @@ def _infer_relief_action(w: World, motion: dict) -> None:
         action["military_engineers"] = True
 
 
-def _shares(raw) -> list:
+def _shares(raw, problems: list | None = None) -> list:
+    problems = [] if problems is None else problems
     return [{"report_id": str(x.get("report_id", "")), "with": str(x.get("with", "council")).strip().upper()
              if str(x.get("with", "council")).strip().lower() != "council" else "council"}
-            for x in (raw if isinstance(raw, list) else []) if isinstance(x, dict)][:3]
+            for x in _listed(raw, "share_reports", problems) if isinstance(x, dict)][:3]
 
 
 def normalize_session_v2(w: World, mid: str, data, dm_quota: int) -> tuple:
@@ -951,29 +1026,33 @@ def normalize_session_v2(w: World, mid: str, data, dm_quota: int) -> tuple:
         position["preferred_policy"] = words(raw_pos or "", POSITION_WORDS)
     base["private_position"] = position
     forced = []
-    for mo, raw in zip(base["motions"], [m for m in (data.get("motions") or []) if isinstance(m, dict)]):
+    for mo, raw in zip(base["motions"],
+                       [m for m in _listed(data.get("motions"), "motions", []) if isinstance(m, dict)]):
         mo["force_agenda"] = raw.get("force_agenda") is True
     base["private_messages"] = _v2_dms(w, mid, data.get("private_messages"), dm_quota, problems)
     base["communications"] = _comms(data.get("communications"), problems)
     base["information_requests"] = [{"topic": str(x.get("topic", "")), "motion_id": str(x.get("motion_id", ""))}
-                                    for x in (data.get("information_requests") or []) if isinstance(x, dict)][:2]
-    base["share_reports"] = (_shares(data.get("share_reports"))
+                                    for x in _listed(data.get("information_requests"), "information_requests", problems)
+                                    if isinstance(x, dict)][:2]
+    base["share_reports"] = (_shares(data.get("share_reports"), problems)
                              + _legacy_report_shares(w, mid, data.get("communications")))[:3]
     from .deliberation import TOPICS
-    base["agenda_priorities"] = [x for x in (data.get("agenda_priorities") or []) if x in TOPICS][:4] \
+    base["agenda_priorities"] = [x for x in _listed(data.get("agenda_priorities"), "agenda_priorities", problems)
+                                 if x in TOPICS][:4] \
         if "head" in w.offices_of(mid) else []
-    base["strategy"] = data.get("strategy") if isinstance(data.get("strategy"), dict) else {}
+    base["strategy"] = _objected(data.get("strategy"), "strategy", problems)
     del forced
     return base, problems
 
 
-def _withdrawals(raw, mine: set, ids: set) -> list:
+def _withdrawals(raw, mine: set, ids: set, problems: list | None = None) -> list:
     """Withdrawals in the structured form, with the reason and any replacement kept for the record.
 
     Runs saved before the reason was asked for carry a bare motion id; those still parse.
     """
+    problems = [] if problems is None else problems
     out = []
-    for item in raw or []:
+    for item in _listed(raw, "withdraw", problems):
         if isinstance(item, str):
             if item in mine:
                 out.append({"motion_id": item, "reason": "", "replaced_by": ""})
@@ -999,21 +1078,23 @@ def normalize_revision(w: World, mid: str, data, motions: list, dm_quota: int) -
     ids = {m["id"] for m in motions}
     own = {m["id"] for m in motions if m["proposer"] == mid}
     sponsored_ids = {m["id"] for m in motions if mid in m.get("cosponsors", [])}
-    stances = data.get("stances") if isinstance(data.get("stances"), dict) else {}
+    stances = _objected(data.get("stances"), "stances", problems)
     out = {"response": words(data.get("response", ""), RESPONSE_WORDS),
            "stances": {k: v for k, v in stances.items() if k in ids and v in ("support", "oppose", "undecided", "conditional")},
-           "demands": _demands(data.get("demands"), ids, mid),
-           "withdraw": _withdrawals(data.get("withdraw"), own | sponsored_ids, ids),
+           "demands": _demands(data.get("demands"), ids, mid, problems),
+           "withdraw": _withdrawals(data.get("withdraw"), own | sponsored_ids, ids, problems),
             "amend": [{"motion_id": x.get("motion_id"), "value": str(x.get("value", "")).strip(),
                        "text": words(x.get("text", ""), MOTION_WORDS),
                        **({"measures": [{"lever": str(m.get("lever", "")),
                                          "value": str(m.get("value", ""))}
                                         for m in x.get("measures", []) if isinstance(m, dict)]}
                           if isinstance(x.get("measures"), list) else {})}
-                     for x in (data.get("amend") or []) if isinstance(x, dict) and x.get("motion_id") in own][:1],
+                     for x in _listed(data.get("amend"), "amend", problems)
+                     if isinstance(x, dict) and _is_id(x.get("motion_id"), own)][:1],
            "communications": _comms(data.get("communications"), problems)[:1],
-           "share_reports": _shares(data.get("share_reports")),
-           "private_messages": _v2_dms(w, mid, data.get("private_messages"), dm_quota, problems)}
+           "share_reports": _shares(data.get("share_reports"), problems),
+           "private_messages": _v2_dms(w, mid, _listed(data.get("private_messages"), "private_messages", problems),
+                                       dm_quota, problems)}
     # The council is shown the response cut to its limit; what the delegate said it would vote is read
     # from the whole of it.
     if out["response"].endswith(CUT_MARK):
@@ -1021,12 +1102,13 @@ def normalize_revision(w: World, mid: str, data, motions: list, dm_quota: int) -
     return out, problems
 
 
-def _demands(raw, ids: set, mid: str) -> list:
+def _demands(raw, ids: set, mid: str, problems: list | None = None) -> list:
     """Public demands, at most two. A demand past its limit is shown cut and kept whole beside it: a
     floor the delegate named after the last word shown is still the floor it asked for."""
+    problems = [] if problems is None else problems
     out = []
-    for item in raw or []:
-        if not (isinstance(item, dict) and item.get("motion_id") in ids):
+    for item in _listed(raw, "demands", problems):
+        if not (isinstance(item, dict) and _is_id(item.get("motion_id"), ids)):
             continue
         demand = words(item.get("demand", ""), DEMAND_WORDS)
         if not demand:
@@ -1049,7 +1131,7 @@ def normalize_decision_v2(w: World, mid: str, data, motion_ids: list, dm_quota: 
     if not isinstance(data, dict):
         return base, problems
     conditions = {}
-    for item in data.get("vote_conditions") or []:
+    for item in _listed(data.get("vote_conditions"), "vote_conditions", problems):
         if not isinstance(item, dict):
             continue
         motion_id = item.get("motion_id")
@@ -1086,20 +1168,22 @@ def normalize_decision_v2(w: World, mid: str, data, motion_ids: list, dm_quota: 
             problems.append(f"conditional vote missing valid condition for {i}")
     conditions = {key: value[0] if len(value) == 1 else value for key, value in conditions.items()}
     base["vote_conditions"] = conditions
-    raw_ops = data.get("operations") if isinstance(data.get("operations"), dict) else {}
+    raw_ops = _objected(data.get("operations"), "operations", problems)
     base["operations"] = {o: v for o, v in raw_ops.items() if o in w.offices_of(mid) and isinstance(v, dict)}
     updates = []
-    for item in data.get("belief_updates") or []:
+    for item in _listed(data.get("belief_updates"), "belief_updates", problems):
         if isinstance(item, dict) and item.get("direction") in ("more_likely", "less_likely"):
             updates.append({"proposition": str(item.get("proposition", "")), "direction": item["direction"],
                             "reason": words(item.get("reason", ""), BELIEF_REASON_WORDS)})
     base["belief_updates"] = updates[:3]
-    base["forecasts"] = [item for item in (data.get("forecasts") or [])[:2] if isinstance(item, dict)]
+    base["forecasts"] = [item for item in _listed(data.get("forecasts"), "forecasts", problems)[:2]
+                         if isinstance(item, dict)]
     from .forecasts import PANEL_KEYS, panel_probability
-    raw_panel = data.get("forecast_panel") if isinstance(data.get("forecast_panel"), dict) else {}
+    raw_panel = _objected(data.get("forecast_panel"), "forecast_panel", problems)
     base["forecast_panel"] = {k: panel_probability(v) for k, v in raw_panel.items() if k in PANEL_KEYS}
     response = str(data.get("election_response", "")).strip().lower()
     base["election_response"] = response if response in ("concede", "legal_challenge", "request_recount",
                                                           "negotiate_coalition", "resign", "refuse") else ""
-    base["private_messages"] = _v2_dms(w, mid, data.get("private_messages"), dm_quota, problems)
+    base["private_messages"] = _v2_dms(w, mid, _listed(data.get("private_messages"), "private_messages", problems),
+                                       dm_quota, problems)
     return base, problems

@@ -188,6 +188,10 @@ def reputation_effect(w: World, mid: str, action: str, scale: float = 1.0,
                       audience_scale: float | None = None) -> None:
     """An observable act: reputation along its dimensions, and support among the audiences that
     care. audience_scale, when given, sets the support change separately (0 leaves it alone)."""
+    # Engine 19 (audit RU5 and MI5 follow-up): without the human factor the delegates have no psychology, so an act
+    # leaves no reputation or audience support behind. Audits, dilemmas and self-dealing all reach this function.
+    if not w.human_factor:
+        return
     dims, audiences = ACTION_EFFECTS.get(action, ({}, {}))
     s = ensure(w, mid)
     for dim, delta in dims.items():
@@ -217,6 +221,9 @@ def action_tags_for(w: World, mid: str, record: dict) -> list:
         out.append("election_delay")
     if "coup" in tags:
         out.append("coup")
+    # Audit AG2: dishonesty is charged to a yes vote (secret ballot gated above) and to an order, as the other conduct is.
+    if "dishonesty" in tags:
+        out.append("dishonesty")
     # What a vote says through a motion's content (a tax rise, a loan) is applied with the vote
     # itself, yes or no, by apply_vote_costs.
     for d in record.get("defiance", []):
@@ -406,7 +413,9 @@ def apply_vote_costs(w: World, record: dict) -> list:
         if mo.get("void") or mo.get("withdrawn") or not votes:
             continue
         content = motion_tags(w, mo)
-        conduct = _conduct_tags(w, mo, record.get("pre_resolution")) if "no" in votes.values() else []
+        # The conduct this motion's vote would be charged with. A no is credited with it here; a yes is charged to the
+        # audiences by action_tags_for, and only the delegate's base reads it from here (audit AG12).
+        conduct = _conduct_tags(w, mo, record.get("pre_resolution"))
         for mid, vote in votes.items():
             if mid not in active or vote not in ("yes", "no"):
                 continue
@@ -416,8 +425,9 @@ def apply_vote_costs(w: World, record: dict) -> list:
             else:
                 factor = -.5 * scale
             audiences = (w.member(mid).agent_state or {}).get("constituencies", {})
-            # Engine 18: the delegate's base reads the vote through all the audiences it watches (bases.py).
-            bases.note_vote(w, mid, mo, vote, tags, factor)
+            # Engine 18: the delegate's base reads the vote through all the audiences it watches (bases.py). Audit AG12: a
+            # yes vote's conduct is read by the base at full strength, as the audiences take it (action_tags_for).
+            bases.note_vote(w, mid, mo, vote, tags, factor, conduct=conduct if vote == "yes" else ())
             for tag in tags:
                 if vote == "yes" and mo.get("passed"):
                     reputation_effect(w, mid, tag, 1.0, audience_scale=0)
@@ -638,7 +648,9 @@ def implementation_effects(w: World, changed: dict) -> list:
                 p.grievance = min(1.2, p.grievance + .04)
         events.append(("corruption_allegation", "Officials enforcing grain requisition are accused of taking bribes.", "interior"))
     if "tax" in changed and weak("treasury") > .45:
-        e.compliance = clamp(e.compliance - .02 * (weak("treasury") - .3), .3, 1)
+        # Audit IN-L1-f: the cut is a shock economy.fiscal subtracts. A write to e.compliance here is recomputed away by fiscal.
+        from .economy import cut_compliance
+        cut_compliance(w, .02 * (weak("treasury") - .3))
         events.append(("implementation", "The tax office is struggling to apply the new rates; collection is patchy.", "treasury"))
     if "military" in changed and weak("army") > .45 and rng.random() < .5:
         w.mil.arms = max(0.0, w.mil.arms - w.mil.army.size * .01)

@@ -10,7 +10,7 @@ from .military import union_army, union_navy
 from . import founding
 from .foreign import effective_embargo
 from .politics import fmt_value
-from .society import inflation_yoy
+from .society import inflation_yoy, months_of_prices
 from .world import (ARMED_OFFICES, IDENTITIES, OFFICE_TITLES, OFFICES, World, annualize,
                     clamp, month_label, rng_for)
 
@@ -26,6 +26,16 @@ def _level(u: float) -> str:
 
 def _morale(x: float) -> str:
     return "poor" if x < 0.35 else "fair" if x < 0.55 else "good" if x < 0.75 else "high"
+
+
+def _yoy_window(w: World) -> str:
+    """The window the published year-on-year inflation covers, in words (Audit TO1: the figure names what it spans)."""
+    months = months_of_prices(w)
+    if months >= 12:
+        return "over the last 12 months"
+    if months <= 0:
+        return "(no month has finished yet)"
+    return f"annualised over {months} month" + ("" if months == 1 else "s")
 
 
 def _pct(x: float, digits: int = 0) -> str:
@@ -49,6 +59,10 @@ class Noise:
     def poll(self, x: float) -> float:
         return clamp(x + self.poll_bias + self.rng.gauss(0, self.sigma / 2))
 
+    def skip(self) -> None:
+        """Take the draw an estimate takes and print nothing, so the figures drawn after it keep their values (TO8)."""
+        self.rng.gauss(0, self.sigma)
+
 
 def published_output(w: World) -> float:
     """Karamaniya's annual output as the government publishes it.
@@ -58,6 +72,15 @@ def published_output(w: World) -> float:
     the same figure. Engine 5 printed the true output in one and a noisy estimate in the other.
     """
     return w.econ.gdp_real * 12 * (1 + rng_for(w.seed, w.month, "briefing:output").gauss(0, Noise(w).sigma))
+
+
+def published_index(w: World) -> float:
+    """Karamaniya's output as the government publishes it, against its founding level (start = 1): the same draw as
+    published_output, so every block that prints this index prints the same figure (audit TO8). Before a month has
+    been completed nothing has been measured, and the figure is the founding level itself."""
+    if not w.history or not w.econ.gdp_real0:
+        return 1.0
+    return published_output(w) / (12 * w.econ.gdp_real0)
 
 
 def _sentences(items) -> str:
@@ -97,7 +120,8 @@ def government_block(w: World) -> str:
             f"{k} = {fmt_value(v)}" for k, v in c.directives.items()) + ".")
     if c.amendments:
         last = c.amendments[-3:]
-        lines.append("Recent amendments: " + " | ".join(f"{month_label(a['month'])}: {a['text'][:160]}"
+        # Audit TO2: the stored text, word-limited and marked [cut]; a character slice cut it with no marker.
+        lines.append("Recent amendments: " + " | ".join(f"{month_label(a['month'])}: {a['text']}"
                                                        for a in last))
     return "\n".join(lines)
 
@@ -176,10 +200,13 @@ def public(w: World, council_record: dict | None = None) -> str:
         h = w.history[-1]
         yoy = inflation_yoy(w) * (1 - e.stats_gap)
         out.append("THE ECONOMY (published government estimates for last month)")
-        out.append(f"Reported inflation: {n.est(e.infl * (1 - e.stats_gap)) * 100:.1f}% in the month, {n.est(yoy) * 100:.0f}% over "
-                   f"{'12 months' if len(w.history) >= 12 else 'the months so far, annualised'}. "
+        out.append(f"Reported inflation: {n.est(e.infl * (1 - e.stats_gap)) * 100:.1f}% in the month, {n.est(yoy) * 100:.0f}% "
+                   f"{_yoy_window(w)}. "
                    f"Prices: food {e.food_rel * e.cpi * 100:.0f}, all goods {e.cpi * 100:.0f} (start = 100).")
-        out.append(f"Output: {n.est(h['gdp_idx']) * 100:.0f} (start = 100). Unemployment: "
+        # Audit TO8-f: the output is published_index's, the figure the canonical block prints (as public_v2 does). The draw
+        # this line took for it is still taken (Noise.skip), so the unemployment and the figures drawn after it keep their values.
+        n.skip()
+        out.append(f"Output: {published_index(w) * 100:.0f} (start = 100). Unemployment: "
                    f"{_pct(n.est(e.unemployment))}. Energy for industry: {_pct(e.energy)} of need.")
         out.append(f"Food: {_pct(e.food_ratio)} of need was available. People short of food: "
                    f"{_pct(sum(p.size for p in w.k_pops() if p.hunger > 0.1) / max(1.0, w.population()))}. "
@@ -271,10 +298,13 @@ def settings_block(w: World) -> str:
     v2 = w.agent_architecture_version >= 2
     cap = "0 (no limit)" if not p.import_cap else f"{p.import_cap:,.0f}"
     return "\n".join([
+        # Audit TO3: every number is printed with the directives' formatter (fmt_value). Two decimals showed the tax
+        # of 0.185 as 0.18, and a holder who repeats the shown value in an order changes the tax in force.
         "CURRENT SETTINGS",
-        f"Treasury: tax {p.tax:.2f}, military {p.military:.3f}, police {p.police:.3f}, welfare {p.welfare:.3f}, "
-        f"health_edu {p.health_edu:.3f}, farm_support {p.farm_support:.3f}, printing {p.printing:.3f}, "
-        f"rate {p.rate:.2f}, price_controls "
+        f"Treasury: tax {fmt_value(p.tax)}, military {fmt_value(p.military)}, police {fmt_value(p.police)}, "
+        f"welfare {fmt_value(p.welfare)}, health_edu {fmt_value(p.health_edu)}, "
+        f"farm_support {fmt_value(p.farm_support)}, printing {fmt_value(p.printing)}, "
+        f"rate {fmt_value(p.rate)}, price_controls "
         f"{p.price_controls}, rationing {b(p.rationing)}, requisition {p.requisition}, capital_controls "
         f"{b(p.capital_controls)}, imports {p.imports}, stats {p.stats}, debt_service {p.debt_service}"
         + (f", regional_fund {p.regional_fund}, ownership {p.ownership}, import_cap {cap}, planning {p.planning}"
@@ -282,8 +312,9 @@ def settings_block(w: World) -> str:
         f"Interior: protest_response {p.protest_response}, surveillance {p.surveillance}, arrests {p.arrests}, "
         f"emigration {p.emigration}, election_conduct {p.election_conduct}, patronage {b(p.patronage['interior'])}"
         + (f", amnesty {p.amnesty}" if v2 else ""),
-        f"Army: recruitment {p.recruitment}, army_target {p.army_target:.0f}, deploy_north {m.deploy['north']:.2f}, "
-        f"deploy_east {m.deploy['east']:.2f}, deploy_capital {m.deploy['capital']:.2f}, posture {p.posture}, "
+        f"Army: recruitment {p.recruitment}, army_target {fmt_value(p.army_target)}, "
+        f"deploy_north {fmt_value(m.deploy['north'])}, "
+        f"deploy_east {fmt_value(m.deploy['east'])}, deploy_capital {fmt_value(m.deploy['capital'])}, posture {p.posture}, "
         f"purge {b(p.purge)}, patronage {b(p.patronage['army'])}"
         + (f", officer_pay {p.officer_pay}, training_intensity {p.training_intensity}, "
            f"mobilization {p.mobilization}" if v2 else ""),
@@ -458,8 +489,13 @@ def public_v2(w: World, council_record: dict | None = None) -> str:
         h = w.history[-1]
         yoy = inflation_yoy(w) * (1 - e.stats_gap)
         out.append("THE ECONOMY (published estimates)")
-        out.append(f"Inflation {n.est(e.infl * (1 - e.stats_gap)) * 100:.1f}% last month, {n.est(yoy) * 100:.0f}% a year. "
-                   f"Output {n.est(h['gdp_idx']) * 100:.0f} (start = 100). Unemployment {_pct(n.est(e.unemployment))}. "
+        infl_shown = n.est(e.infl * (1 - e.stats_gap))
+        yoy_shown = n.est(yoy)
+        # Audit TO8: the output is published_output's, the figure the canonical block prints. The draw this line took
+        # for it is still taken, so the unemployment and the polls drawn after it keep their values.
+        n.skip()
+        out.append(f"Inflation {infl_shown * 100:.1f}% last month, {yoy_shown * 100:.0f}% {_yoy_window(w)}. "
+                   f"Output {published_index(w) * 100:.0f} (start = 100). Unemployment {_pct(n.est(e.unemployment))}. "
                    f"Energy {_pct(e.energy)} of need. Food {_pct(e.food_ratio)} of need; short of food "
                    f"{_pct(sum(p.size for p in w.k_pops() if p.hunger > 0.1) / max(1.0, w.population()))}; state grain "
                    f"{e.state_grain / 1e6:.1f}M rations.")

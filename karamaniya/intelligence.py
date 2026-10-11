@@ -41,15 +41,18 @@ def state(w: World) -> dict:
 # ---- hidden truth -------------------------------------------------------------------------
 def union_offensive_risk(w: World) -> float:
     """The engine's own probability that the Union is preparing force. Never shown directly."""
-    from .director import RESOLVE_THRESHOLD_LOW, RESOLVE_THRESHOLD_SPAN, _power_ratio
+    from .director import RESOLVE_THRESHOLD_LOW, RESOLVE_THRESHOLD_SPAN, _power_ratio, war_threshold
     union = w.foreign.get("union", {}) if w.foreign else {}
     vel = w.foreign.get("actors", {}).get("veleria", {}) if w.foreign else {}
     threat = vel.get("threat_perception", {}).get("karamaniya", .45)
     risk_tol = vel.get("disposition", {}).get("risk_tolerance", .38)
-    # Engine 18: the odds the Union needs move with how firm Karamaniya looks (director.war_threshold), so the risk
-    # Army intelligence estimates moves with them. At the neutral figure, and in a world that does not keep it, the
-    # factor is one.
-    threshold = (2.0 + .55 * risk_tol) * (RESOLVE_THRESHOLD_LOW + RESOLVE_THRESHOLD_SPAN * resolve.value(w))
+    # Audit FO13: the odds the Union needs are the figure its own rule uses (director.war_threshold, with the league
+    # alliance, the pact and the ceasefire), so the risk Army intelligence estimates and the rule that starts a war
+    # agree. A world with no Veleria state has no rule to read, and keeps the neutral odds it always had.
+    if vel:
+        threshold = war_threshold(w)
+    else:
+        threshold = (2.0 + .55 * risk_tol) * (RESOLVE_THRESHOLD_LOW + RESOLVE_THRESHOLD_SPAN * resolve.value(w))
     ratio = _power_ratio(w) if w.mil else 1.0
     dip = w.dip
     if dip.war:
@@ -248,9 +251,11 @@ def _report(w: World, rng, office: str, subject: str, truths: dict, prev_truths:
                    "unrest_outlook", "shipping_risk", "lender_confidence", "readiness", "fleet_readiness",
                    "league_stance", "union_cohesion", "coalition_stability", "incident_attribution",
                    "officers_plot", "foreign_reading"):
+        # Audit IN-M8: the centre is clamped to the scale first, then the range is built round it and its ends clamped.
+        # The range used to be built round an unclamped centre, so a centre of 121 at low confidence printed "100-100%".
+        central = clamp(central, 0, 100)
         spread = {"high": 6, "medium": 12, "low": 20}[confidence]
         low, high = clamp(central - spread, 0, 100), clamp(central + spread, 0, 100)
-        central = clamp(central, 0, 100)
     accurate = min(low, high) - 1e-9 <= truth <= max(low, high) + 1e-9
     alarming = _alarming(subject, central)
     report = {"id": f"R{w.month + 1}-{office[:3].upper()}{index}", "month": w.month, "office": office,
@@ -395,7 +400,9 @@ def _reading_text(w: World, r: dict) -> str:
 def generate(w: World) -> list:
     """This month's office reports (Phase 1: information distribution)."""
     s = state(w)
-    if any(r["month"] == w.month for r in s["reports"]):
+    # Audit IN-M1: a false warning's reports are filed for their month before it begins (add_warning_reports), so they
+    # must not count as this month's generation having run; otherwise the month's own reports would never be made.
+    if any(r["month"] == w.month and not r.get("issue") for r in s["reports"]):
         return [r for r in s["reports"] if r["month"] == w.month]
     truths = _truths(w)
     prev = s.get("last_truths", {}) or truths
@@ -430,6 +437,28 @@ def generate(w: World) -> list:
     if contest:
         s["contested"] = [x for x in s.get("contested", []) if w.month - x["month"] < 24] + [contest]
     return new
+
+
+def add_warning_reports(w: World, issue: dict) -> list:
+    """File the urgent office reports of a false warning (dilemmas.py), dated the month its issue starts (Audit IN-M1).
+    Filed when the issue is raised, they are read in that month's session with its other reports, and beliefs move on
+    them only from that month on. The report names its issue, so generate() still runs for the month."""
+    s = state(w)
+    real = bool(issue["truth"].get("real"))
+    risk = union_offensive_risk(w) * 100
+    filed = []
+    for office in ("army", "head"):
+        if w.holder(office) is None:
+            continue
+        filed.append({"id": f"R{issue['month'] + 1}-{office[:3].upper()}W", "month": issue["month"], "office": office,
+                      "subject": "union_intent", "estimate": 78.0, "low": 70.0, "high": 85.0, "confidence": "medium",
+                      "proposition": "union_attack_soon", "alarming": True, "truth": risk,
+                      "accurate": real, "error": "none" if real else "deception", "shared_with": [], "requested_by": [],
+                      "issue": issue["id"],
+                      "text": "URGENT: a source inside the Union command warns of an attack within weeks (70-85%). "
+                              "The source is untested. Confidence: medium."})
+    s["reports"].extend(filed)
+    return filed
 
 
 def _contest(w: World, truths: dict, new: list) -> dict | None:
@@ -479,7 +508,9 @@ def _contest(w: World, truths: dict, new: list) -> dict | None:
         central, low, high, confidence = readings[office]
         existing = next((r for r in new if r["office"] == office and r["subject"] == subject), None)
         if existing is None:
-            index = sum(1 for r in new if r["office"] == office) + 1
+            # Audit IN-L4: the lens report takes the slot after the office's full list, so its id does not depend on
+            # whether a conditional report (the officers' plot) was made this month.
+            index = len(SUBJECTS.get(office, ())) + 1
             existing = {"id": f"R{w.month + 1}-{office[:3].upper()}{index}", "month": w.month, "office": office,
                         "subject": subject, "shared_with": [], "requested_by": []}
             new.append(existing)
@@ -610,6 +641,24 @@ def flag_withheld(w: World) -> list:
 
 
 # ---- requests ---------------------------------------------------------------------------
+def _find_motion(motion_id: str, motions: list) -> dict | None:
+    """The motion a costing request means: the one it names, or else the first set_policy motion on the list."""
+    if motion_id:
+        return next((m for m in motions if m.get("id") == motion_id), None)
+    return next((m for m in motions if m.get("type") == "set_policy"), None)
+
+
+def _motion_record(w: World, motion: dict | None) -> dict | None:
+    """What a costing request keeps of its motion (Audit IN1): the id, the lever, the value, and the setting the lever
+    would change. That setting is the one in force when the request is made, not the one a vote leaves behind."""
+    if motion is None:
+        return None
+    lever = motion.get("subject") if motion.get("type") == "set_policy" else None
+    return {"id": str(motion.get("id", "")), "lever": lever, "value": motion.get("value"),
+            "summary": motion.get("summary") or lever or "",
+            "current": getattr(w.policy, lever, None) if lever else None}
+
+
 def request(w: World, mid: str, items: list, phase: str, motions: list) -> list:
     s = state(w)
     accepted = []
@@ -619,10 +668,14 @@ def request(w: World, mid: str, items: list, phase: str, motions: list) -> list:
             continue
         office = REQUEST_TOPICS[topic]
         motion_id = str(item.get("motion_id", "") or "")
-        motion = next((m for m in motions if m.get("id") == motion_id), None)
         entry = {"id": f"Q{w.month + 1}-{mid}-{len(s['requests']) + 1}", "month": w.month, "phase": phase,
-                 "from": mid, "office": office, "topic": topic, "motion_id": motion_id if motion else "",
-                 "status": "pending"}
+                 "from": mid, "office": office, "topic": topic, "motion_id": motion_id, "status": "pending"}
+        if topic == "costing":
+            # Audit IN1: the motion is resolved now, while it is on the table, and the request keeps what it needs to be
+            # costed later. The carry-over call a month on is given no motions, so it cannot look the motion up.
+            # Audit IN-M6: the id is kept even when the motion is not on the table, so the answer can say so rather than
+            # cost whichever set_policy motion comes first.
+            entry["motion"] = _motion_record(w, _find_motion(motion_id, motions))
         s["requests"].append(entry)
         accepted.append(entry)
     return accepted
@@ -631,10 +684,20 @@ def request(w: World, mid: str, items: list, phase: str, motions: list) -> list:
 def answer_requests(w: World, capacity: dict, motions: list, phase: str) -> list:
     """Ministries answer what they can; quality and timing follow their capacity (spec 69, 70)."""
     s = state(w)
-    per_office = {}
+    # Audit IN-M4: a ministry's capacity is for the month. The carry-over call and the session call both answer in the
+    # same month, so the count is kept per month in the state, not started afresh by each call.
+    per_office = dict((s.get("slots") or {}).get(str(w.month), {}))
     delivered = []
     rng = rng_for(w.seed, w.month, f"intel-requests:{phase}")
     truths = None
+    if phase == "session":
+        # Audit IN1 and IN-M6: a costing request made this month whose motion was not on the table when it was made is
+        # looked for again now, on the agenda the session has settled (the scheduled motions and those deferred this
+        # month). A carried-over motion has a carry-over id, so it can only be found here, not on the request's table.
+        agenda = list(motions) + [m for m in w.agenda.get("deferred", []) if m.get("deferred_month") == w.month]
+        for q in s["requests"]:
+            if q["topic"] == "costing" and q["month"] == w.month and q["status"] == "pending" and q.get("motion") is None:
+                q["motion"] = _motion_record(w, _find_motion(q.get("motion_id", ""), agenda))
     for q in s["requests"]:
         if q["status"] != "pending":
             continue
@@ -644,10 +707,11 @@ def answer_requests(w: World, capacity: dict, motions: list, phase: str) -> list
         limit = int(tuning.get(w, "intelligence.request_capacity"))
         if used >= limit or w.holder(office) is None and office != "treasury":
             continue
-        per_office[office] = used + 1
         same_month = phase == "session" and q["month"] == w.month and cap >= .55 and rng.random() < .35 + .6 * cap
         if q["month"] == w.month and not same_month:
             continue            # it will be answered next month
+        # Audit IN-L3: a slot is taken by a request that is answered, not by one deferred to the next month.
+        per_office[office] = used + 1
         truths = truths or _truths(w)
         partial = cap < .45 or rng.random() > .5 + .5 * cap
         text = _answer_text(w, q, truths, partial, motions, rng)
@@ -662,6 +726,7 @@ def answer_requests(w: World, capacity: dict, motions: list, phase: str) -> list
             q["status"] = "lapsed"
     s["deliveries"] = [d for d in s["deliveries"] if w.month - d["deliver_month"] <= 3]
     s["requests"] = [q for q in s["requests"] if w.month - q["month"] <= 6]
+    s["slots"] = {str(w.month): per_office}     # this month's count only; the earlier months are no longer needed
     return delivered
 
 
@@ -670,51 +735,69 @@ def _answer_text(w: World, q: dict, truths: dict, partial: bool, motions: list, 
     width = .35 if partial else .15
     note = " Only part of the data was available; treat it as indicative." if partial else ""
     if q["topic"] == "costing":
-        motion = next((m for m in motions if m.get("id") == q.get("motion_id")), None)
-        if motion is None:
-            motion = next((m for m in motions if m.get("type") == "set_policy"), None)
-        cost = costing(w, motion) if motion else None
+        # The answer is about the motion the request resolved, and never about another one (Audit IN-M6): a named motion
+        # that was not on the agenda is said so, and the request is not costed against a different proposal.
+        record = q.get("motion")
+        if record is None:
+            if q.get("motion_id"):
+                return (f"{office}: motion {q['motion_id']} was not on the agenda in the month of the request, so it has "
+                        f"no costing.{note}")
+            return f"{office}: no costable proposal was identified in the request.{note}"
+        cost = (costing(w, {"type": "set_policy", "subject": record["lever"], "value": record["value"]}, record["current"])
+                if record["lever"] else None)
         if cost is None:
             return f"{office}: no costable proposal was identified in the request.{note}"
         central = cost * (1 + rng.gauss(0, width / 2))
         lo, hi = central * (1 - width), central * (1 + width)
+        if cost == 0:
+            # A setting already in place (Audit IN-L7) is said to cost nothing, not "about 0-0M crowns".
+            return f"{office} costing of {record['id']} ({record['summary']}): it costs nothing at current output.{note}"
         verb = "costs" if central >= 0 else "saves"
-        return (f"{office} costing of {motion.get('id')} ({motion.get('summary', motion.get('subject'))}): it {verb} about "
+        return (f"{office} costing of {record['id']} ({record['summary']}): it {verb} about "
                 f"{abs(lo) / 1e6:,.0f}-{abs(hi) / 1e6:,.0f}M crowns a month at current output.{note}")
     subject = TOPIC_SUBJECTS[q["topic"]]
     truth = truths.get(subject, 0)
     central = truth * (1 + rng.gauss(0, width / 2))
+    scaled = subject in ("union_intent", "officer_loyalty", "police_loyalty", "unrest_outlook", "shipping_risk", "league_stance")
+    if scaled:
+        central = clamp(central, 0, 100)      # Audit IN-M8: clamped to the scale before the range is built round it
     lo, hi = central * (1 - width), central * (1 + width)
     fake = {"subject": subject, "low": round(min(lo, hi), 1), "high": round(max(lo, hi), 1),
             "estimate": round(central, 1), "confidence": "low" if partial else "medium"}
-    if subject in ("union_intent", "officer_loyalty", "police_loyalty", "unrest_outlook", "shipping_risk", "league_stance"):
+    if scaled:
         fake["low"], fake["high"] = round(clamp(central - 100 * width / 2, 0, 100)), round(clamp(central + 100 * width / 2, 0, 100))
     return f"Requested from {office}: " + render(w, fake) + note
 
 
-def costing(w: World, motion: dict | None) -> float | None:
-    """Monthly fiscal effect of a policy motion at current output (positive = costs money)."""
+def costing(w: World, motion: dict | None, current=None) -> float | None:
+    """Monthly fiscal effect of a policy motion at current output (positive = costs money). The lever is costed against
+    `current`, the setting it would change: the setting in force now, unless a request kept the one it was made against
+    (Audit IN1)."""
     from .politics import parse_lever
     if not motion or motion.get("type") != "set_policy":
         return None
     lever = motion.get("subject")
     value = parse_lever(lever, motion.get("value"))
-    current = getattr(w.policy, lever, None)
+    if current is None:
+        current = getattr(w.policy, lever, None)
     if value is None or current is None or isinstance(value, (bool, str)):
         if lever == "officer_pay" and isinstance(value, str):
-            from .military import ARMY_COST, OFFICER_PAY
-            bill = w.mil.army.size * ARMY_COST * w.econ.cpi
+            # Audit IN5: the pay bill is priced as military.update pays it, with the training bill as well.
+            from .military import ARMY_COST, OFFICER_PAY, training_intensity
+            bill = w.mil.army.size * ARMY_COST * w.econ.cpi * training_intensity(w)["bill"]
             return (OFFICER_PAY[value]["bill"] - OFFICER_PAY.get(current, OFFICER_PAY["standard"])["bill"]) * bill
         if lever == "regional_fund" and isinstance(value, str):
             from .regional import FUND_COST, REGIONS
             count = lambda fund: len(REGIONS) if fund == "both" else 1 if fund in REGIONS else 0
             return (count(value) - count(current)) * FUND_COST * w.econ.gdp_nominal
+        # Audit IN-L7: a switch or an import cap already in the state it would be set to changes nothing, so it costs
+        # nothing. Only a change is priced.
         if lever == "rationing":
-            return .004 * w.econ.gdp_nominal if value else -.004 * w.econ.gdp_nominal
+            return 0.0 if value == current else (.004 * w.econ.gdp_nominal if value else -.004 * w.econ.gdp_nominal)
         if lever == "shipbuilding":
-            return .003 * w.econ.gdp_nominal if value else -.003 * w.econ.gdp_nominal
+            return 0.0 if value == current else (.003 * w.econ.gdp_nominal if value else -.003 * w.econ.gdp_nominal)
         if lever == "imports" and value == "max":
-            return .01 * w.econ.gdp_nominal
+            return 0.0 if current == "max" else .01 * w.econ.gdp_nominal
         return None
     gdp = w.econ.gdp_nominal
     if lever in ("military", "police", "welfare", "health_edu", "farm_support"):
@@ -722,7 +805,11 @@ def costing(w: World, motion: dict | None) -> float | None:
     if lever == "tax":
         return -(value - current) * gdp * w.econ.compliance
     if lever == "army_target":
-        return (value - w.mil.army.size) * 900
+        # Audit IN5: a soldier costs what military.update pays him: ARMY_COST, the price level, and the officer-pay and
+        # training bills (military.py:156). It used to be a flat 900 crowns, 3.5 times what the engine pays.
+        from .military import ARMY_COST, officer_pay, training_intensity
+        per_soldier = ARMY_COST * w.econ.cpi * officer_pay(w)["bill"] * training_intensity(w)["bill"]
+        return (value - w.mil.army.size) * per_soldier
     return None
 
 

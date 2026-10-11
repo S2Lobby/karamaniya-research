@@ -101,7 +101,8 @@ class TheChecksOnSyntheticHistories(unittest.TestCase):
         self.assertFalse(result("inflation_mean", months_of(12, infl_yoy=-.05))["ok"])
 
     def test_inflation_monthly_peak_fails_an_eight_percent_jump_in_a_month_with_no_war_or_printing(self):
-        rows = months_of(4)
+        # Ten months, so the peak rests on enough months to be judged (engine 19, audit EC11: fewer do not apply).
+        rows = months_of(10)
         rows[2]["zone_price"] = 1.08
         r = result("inflation_monthly_peak", rows)
         self.assertTrue(r["applies"])
@@ -109,16 +110,16 @@ class TheChecksOnSyntheticHistories(unittest.TestCase):
         self.assertFalse(r["ok"])
 
     def test_inflation_monthly_peak_passes_a_small_rise_and_leaves_out_war_and_printing_months(self):
-        small = months_of(4)
+        small = months_of(10)
         small[2]["zone_price"] = 1.02
         self.assertTrue(result("inflation_monthly_peak", small)["ok"])
-        at_war = months_of(4)
+        at_war = months_of(10)
         at_war[2].update(zone_price=1.08, war=True)
         self.assertTrue(result("inflation_monthly_peak", at_war)["ok"])
-        karamaniya_printed = months_of(4)
+        karamaniya_printed = months_of(10)
         karamaniya_printed[2].update(zone_price=1.08, policy={"printing": 0.02})
         self.assertTrue(result("inflation_monthly_peak", karamaniya_printed)["ok"])
-        neighbour_printed = months_of(4)
+        neighbour_printed = months_of(10)
         neighbour_printed[2].update(zone_price=1.08)
         neighbour_printed[2]["nations"]["veleria"]["monthly_printing"] = 0.01
         self.assertTrue(result("inflation_monthly_peak", neighbour_printed)["ok"])

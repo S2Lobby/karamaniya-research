@@ -1,6 +1,7 @@
 """Non-fatal integrity checks for canonical simulation state and recorded snapshots."""
 from __future__ import annotations
 
+import dataclasses
 import math
 
 from .world import OFFICES, World
@@ -8,6 +9,16 @@ from .world import OFFICES, World
 VERSION = 1
 FATALITY_COUNTERS = ("deaths_famine", "deaths_state_violence", "deaths_war_civilian",
                      "deaths_internment", "deaths_coups", "deaths_natural", "soldiers_killed")
+
+
+def _non_finite(obj) -> list:
+    """(field, value) for every float field of a state record that is NaN or infinite."""
+    found = []
+    for f in dataclasses.fields(obj):
+        value = getattr(obj, f.name)
+        if isinstance(value, float) and not math.isfinite(value):
+            found.append((f.name, value))
+    return found
 
 
 def validate(w: World, snapshot: dict | None = None) -> list[dict]:
@@ -44,6 +55,25 @@ def validate(w: World, snapshot: dict | None = None) -> list[dict]:
     else:
         if not math.isfinite(trust_value) or not 0 <= trust_value <= 1:
             issue("invalid_numeric_state", f"league_trust is not a finite value in [0, 1] ({trust}).")
+    # Audit CO1: a NaN tax passed every check here while it spread into every population's income, so the
+    # policy levers, the deployment shares, the economy's figures, the zones and every population are checked.
+    for name, value in _non_finite(w.policy):
+        issue("invalid_numeric_state", f"policy lever {name} is not finite ({value}).")
+    for name, value in w.mil.deploy.items():
+        if isinstance(value, float) and not math.isfinite(value):
+            issue("invalid_numeric_state", f"deployment share {name} is not finite ({value}).")
+    for name, value in w.const.directives.items():
+        if isinstance(value, float) and not math.isfinite(value):
+            issue("invalid_numeric_state", f"directive {name} is not finite ({value}).")
+    for name, value in _non_finite(w.econ):
+        issue("invalid_numeric_state", f"economic figure {name} is not finite ({value}).")
+    for zone in w.zones:
+        for name, value in _non_finite(zone):
+            issue("invalid_numeric_state", f"zone {zone.id} {name} is not finite ({value}).")
+    for pop in w.pops:
+        for name, value in _non_finite(pop):
+            issue("invalid_numeric_state",
+                  f"population {pop.region} {pop.cls} {pop.ident}: {name} is not finite ({value}).")
     for region in w.regions:
         if region.nation == "karamaniya" and region.controller not in ("karamaniya", "union", "rebels"):
             issue("region_controller", f"{region.id} has unknown controller {region.controller!r}.")

@@ -148,13 +148,27 @@ def update(w: World, fiscal: dict) -> None:
     m, e, pol, dip = w.mil, w.econ, w.policy, w.dip
     cpi = e.cpi
     rng = rng_for(w.seed, w.month, "military")
+    # Audit MI4: a General Staff request that arises this month is recorded before this month's call-ups and recruitment.
+    staff.arise(w)
+
+    # Audit MI1: reservists are called up or sent home before the month's bill is set, so a new call-up's activation
+    # and the pay of everyone embodied fall due in the month they are called up. Recruits still join after the bill,
+    # as before, so the reserve is sized on the force at the start of the month.
+    called_up_now = _mobilize(w)
 
     # Pay. Soldiers and sailors are paid before anything is bought.
     budget = fiscal["mil_paid"]
     pay = officer_pay(w)
     focus = training_intensity(w)
+    # Audit MI1: the embodied reservists' pay and the activation of this month's call-up are part of the military
+    # bill, and the activation is charged once, in the month it is made (reserve_cost). Audit MI1-f follow-up: the
+    # trained pool's upkeep (reserve["pool_monthly"]) is reported but not charged, because the army's budget lines
+    # were set without it; with no call-up it would otherwise put the army in arrears for reservists it never called.
+    reserve = reserve_cost(w)
+    activation = reserve_cost(w, embodied=called_up_now)["activation_one_off"]
     pay_needed = (m.army.size * ARMY_COST * cpi * pay["bill"] * focus["bill"]
-                  + m.navy.size * SHIP_COST * cpi)
+                  + m.navy.size * SHIP_COST * cpi
+                  + reserve["embodied_monthly"] + activation)
     if budget >= pay_needed:
         paid = 1.0
         remaining = budget - pay_needed
@@ -182,7 +196,6 @@ def update(w: World, fiscal: dict) -> None:
     m.police.arrears = max(0.0, m.police.arrears + (1 - police_paid) - (0.5 if police_paid >= 1 else 0))
 
     _recruit(w)
-    _mobilize(w)
 
     # Desertion when unpaid or demoralised.
     desert = m.army.size * (0.015 * min(3.0, m.army.arrears) + 0.03 * max(0.0, 0.3 - m.army.morale)) * pay["desert"]
@@ -248,28 +261,32 @@ def update(w: World, fiscal: dict) -> None:
 MOBILIZATION_SHARE = {"none": 0.0, "partial": 0.25, "general": 0.75}
 
 
-def _mobilize(w: World) -> None:
+def _mobilize(w: World) -> float:
     """Call reservists up or send them home, and take them out of the labour force meanwhile.
 
     Unlike conscription this is fast to start and fast to undo, which is exactly what makes it a
     crisis instrument rather than a standing policy: the people are trained already, but they are
     also already working, and calling them up costs the economy their labour for as long as they
-    serve.
+    serve. Returns the reservists newly called up this month, whose activation the bill charges.
     """
     m, pol = w.mil, w.policy
     mob = mobilization_of(w)
     old_distribution = _restore_mobilized_distribution(w)
     pool = reserve_pool(w)
     target = pool * MOBILIZATION_SHARE.get(getattr(pol, "mobilization", "none"), 0.0)
+    before = mob.called_up
     if target > mob.called_up:
         call_up(w, target - mob.called_up)
     elif target < mob.called_up:
         release_reservists(w, mob.called_up - target)
+    new_call_up = max(0.0, mob.called_up - before)
     # Reservists who are serving are not available to their employers. Booked exactly as
     # conscription is, so economy.labor() subtracts them through the same path.
     drawn = mobilization_draw(w)
+    # Audit MI11: last month's shares come off every population that holds them, including one in a region the
+    # Union has taken; before, a lost region's reservists stayed on the labour books and were drawn again.
     pops = [p for p in w.k_pops() if p.cls in DRAFT_WEIGHT]
-    by_key = {_pop_key(p): p for p in pops}
+    by_key = {_pop_key(p): p for p in w.pops}
     for key, share in old_distribution.items():
         p = by_key.get(key)
         if p is not None:
@@ -277,12 +294,12 @@ def _mobilize(w: World) -> None:
             p._mobilized_share = 0.0
     if drawn <= 0:
         mob.distribution = {}
-        return
+        return new_call_up
     weights = [DRAFT_WEIGHT[p.cls] * labor(p) for p in pops]
     total = sum(weights)
     if total <= 0:
         mob.distribution = {}
-        return
+        return new_call_up
     # Distribute over the same groups conscription uses, proportional to who is available.
     new_distribution = {}
     for p, wt in zip(pops, weights):
@@ -290,6 +307,7 @@ def _mobilize(w: World) -> None:
         p.conscripted += p._mobilized_share
         new_distribution[_pop_key(p)] = p._mobilized_share
     mob.distribution = new_distribution
+    return new_call_up
 
 
 def _pop_key(p) -> str:
@@ -306,7 +324,9 @@ def _restore_mobilized_distribution(w: World) -> dict:
         total = sum(weights)
         if total > 0:
             distribution = {_pop_key(p): mob.called_up * wt / total for p, wt in zip(pops, weights)}
-    for p in pops:
+    # Audit MI12: the shares are read for every population that holds one, not only those still controlled, so a
+    # resumed run releases the same conscripts as the unbroken one (the share is saved in mob.distribution).
+    for p in w.pops:
         p._mobilized_share = max(0.0, distribution.get(_pop_key(p), 0.0))
     mob.distribution = distribution
     return distribution
@@ -361,7 +381,8 @@ def _release_mobilized(w: World, amount: float, killed: bool) -> None:
         return
     amount = min(total, max(0.0, amount))
     frac = amount / total
-    by_key = {_pop_key(p): p for p in w.k_pops()}
+    # Audit MI11: casualties come off every population that holds a share, as in _mobilize.
+    by_key = {_pop_key(p): p for p in w.pops}
     for key, share in list((mob.distribution or {}).items()):
         lost = share * frac
         p = by_key.get(key)
@@ -766,9 +787,11 @@ def reserve_cost(w: World, pooled: float | None = None, embodied: float | None =
     """What the reserve establishment costs, and what calling it up costs on top.
 
     `pool_monthly` is the standing bill for keeping the trained pool trained (drills, refresher
-    courses, kit maintenance); `embodied_monthly` is pay for the reservists currently serving, who
-    are paid as soldiers; `activation_one_off` is the kit, transport and medical intake of putting
-    them back in the field. All at current prices.
+    courses, kit maintenance). It is reported but not charged: the army's budget lines were set
+    without it, so military.update charges only `embodied_monthly` and `activation_one_off`.
+    `monthly_total` adds the two monthly bills for reporting. `embodied_monthly` is pay for the
+    reservists currently serving, who are paid as soldiers; `activation_one_off` is the kit,
+    transport and medical intake of putting them back in the field. All at current prices.
     """
     cpi = w.econ.cpi
     pooled = reserve_pool(w) if pooled is None else max(0.0, pooled)

@@ -46,8 +46,10 @@ ULTIMATUM_TERMS = {
     "cede_region": "Cede {region} to {actor}.",
 }
 LAND_TERMS = "cede_region"
-# A demand for land still stands for a cession this many months after its deadline (territory.cede).
-LAPSE_MONTHS = 3
+# A demand for land is a basis for a cession through its deadline and the month it lapses, the month after the deadline
+# (territory.cede). It was three months, which let a cession pass for a demand the cabinet had already let lapse, while
+# the lapse message said it had expired (Audit FO16).
+LAPSE_MONTHS = 1
 AIMS = ("limited", "full")
 # The acts this module handles; foreign.py handles the rest of a cabinet's catalog.
 KINDS = ("mobilize", "deploy_to_border", "withdraw_from_border", "border_incident", "covert_support",
@@ -161,6 +163,22 @@ def reserve_room(w, actor_id: str) -> float:
     return max(0.0, military["reserves"] - military["active"] * .45)
 
 
+def called_up_this_month(w, actor_id: str) -> float:
+    """Reservists this neighbour has called up in the current month. The cap is per month, so each act is checked
+    against what remains of it (Audit FO1). Kept in w.foreign, keyed by actor, and reset when the month changes."""
+    record = (w.foreign or {}).get("callups") or {}
+    if record.get("month") != w.month:
+        return 0.0
+    return float((record.get("by") or {}).get(actor_id, 0.0))
+
+
+def _record_callup(w, actor_id: str, troops: int) -> None:
+    record = w.foreign.get("callups")
+    if not isinstance(record, dict) or record.get("month") != w.month:
+        record = w.foreign["callups"] = {"month": w.month, "by": {}}
+    record["by"][actor_id] = record["by"].get(actor_id, 0.0) + troops
+
+
 def navy_for_blockade(w, actor_id: str) -> float:
     """Ships a blockade can use: the whole Union fleet while the Union holds together, otherwise one's own."""
     union = (w.foreign or {}).get("union", {})
@@ -222,7 +240,8 @@ def check(w, actor_id: str, action: dict) -> str | None:
         if not isinstance(troops, int) or isinstance(troops, bool) or troops <= 0:
             return "name how many soldiers (troops, a whole number above 0)"
     if kind == "mobilize":
-        limit = min(reserve_room(w, actor_id), MOBILIZE_CAP[actor_id])
+        # Audit FO1: the cap is for the month, so what this neighbour has already called up this month counts.
+        limit = max(0.0, min(reserve_room(w, actor_id), MOBILIZE_CAP[actor_id] - called_up_this_month(w, actor_id)))
         if troops > limit:
             return f"at most {limit:,.0f} reservists can be called up this month"
     elif kind == "deploy_to_border":
@@ -239,7 +258,8 @@ def check(w, actor_id: str, action: dict) -> str | None:
         if at_border(w, actor_id, front) < INCIDENT_MIN_FORCE:
             return f"an incident needs at least {INCIDENT_MIN_FORCE:,} soldiers already at the {front} border"
     elif kind == "covert_support":
-        region = next((r for r in w.k_regions() if r.id == action.get("region")), None)
+        # Audit FO3: a region the Union or the rebels hold is still Karamaniya's, and the checks below read its controller.
+        region = next((r for r in w.k_regions(controlled_only=False) if r.id == action.get("region")), None)
         if region is None:
             return "name a region of Karamaniya"
         if region.controller == "union":
@@ -317,8 +337,12 @@ def apply(w, actor_id: str, action: dict) -> dict:
     if kind == "mobilize":
         rival.army += troops
         actor["military"]["active"] = rival.army
+        # Audit FO2: the reservists called up leave the reserve pool, one for one, so the pool and the reservists a
+        # cabinet can still call up fall (reserve_room). The pool is never overdrawn: check() caps a call-up at the room.
+        actor["military"]["reserves"] = max(0.0, actor["military"]["reserves"] - troops)
         actor["military"]["readiness"] = round(clamp(actor["military"]["readiness"] + troops / 150000), 3)
         foreign._pay_action(w, actor_id, "mobilization", troops / max(1.0, rival.population) * .9)
+        _record_callup(w, actor_id, troops)
         effects["army"] = troops
         if troops >= 5000:
             w.event("foreign_mobilization", f"{name} is calling up reservists.", importance=1, actor=actor_id)
@@ -352,7 +376,12 @@ def apply(w, actor_id: str, action: dict) -> dict:
                     importance=2 if total >= MIN_INVASION else 1, actor=actor_id, region=region.id)
             _fear(w, region.id, .02 + .04 * min(1.0, total / 20000))
             dip.rally = clamp(dip.rally + .02)
-        foreign._pay_action(w, actor_id, "troop deployment", troops / max(1.0, rival.population) * .3)
+        # Audit FO14: the soldiers left work when they were called up, so moving them costs budget and not output (as every
+        # act does, _spend). The fiscal strain of the move is what _pay_action charged, and is kept.
+        cost = troops / max(1.0, rival.population) * .3 * .8
+        foreign._spend(w, actor_id, cost)
+        foreign._remember(w.foreign, actor_id, "action_cost", "Moving troops to the border cost budget, not output.",
+                          w.month, fiscal_share=round(cost, 4))
         chain.append({"month": w.month, "actor": actor_id, "signal": "border deployment", "front": front,
                       "magnitude": troops})
 
@@ -429,6 +458,8 @@ def apply(w, actor_id: str, action: dict) -> dict:
 
     elif kind == "naval_blockade":
         dip.blockade = True
+        # Audit FO6-f: this blockade is a cabinet's, which the Union's rule never lifts, so no record of the rule's stays.
+        w.foreign.pop("rule_blockade", None)
         league = w.foreign["league"]
         league["shipping_security_concern"] = round(clamp(league["shipping_security_concern"] + .2), 3)
         league["fear_of_union_expansion"] = round(clamp(league["fear_of_union_expansion"] + .05), 3)
@@ -439,6 +470,8 @@ def apply(w, actor_id: str, action: dict) -> dict:
 
     elif kind == "lift_blockade":
         dip.blockade = False
+        # Audit FO6-f: whoever imposed the blockade, it has ended, so the Union's rule's record of one goes too.
+        w.foreign.pop("rule_blockade", None)
         w.event("blockade_lifted", f"{name} has lifted its blockade of Karamaniya's ports.", importance=2,
                 actor=actor_id)
         effects["blockade"] = False
@@ -576,8 +609,10 @@ def _met_land_demand(w) -> dict | None:
     for rec in reversed((w.institutions or {}).get("territorial_demands", [])):
         rid, by = rec.get("region"), rec.get("by")
         if rid in ceded and ceded[rid].get("to") == by and w.month <= int(rec.get("deadline", -1)) + LAPSE_MONTHS:
+            # Audit FO18 and TO7: a demand is due in its deadline month, which its cabinet can still answer, and expired the
+            # month after, when the engine lapses it.
             return {"by": by, "terms": rec.get("terms", ""), "region": _region_name(w, rid),
-                    "deadline_month": int(rec["deadline"]) + 1, "expired": w.month >= rec["deadline"], "met": True,
+                    "deadline_month": int(rec["deadline"]) + 1, "expired": w.month > rec["deadline"], "met": True,
                     "observed": _land_facts(w, {"region": rid})}
     return None
 
@@ -591,7 +626,7 @@ def ultimatum_compliance(w) -> dict | None:
     if terms == LAND_TERMS:
         return {"by": ult.get("by", "veleria"), "terms": ult.get("terms"),
                 "region": _region_name(w, ult.get("region", "")), "deadline_month": ult["deadline"] + 1,
-                "expired": w.month >= ult["deadline"], "observed": _land_facts(w, ult)}
+                "expired": w.month > ult["deadline"], "observed": _land_facts(w, ult)}
     m = w.mil
     talks = [p["kind"] for p in (w.foreign or {}).get("proposal_log", [])
              if p.get("month", -1) >= ult["issued"] and p.get("party") in ("union", "veleria")
@@ -603,7 +638,7 @@ def ultimatum_compliance(w) -> dict | None:
              "protect_imperial_citizens": {"minority_policy": w.const.minority,
                                            "police_response": w.policy.protest_response}}[terms]
     return {"by": ult.get("by", "veleria"), "terms": ult.get("terms"), "deadline_month": ult["deadline"] + 1,
-            "expired": w.month >= ult["deadline"], "observed": facts}
+            "expired": w.month > ult["deadline"], "observed": facts}
 
 
 def cabinet_view(w, actor_id: str) -> dict:
@@ -612,10 +647,11 @@ def cabinet_view(w, actor_id: str) -> dict:
     actor = w.foreign["actors"][actor_id]
     intel = actor["intelligence"][-1] if actor["intelligence"] else {}
     arrears = w.mil.army.arrears
+    # Audit FO3: the regions the Union or the rebels hold are listed too (k_regions defaults to the ones still controlled).
     unrest = {r.name: ("held by rebels" if r.controller == "rebels" else
                        "occupied by the Union" if r.controller == "union" else
                        "uprising" if r.unrest >= .6 else "protests" if r.unrest >= .35 else "tense")
-              for r in w.k_regions() if r.unrest >= .2 or r.controller != "karamaniya"}
+              for r in w.k_regions(controlled_only=False) if r.unrest >= .2 or r.controller != "karamaniya"}
     if c.handover_month >= w.month:
         government = f"lost the election; must hand power to the new Assembly in Month {c.handover_month + 1}"
     elif "handover_blocked_month" in w.counters:
@@ -664,7 +700,7 @@ def cabinet_view(w, actor_id: str) -> dict:
             "war_aim": aim.get("aim") if dip.war else None,
             "fronts": {f: {"union_soldiers": round(dip.union_front.get(f, 0.0), -2),
                            "advance": round(w.mil.progress.get(f, 0.0), 2)} for f in FRONTS} if dip.war else None,
-            "occupied_regions": [r.name for r in w.k_regions() if r.controller == "union"],
+            "occupied_regions": [r.name for r in w.k_regions(controlled_only=False) if r.controller == "union"],
             "ceasefire": dip.ceasefire, "blockade": dip.blockade,
             "ultimatum": ultimatum_compliance(w),
             "other_neighbour_at_the_border": {o: round(at_border(w, o), -2) for o in FRONTS_OF if o != actor_id},

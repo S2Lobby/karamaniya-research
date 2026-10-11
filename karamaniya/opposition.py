@@ -25,6 +25,8 @@ the government's to change.
 """
 from __future__ import annotations
 
+from dataclasses import fields
+
 from . import public_mood
 from .world import OFFICE_TITLES, Constitution, Policy, World, clamp
 
@@ -181,6 +183,32 @@ def _start(w: World) -> dict:
     return _levers(Policy(), const, 0.0)
 
 
+_POLICY_FIELDS = {f.name for f in fields(Policy)}
+_CONSTITUTION_FIELDS = {f.name for f in fields(Constitution)}
+
+
+def _history_levers(w: World) -> dict | None:
+    """The settings the month before was written with, read from its history row (audit PO9), or None if there is no such
+    row. A world resumed from before engine 18 has no record of the settings it last saw, so its first month is measured
+    from the row the month before wrote. engine.snapshot writes that row at the end of a month, after monthly has run, so
+    during monthly the last row is the previous month's and this month's row is not written yet. A row for any other
+    month is not read."""
+    rows = w.history or []
+    row = rows[-1] if rows else None
+    if not isinstance(row, dict) or row.get("month") != w.month - 1:
+        return None
+    policy_row, const_row = row.get("policy"), row.get("constitution")
+    arrears = (row.get("hard_state") or {}).get("arrears")
+    if not isinstance(policy_row, dict) or not isinstance(const_row, dict) or arrears is None:
+        return None
+    policy = Policy(**{k: v for k, v in policy_row.items() if k in _POLICY_FIELDS})
+    const = Constitution(**{k: v for k, v in const_row.items() if k in _CONSTITUTION_FIELDS})
+    # The row does not record the parties setting (engine.snapshot leaves it out), so that setting is read as it stands:
+    # a ban the world already had before the resume is not reported as this month's act.
+    const.parties = w.const.parties
+    return _levers(policy, const, float(arrears))
+
+
 def _act(key: str, **fields) -> dict:
     """One thing that happened this month: the key a party's line answers, and the words its statement fills in."""
     return {"key": key, "fields": fields}
@@ -300,6 +328,10 @@ def monthly(w: World) -> None:
     seen = s.get("seen")
     if seen is None and w.month == 0:
         seen = _start(w)                   # the first month's changes are measured from the settings the run began with
+    elif seen is None:
+        # Audit PO9: a world resumed from before engine 18 has no record of what it last saw, so its first month is measured
+        # from the history row the month before wrote, not from the starting settings (which would report old acts as new).
+        seen = _history_levers(w)
     now = _levers(w.policy, w.const, w.econ.arrears)
     acts = _records(w) + _economy(w, seen)
     if seen is not None:

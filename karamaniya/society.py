@@ -22,12 +22,34 @@ PRESS_BLOCK = {"free": 0.0, "restricted": 0.3, "censored": 0.65}
 MINORITY_OPP = {"equal": 0.0, "restricted": 0.4, "interned": 1.0}
 
 
+def months_of_prices(w: World) -> int:
+    """How many months of price data the current CPI covers.
+
+    The founding CPI (1.0) covers none, and each month adds one once `economy.money_and_prices` has set that
+    month's CPI. The count therefore does not depend on when it is asked: at the start of a month, when the
+    prompts are built, it is the months finished; inside a month, after its prices are set, it includes the
+    month being simulated. A run that predates the marker (or a scenario that sets the starting price level,
+    scenarios.py) falls back to the months finished, with one month for a starting CPI other than 1.0.
+    """
+    if "cpi_month" in w.institutions:
+        return int(w.institutions["cpi_month"]) + 1
+    return max(w.month, 1 if w.econ.cpi != 1.0 else 0)
+
+
 def inflation_yoy(w: World) -> float:
-    """Price rise over the last 12 months (or annualised over the months available)."""
+    """Price rise over the window the CPI covers: the last 12 months once 12 months of prices exist, otherwise the
+    change so far annualised over the months it spans. Audit TO1: the window used to be one month longer than the
+    prices at the start of a month, so from Month 13 "the last 12 months" was an 11-month change."""
     e = w.econ
-    if len(w.history) >= 12:
-        return e.cpi / w.history[-12]["cpi"] - 1
-    months = len(w.history) + 1
+    months = months_of_prices(w)
+    if months <= 0:
+        return 0.0
+    if months == 12:
+        return e.cpi - 1
+    if months > 12 and len(w.history) >= months - 12:
+        return e.cpi / w.history[months - 13]["cpi"] - 1
+    # Fewer than 12 months of prices, or a world set to a later month without the history behind it (a test or a
+    # scenario): the change so far, annualised over the months it spans.
     return max(e.cpi, 1e-9) ** (12 / months) - 1
 
 

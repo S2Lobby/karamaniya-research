@@ -206,10 +206,13 @@ class IgnoredThenAnswered(unittest.TestCase):
         self.assertEqual(staff.unanswered(w), 0)
         self.assertEqual(ministries.grievance(w, "army"), 0.0)
 
-    def test_calling_up_reservists_answers_it_too(self):
+    def test_calling_up_reservists_answers_it_too_once_they_count_for_half_the_gap(self):
+        """Engine 19 (MI7): a call-up answers the request by its effective strength, not by the fact of the call-up."""
         w = world()
         month(w, 2)
-        w.policy.mobilization = "partial"
+        w.policy.mobilization = "general"    # about 21,000 called up, 15 per cent effective in the month they go
+        month(w)
+        self.assertEqual(staff.unanswered(w), 3, "a call-up that is not yet half the gap answered it")
         month(w)
         self.assertEqual(staff.unanswered(w), 0)
         self.assertEqual(ministries.grievance(w, "army"), 0.0)

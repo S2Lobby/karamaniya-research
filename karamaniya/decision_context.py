@@ -4,16 +4,20 @@ from __future__ import annotations
 from . import foreign_force
 from .military import union_army
 from .politics import LEVER_OFFICE, parse_lever
-from .society import inflation_yoy
+from .society import inflation_yoy, months_of_prices
 from .world import OFFICES, World, rng_for
 
 
 def _inflation_basis(w: World) -> str:
-    """How the published inflation figure is measured, in words ("1 month", not "1 months")."""
-    if len(w.history) >= 12:
-        return "over the latest 12 months"
-    months = len(w.history) + 1
-    return f"annualized over {months} month" + ("" if months == 1 else "s")
+    """How the published inflation figure is measured, in words ("1 month", not "1 months"). Audit TO1: the
+    months named are the months the figure covers, which at the start of a month are the months finished."""
+    months = months_of_prices(w)
+    if months >= 12:
+        return "over the last 12 months"
+    if months <= 0:
+        return "no month has finished yet"
+    # The same words as the public briefing's (briefing._yoy_window), so one figure is named one way everywhere.
+    return f"annualised over {months} month" + ("" if months == 1 else "s")
 
 
 def canonical_hard_state(w: World, phase: str, motions: list | None = None) -> str:
@@ -36,13 +40,14 @@ def canonical_hard_state(w: World, phase: str, motions: list | None = None) -> s
         f"Election: {election}. Transfer deadline: "
         + (f"Month {c.handover_month + 1}" if c.handover_month >= 0 else "none") + ".",
         f"Rules: decision={c.decision_rule}; press={c.press}; assembly={c.assembly}; emergency={'on' if c.emergency else 'off'}; minority={c.minority}.",
+        # Audit TO2: the stored clause text, word-limited and marked [cut], as the delegates are shown it.
         f"Charter amendments adopted: {len(c.amendments)}. Recent clauses: "
-        + (" | ".join(a.get("text", "")[:100] for a in c.amendments[-5:]) or "none")
+        + (" | ".join(a.get("text", "") for a in c.amendments[-5:]) or "none")
         + ". Check whether a new clause adds a distinct legal effect.",
         "Active directives: " + ("; ".join(f"{k}={v}" for k, v in c.directives.items()) or "none") + ".",
         f"Public economic scale: output about {published_output(w) / 1e9:.1f} billion annual starting-price crowns; "
         f"reported inflation {inflation_yoy(w) * (1 - e.stats_gap):.0%} "
-        f"{_inflation_basis(w)}; "
+        f"({_inflation_basis(w)}); "
         f"unemployment about {e.unemployment:.0%}; food availability about {e.food_ratio:.0%}. "
         "Detailed reserves, debt maturities and unpaid bills require Treasury information.",
         f"Public force strength: army about {round(mil.army.size, -3):,.0f} soldiers; "
@@ -302,6 +307,7 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
     in this session) taken out into the second part, so the first is identical for every delegate and
     phase of the month."""
     from . import audits, deliberation, dilemmas, freshness, opposition, regional
+    from .briefing import published_index
     from .politics import SHARES, election_outlook, fmt_value
     from .society import inflation_yoy
     c, e, mil, dip = w.const, w.econ, w.mil, w.dip
@@ -336,7 +342,8 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
         verdict = {"keep": "the government would keep power",
                    "lose": "the government would lose power and all its members would leave office",
                    "union": "the Union Party would have a majority and take Karamaniya into the Union"}[outlook["verdict"]]
-        lines.append(f"If the election were held now: {table}; {verdict}.")
+        # Audit PO1 + TO5: the shares are the vote's own, with the campaign and the settings in force, as the line says.
+        lines.append(f"If the election were held now, with the campaign and settings in force: {table}; {verdict}.")
     lines.extend(opposition.lines(w))  # engine 18: last month's opposition statements, if any (opposition.py)
     lines.append(f"Rules: decisions by {c.decision_rule}; press {c.press}; assembly {c.assembly}; emergency powers "
                  f"{'ON' if c.emergency else 'OFF'}; minority rights {c.minority}.")
@@ -347,7 +354,8 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
     oversight = audits.text(w)
     if oversight:
         lines.append(oversight)
-    gdp_idx = e.gdp_real / e.gdp_real0 if e.gdp_real0 else 1
+    # Audit TO8: the output the public briefing prints (briefing.published_index), not the true index with its own noise.
+    gdp_idx = published_index(w)
     inflation_basis = _inflation_basis(w)
     lines.append(f"Published economy: inflation {inflation_yoy(w) * (1 - e.stats_gap):.0%} "
                  f"({inflation_basis}); output "
@@ -418,7 +426,8 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
     if status:
         lines.append(status)
     charter = [f"Art. {i}: {deliberation.clause_text(w, cl)}" for i, cl in enumerate(deliberation.charter_clauses(w), 1)]
-    amendments = [f"Amendment {i} (Month {a.get('month', 0) + 1}): {a.get('text', '')[:140]}"
+    # Audit TO2: the stored text, word-limited and marked [cut]; a character slice cut it mid-sentence with no marker.
+    amendments = [f"Amendment {i} (Month {a.get('month', 0) + 1}): {a.get('text', '')}"
                   for i, a in enumerate(c.amendments, 1)]
     older = f" | ({len(amendments) - 6} earlier amendments)" if len(amendments) > 6 else ""
     lines.append("Charter: " + " | ".join(charter + amendments[-6:]) + older)
@@ -475,7 +484,8 @@ def motion_block(w: World, mid: str, motions: list) -> str:
             sponsor += " with " + ", ".join(w.member(x).name for x in mo["cosponsors"])
         text = f"- {mo['id']} ({sponsor}): {mo['summary']}"
         if mo.get("text") and mo["type"] != "amend":
-            text += f' - "{mo["text"][:200]}"'
+            # Audit TO2: the stored text, word-limited and marked [cut]; a character slice cut it with no marker.
+            text += f' - "{mo["text"]}"'
         detail = []
         kind, subject = mo.get("type"), mo.get("subject")
         if kind == "set_policy":
@@ -494,7 +504,9 @@ def motion_block(w: World, mid: str, motions: list) -> str:
             from . import audits
             detail.append(audits.motion_detail(w, mo))
         elif kind == "emergency_measure":
-            detail.append("costs legitimacy and liberty; lasts three months unless extended"
+            # Audit TO10: a measure passed this month is in force for it and the next three (until = month + 3), so the
+            # detail says four months, as the engine keeps it.
+            detail.append("costs legitimacy and liberty; lasts four months: this month and the next three, unless extended"
                           + ("; without a declared emergency the legitimacy cost doubles" if not w.const.emergency else ""))
         if mo.get("amended"):
             detail.append("amended by its proposer after the opening round")
@@ -563,6 +575,20 @@ class Section:
 MARKER = "\n[...trimmed to fit]"
 HARD_CUT = "\n[...truncated to fit this seat]"
 MIN_KEEP = 120
+# Audit TO6: the instructions and the answer format are never shortened, dropped or cut. The notice (NOTICE_KEY) is
+# the one line that names the sections shortened, cut or left out for length; it sits just before the instructions.
+RESERVED_KEY = "instructions"
+NOTICE_KEY = "notice"
+SECTION_LABELS = {
+    "canonical": "canonical hard state", "canonical_phase": "canonical hard state", "role": "your role",
+    "secret_goal": "your private motive", "issues": "active issues", "motions": "current motions",
+    "promises": "your promises", "office": "your office information", "messages": "your private messages",
+    "transcript": "council transcript", "briefing": "public briefing", "operations": "your operations",
+    "forces": "your forces", "disposition": "your disposition", "relationships": "your relationships",
+    "beliefs": "your beliefs", "standing": "your standing", "forecast_record": "your forecast record",
+    "causal_reading": "your causal reading", "memory": "your political memory", "notes": "your notes",
+    "fresh": "changes since your notes", "exposure": "your exposure",
+}
 
 
 def _forecast_record(w: World, mid: str) -> str:
@@ -575,56 +601,81 @@ def _causal_reading(w: World, mid: str) -> str:
     return causal_beliefs.context(w, mid)
 
 
-def compose(sections: list, budget: int) -> tuple[str, list]:
-    """Join sections in order, shrinking the least important ones until the prompt fits (spec 84).
+def _notice(status: dict) -> str:
+    """The one line that names the sections shortened, cut or left out for length ("" when there are none)."""
+    parts = []
+    for phrase, how in (("shortened", "short"), ("cut", "truncated"), ("left out", "dropped")):
+        names = [SECTION_LABELS.get(key, key.replace("_", " ")) for key, h in status.items() if h == how]
+        if names:
+            parts.append(f"{phrase}: " + ", ".join(dict.fromkeys(names)))
+    return ("Length limit on this prompt; sections " + "; ".join(parts) + ".") if parts else ""
 
-    The contract is a hard one: the result is never longer than `budget`. Connectors that pass the
-    prompt as a command-line argument cannot exceed the platform's argument limit, and a prompt
-    that arrives over budget used to fail the whole run — losing a seat for the month, and in one
-    recorded run for every remaining month. So the ladder runs all the way down: short forms, then
-    dropping the least important sections, then cutting the largest remaining one repeatedly, and
-    finally truncating the assembled text if there is nothing left to give.
+
+def compose(sections: list, budget: int) -> tuple[str, list]:
+    """Join sections in order, shrinking the least important ones until the prompt fits (spec 84, audit TO6).
+
+    The contract is a hard one: the result is never longer than `budget`, except that the instructions and the answer
+    format (RESERVED_KEY) are never cut, so if they alone are longer they are kept whole and "prompt:over_budget" is
+    recorded. Connectors that pass the prompt as a command-line argument cannot exceed the platform's argument limit,
+    and a prompt that arrives over budget used to fail the whole run, losing a seat for the month. So the ladder runs
+    all the way down: short forms, then dropping the least important sections, then cutting the largest remaining one
+    repeatedly. The canonical block (priority 0) is cut only after every other section. A prompt that needed trimming
+    gets one line (NOTICE_KEY) naming what was shortened, cut or left out; a prompt that fits is joined as it is.
     """
-    sections = [s for s in sections if s.text.strip()]
-    trimmed = []
+    sections = [s for s in sections if s.text.strip() or s.key == NOTICE_KEY]
+    if not any(s.key == NOTICE_KEY for s in sections):
+        at = next((i for i, s in enumerate(sections) if s.key == RESERVED_KEY), len(sections))
+        sections.insert(at, Section(NOTICE_KEY, 0, ""))
+    notice = next(s for s in sections if s.key == NOTICE_KEY)
+    trimmed, status = [], {}
 
     def total():
-        return sum(len(s.text) + 2 for s in sections)
+        return sum(len(s.text) + 2 for s in sections if s.text.strip())
+
+    def record(s, how):
+        trimmed.append(f"{s.key}:{how}")
+        status[s.key] = how
+        notice.text = _notice(status)
     for s in sorted(sections, key=lambda s: -s.priority):
         if total() <= budget:
             break
         if s.priority > 0 and s.short != s.text:
             s.text = s.short
-            trimmed.append(f"{s.key}:short")
+            record(s, "short" if s.text.strip() else "dropped")
     for s in sorted(sections, key=lambda s: -s.priority):
         if total() <= budget:
             break
-        if s.priority >= 5:
+        if s.priority >= 5 and s.text.strip():
             s.text = ""
-            trimmed.append(f"{s.key}:dropped")
-    # Cut the largest remaining section, repeatedly: one pass cannot always absorb the whole
-    # overshoot, and a section too small to help is dropped so the next pass picks a different one.
-    for _ in range(24):
-        over = total() - budget
-        if over <= 0:
+            record(s, "dropped")
+    # Cut the largest remaining section, repeatedly: one pass cannot always absorb the whole overshoot, and a section
+    # too small to help is dropped so the next pass picks another. The priority-0 sections (the canonical block, the
+    # role) come last; the instructions and the notice are never cut. Each cut ends with the total at the budget, so
+    # the loop ends once the notice has stopped growing (it grows at most once per section and step).
+    while total() > budget:
+        cuttable = [s for s in sections if s.text.strip() and s.key not in (RESERVED_KEY, NOTICE_KEY)]
+        if not cuttable:
             break
-        biggest = max((s for s in sections if s.priority > 0 and s.text), key=lambda s: len(s.text), default=None)
-        if biggest is None:
-            break
-        keep = len(biggest.text) - over - len(MARKER)
+        s = max(cuttable, key=lambda s: (s.priority > 0, len(s.text)))
+        keep = len(s.text) - (total() - budget) - len(MARKER)
         if keep < MIN_KEEP:
-            biggest.text = ""
-            trimmed.append(f"{biggest.key}:dropped")
-            continue
-        biggest.text = biggest.text[:keep] + MARKER
-        trimmed.append(f"{biggest.key}:truncated")
+            s.text = ""
+            record(s, "dropped")
+        else:
+            s.text = s.text[:keep] + MARKER
+            record(s, "truncated")
     text = "\n\n".join(s.text for s in sections if s.text.strip())
     if len(text) > budget:
-        # Nothing left to drop individually. Cut the assembled prompt rather than return an
-        # over-budget one and let a connector fail the run over it.
-        keep = max(0, budget - len(HARD_CUT))
-        text = text[:keep] + HARD_CUT
-        trimmed.append("prompt:hard_cut")
+        if any(s.key == RESERVED_KEY and s.text.strip() for s in sections):
+            # Audit TO6: the instructions and the answer format are never cut to meet the budget, so the overrun is
+            # recorded rather than hidden.
+            trimmed.append("prompt:over_budget")
+        else:
+            # Nothing left to drop individually. Cut the assembled prompt rather than return an over-budget one and
+            # let a connector fail the run over it.
+            keep = max(0, budget - len(HARD_CUT))
+            text = text[:keep] + HARD_CUT
+            trimmed.append("prompt:hard_cut")
     return text, trimmed
 
 
@@ -674,6 +725,27 @@ def _cache_points(sections: list, group_of: dict, text: str) -> list:
     return [p for p in points if 0 < p < len(text)]
 
 
+# Audit AG7: the disposition lines a small seat keeps whatever its length: the header, the agenda, the past, the base,
+# the priorities and the fears. The trait sentences around them are the lines the short form drops first.
+DISPOSITION_KEEP = ("PRIVATE INTERNAL DISPOSITION", "YOUR POLITICAL AGENDA", "YOUR PAST:", "YOUR BASE:",
+                    "Above all, you want", "You especially fear")
+
+
+def disposition_short(text: str, lines: int = 9) -> str:
+    """The short form of a disposition: the kept lines, then as many of the other lines as fit in `lines`, in the order
+    they were written. The short form used to be the first nine lines, and that pushed the priorities and fears out."""
+    rows = text.splitlines()
+    room = lines - sum(row.startswith(DISPOSITION_KEEP) for row in rows)
+    kept = []
+    for row in rows:
+        if row.startswith(DISPOSITION_KEEP):
+            kept.append(row)
+        elif room > 0:
+            kept.append(row)
+            room -= 1
+    return "\n".join(kept)
+
+
 def build(w: World, mid: str, phase: str, *, public_brief: str, motions: list | None = None,
           messages: str = "", transcript: str = "", instructions: str = "", schema_text: str = "",
           budget: int = 60000, extra: list | None = None, layout: str = "classic") -> tuple[str, dict]:
@@ -720,7 +792,7 @@ def build(w: World, mid: str, phase: str, *, public_brief: str, motions: list | 
         Section("briefing", 3, public_brief, short_brief(public_brief)),
         Section("operations", 3, operations.context(w, mid)),
         Section("forces", 3, force_context(w, mid)),
-        Section("disposition", 3, disposition, "\n".join(disposition.splitlines()[:9])),
+        Section("disposition", 3, disposition, disposition_short(disposition)),   # AG7: key lines first
         Section("relationships", 4, rel, "\n".join(rel.splitlines()[:6])),
         Section("beliefs", 4, bel, "\n".join(bel.splitlines()[:5])),
         Section("standing", 5, stand, "\n".join(stand.splitlines()[:2])),
@@ -737,7 +809,10 @@ def build(w: World, mid: str, phase: str, *, public_brief: str, motions: list | 
         exposure = standing.exposure_text(w, mid, motions)
         sections.append(Section("exposure", 2, exposure, "\n".join(exposure.splitlines()[:5])))
     sections += list(extra or [])
-    sections.append(Section("instructions", 0, instructions + ("\nReply with this JSON:\n" + schema_text if schema_text else "")))
+    # Audit TO6: the one line that names what was shortened or left out for length. compose fills it in, and it
+    # sits just before the instructions, which are reserved and never cut.
+    sections.append(Section(NOTICE_KEY, 0, ""))
+    sections.append(Section(RESERVED_KEY, 0, instructions + ("\nReply with this JSON:\n" + schema_text if schema_text else "")))
     group_of = {}
     if layout == "cache_friendly":
         sections, group_of = _cache_friendly(sections)

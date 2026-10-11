@@ -454,14 +454,18 @@ class ScriptedRuns(unittest.TestCase):
     def test_seeded_names_reach_no_model_and_change_nothing_else(self):
         table = naming.load(self.seeded / "names.json")
         self.assertEqual(table["mode"], "seeded")
-        canonical = naming.forms({k: k for k in table["names"]})
+        # Audit TO9: the English word "union" is prose and is not a leak. As an identifier or a quoted JSON key or value
+        # it is one, and is checked below; every other canonical name is checked everywhere, as before.
+        canonical = [x for x in naming.forms({k: k for k in table["names"]}) if x not in naming.PROSE_WORDS]
         pattern = re.compile(r"(?<![A-Za-z])(" + "|".join(sorted(map(re.escape, canonical), key=len, reverse=True))
                              + r")(?![A-Za-z])")
+        bloc_identifier = re.compile(r'(?<=_)union(?![A-Za-z])|(?<![A-Za-z])union(?=_)|"union"')
         texts = [(self.seeded / "system_prompt.txt").read_text(encoding="utf-8")]
         for line in (self.seeded / "prompts.jsonl").read_text(encoding="utf-8").splitlines():
             x = json.loads(line)
             texts += [x.get("prompt", ""), x.get("system", "") or "", json.dumps(x.get("schema", {}))]
-        leaks = sorted({m.group(1) for t in texts for m in pattern.finditer(t)})
+        leaks = sorted({m.group(1) for t in texts for m in pattern.finditer(t)}
+                       | {m.group(0).strip('"') for t in texts for m in bloc_identifier.finditer(t)})
         self.assertEqual(leaks, [])
         self.assertGreater(len(texts), 50)
         # The stand-ins read the world, not the prompt: the same seed runs the same with either names.

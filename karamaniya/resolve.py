@@ -14,7 +14,7 @@ engine kept score of how that looked from Veleria.
 """
 from __future__ import annotations
 
-from .world import World, clamp
+from .world import Policy, World, clamp
 
 BASE = .5
 LOW, HIGH = .05, .95
@@ -82,22 +82,33 @@ def baseline(w: World) -> float:
     return clamp(BASELINE_AT_PIVOT - RATIO_SLOPE * (ratio - RATIO_PIVOT), *BASELINE_RANGE)
 
 
+def _opening_policy() -> dict:
+    """The policy a run starts with, as the neighbours compare with it at their first look (the engine's defaults)."""
+    opening = Policy()
+    return {"recruitment": opening.recruitment, "mobilization": opening.mobilization, "military": opening.military}
+
+
 def monthly(w: World) -> None:
     """Once a month, before the neighbours decide: the policy moves they saw since last month, then the drift
     toward the force-ratio baseline."""
     if not active(w):
         return
     s = state(w)
-    seen, p = s["seen_policy"], w.policy
-    if seen:
-        order = ("none", "volunteer", "partial", "general")
-        if p.recruitment in order and seen.get("recruitment") in order and \
-                order.index(p.recruitment) > order.index(seen["recruitment"]):
-            _move(w, RECRUITMENT_UP.get(p.recruitment, 0.0), f"recruitment raised to {p.recruitment}")
-        if p.mobilization != seen.get("mobilization") and p.mobilization in MOBILIZATION_UP:
-            _move(w, MOBILIZATION_UP[p.mobilization], f"reservists called up ({p.mobilization})")
-        if p.military - float(seen.get("military", p.military)) >= MILITARY_STEP - 1e-9:
-            _move(w, MILITARY_UP, f"the military budget raised to {p.military:.1%} of output")
+    p = w.policy
+    # Audit FO12: the first look compares the policy with the one the run started with, not with itself, so an arming
+    # made in Month 1 counts.
+    seen = s["seen_policy"] or _opening_policy()
+    order = ("none", "volunteer", "partial", "general")
+    if p.recruitment in order and seen.get("recruitment") in order and \
+            order.index(p.recruitment) > order.index(seen["recruitment"]):
+        _move(w, RECRUITMENT_UP.get(p.recruitment, 0.0), f"recruitment raised to {p.recruitment}")
+    # Audit FO17: only a step up in mobilization is a call-up, as a rise in recruitment is; a stand-down is not.
+    mobilization_order = ("none", "partial", "general")
+    if p.mobilization in mobilization_order and seen.get("mobilization") in mobilization_order and \
+            mobilization_order.index(p.mobilization) > mobilization_order.index(seen["mobilization"]):
+        _move(w, MOBILIZATION_UP[p.mobilization], f"reservists called up ({p.mobilization})")
+    if p.military - float(seen.get("military", p.military)) >= MILITARY_STEP - 1e-9:
+        _move(w, MILITARY_UP, f"the military budget raised to {p.military:.1%} of output")
     s["seen_policy"] = {"recruitment": p.recruitment, "mobilization": p.mobilization, "military": p.military}
     s["value"] = round(clamp(s["value"] + DRIFT * (baseline(w) - s["value"]), LOW, HIGH), 4)
 

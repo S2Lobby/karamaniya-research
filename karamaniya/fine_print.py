@@ -24,7 +24,6 @@ from .world import World, clamp, rng_for
 
 KEY = "fine_print"                              # w.institutions key for the offers this run has opened
 ADVERSARIES = ("union", "veleria", "dorsania")  # the parties an offer can be made to; the League is not an adversary
-NEGATION_WINDOW = 4                             # words before a match in which a negation rules the clause out
 INQUIRY_ACCEPT = .75                            # the chance a hostile power accepts an inquiry it can steer
 INQUIRY_MONTHS = 2                              # months from an inquiry's opening to its finding
 STANDDOWN_MONTHS = 2                            # months a stand-down holds, counting the month it is made
@@ -54,9 +53,13 @@ READABLE = {"joint_inquiry": "a joint inquiry", "stand_down": "a stand-down of K
 FRONT_WORDS = {"north": r"\bnorth(?:ern)?\b|\bkessel\b", "east": r"\beast(?:ern)?\b|\bdorran\b"}
 FRONT_NAMES = {"north": "northern", "east": "eastern"}
 
+# The words that say a joint commission looks into an incident (audit MO20): a standing commission on trade does not.
+_INCIDENT = r"\b(?:shooting|incident|investigat\w*|inquir\w*|findings)\b"
 CLAUSES = {
     "joint_inquiry": (
-        r"\bjoint\s+(?:[\w-]+\s+){0,2}(?:investigation|inquiry|enquiry|commission|probe)",
+        r"\bjoint\s+(?:[\w-]+\s+){0,2}(?:investigation|inquiry|enquiry|probe)",
+        r"\bjoint\s+(?:[\w-]+\s+){0,2}commission\b[^.;:!?]*" + _INCIDENT,
+        _INCIDENT + r"[^.;:!?]*\bjoint\s+(?:[\w-]+\s+){0,2}commission\b",
         # Inspectors aboard ships are an inspection regime, which foreign_inspection reads, not an inquiry.
         r"\b(?:international|foreign|union|velerian|dorsanian)\s+(?:investigators?|inspectors?|monitors?|observers?)\b"
         r"(?!\s+(?:aboard|on|at|of|in)\s+(?:our\s+|karamanian\s+)?(?:ships|shipping|vessels|ports?|cargo))",
@@ -64,7 +67,12 @@ CLAUSES = {
     ),
     "stand_down": (
         r"\bstand[\s-]?downs?\b",
-        r"\bpull(?:s|ing|ed)?\s+back\b[^.;]{0,40}\b(?:troops|forces|patrols|units|soldiers)\b",
+        # Other wordings for the same act (audit MO24): "stand our forces down", "pull our patrols back" (a few words
+        # may come between "pull" and "back", and the forces may come before "back" or after it), "halt our patrols".
+        r"\bstand\s+(?:[\w-]+\s+){0,2}?(?:troops|forces|patrols|units|soldiers)\s+down\b",
+        r"\bpull(?:s|ing|ed)?\s+(?:[\w-]+\s+){0,3}?back\b[^.;]{0,40}\b(?:troops|forces|patrols|units|soldiers)\b",
+        r"\bpull(?:s|ing|ed)?\s+(?:[\w-]+\s+){0,3}?(?:troops|forces|patrols|units|soldiers)\s+(?:[\w-]+\s+){0,2}?back\b",
+        r"\b(?:halt|suspend)(?:s|ed|ing)?\s+(?:our\s+|karamanian\s+)?(?:troops|forces|patrols|units|soldiers)\b",
         r"\bwithdraw(?:al|s|ing)?\s+(?:of\s+)?(?:our\s+|karamanian\s+)?(?:troops|forces|patrols|units|soldiers)\b",
         r"\bdemilitari[sz](?:ed|ation)\b",
         r"\bbuffer\s+zone\b",
@@ -78,8 +86,11 @@ CLAUSES = {
         r"(?:right\s+to\s+)?inspect",
     ),
 }
-# The words that rule an act out when they come just before it: "no federation" names no federation.
-NEGATED = re.compile(r"\b(?:no|not|never|without|nor|excluding|refus(?:e|es|ed)|reject(?:s|ed)?|rules?\s+out)\b", re.I)
+# A clause runs from a full stop, semicolon, colon, question or exclamation mark, or from "but" or "while" (MO1).
+# Audit MO1-f follow-up: a comma or "and" before a new subject starts a clause too, so a refusal in the clause before
+# ("Since the Union rejected our offer, we propose ...") does not rule out the offer that follows it.
+_CLAUSE_BREAK = re.compile(r"[.;:!?]|\b(?:but|while)\b|(?:,|\band\b)\s*(?=(?:we|the\s+council|this\s+council|"
+                           r"the\s+government|our\s+government|karamaniya)\b)", re.I)
 
 
 def active(w: World) -> bool:
@@ -108,12 +119,12 @@ def _the(w: World, party: str) -> str:
 
 # ---- reading a text ----------------------------------------------------------------------------------
 def _asserted(text: str, pattern: str) -> bool:
-    """Whether a pattern matches the text where the text asserts it. A match with a negation in the few words
-    before it, in the same sentence, is the text ruling the act out, and does not count."""
+    """Whether a pattern matches the text where the text asserts it. A match is ruled out when a negator stands
+    anywhere from the start of its clause to the match, or inside the match: "we reject the Union's call for a
+    joint inquiry" offers none (audit MO1, which a window of four words missed)."""
     for match in re.finditer(pattern, text, re.I):
-        sentence = re.split(r"[.;:!?]", text[:match.start()])[-1]
-        words = re.findall(r"[A-Za-z'-]+", sentence)[-NEGATION_WINDOW:]
-        if not NEGATED.search(" ".join(words)):
+        clause = _CLAUSE_BREAK.split(text[:match.start()])[-1]
+        if not motion_actions.negates(clause + " " + match.group(0)):
             return True
     return False
 
@@ -212,8 +223,10 @@ def on_offer(w: World, mo: dict, found: list, party: str | None) -> None:
             fronts = _fronts(w, text)
             ministries.aggrieve(w, "army", ARMY_STANDDOWN, "being ordered to pull back from its own border")
             public_mood.react(w, "approval", "ident:karamanian", APPROVAL_STANDDOWN, 2, "fine_print:stand_down")
+            # Audit MI2+MO17: a stand-down holds the month it is made and STANDDOWN_MONTHS - 1 more, so `until` is the
+            # last of its STANDDOWN_MONTHS months (defence_factor and the monthly prune both test it inclusively).
             state(w)["standdowns"].extend(
-                {"front": front, "from": w.month, "until": w.month + STANDDOWN_MONTHS, "party": party,
+                {"front": front, "from": w.month, "until": w.month + STANDDOWN_MONTHS - 1, "party": party,
                  "reciprocated": None} for front in fronts)
             w.event("fine_print", "The council's motion offers a stand-down of Karamanian patrols on the "
                     f"{' and '.join(FRONT_NAMES[f] for f in fronts)} border.", importance=2, clause=clause,
@@ -321,3 +334,15 @@ def defence_factor(w: World, front: str) -> float:
                 and not entry.get("reciprocated")):
             return STANDDOWN_DEFENCE
     return 1.0
+
+
+INSPECTION_MONTHS = 3    # Audit MI6: months an accepted inspection regime holds, counting the month it is accepted
+
+
+def inspected(w: World) -> bool:
+    """Whether an accepted inspection regime over Karamanian shipping is in force this month (Audit MI6). Its inspectors
+    count the army, so the cabinets' estimate of it is exact while it runs (foreign._signal_intelligence). It reads the
+    record and creates none."""
+    records = ((w.institutions or {}).get(KEY) or {}).get("inspections", [])
+    return any(r.get("from") is not None and int(r["from"]) <= w.month < int(r["from"]) + INSPECTION_MONTHS
+               for r in records)

@@ -23,6 +23,8 @@ import hashlib
 import json
 import re
 
+from .slate import OFFICE_WORDS as _OFFICE_WORDS
+
 # ---- the action vocabulary -------------------------------------------------------------------------
 # Canonical actor ids. These are the vocabulary a structured target is written in, because "Union"
 # is not an actor: it is a word that could mean the Solvaran Union, the Maritime League's members,
@@ -83,11 +85,29 @@ SUBJECT_TO_ACTION = {v: k for k, v in ACTION_TO_SUBJECT.items()}
 ACT_NAMES = (set(DIPLOMATIC_ACTIONS) | set(ACTION_TO_SUBJECT) | set(ACTION_TO_SUBJECT.values())
              | set(SUBJECT_TO_ACTION))
 
+#: One negation vocabulary (engine 19, audit MO1 and MO15), read here and by fine_print.py. A negator rules out an
+#: act that comes before it in its clause ("no federation", "we refuse any federation"). "nothing" is one, and so
+#: are the contractions ("won't", "cannot"). Phrases that affirm despite a negator are in _AFFIRMING_IDIOM.
+NEGATOR = (r"\b(?:no|not|nor|neither|never|nothing|without|excluding|cannot|can['’]?t|won['’]?t|don['’]?t|"
+           r"doesn['’]?t|didn['’]?t|isn['’]?t|aren['’]?t|wouldn['’]?t|shouldn['’]?t|shan['’]?t|"
+           r"rules?\s+out|bar(?:s|ring)?|reject(?:s|ed|ing)?|refus(?:e|es|ed|ing)|declin(?:e|es|ed|ing)|"
+           r"oppos(?:e|es|ed|ing))\b")
+_AFFIRMING_IDIOM = re.compile(r"\b(?:not\s+only|no\s+(?:less|more)\s+than|nothing\s+(?:less|short)\s+(?:than|of))\b",
+                              re.I)
+_NEGATOR = re.compile(NEGATOR, re.I)
+
+
+def negates(text: str) -> bool:
+    """Whether a text contains a negator, outside the phrases that affirm despite one."""
+    return bool(_NEGATOR.search(_AFFIRMING_IDIOM.sub(" ", str(text or ""))))
+
+
 #: Prose that names a foreign act, strongest signal first. Each entry is (action_type, patterns).
 _LAND = r"(?:kessel|dorran|aster|lissen|highlands|region|territor\w*|province)"  # what a cession names (engine 17)
 PROSE_ACTIONS = (
-    # Handing a region over (engine 17): cede, cession, hand over, give up, with the land named after the verb.
-    ("cede_region", tuple(rf"{verb}[^.;:]{{0,40}}?\b{_LAND}\b" for verb in (
+    # Handing a region over (engine 17): cede, cession, hand over, give up, with the land named after the verb. A
+    # negator between the verb and the land rules the cession out: "give up nothing in Kessel Valley" (MO15).
+    ("cede_region", tuple(rf"{verb}(?:(?!{NEGATOR})[^.;:]){{0,40}}?\b{_LAND}\b" for verb in (
         r"\bcede[sd]?\b", r"\bcession\b", r"\bhand(?:s|ing)?\s+over\b", r"\bgive(?:s|n)?\s+up\b(?!\s+on\b)"))),
     ("diplomatic_protest", (r"\bprotest", r"\bcondemn", r"\bdenounce", r"\bdemand(?:s|ing)?\s+"
                             r"(?:the\s+)?(?:cessation|an?\s+end|that\s+\w+\s+(?:cease|stop|halt))",
@@ -107,12 +127,11 @@ PROSE_ACTIONS = (
 
 #: An act the prose names only to rule it out. Engine 15 read "this motion authorises no accession, no
 #: federation" as naming a federation, so a motion for status talks filed as a federation passed the
-#: check, and the engine sent the Union a federation proposal it could have accepted.
-NEGATED_ACT = re.compile(
-    r"\b(?:no|not|never|without|nor|excluding|rules?\s+out|bar(?:s|ring)?)\s+(?:an?\s+|any\s+|the\s+)?"
-    r"(?:[\w-]+\s+){0,2}?(?:federation|federal\s+arrangement|accession|reunification|rejoin\w*|"
-    r"alliance|non[\s-]?aggression(?:\s+pact)?|ceasefire|loan|trade\s+(?:deal|talks)|status\s+talks|"
-    r"cede[sd]?|cession|hand(?:s|ing)?\s+over|give(?:s|n)?\s+up)\b", re.I)
+#: check, and the engine sent the Union a federation proposal it could have accepted. The acts are the ones
+#: PROSE_ACTIONS names (audit MO15: it lacked military aid, grain deals and tariffs), and accession.
+_NAMED_ACTS = "|".join(f"(?:{pattern})" for _action, patterns in PROSE_ACTIONS for pattern in patterns)
+NEGATED_ACT = re.compile(rf"{NEGATOR}\s+(?:an?\s+|any\s+|the\s+)?(?:[\w-]+\s+){{0,2}}?"
+                         rf"(?:accession|{_NAMED_ACTS})\b", re.I)
 
 #: Words that name an actor. The island's own names come first so "Karamaniya" is never read as a
 #: foreign target.
@@ -202,15 +221,21 @@ CONDITION_METRICS = ("food_ratio", "reserves", "reserves_after_payment", "arrear
                      "league_credit_received", "audited_register")
 BOUNDED_PROPORTION_METRICS = {"unemployment", "army_morale", "approval"}
 UNBOUNDED_RATIO_METRICS = {"food_ratio", "inflation", "deficit"}
+#: Ratios where a figure above 1 means percentage points: "inflation at most 2" is 2%, as "approval at
+#: most 2" already was. Audit MO9 + CO7: inflation and deficit were converted only at 10 or more, so the
+#: same threshold read 100 times too high (2 meant 200%, and a safeguard "at most 6" passed at 60%).
+PERCENT_POINT_METRICS = BOUNDED_PROPORTION_METRICS | {"inflation", "deficit"}
 MONEY_METRICS = {"reserves", "reserves_after_payment", "arrears", "army_arrears"}
 
 
 def canonical_metric_value(metric: str, value: float) -> float:
     """Read percent-point thresholds in the same fractional units used by world state."""
     value = float(value)
-    if metric in BOUNDED_PROPORTION_METRICS and abs(value) > 1:
+    if metric in PERCENT_POINT_METRICS and abs(value) > 1:
         value /= 100.0
     elif metric in UNBOUNDED_RATIO_METRICS and abs(value) >= 10:
+        # Food coverage is the one ratio that legitimately exceeds 1 (a surplus over 100% of need, and the
+        # economy starts at 1.0), so a threshold of 1.05 stays 105%. Only 10 or more is read as percent.
         value /= 100.0
     elif metric in MONEY_METRICS and 0 < abs(value) < 100_000:
         # Briefings commonly express large fiscal values as "90" for 90 million crowns,
@@ -237,7 +262,9 @@ _CONDITION_CLAUSE = re.compile(
     r"(?:only\s+if|provided\s+that|on\s+condition\s+that|subject\s+to|as\s+long\s+as|"
     r"after|once|when|if|unless|until|while|preserv\w*|remain\w*|keep\w*|above|below|"
     r"at\s+least|no\s+less\s+than|no\s+more\s+than|not\s+below|not\s+fall|reserv\w*|floor|cap|"
-    r"credit|audit|register|league)[^.;]*", re.IGNORECASE)
+    # Audit MO10: a full stop inside a figure ("1.5bn", "79.5M") does not end the clause; before this the
+    # clause stopped at "1", so a floor of 1.5bn was read as one million crowns.
+    r"credit|audit|register|league)(?:[^.;]|\.(?=\d))*", re.IGNORECASE)
 
 
 def parse_conditions(text: str, motion_type: str = "", subject: str = "") -> list:
@@ -264,11 +291,12 @@ def parse_conditions(text: str, motion_type: str = "", subject: str = "") -> lis
 
     floor_hit = re.search(r"(reserv\w*|gold|treasury)[^.;]{0,60}?(>=|at\s+least|no\s+less\s+than|"
                           r"not\s+below|remain\w*|stay\w*|preserv\w*|keep\w*|floor|above|minimum)"
-                          r"[^0-9.;]{0,20}(\d+(?:\.\d+)?)\s*(m\b|million|bn\b|billion|k\b|%)?",
+                          r"[^0-9.;]{0,20}(\d[\d,]*(?:\.\d+)?)\s*(m\b|million|bn\b|billion|k\b|%)?",
                           joined)
     if floor_hit:
+        # Audit MO10: the figure may carry comma groups ("12,500,000"); a bare "12" here was 12 million.
         try:
-            amount = float(floor_hit.group(3))
+            amount = float(floor_hit.group(3).replace(",", ""))
         except ValueError:
             amount = 0.0
         unit = (floor_hit.group(4) or "").strip()
@@ -710,11 +738,15 @@ def _canonical_actor(w, raw: str) -> str | None:
     text = str(raw).casefold()
     if text.strip() in ACTOR_ALIASES:
         return ACTOR_ALIASES[text.strip()]
+    # Where a target names more than one actor, the one it names first is the target: "Veleria (a Union member)" is
+    # Veleria, not the Union it belongs to (audit MO23). Ties keep the order of _actor_patterns.
+    first = None
     for actor, patterns in _actor_patterns(w).items():
         for p in patterns:
-            if re.fullmatch(p.replace(r"\b", "").strip(), text, re.I) or re.search(p, text, re.I):
-                return actor
-    return None
+            match = re.fullmatch(p.replace(r"\b", "").strip(), text, re.I) or re.search(p, text, re.I)
+            if match and (first is None or match.start() < first[0]):
+                first = (match.start(), actor)
+    return first[1] if first else None
 
 
 def party_of(actor: str | None) -> str | None:
@@ -798,8 +830,9 @@ def prose_intent(w, text: str) -> dict:
     body = str(text or "")
     mentions = _mention_spans(w, body)
     actors = sorted(mentions)
-    # An act the text rules out is not an act it names: "no accession, no federation" (engine 16).
-    affirmed = NEGATED_ACT.sub(" ", body)
+    # An act the text rules out is not an act it names: "no accession, no federation" (engine 16). "Nothing short
+    # of a federation" affirms one, so the idiom is blanked first (MO15).
+    affirmed = NEGATED_ACT.sub(" ", _AFFIRMING_IDIOM.sub(" ", body))
     actions = [a for a, pats in PROSE_ACTIONS if _hits(affirmed, pats)]
     addressed = actors if len(actors) <= 1 else sorted(
         a for a, spans in mentions.items() if any(not _as_context(body, s, e) for s, e in spans))
@@ -819,7 +852,9 @@ def conflict(w, motion: dict) -> dict | None:
     """
     action = structured_action(w, motion)
     if action["kind"] != "diplomacy":
-        return _policy_figures_conflict(motion, action) if str(motion.get("type", "")) == "set_policy" else None
+        if str(motion.get("type", "")) == "set_policy":
+            return _policy_figures_conflict(motion, action)
+        return _text_action_conflict(w, motion, action)
     text = str(motion.get("text", ""))
     intent = prose_intent(w, text)
     reasons = []
@@ -875,7 +910,103 @@ def conflict(w, motion: dict) -> dict | None:
             "structured_action": action, "prose_intent": intent, "reasons": reasons}
 
 
-_PERCENT_CHANGE = re.compile(r"(\d+(?:\.\d+)?)\s*%\s*(?:to|->|→)\s*(\d+(?:\.\d+)?)\s*%", re.I)
+# What an appointment, an expulsion, a referendum or an emergency says in its own words (audit MO19). The member an
+# appointment or an expulsion names comes right after its verb; the verb is read in any case, the name in capitals.
+_APPOINTEE = re.compile(r"\b(?i:appoint|nominat|install|designat|promot|nam)\w*\s+(?:(?i:of|the)\s+)*"
+                        r"(?:(?i:member|delegate)\s+)?([A-Z])\b")
+_EXPELLEE = re.compile(r"\b(?i:expel|expulsion|dismiss|oust|eject|remov)\w*\s+(?:(?i:of|the)\s+)*"
+                       r"(?:(?i:member|delegate)\s+)?([A-Z])\b")
+_REFERENDUM_QUESTION = re.compile(r"\breferend\w*\b[^.;:!?]*?\b(?:on|about|over|whether|asking)\b\s*([^.;:!?,]+)", re.I)
+_INDEPENDENCE = re.compile(r"independen|sovereign", re.I)  # the one question the engine's referendum puts
+_RELEASE = r"\b(?:lift|end|repeal|revoke|rescind|terminate|cancel)(?:s|d|ed|ing|led|ling)?\b"
+_IMPOSE = r"\b(?:impose|declare|proclaim|invoke|introduce|enact|establish|extend|restore|reinstate)(?:s|d|ed|ing)?\b"
+# An office is named by the words slate reads for prose, and the titles a motion uses for the Treasury.
+_OFFICE_TITLE_WORDS = {office: tuple(words) + (("minister of finance", "minister of the treasury")
+                                               if office == "treasury" else ())
+                       for office, words in _OFFICE_WORDS.items()}
+
+
+def _emergency_object(kind: str, subject: str) -> str:
+    """The words that name what an emergency motion switches: the state of emergency, or the measure it names."""
+    if kind == "constitution":
+        return r"(?:(?:the|this|a|an|our|national|nationwide)\s+)*(?:state\s+of\s+)?emergency\b"
+    parts = [re.escape(part) for part in re.split(r"[\s_-]+", subject) if part]
+    if not parts:
+        return ""
+    return r"(?:(?:the|this|a|an|our|emergency|night)\s+)*" + r"[\s_-]+".join(parts) + r"\b"
+
+
+def _text_action_conflict(w, motion: dict, action: dict) -> dict | None:
+    """Where an appointment, an expulsion, a referendum or an emergency says something other than what it executes.
+
+    Audit MO19: the council votes on the text, and the engine executes the fields, so each must say the same. The
+    member the text names must be the motion's member, the office it names must be the motion's office, a referendum
+    may ask only the question the engine holds (independence), and "lift" against "on" (or "impose" against "off")
+    is a conflict. A conflict is held back for repair, as for diplomacy.
+    """
+    from .world import OFFICE_TITLES, OFFICES
+    kind = str(motion.get("type", ""))
+    text = str(motion.get("text", "") or "")
+    subject = str(motion.get("subject", "") or "").strip()
+    value = str(motion.get("value", "") or "").strip().lower()
+    reasons = []
+    if kind in ("assign_office", "vacate_office") and subject.lower() in OFFICES:
+        named = {office for office, words in _OFFICE_TITLE_WORDS.items()
+                 if any(re.search(r"\b" + re.escape(word) + r"\b", text, re.I) for word in words)}
+        if named and subject.lower() not in named:
+            said = ", ".join(OFFICE_TITLES[office] for office in sorted(named))
+            reasons.append({"code": "OFFICE_MISMATCH", "office": subject.lower(), "named": sorted(named),
+                            "detail": f"the text names {said}, but the motion's office is "
+                                      f"{OFFICE_TITLES[subject.lower()]}"})
+    if kind == "assign_office":
+        appointee = _APPOINTEE.search(text)
+        if appointee and value and appointee.group(1) != value.upper():
+            reasons.append({"code": "APPOINTEE_MISMATCH", "named": appointee.group(1), "appointed": value.upper(),
+                            "detail": f"the text appoints member {appointee.group(1)}, but the motion appoints "
+                                      f"{value.upper()}"})
+    if kind == "expel":
+        expelled = _EXPELLEE.search(text)
+        if expelled and subject and expelled.group(1) != subject.upper():
+            reasons.append({"code": "EXPULSION_MISMATCH", "named": expelled.group(1), "expelled": subject.upper(),
+                            "detail": f"the text expels member {expelled.group(1)}, but the motion expels "
+                                      f"{subject.upper()}"})
+    if kind == "referendum":
+        found = _REFERENDUM_QUESTION.search(text)
+        question = found.group(1).strip(" ,") if found else ""
+        if question and (not _INDEPENDENCE.search(question) or prose_intent(w, question)["actions"]):
+            reasons.append({"code": "REFERENDUM_QUESTION_MISMATCH", "question": question,
+                            "detail": f"the text puts another question to the vote ('{question[:120]}'), but the "
+                                      "engine holds only the referendum on independence"})
+    emergency = kind == "emergency_measure" or (kind == "constitution" and subject.lower() == "emergency")
+    if emergency and value in ("on", "off"):
+        obj = _emergency_object(kind, subject)
+        label = "the state of emergency" if kind == "constitution" else subject.replace("_", " ")
+        if obj and value == "on" and re.search(_RELEASE + r"\s+" + obj, text, re.I):
+            reasons.append({"code": "EMERGENCY_MISMATCH", "value": value,
+                            "detail": f"the text lifts {label}, but the motion switches it on"})
+        elif obj and value == "off" and re.search(_IMPOSE + r"\s+" + obj, text, re.I):
+            reasons.append({"code": "EMERGENCY_MISMATCH", "value": value,
+                            "detail": f"the text imposes {label}, but the motion switches it off"})
+    if not reasons:
+        return None
+    return {"code": "MOTION_ACTION_MISMATCH", "motion": motion.get("id"), "prose": text,
+            "structured_action": action, "prose_intent": {}, "reasons": reasons}
+
+
+# A share moved from one figure to another (audit MO12): the target is a percentage, whether or not the start is
+# ("from 6% to 7%", "from 6 percent to 7 percent", "from 6 to 7%", "from 6% up to 7%", "6% -> 7%").
+_PERCENT_CHANGE = re.compile(r"(?:\bfrom\s+)?\d+(?:\.\d+)?\s*(?:%|percent)?\s*(?:(?:up|down)\s+)?(?:to|->|→)\s*"
+                             r"(\d+(?:\.\d+)?)\s*(?:%|percent)", re.I)
+# In decimals a share is already a fraction, and the "from" is what makes it one: "from 0.06 to 0.07".
+_DECIMAL_CHANGE = re.compile(r"\bfrom\s+\d*\.\d+\s+(?:(?:up|down)\s+)?to\s+(\d*\.\d+)\b", re.I)
+
+
+def _share_changes(text: str) -> list:
+    """(what the text says, the share it moves the setting to) for each share change it states, in order."""
+    found = [(m.start(), m.group(0), float(m.group(1)) / 100) for m in _PERCENT_CHANGE.finditer(text)]
+    found += [(m.start(), m.group(0), float(m.group(1))) for m in _DECIMAL_CHANGE.finditer(text)]
+    # The quote keeps the figures as the text wrote them, without the "from" that introduces them.
+    return [(re.sub(r"^from\s+", "", said, flags=re.I), target) for _start, said, target in sorted(found)]
 
 
 def _policy_figures_conflict(motion: dict, action: dict) -> dict | None:
@@ -890,12 +1021,12 @@ def _policy_figures_conflict(motion: dict, action: dict) -> dict | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
         return None
     text = str(motion.get("text", ""))
-    changes = list(_PERCENT_CHANGE.finditer(text))
-    if not changes or any(abs(float(m.group(2)) / 100 - value) <= 0.0005 for m in changes):
+    changes = _share_changes(text)
+    if not changes or any(abs(target - value) <= 0.0005 for _said, target in changes):
         return None
-    reason = {"code": "POLICY_FIGURES_MISMATCH", "lever": lever, "value": value,
-              "prose_target": float(changes[0].group(2)) / 100,
-              "detail": f"the text moves {lever} {changes[0].group(0)}, but the motion sets {lever} to "
+    said, target = changes[0]
+    reason = {"code": "POLICY_FIGURES_MISMATCH", "lever": lever, "value": value, "prose_target": target,
+              "detail": f"the text moves {lever} {said}, but the motion sets {lever} to "
                         f"{value:g} ({value * 100:g}%)"}
     return {"code": "MOTION_ACTION_MISMATCH", "motion": motion.get("id"), "prose": text,
             "structured_action": action, "prose_intent": {}, "reasons": [reason]}
@@ -960,40 +1091,51 @@ def structured_action_repair_request(motion: dict, rejection: dict) -> str:
 #: Tolerances are generous: briefing figures carry noise and office reports carry ranges.
 #: What is refused is a precise statistic with no available source at all.
 GROUNDING_SPECS = (
+    # Audit MO22: the words are the ways a claim names the metric. A precise figure whose metric is named in none
+    # of them went unchecked ("Consumer prices climbed 9%" at 0% inflation passed). The words below were added.
     ("food_ratio", ("food coverage", "food availability", "food supply", "food shortage",
-                    "grain supply", "short of food"),
+                    "grain supply", "short of food", "food security", "food stocks", "food supplies",
+                    "food ratio", "grain stocks", "grain availability", "food need"),
      "food_ratio", {"abs": 0.10, "rel": 0.25}),
-    ("hunger", ("hunger", "hungry", "starving", "food shortage"),
+    ("hunger", ("hunger", "hungry", "starving", "food shortage", "famine", "malnutrition", "starvation"),
      "hunger", {"abs": 0.06, "rel": 0.6}),
-    ("inflation", ("inflation", "price rise", "prices rising", "cpi"),
+    ("inflation", ("inflation", "price rise", "price rising", "prices rising", "cpi", "consumer prices",
+                   "prices are up", "prices up", "prices climb", "prices rose", "prices risen", "prices have risen",
+                   "prices increased", "prices fell", "prices are down", "prices soared", "prices surged",
+                   "price increase", "rising prices", "higher prices", "rise in prices", "price level",
+                   "cost of living", "cost-of-living"),
      "inflation", {"abs": 0.05, "rel": 0.6}),
-    ("reserves", ("reserves", "gold reserve", "treasury gold", "foreign reserve"),
+    ("reserves", ("reserves", "gold reserve", "treasury gold", "foreign reserve", "gold holdings", "gold stock",
+                  "treasury balance", "hard currency"),
      "reserves", {"abs": 15e6, "rel": 0.4}),
-    ("arrears", ("arrears", "unpaid bill", "payment backlog"),
+    ("arrears", ("arrears", "unpaid bill", "payment backlog", "outstanding bills", "overdue bills", "bills owed",
+                 "unpaid debt"),
      "arrears", {"abs": 15e6, "rel": 0.4}),
-    ("unemployment", ("unemployment", "jobless", "out of work"),
+    ("unemployment", ("unemployment", "jobless", "out of work", "unemployed"),
      "unemployment", {"abs": 0.04, "rel": 0.6}),
-    ("approval", ("approval", "popularity", "support for the government", "poll"),
+    ("approval", ("approval", "popularity", "support for the government", "poll", "popular support",
+                  "public support", "public trust", "trust in the government", "public opinion"),
      "approval", {"abs": 0.12, "rel": 0.6}),
-    ("unrest", ("unrest", "protest", "riot", "disorder"),
+    ("unrest", ("unrest", "protest", "riot", "disorder", "demonstrat", "uprising", "public anger", "agitation"),
      "unrest", {"abs": 0.12, "rel": 0.6}),
-    ("army_size", ("army size", "soldiers", "troops", "army strength"),
+    ("army_size", ("army size", "soldier", "troop", "army strength", "under arms", "armed forces", "manpower",
+                   "field strength", "army numbers"),
      "army_size", {"abs": 6000.0, "rel": 0.3}),
-    ("army_readiness", ("readiness", "morale", "loyalty", "equipment"),
+    ("army_readiness", ("readiness", "morale", "loyalty", "equipment", "combat effectiveness", "fighting spirit"),
      "army_readiness", {"abs": 0.2, "rel": 0.6}),
-    ("union_forces", ("union force", "union army", "union soldier", "veleria",
-                      "dorsania", "enemy force"),
+    ("union_forces", ("union force", "union army", "union soldier", "union troops", "union strength",
+                      "solvaran union", "veleria", "dorsania", "enemy force", "enemy troops", "enemy army"),
      "union_forces", {"abs": 20000.0, "rel": 0.5}),
 )
 
 _GROUNDING_NUMBER = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(%|percent|percentage|million|M\b|bn\b|billion|thousand|k\b)?"
+    # Audit MO3: "20,000,000" is one figure. It was read as 20, 000 and 000, and a bare 20 is no reserve
+    # figure, so every comma-grouped claim passed while "20 million" was refused.
+    # Audit MO6: "90/100" is 90% (the reports print their figures on this scale); it was read as a bare 90 and 100.
+    r"(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(%|percentage|percent|/\s*100\b|million|M\b|bn\b|billion|thousand|k\b)?"
     r"\s*(shortage|shortfall|hunger|hungry|starving|coverage|availability|inflation|unemployment|"
     r"approval|unrest|reserves?|gold|arrears|deficit|budget|spending|revenue|"
     r"soldiers?|troops?|warships?|ships?)?", re.IGNORECASE)
-_OPINION_GUARD = re.compile(
-    r"\b(dangerously|unacceptabl\w*|weak|strong|alarming|worrying|concern\w*|fragile|"
-    r"risky|unsustainable|healthy|reassuring|adequate|inadequate)\b", re.IGNORECASE)
 
 
 def _grounding_truth(w, key: str) -> float:
@@ -1051,25 +1193,60 @@ def information_available_to(w, mid: str) -> list:
     return sources
 
 
+#: What a unit multiplies its figure by: a percentage is a fraction, "million" is 1e6.
+_FIGURE_SCALE = {"%": 0.01, "million": 1e6, "m": 1e6, "billion": 1e9, "bn": 1e9, "thousand": 1e3, "k": 1e3}
+#: The dash between the two bounds of a range: "40-60%", "1–25/100".
+_RANGE_DASH = re.compile(r"^\s*[-" + chr(0x2010) + "-" + chr(0x2013) + r"]\s*$")
+#: Words that number a label or a date, so the figure after them is not a statistic: "Month 19", "Article 1".
+_LABEL_WORD = re.compile(r"\b(?:month|year|week|day|round|motion|article|clause|section|item|step|phase)s?\s*#?\s*$",
+                         re.I)
+
+
+def _is_label(text: str, pos: int) -> bool:
+    """True when the figure at `pos` is part of an identifier or a date, not a figure. Engine 19: a figure directly
+    after a letter ("D1", "M3", "CO2") or after a letter and a hyphen ("R1-ARM3") is part of an identifier, and so is
+    one right after "Month" ("Month 19" is a date). A bare 1 read from "D1" was judged as 100%."""
+    before = text[:pos]
+    if before[-1:].isalpha():
+        return True
+    if before[-1:] in ("-", chr(0x2010), chr(0x2011)) and before[-2:-1].isalpha():
+        return True
+    return bool(_LABEL_WORD.search(before[-30:]))
+
+
 def _numbers_in(text: str) -> list:
-    out = []
-    for raw, unit, noun in _GROUNDING_NUMBER.findall(text or ""):
+    """Every figure in a text, with where it sits, so it can be tied to the sentence that states it. A range ("40-60%")
+    is one claim: its value is the high bound and "lo" the low bound, each with the unit that the range carries."""
+    text = text or ""
+    found = []
+    for match in _GROUNDING_NUMBER.finditer(text):
+        if _is_label(text, match.start(1)):
+            continue
+        raw, unit, noun = match.group(1), match.group(2) or "", match.group(3) or ""
         try:
-            value = float(raw)
+            base = float(raw.replace(",", ""))
         except ValueError:
             continue
-        unit = (unit or "").lower()
-        noun = (noun or "").lower()
-        if unit in ("%", "percent", "percentage"):
-            value /= 100
-        elif unit in ("million", "m"):
-            value *= 1e6
-        elif unit in ("billion", "bn"):
-            value *= 1e9
-        elif unit in ("thousand", "k"):
-            value *= 1e3
-        out.append({"value": value, "unit": unit, "noun": noun,
-                    "raw": " ".join(x for x in (raw, unit, noun) if x).strip()})
+        spelled = re.sub(r"\s+", "", unit.lower())      # "/ 100" is spelled "/100"
+        noun = noun.lower()
+        unit = "%" if spelled in ("%", "percent", "percentage", "/100") else spelled
+        found.append({"base": base, "value": base * _FIGURE_SCALE.get(unit, 1.0), "unit": unit, "noun": noun,
+                      "start": match.start(1), "end": match.end(),
+                      "unit_end": match.end(2) if match.group(2) else match.end(1),
+                      "raw": " ".join(x for x in (raw, spelled, noun) if x).strip()})
+    out = []
+    for fig in found:
+        prev = out[-1] if out else None
+        if prev is not None and "lo" not in prev and _RANGE_DASH.match(text[prev["end"]:fig["start"]]):
+            # "1–25/100" is 1% to 25%: the low bound "1" takes the high bound's unit, so it is not a bare 1 (100%).
+            unit = fig["unit"] or prev["unit"]
+            scale = _FIGURE_SCALE.get(unit, 1.0)
+            lo_scale = _FIGURE_SCALE.get(prev["unit"], 1.0) if prev["unit"] else scale
+            out[-1] = {**fig, "start": prev["start"], "unit": unit, "noun": fig["noun"] or prev["noun"],
+                       "value": fig["base"] * scale, "lo": prev["base"] * lo_scale,
+                       "raw": f'{prev["raw"]}-{fig["raw"]}'}
+        else:
+            out.append(fig)
     return out
 
 
@@ -1100,6 +1277,404 @@ def _source_ratios(texts: list, words: tuple) -> list:
     return out
 
 
+#: The troop specs. A figure in them is judged against the force it is about, not always our own (Audit MO4).
+FORCE_KEYS = {"army_size": "ours", "union_forces": "union"}
+#: The specs whose figure is a ratio. A bare figure beside their words is read as percentage points (Audit MO8).
+RATIO_KEYS = ("food_ratio", "hunger", "inflation", "unemployment", "approval", "unrest", "army_readiness")
+_SENTENCE_END = re.compile(r"[!?;\n]|\.(?!\d)")
+_SIDE_OF_ACTOR = {SOLVARAN_UNION: "union", VELERIA: "union", DORSANIA: "union", MARITIME_LEAGUE: "league"}
+_FOREIGN_FORCE_WORD = re.compile(r"\benem(?:y|ies)\b", re.I)
+_OWN_SIDE_WORD = re.compile(r"\b(?:we|our|ours|us|karamaniya)\b", re.I)
+_TROOP_WORD = re.compile(r"\b(?:soldiers?|troops?|men|army|forces?|under\s+arms|field\s+strength|manpower|"
+                         r"enem(?:y|ies)|regiments?|divisions?|garrisons?)\b", re.I)
+_TROOP_NOUNS = ("soldier", "soldiers", "troop", "troops")
+#: A range of troop counts a source gives, as in "78,147-107,917 troops".
+_SOURCE_COUNT_RANGE = re.compile(r"(\d{1,3}(?:,\d{3})+|\d+)\s*(?:-|–|to)\s*(\d{1,3}(?:,\d{3})+|\d+)\s*"
+                                 r"(?:soldiers?|troops?|men)\b", re.I)
+
+
+def _sentence_bounds(text: str, start: int, end: int) -> tuple:
+    """The span of the sentence that holds [start, end). A decimal point does not end a sentence."""
+    lo = 0
+    for stop in _SENTENCE_END.finditer(text, 0, start):
+        lo = stop.end()
+    stop = _SENTENCE_END.search(text, end)
+    return lo, (stop.start() if stop else len(text))
+
+
+def _force_marks(w, text: str) -> list:
+    """Where a text names a side, as (start, end, side). 'union' is the Solvaran Union, Veleria, Dorsania or the
+    enemy; 'league' is the Maritime League; 'ours' is we, our, us and Karamaniya."""
+    marks = []
+    for actor, patterns in _actor_patterns(w).items():
+        side = _SIDE_OF_ACTOR.get(actor)
+        if side:
+            marks += [(m.start(), m.end(), side) for p in patterns for m in re.finditer(p, text, re.I)]
+    marks += [(m.start(), m.end(), "union") for m in _FOREIGN_FORCE_WORD.finditer(text)]
+    marks += [(m.start(), m.end(), "ours") for m in _OWN_SIDE_WORD.finditer(text)]
+    return marks
+
+
+def _side_of(marks: list, text: str, start: int, end: int) -> str:
+    """Whose force a figure at [start, end) is: the side named nearest to it in its own sentence. In "the Solvaran
+    Union fields 95,000 troops against our 28,000", the 95,000 is the Union's and the 28,000 is ours."""
+    lo, hi = _sentence_bounds(text, start, end)
+    best, best_gap = "ours", None
+    for s, e, side in marks:
+        if s < lo or e > hi:
+            continue
+        gap = start - e if e <= start else s - end
+        if best_gap is None or gap < best_gap:
+            best, best_gap = side, gap
+    return best
+
+
+def _is_troop_figure(text: str, claim: dict) -> bool:
+    """A figure that counts troops: it has a troop noun, or no other noun while its sentence speaks of the army.
+    "2,000,000 gold" beside "28,000 soldiers" is not one (Audit MO4)."""
+    if claim["noun"]:
+        return claim["noun"] in _TROOP_NOUNS
+    lo, hi = _sentence_bounds(text, claim["start"], claim["end"])
+    return bool(_TROOP_WORD.search(text[lo:hi]))
+
+
+def _keys_naming(hits: list, text: str, claim: dict) -> frozenset:
+    """The specs whose words name the figure's own sentence. A figure is judged only against the metrics its own
+    sentence names: in a quoted cable the reading "(75/100)" is Veleria's, not unrest's, even when a later clause of
+    the same quote mentions protests. Empty when the sentence names none, so the whole text decides as before."""
+    lo, hi = _sentence_bounds(text, claim["start"], claim["end"])
+    sentence = text[lo:hi].lower()
+    return frozenset(key for key, keywords, *_rest in hits if any(word in sentence for word in keywords))
+
+
+def _sentences(text: str) -> list:
+    return [s for s in re.split(r"\n|(?<=[.;])\s+", text or "") if s.strip()]
+
+
+def _metric_words(key: str, keywords: tuple) -> tuple:
+    """The words that make a source sentence one about this metric: the spec's own keywords and its ratio context."""
+    return tuple(dict.fromkeys(tuple(keywords) + _RATIO_CONTEXT.get(key, ())))
+
+
+#: What follows a bare figure that makes it a count or a change rather than a level: "5 points", "12 respondents".
+_COUNT_AFTER = re.compile(r"\s*(?:points?|pts?\b|people|persons?|respondents?|months?|years?|weeks?|days?|times|"
+                          r"votes?|seats?|ministr\w*|provinces?|regions?|districts?|members?|delegates?|men\b|"
+                          r"soldiers?|troops?|ships?|vessels?|units?|tonnes?|tons?|hectares?|workers?|households?|"
+                          r"families|cities|towns|villages|quarters?)\b", re.I)
+#: What comes just before one: "rose by 3", "in 3 provinces", "Month 12".
+_COUNT_BEFORE = re.compile(r"\b(?:by|among|across|in|for|from|with|per|month|year|week|day|round|motion|clause|"
+                           r"seat|step|item|section|article|no)\.?\s*$", re.I)
+
+
+def _metric_before(prefix: str) -> frozenset:
+    """The specs whose words come last in `prefix`, the clause before a figure: in "unrest and approval are 40" the 40
+    is approval's. Specs whose words end in the same place ("food shortage" is both food coverage and hunger) all count."""
+    low = prefix.lower()
+    best_end, keys = -1, set()
+    for key, keywords, *_rest in GROUNDING_SPECS:
+        for word in keywords:
+            start = low.rfind(word)
+            if start < 0:
+                continue
+            if start + len(word) > best_end:
+                best_end, keys = start + len(word), {key}
+            elif start + len(word) == best_end:
+                keys.add(key)
+    return frozenset(keys)
+
+
+def _metric_after(suffix: str) -> frozenset:
+    """The specs whose words come first in `suffix`, the clause after a figure. It is used only when no spec is named
+    before the figure in its clause: "Inflation: 9%" has no spec before the 9 in its clause, but one after it."""
+    low = suffix.lower()
+    best_start, keys = None, set()
+    for key, keywords, *_rest in GROUNDING_SPECS:
+        for word in keywords:
+            start = low.find(word)
+            if start < 0:
+                continue
+            if best_start is None or start < best_start:
+                best_start, keys = start, {key}
+            elif start == best_start:
+                keys.add(key)
+    return frozenset(keys)
+
+
+#: Where a clause ends: a semicolon, colon, comma or bracket, or a sentence end (a decimal point is not one).
+_CLAUSE_BREAK = re.compile(r"[;:,()!?\n]|\.(?!\d)")
+
+
+def _clause_span(text: str, start: int, end: int) -> tuple:
+    """The clause that holds the figure at [start, end): from the last clause break before it to the next one after it."""
+    lo, hi = 0, len(text)
+    for stop in _CLAUSE_BREAK.finditer(text):
+        if stop.end() <= start:
+            lo = stop.end()
+        elif stop.start() >= end:
+            hi = stop.start()
+            break
+    return lo, hi
+
+
+def _owners(text: str, claim: dict, sentence_keys: frozenset) -> frozenset:
+    """The metric(s) a figure is judged against (engine 19). A sentence that names one spec judges each of its figures
+    by that spec. A sentence that names several judges a figure by the spec named nearest before it in its clause, or
+    else nearest after it in the clause. A sentence that names none judges nothing: "The deficit is roughly 28M a
+    month" is not a claim about reserves just because a later sentence names them."""
+    if len(sentence_keys) <= 1:
+        return sentence_keys
+    lo, hi = _clause_span(text, claim["start"], claim["end"])
+    keys = _metric_before(text[lo:claim["start"]]) & sentence_keys
+    return keys or (_metric_after(text[claim["end"]:hi]) & sentence_keys)
+
+
+def _as_percent_points(text: str, claim: dict, key: str) -> dict:
+    """A bare figure from 1.5 to 100 that is about a ratio metric is percentage points: "Approval is 95" is 95%, as an
+    approval threshold already reads (Audit MO8). Counts, changes and identifiers keep their face value."""
+    value = claim["value"]
+    if claim["unit"] or claim["noun"] or not 1.5 < value <= 100:
+        return claim
+    before = text[max(0, claim["start"] - 15):claim["start"]]
+    if before[-1:].isalpha() or before[-1:] == "#" or _COUNT_BEFORE.search(before) \
+            or _COUNT_AFTER.match(text[claim["end"]:claim["end"] + 30]):
+        return claim
+    if key not in claim["owners"]:
+        return claim
+    return {**claim, "value": value / 100, "unit": "%", "raw": claim["raw"] + "%",
+            **({"lo": claim["lo"] / 100} if "lo" in claim else {})}
+
+
+def _source_figures(w, texts: list, words: tuple) -> list:
+    """The figures a source states about one metric, as (figure, side). A figure counts only in a sentence about the
+    metric: a food figure does not support a claim about inflation (Audit MO7). The side says whose force a troop
+    figure is about (Audit MO4)."""
+    out = []
+    for text in texts:
+        for sentence in _sentences(text):
+            if not any(word in sentence.lower() for word in words):
+                continue
+            marks = _force_marks(w, sentence)
+            for fig in _numbers_in(sentence):
+                out.append((fig, _side_of(marks, sentence, fig["start"], fig["end"])))
+    return out
+
+
+def _source_count_ranges(w, texts: list, side: str) -> list:
+    """The troop ranges a source gives for one side. A figure inside the range the holder's reports gave is
+    grounded (Audit MO4)."""
+    out = []
+    for text in texts:
+        for sentence in _sentences(text):
+            if not _SOURCE_COUNT_RANGE.search(sentence):
+                continue
+            marks = _force_marks(w, sentence)
+            for m in _SOURCE_COUNT_RANGE.finditer(sentence):
+                if _side_of(marks, sentence, m.start(), m.end()) == side:
+                    a, b = (float(g.replace(",", "")) for g in m.groups())
+                    out.append((min(a, b), max(a, b)))
+    return out
+
+
+# ---- which figures are claims (engine 19): a statistic the text states as a fact about the state -------------
+# A figure a motion proposes, requests, pays, allocates or borrows is an amount, not a statement of where the state
+# stands. So is a threshold or condition on the state, a setting the motion sets, a change, and a figure whose own
+# noun names a quantity no spec checks (a deficit, a bill, a loan). Those are left alone. What remains is judged:
+# "Our reserves stand at 20,000,000 gold", "Inflation is 40%", "Unemployment has reached 9%".
+_CLAUSE_END = ";!?\n"
+
+
+def _is_decimal_point(text: str, i: int) -> bool:
+    return 0 < i < len(text) - 1 and text[i - 1].isdigit() and text[i + 1].isdigit()
+
+
+def _clause_before(text: str, pos: int) -> str:
+    """The clause that holds `pos`, up to `pos`. A clause ends at a sentence end or at a comma outside brackets, so
+    "Pay half of the bills (about 24M crowns, so ~12M gold)" is one clause for both figures."""
+    start, depth = 0, 0
+    for i, ch in enumerate(text[:pos]):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif ch in _CLAUSE_END or (ch == "." and not _is_decimal_point(text, i)):
+            start, depth = i + 1, 0
+        elif ch == "," and depth == 0:
+            start = i + 1
+    return text[start:pos]
+
+
+#: What a motion does with an amount, as a verb: it pays, settles, requests, borrows, allocates, transfers or releases
+#: it. A verb counts anywhere in the clause before the figure ("Pay half of the arrears (about 10M crowns)").
+_AMOUNT_VERB = re.compile(
+    r"\b(?:paid|pays?|paying|repaid|repays?|repaying|settled|settles?|settling|cleared|clears?|clearing|"
+    r"requested|requests?|requesting|proposed|proposes?|authori[sz](?:e|es|ed)|approved|approves?|renewed|renews?|"
+    r"pledged|pledges?|borrowed|borrows?|borrowing|lent|lends?|allocated|allocates?|allocate|reallocated|reallocates?|"
+    r"spent|spends?|issued|issuing|transferred|transfers?|released|releases?|funded|funding|invested|invests?|"
+    r"donated|donates?|earmarked|earmarks?|diverted|diverts?|bought|buys?|purchased|purchases?|sold|sells?|drawn)\b",
+    re.I)
+#: The verb or noun that opens an amount's clause: "Pay half of", "Funded 4M by", "Relief for Lissen Coast: 8M".
+_AMOUNT_OPENER = re.compile(
+    r"^\s*(?:pay|settle|request|propose|authori[sz]e|approve|renew|pledge|borrow|lend|allocate|reallocate|spend|issue|"
+    r"transfer|release|fund|repair|clear|repay|invest|donate|earmark|divert|buy|purchase|sell|extend|grant|draw|"
+    r"paid|settled|requested|proposed|authori[sz]ed|approved|renewed|pledged|borrowed|lent|allocated|reallocated|"
+    r"spent|issued|transferred|released|funded|repaired|repaid|invested|donated|earmarked|diverted|bought|purchased|"
+    r"sold|drawn)\b", re.I)
+_AMOUNT_TITLE = re.compile(r"^\s*(?:relief|tranche|loan|credit|grant|repair|package|arrangement|renewal|facility|"
+                           r"standby|reallocation|allocation|payment|repayment|settlement|purchase|aid)\s+"
+                           r"(?:for|of|to|up|:)\b", re.I)
+#: The noun that an amount hangs on, as the last content word before it: "a loan of 40M", "first tranche 10M".
+_AMOUNT_NOUN = re.compile(r"^(?:loans?|credits?|tranches?|relief|repairs?|grants?|aid|subsid(?:y|ies)|packages?|"
+                          r"arrangements?|facility|standby|reallocation|allocations?|payments?|repayments?|"
+                          r"settlements?|purchases?|pool|chest|proposals?)$", re.I)
+_FUNCTION_WORDS = frozenset({"of", "for", "a", "an", "the", "at", "to", "up", "about", "roughly", "around", "some",
+                             "approximately", "just"})
+#: "the budget of 20M", "cost 12M": an amount named by its budget or cost.
+_AMOUNT_BEFORE_END = re.compile(r"\b(?:costs?|budget(?:ed|s)?)\s*(?:of\s+|for\s+)?$", re.I)
+#: "a package of 10M for ports": an amount for a purpose.
+_OF_AMOUNT_FOR = re.compile(r"\bof\s*$", re.I)
+_FOR_AFTER = re.compile(r"\s*for\b", re.I)
+#: "the target of 9%", "aims to hold 5%", "before we reach 80M", "to reach 80M": a target the text sets. A forecast ("will
+#: reach 50% next month") is not a target: it states a level the state is expected to have, and is checked.
+_TARGET_WORDS = re.compile(r"\b(?:targets?|targeted|targeting|aims?|aimed|aiming|goals?|objectives?|"
+                           r"(?:to|before|until|by|we|they|can|could|may|might)\s+reach(?:ing)?)\b", re.I)
+
+
+def _amount_noun_before(before: str) -> bool:
+    """True when the last content word before the figure is an amount's noun. Function words are skipped, so "a loan of"
+    and "first tranche" count, while "credit is" (a subject, the figure's verb after it) does not."""
+    for word in reversed(re.findall(r"[A-Za-z][A-Za-z-]*", before)):
+        if word.lower() in _FUNCTION_WORDS:
+            continue
+        return bool(_AMOUNT_NOUN.match(word))
+    return False
+
+
+_CLAUSE_CONDITION = re.compile(r"\b(?:only\s+if|provided(?:\s+that)?|unless|until|if|whenever)\b", re.I)
+_TIMED_CONDITION = re.compile(r"\b(?:before|after)\b", re.I)
+#: A past tense in the clause: "before the crisis, reserves were 80M" states the past, so "before" does not condition it.
+_PAST_IN_CLAUSE = re.compile(r"\b(?:was|were|had|did|fell|fallen|rose|risen|climbed|stood|reached|hit|ended|went|came|"
+                             r"has\s+been|have\s+been|had\s+been)\b", re.I)
+_COMPARATOR = re.compile(r"\b(?:at\s+least|at\s+most|(?:no|not)\s+(?:more|less)\s+than|up\s+to|above|below|over|under|"
+                         r"exceed\w*|minimum|maximum|floor|ceiling|cap|capped|limit|limits|threshold|remains?|keeps?)\b",
+                         re.I)
+#: The words that make a comparison a statement of where the state is ("is over 9%", "fell below 15M").
+_STATE_BEFORE_COMPARATOR = re.compile(r"\b(?:is|are|am|was|were|stands?|stood|sits?|been|fell|fallen|rose|risen|"
+                                      r"dropped|dipped|slipped|sank|climbed|reached|hit|ended|went|came)\s*$", re.I)
+_MODAL_BEFORE_BE = re.compile(r"\b(?:will|would|must|shall|should|can|could|may|might|to|need|needs)\s+be\s*$", re.I)
+#: A rise, fall or change: "a rise of 1 percentage point", "fell by 20M". It is a change, not a level.
+_CHANGE_BEFORE = re.compile(r"(?:\bby|\b(?:rises?|risen|increases?|increased|decreases?|decreased|falls?|fallen|"
+                            r"drops?|dropped|cuts?|reductions?|gains?|jumps?|slides?|hikes?|growth|declines?)\s+"
+                            r"(?:of|by))\s*$", re.I)
+_CHANGE_AFTER = re.compile(r"^\s*(?:percentage\s+)?points?\b|^\s*pts?\b", re.I)
+#: Quantities no spec checks, when they follow the figure: "a 33M/month structural deficit", "a 24M bill".
+_AFTER_QUANTITY = (r"deficits?|bills?|loans?|tranch\w*|payments?|repairs?|relief|credits?|grants?|budgets?|spending|"
+                   r"revenues?|debts?|wages?|payrolls?|bonds?|lines?|funds?|allocations?|subsid(?:y|ies)|aid|transfers?|"
+                   r"expenditures?|outlays?|income|surpluses|surplus|arrangements?|facilit(?:y|ies)|standby|packages?|"
+                   r"programmes?|programs?|schemes?|contracts?|tenders?|investments?|purchases?|pool|insurance|imports?|"
+                   r"exports?|sales?|taxes|losses")
+#: Participles that make a figure a past amount: "the 8 million already spent".
+# Engine 19: a passive may put its auxiliary before the participle ("only 9.6M was paid of 142.5M requested"), so the
+# auxiliary is optional. "paid", "spent", "transferred" and "released" were already amounts; "was paid" was not seen.
+_AFTER_AMOUNT = (r"(?:(?:was|were|been|being|had\s+been|has\s+been|have\s+been)\s+)?"
+                 r"(?:spent|paid|disbursed|allocated|committed|drawn|borrowed|lent|issued|granted|released|transferred|"
+                 r"used|raised|received|collected|lost|saved|printed|earmarked|diverted|repaid)")
+_AFTER_SKIP = (r"(?:/\s*(?:month|year|week|day)s?|(?:per|a|each|every)\s+(?:month|year|week|day)|"
+               r"monthly|annual(?:ly)?|yearly|weekly|daily|structural|recurring|extra|additional|further|new|total|net|"
+               r"gross|current|outstanding|remaining|one-off|single|initial|first|second|third|last|next|already|"
+               r"unpaid|so\s+far|in\s+total|altogether)\b")
+_FLOW_AFTER = re.compile(rf"^(?:\s*{_AFTER_SKIP})*\s*(?:{_AFTER_QUANTITY}|{_AFTER_AMOUNT})\b", re.I)
+
+
+#: Words a setting may carry between the lever's name and its value: "tax share of output to 0.27", "police line 0.015".
+_SETTING_WORDS = r"(?:share|of|output|line|level|rate|setting|value|ratio|cap|unchanged|held|kept|steady|from|by)"
+_SETTING_TARGET = r"(?:to|at|=|->|→|from|held|kept|unchanged|steady)"
+#: The metric words that take "rate" as a statistic, not a lever: "unemployment rate 9%" is a state, not a setting.
+_NOT_A_LEVER_RATE = (r"(?<!employment\s)(?<!inflation\s)(?<!exchange\s)(?<!growth\s)(?<!approval\s)(?<!birth\s)"
+                     r"(?<!death\s)")
+_SETTING = None
+
+
+def _setting_patterns():
+    """Two readings of a lever's setting, as regexes over the clause before a figure. Lever names are those in
+    politics.LEVER_OFFICE and their aliases; imported here, since politics imports this module's neighbours.
+    marked: the lever set `to`, `at`, `=` or `from` a figure ("raise tax to 0.20", "rate from 6% to 7%").
+    bare:   the lever named just before a share figure ("tax 0.24, welfare 0.045")."""
+    global _SETTING
+    if _SETTING is None:
+        from .politics import LEVER_ALIASES, LEVER_OFFICE
+        names = sorted(set(LEVER_OFFICE) | set(LEVER_ALIASES), key=len, reverse=True)
+        parts = [(_NOT_A_LEVER_RATE if name == "rate" else "") + name.replace("_", r"[\s_-]+") for name in names]
+        lever = "|".join(parts)
+        marked = re.compile(rf"\b(?:{lever})(?:\s+{_SETTING_WORDS})*(?:\s+[\d][\d.,]*\s*(?:%|percent|points?|pts?)?)?"
+                            rf"\s*{_SETTING_TARGET}\s*(?:about\s+|roughly\s+|around\s+|the\s+|~|≈)?$", re.I)
+        bare = re.compile(rf"\b(?:{lever})(?:\s+{_SETTING_WORDS})*\s*$", re.I)
+        _SETTING = (marked, bare)
+    return _SETTING
+
+
+def _setting_before(before: str, claim: dict | None = None) -> bool:
+    """True when the figure is a lever's setting, not a statistic of the state. A share figure (a percentage, or a
+    decimal up to 1.5) named just after a lever is its setting too."""
+    marked, bare = _setting_patterns()
+    if marked.search(before):
+        return True
+    share = claim is not None and (claim["unit"] == "%" or (not claim["unit"] and not claim["noun"]
+                                                            and 0 < claim["value"] <= 1.5))
+    return share and bool(bare.search(before))
+
+
+def _comparison_is_threshold(before: str) -> bool:
+    """A comparison that sets a floor, cap or condition: "remain above the 80M floor", "will be at least 70M",
+    "to reach 80M". A comparison that states where the state is ("is over 9%", "fell below 15M") is not one."""
+    window = before[-45:]
+    for m in _COMPARATOR.finditer(window):
+        prior = window[:m.start()]
+        if _MODAL_BEFORE_BE.search(prior) or not _STATE_BEFORE_COMPARATOR.search(prior):
+            return True
+    return False
+
+
+#: A conjunction or colon that joins a state to the amount before it: "We paid 10M and reserves stand at 20M gold",
+#: "Settled arrears: reserves stand at 20M". A colon that titles an amount ("Port Aster repair: 8M") is not followed by a
+#: state verb, so it stays part of the amount's clause.
+_CONJUNCTION = re.compile(r"\b(?:and|but|while|whereas|yet)\b|:", re.I)
+_STATE_VERB = re.compile(r"\b(?:is|are|am|was|were|stands?|stood|sits?|has|have|had|reached|fell|fallen|rose|risen|"
+                         r"climbed|dropped|hit|sank|slipped|remains?|remained|stays?|stayed|shows?|showed)\b", re.I)
+
+
+def _figure_clause(before: str) -> str:
+    """The clause of a figure, from the clause text before it: after the last conjunction that a state verb follows.
+    "Pay 10M and 6M" is one list of amounts; "paid 10M and reserves stand at" is a payment and then a state."""
+    joints = list(_CONJUNCTION.finditer(before))
+    if joints and _STATE_VERB.search(before[joints[-1].end():]):
+        return before[joints[-1].end():]
+    return before
+
+
+def _states_a_fact(text: str, claim: dict) -> bool:
+    """True when the figure is a statistic the text states as a fact about the current or past state. False when the
+    figure is an amount the text proposes, requests, pays, allocates or borrows; a threshold, floor, cap or condition;
+    a setting the text sets; a change; or a figure whose noun names a quantity no spec checks."""
+    before = _figure_clause(_clause_before(text, claim["start"]))
+    # The text after the figure's unit, so the noun the figure carries ("40M deficit") is read as the noun it is.
+    after = text[claim["unit_end"]:claim["end"] + 60]
+    if _AMOUNT_VERB.search(before) or _AMOUNT_OPENER.match(before) or _AMOUNT_TITLE.match(before):
+        return False
+    if _amount_noun_before(before) or _AMOUNT_BEFORE_END.search(before):
+        return False
+    if _OF_AMOUNT_FOR.search(before) and _FOR_AFTER.match(after):
+        return False
+    if _TARGET_WORDS.search(before):
+        return False
+    if _CLAUSE_CONDITION.search(before) or (_TIMED_CONDITION.search(before) and not _PAST_IN_CLAUSE.search(before)):
+        return False
+    if _setting_before(before, claim) or _comparison_is_threshold(before):
+        return False
+    if _CHANGE_BEFORE.search(before) or _CHANGE_AFTER.match(after):
+        return False
+    return not _FLOW_AFTER.match(after)
+
+
 def check_numeric_grounding(w, mid: str, text: str) -> dict | None:
     """A precise statistic with no available source is sent back, not silently kept."""
     if not text or not text.strip():
@@ -1108,48 +1683,72 @@ def check_numeric_grounding(w, mid: str, text: str) -> dict | None:
     hits = [spec for spec in GROUNDING_SPECS if any(p in lowered for p in spec[1])]
     if not hits:
         return None
-    numbers = _numbers_in(text)
+    # Engine 19 claim test: a figure the text proposes, pays, thresholds, sets, changes or counts in another quantity is
+    # not a statement of the state, and is not checked against it (see _states_a_fact).
+    numbers = [claim for claim in _numbers_in(text) if _states_a_fact(text, claim)]
     if not numbers:
         return None
-    if _OPINION_GUARD.search(text) and not any(n["noun"] in ("shortage", "shortfall") for n in numbers):
-        if not [n for n in numbers if n["noun"]]:
-            return None
+    # Audit MO5: an opinion word ("alarming", "weak") used to switch the check off when no figure had a noun
+    # ("Inflation of 9% is alarming" passed at 0%). A stated figure is always checked; with no figure there is
+    # nothing to check, which the early return above already covers.
+    marks = _force_marks(w, text)
+    for claim in numbers:
+        claim["side"] = _side_of(marks, text, claim["start"], claim["end"])
+    # Audit MO4: a troop figure about the Union is checked against the Union's force even when no Union keyword
+    # is in the text: "The Solvaran Union has 95000 soldiers" names soldiers, and only the army spec would match.
+    if not any(spec[0] == "union_forces" for spec in hits) and any(
+            c["side"] == "union" and _is_troop_figure(text, c) for c in numbers):
+        hits.append(next(spec for spec in GROUNDING_SPECS if spec[0] == "union_forces"))
+    for claim in numbers:
+        claim["owners"] = _owners(text, claim, _keys_naming(hits, text, claim))
+        # A Union troop figure whose sentence names no metric is about the Union's force (Audit MO4).
+        if not claim["owners"] and claim["side"] == "union" and _is_troop_figure(text, claim):
+            claim["owners"] = frozenset({"union_forces"})
     sources = information_available_to(w, mid)
-    source_numbers = []
-    for src in sources:
-        source_numbers += _numbers_in(src["text"])
     source_texts = [src["text"] for src in sources]
     shortage_talk = any(word in lowered for word in ("shortage", "shortfall", "short of food"))
-    for key, _patterns, _truth_key, tol in hits:
+    for key, patterns, _truth_key, tol in hits:
         try:
             truth = float(_grounding_truth(w, key))
         except Exception:
             continue
         band = max(tol["abs"], abs(truth) * tol["rel"])
-        for claim in numbers:
-            money = claim["value"] >= 1e3 or claim["unit"] in ("million", "m", "billion", "bn", "thousand", "k")
-            ratio = (not money and claim["value"] <= 1.5) or claim["unit"] in ("%", "percent", "percentage")
+        words = _metric_words(key, patterns)
+        figures = _source_figures(w, source_texts, words)
+        side = FORCE_KEYS.get(key)
+        counts = _source_count_ranges(w, source_texts, side) if side else []
+        ranges = _source_ratios(source_texts, words) if key in RATIO_KEYS else []
+        for raw_claim in numbers:
+            # A figure is judged only against the metric it is about (its owners, see _owners).
+            if key not in raw_claim["owners"]:
+                continue
+            claim = _as_percent_points(text, raw_claim, key) if key in RATIO_KEYS else raw_claim
+            value = claim["value"]
+            money = value >= 1e3 or claim["unit"] in ("million", "m", "billion", "bn", "thousand", "k")
+            ratio = (not money and value <= 1.5) or claim["unit"] in ("%", "percent", "percentage")
             if key in ("reserves", "arrears") and not money:
                 continue
-            if key in ("army_size", "union_forces") and (ratio or claim["value"] < 100):
+            # A troop figure is judged only against the force it is about; a figure about the other side is not ours to check.
+            if side and (ratio or value < 100 or claim["side"] != side or not _is_troop_figure(text, claim)):
                 continue
-            if key in ("food_ratio", "hunger", "inflation", "unemployment", "approval",
-                       "unrest", "army_readiness") and not ratio:
+            if key in RATIO_KEYS and not ratio:
                 continue
-            if abs(claim["value"] - truth) <= band:
+            # A range is grounded when the truth lies inside it, within the band; a single figure is the range of one.
+            low_bound, high_bound = min(claim.get("lo", value), value), max(claim.get("lo", value), value)
+            if low_bound - band <= truth <= high_bound + band:
                 continue
             shortage = ratio and key in ("food_ratio", "hunger") and (
                 shortage_talk or claim["noun"] in ("shortage", "shortfall"))
-            if shortage and abs(claim["value"] - max(0.0, 1 - float(w.econ.food_ratio))) <= max(.03, band * .5):
+            if shortage and abs(value - max(0.0, 1 - float(w.econ.food_ratio))) <= max(.03, band * .5):
                 continue        # a shortage stated as what coverage falls short of 100%
-            supported = any(claim["unit"] == seen["unit"]
-                            and abs(claim["value"] - seen["value"]) <= max(band * 0.5, 1e-9)
-                            for seen in source_numbers)
+            supported = any(claim["unit"] == fig["unit"] and abs(value - fig["value"]) <= max(band * 0.5, 1e-9)
+                            and (side is None or owner == side) for fig, owner in figures)
             if ratio and not supported:
                 slack = max(band * 0.5, .01)
-                values = [claim["value"]] + ([1 - claim["value"]] if shortage else [])
-                ranges = _source_ratios(source_texts, _RATIO_CONTEXT.get(key, ()))
+                values = [value] + ([1 - value] if shortage else [])
                 supported = any(lo - slack <= v <= hi + slack for v in values for lo, hi in ranges)
+            if side and not supported:
+                supported = any(lo <= value <= hi for lo, hi in counts)
             if supported:
                 continue
             hunger_now = _grounding_truth(w, "hunger")
@@ -1194,6 +1793,10 @@ def execution_key(w, motion: dict) -> str:
                "issue": _normalise(action.get("issue") or ""), "month": int(getattr(w, "month", 0))}
     if action["action_type"] == "charter_amendment":
         payload["text"] = _normalise(action.get("text") or "")[:400]
+    # Audit MO21: a diplomatic act that names no issue is told apart by its words. Without them, two protests to one
+    # power about different things, in one month, were one act, and the second was refused as a duplicate.
+    if action["kind"] == "diplomacy" and not payload["issue"]:
+        payload["text"] = _normalise(motion.get("text") or "")
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 

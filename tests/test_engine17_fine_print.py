@@ -255,7 +255,9 @@ class Defence(unittest.TestCase):
         self.assertEqual(fine_print.defence_factor(w, "east"), .85)
         self.assertEqual(fine_print.defence_factor(w, "north"), 1.0)
         self.assertAlmostEqual(military._front_defence(w, "east")[3], before * .85, places=9)
-        w.month = 7                            # the stand-down ran from Month 5 to Month 7
+        w.month = 5                            # the stand-down holds the month it is made and the next (Months 5 and 6)
+        self.assertEqual(fine_print.defence_factor(w, "east"), .85)
+        w.month = 6                            # and has run out by Month 7 (engine 19, MI2: it used to hold three months)
         self.assertEqual(fine_print.defence_factor(w, "east"), 1.0)
         self.assertAlmostEqual(military._front_defence(w, "east")[3], before, places=9)
         fine_print.monthly(w)
@@ -276,7 +278,7 @@ class Defence(unittest.TestCase):
         politics.apply_motion(w, protest(text="Mutual stand-down of patrols pending findings, and a reaffirmation of "
                                               "the non-aggression pact.", terms=[]))
         self.assertEqual([x["front"] for x in standdowns(w)], ["north"])
-        self.assertEqual([x["until"] for x in standdowns(w)], [6])
+        self.assertEqual([x["until"] for x in standdowns(w)], [5])
         fresh = world()
         fresh.month = 4
         politics.apply_motion(fresh, protest(text="Mutual stand-down of patrols pending findings.", terms=[]))

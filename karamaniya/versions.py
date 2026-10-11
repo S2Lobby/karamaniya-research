@@ -65,7 +65,16 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # it has found. The foreign cabinets see how firm Karamaniya looks and the moves behind it, with one sentence saying
 # what the field is. A run in the secret-ballot arm has one sentence after the decision rule; an open run's system
 # prompt is unchanged.
-AGENT_PROMPT = 15
+# 16 goes with world engine 19, which fixed the audit of engine 18 (docs/AUDIT_ENGINE18.md). A motion's and an
+# amendment's text is shown as stored, with its [cut] mark, never sliced; a seat with a small context keeps its
+# instructions and answer format, loses the canonical state last, and is told which sections were shortened or left
+# out. Settings print as the directives do (tax 0.185, not 0.18); the canonical block and the public briefing print one
+# published output; inflation names the months it covers; the election line is the vote under the campaign and the
+# settings in force; an emergency measure says its four months; the short disposition keeps the agenda, the past, the
+# base, the priorities and the fears. Under seeded names the English word "union" stays English. The cabinets see the
+# regions the Union or the rebels hold, an unbiased band for Karamaniya's army, and a demand as due in its deadline
+# month; the forecast panel names its inflation window.
+AGENT_PROMPT = 16
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose
@@ -75,7 +84,13 @@ AGENT_PROMPT = 15
 # through its own mix of audiences, whatever the delegate's seat, and can grow uneasy or disown the delegate. Under a
 # secret ballot no vote is costed or seen: no base reads one, and no trust, grievance, favour debt, vote-based promise
 # or lone dissent follows from one.
-PSYCHOLOGY = 7
+# 8 (world engine 19, the audit of engine 18): a relationship keeps the exact size of every change (rounding to 0.1
+# erased the small ones); massaging the statistics is dishonesty, not repression; a promise is judged in the month it is
+# made, and under a secret ballot its public orders are still judged; a base reads the conduct of a yes vote and ends
+# with its delegate; an audience an office brings is kept while the office is away; grievances are listed in a fixed
+# order; a setting counts as changed only when it moves; a secret ballot leaves no lone stand in memory. Without the
+# human factor no psychology is created, reported or written by an audit, a dilemma or a reputation effect.
+PSYCHOLOGY = 8
 # 3 added the causal world model: output gap and potential output, Okun unemployment, hybrid
 # inflation expectations, lagged exchange-rate pass-through, and the lagged fiscal impulse. A run
 # paused under engine 2 and resumed under 3 would mix two different economies in one history, so
@@ -188,13 +203,25 @@ PSYCHOLOGY = 7
 # asked to move it, and the stand-in Dorsania, easing an embargo that stood at zero, lost about 11% of its output in
 # 36 months on every seed. Run setting `ballot` (open, the default, or secret). The calibration harness
 # (calibration.py, tools/calibrate.py) checks the world's figures across seeds and rule councils.
-WORLD_ENGINE = 18
+# 19: the audit of engine 18 (docs/AUDIT_ENGINE18.md, 116 findings, each reproduced) fixed by area. No malformed answer
+# ends a run. Policy values are refused outside their range, not clamped, and a share whose text gives it as a percent
+# is read as one. The neighbours' call-ups are capped per month and draw their reserves, their losses are replaced, their
+# defence burden follows their economy, an expired demand lapses and the rule's blockade can lift, and with the cabinets
+# off the Union's rule sets demands. Reservists cost their pay and their activation; the General Staff's request is
+# judged against the gap it arose with. The economy starts at its founded prices and output gap, a League tranche funds
+# the budget once, foreign interest is paid from the reserves, pass-through accumulates, and a compliance cut reaches
+# revenue. Motions: a rejection is not an offer, one negation vocabulary, a text must name the act it executes, numeric
+# grounding judges statistics stated as facts. Deferral, repairs, conditionals and resignations keep their votes. A
+# costing request costs its own motion at the engine's own prices. Elections: the outlook is the vote, a rigged count
+# never overdraws a list. Baselines always run the stand-in neighbours and record a stopped mode as failed.
+WORLD_ENGINE = 19
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1
 # 2 added the refusal codes for actions, motions, audits and foreign deals. 3 adds VOTE_INTENT_MISMATCH and
-# CONDITION_EXECUTION_MISMATCH, which the other line had already added without a bump.
-ERROR_TAXONOMY = 3
+# CONDITION_EXECUTION_MISMATCH, which the other line had already added without a bump. 4 (engine 19) adds
+# VALUE_OUT_OF_RANGE, MOTION_CAP_REACHED, ANSWER_UNREADABLE and registers BAD_LOAN_AMOUNT, which was refused unregistered.
+ERROR_TAXONOMY = 4
 
 
 def stamp(agent_architecture: int = AGENT_ARCHITECTURE) -> dict:

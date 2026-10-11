@@ -249,9 +249,10 @@ class WhatAVoteDoesOnceItIsSeen(unittest.TestCase):
 
     def test_a_promise_about_a_vote_is_not_judged_under_a_secret_ballot(self):
         def make(w):
+            # Engine 19, AG3: a topic pledge is judged in the month it is made, so the pledge is made in the vote's month.
+            w.month = 1
             promise = commitments.record(w, "A", "I will vote for the audit motion", to="B")
             self.assertEqual(promise["normalized"]["topic"], "audit")
-            w.month = 1
             record = {"motions": [{"id": "M1", "proposer": "C", "type": "investigation", "subject": "army",
                                    "value": "open", "summary": "open an audit of the army", "text": "",
                                    "passed": True, "void": False, "withdrawn": False,

@@ -29,7 +29,7 @@ from karamaniya.storage import RunStore  # noqa: E402
 from karamaniya.world import World, new_world  # noqa: E402
 
 CONFIG = os.path.join(ROOT, "council.scripted.toml")
-OUTLOOK = "If the election were held now:"
+OUTLOOK = "If the election were held now, with the campaign and settings in force:"   # engine 19: the line's wording
 
 
 def world(seed: int = 5) -> World:
@@ -252,7 +252,10 @@ class EveryLimitIsStated(unittest.TestCase):
         session = {"statement": long, "principles": long, "private_messages": dm, "communications": comms,
                    "private_position": {k: long for k in actions.POSITION_FIELDS},
                    "promises": [{"to": "public", "text": long, "condition": long}],
-                   "motions": [{"type": "set_policy", "subject": "tax", "value": "0.2", "text": long}]}
+                   # One motion more than the cap: the one past it is kept for its refusal, and its text is cut at
+                   # the stated limit as well (audit CO14).
+                   "motions": [{"type": "set_policy", "subject": lever, "value": "0.2", "text": long}
+                               for lever in ("tax", "welfare", "military")[:actions.MAX_MOTIONS + 1]]}
         revision = {"response": long, "demands": [{"motion_id": "M1", "demand": long}],
                     "withdraw": [{"motion_id": "M1", "reason": long}], "communications": comms,
                     "amend": [{"motion_id": "M1", "value": "0.21", "text": long}], "private_messages": dm}

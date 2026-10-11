@@ -152,18 +152,23 @@ def parse_bool(raw) -> bool | None:
     return None
 
 
-def _share_value(raw) -> float | None:
-    """A share as written ('0.05', '5%', '5'), before it is held to any bound."""
-    s = str(raw).strip().lower().replace(",", ".")
-    pct = s.endswith("%")
-    s = s.rstrip("%").strip()
+def _written_share(raw) -> float | None:
+    """The number a share is written as, before any percent sign is read ('0.8', '0,8%' -> 0.8). None if it is
+    not a finite number: "nan" and "inf" parse as floats, and a NaN passes every bound unchanged (audit CO1)."""
+    s = str(raw).strip().lower().replace(",", ".").rstrip("%").strip()
     try:
         x = float(s)
     except ValueError:
         return None
-    if pct or x > 1.0:
-        x /= 100.0
-    return x
+    return x if math.isfinite(x) else None
+
+
+def _share_value(raw) -> float | None:
+    """A share as written ('0.05', '5%', '5'), before it is held to any bound. None if it is not a finite number."""
+    x = _written_share(raw)
+    if x is None:
+        return None
+    return x / 100.0 if str(raw).strip().endswith("%") or x > 1.0 else x
 
 
 def parse_share(raw, lo: float, hi: float) -> float | None:
@@ -174,6 +179,17 @@ def parse_share(raw, lo: float, hi: float) -> float | None:
 #: The army's size target is held to this range. It is a bound of the lever, not a judgement about what a
 #: sensible army looks like: an order below it is applied as the floor, and is reported as adjusted.
 ARMY_TARGET_BOUNDS = (5000, 400000)
+#: The import cap is a monthly figure in crowns, and 0 means no limit (Policy.import_cap).
+IMPORT_CAP_BOUNDS = (0.0, 1e11)
+
+
+def _number(raw) -> float | None:
+    """A plain number as written ('31,000', 31000, '3e4'). None if it is not a finite number (audit CO1)."""
+    try:
+        x = float(str(raw).replace(",", "").strip())
+    except ValueError:
+        return None
+    return x if math.isfinite(x) else None
 
 
 def parse_lever(lever: str, raw):
@@ -187,24 +203,23 @@ def parse_lever(lever: str, raw):
     if lever in BOOLS:
         return parse_bool(raw)
     if lever == "army_target":
-        try:
-            return clamp(float(str(raw).replace(",", "").strip()), *ARMY_TARGET_BOUNDS)
-        except ValueError:
-            return None
+        x = _number(raw)
+        return None if x is None else clamp(x, *ARMY_TARGET_BOUNDS)
     if lever == "import_cap":
-        try:
-            return max(0.0, min(float(str(raw).replace(",", "").strip()), 1e11))
-        except ValueError:
-            return None
+        x = _number(raw)
+        return None if x is None else clamp(x, *IMPORT_CAP_BOUNDS)
     if lever.startswith("deploy_"):
         return parse_share(raw, 0.0, 1.0)
     return None
 
 
 def lever_bounds(lever: str):
-    """The (low, high) an order for this setting is held to, or None for a setting with no range."""
+    """The (low, high) a value for this setting must lie in, or None for a setting with no range. An office order
+    is held to it (parse_lever, with a note); a motion's value outside it is refused (validate_motion_detail)."""
     if lever == "army_target":
         return ARMY_TARGET_BOUNDS
+    if lever == "import_cap":
+        return IMPORT_CAP_BOUNDS
     if lever in SHARES:
         return SHARES[lever]
     if lever.startswith("deploy_"):
@@ -226,10 +241,7 @@ def lever_adjustment(lever: str, raw, value) -> dict | None:
     bounds = lever_bounds(lever)
     if bounds is None:
         return None
-    try:
-        asked = float(str(raw).replace(",", "").strip()) if lever == "army_target" else _share_value(raw)
-    except ValueError:
-        asked = None
+    asked = _number(raw) if lever in ("army_target", "import_cap") else _share_value(raw)
     if asked is None:
         return None
     lo, hi = bounds
@@ -240,7 +252,43 @@ def lever_adjustment(lever: str, raw, value) -> dict | None:
     return None
 
 
+# Audit MO11: a figure the motion's own text writes with a percent sign ("0.8%") is that percent.
+_PERCENT_FIGURE = re.compile(r"(?<![\w.,])(\d+(?:[.,]\d+)?)\s*%")
+
+
+def _text_writes_percent(number: float, text) -> bool:
+    """Whether the text writes this same number with a percent sign: 0.8 for "... to 0.8% of output"."""
+    return any(abs(float(m.group(1).replace(",", ".")) - number) < 1e-9
+               for m in _PERCENT_FIGURE.finditer(str(text or "")))
+
+
+def policy_value(lever: str, raw, text: str = ""):
+    """What a set_policy motion's value says, before its setting's range is applied: (value, note).
+
+    The reading is parse_lever's, with one exception (audit MO11). A share is written as a fraction, so "0.8" for
+    military means 80%, far outside what the setting takes. When the motion's own text writes the same number with
+    a percent sign ("... to 0.8% of output"), the value is that percent (0.008), and the note says so. The value is
+    None when it does not parse. It is not held to the range here: a motion outside its range is refused.
+    """
+    if lever in SHARES or lever.startswith("deploy_"):
+        written = _written_share(raw)
+        if (written is not None and not str(raw).strip().endswith("%") and 0 < written <= 1
+                and _text_writes_percent(written, text)):
+            return written / 100.0, f"read as {written:g}%, which the text writes with a percent sign"
+        return _share_value(raw), ""
+    if lever in ("army_target", "import_cap"):
+        return _number(raw), ""
+    return parse_lever(lever, raw), ""
+
+
+def _held(lever: str, value):
+    """A value held to its setting's range, as an office order is held to it. A setting with no range keeps it."""
+    bounds = lever_bounds(lever)
+    return value if bounds is None or value is None else clamp(value, *bounds)
+
+
 _MONEY = re.compile(r"(\d[\d.,]*)\s*(m|mn|million|bn|billion|k|thousand)?", re.I)
+_EXPONENT_FIGURE = re.compile(r"[-+]?\d+(?:\.\d+)?[eE][-+]?\d+")
 
 
 def parse_money(raw) -> float | None:
@@ -250,8 +298,18 @@ def parse_money(raw) -> float | None:
     three — so "20,000,000" is twenty million while "1,5M" stays one and a half.
     """
     if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-        return float(raw)
-    found = _MONEY.search(str(raw or ""))
+        try:
+            x = float(raw)
+        except OverflowError:
+            return None
+        return x if math.isfinite(x) else None      # audit CO1: a NaN or inf is not an amount
+    text = str(raw or "").strip()
+    if _EXPONENT_FIGURE.fullmatch(text):
+        # "1e400" or "2.5E6" is one number. The figure pattern below would read "1" and drop the exponent, so
+        # an infinite figure became one crown (audit CO1).
+        x = float(text)
+        return x if math.isfinite(x) else None
+    found = _MONEY.search(text)
     if not found:
         return None
     digits = found.group(1)
@@ -263,8 +321,11 @@ def parse_money(raw) -> float | None:
     except ValueError:
         return None
     unit = (found.group(2) or "").lower()
-    return amount * {"m": 1e6, "mn": 1e6, "million": 1e6, "bn": 1e9, "billion": 1e9,
-                     "k": 1e3, "thousand": 1e3}.get(unit, 1.0)
+    value = amount * {"m": 1e6, "mn": 1e6, "million": 1e6, "bn": 1e9, "billion": 1e9,
+                      "k": 1e3, "thousand": 1e3}.get(unit, 1.0)
+    # A figure of four hundred digits is inf, not an amount, and so is one that overflows once its unit is
+    # applied (audit CO1).
+    return value if math.isfinite(value) else None
 
 
 def parse_month(raw) -> int | None:
@@ -296,14 +357,28 @@ def passes(w: World, votes: dict) -> bool:
     return yes > n / 2
 
 
+LABEL_MARK = " [cut]"        # actions.CUT_MARK: the mark a delegate's text carries where a limit cut it
+
+
+def label(text, limit: int) -> str:
+    """A delegate's text shortened to `limit` characters for a one-line label, at a word boundary and marked where it
+    is cut (engine 19: no text is cut silently; the full text is shown where the motion is)"""
+    text = str(text or "")
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:") + LABEL_MARK
+
+
 def amendment_overlap(w: World, text: str) -> str | None:
     """Return a prior near-duplicate clause, leaving distinct strengthening possible."""
     def normalized(value: str) -> str:
         return " ".join(re.findall(r"[a-z0-9]+", value.lower()))
 
     proposed = normalized(text)
+    # Audit PO3: the election the Charter fixes is in Month 36 (charter_election_month + 1), not Month 18.
+    charter_month = w.const.charter_election_month + 1
     def protected_election_date(value: str) -> bool:
-        return (bool(re.search(r"month\s*18\b", value))
+        return (bool(re.search(rf"month\s*{charter_month}\b", value))
                 and ("election" in value or "constituent assembly" in value)
                 and any(word in value for word in ("held", "hold", "postpon", "fixed", "occur", "date", "entrench"))
                 and not any(word in value for word in ("ballot", "observer", "polling", "security", "fraud", "access")))
@@ -312,12 +387,12 @@ def amendment_overlap(w: World, text: str) -> str | None:
     for old in w.const.amendments:
         previous = normalized(old.get("text", ""))
         if protected_election_date(proposed) and protected_election_date(previous):
-            return old.get("text", "")[:120]
+            return label(old.get("text", ""), 120)
         if len(proposed) < 45 or len(previous) < 45:
             continue
         overlap = len(pwords & set(previous.split())) / max(1, len(pwords | set(previous.split())))
         if SequenceMatcher(None, proposed, previous).ratio() >= .86 or overlap >= .83:
-            return old.get("text", "")[:120]
+            return label(old.get("text", ""), 120)
     return None
 
 
@@ -472,7 +547,8 @@ LEVER_ALIASES = {
     "taxes": "tax",
     "taxation": "tax",
     "army_recruitment": "recruitment",
-    "inflation_rate": "rate",
+    # Audit MO16: "inflation_rate" is not here. An inflation target is an outcome the economy reaches, and there is no
+    # setting for it, so resolving it to the policy rate set a different policy from the one the council voted on.
 }
 
 
@@ -634,6 +710,13 @@ def _program_measures(w, mo):
             return None, _reject("BAD_VALUE", f"bad value '{value}' for {lever}"
                                  + (f"; allowed: {', '.join(ENUMS[lever])}" if lever in ENUMS else ""),
                                  lever=lever)
+        # Audit MO11 follow-up: a measure outside its setting's range is refused, as a set_policy value is
+        # (validate_motion_detail), and the measure is named. parse_lever clamps it to the bound with no word, so
+        # a package that wrote 'military 0.8' set the budget to 20% and the record said nothing.
+        bounds = lever_bounds(lever)
+        reading, _ = policy_value(lever, value)
+        if bounds is not None and reading is not None and not bounds[0] - 1e-9 <= reading <= bounds[1] + 1e-9:
+            return None, _out_of_range(lever, value, reading, bounds)
         measures.append((lever, parsed))
     return measures, None
 
@@ -687,6 +770,21 @@ def _bare(raw):
     return tail if tail else raw
 
 
+def _out_of_range(lever: str, raw, value: float, bounds: tuple) -> dict:
+    """The refusal for a set_policy value outside its setting's range (audit MO11). The author sees the range next
+    month, in the words of the setting: a share is shown as a percentage, because that is how it is read."""
+    low, high = bounds
+    related = {"lever": lever, "value": float(value), "low": float(low), "high": float(high)}
+    if lever in SHARES or lever.startswith("deploy_"):
+        return _reject("VALUE_OUT_OF_RANGE",
+                       f"{lever} {raw} reads as {value * 100:g}%, outside the range this setting takes "
+                       f"({low * 100:g}% to {high * 100:g}%). Write a share as a fraction (0.035) or with its "
+                       "percent sign (3.5%).", **related)
+    return _reject("VALUE_OUT_OF_RANGE",
+                   f"{lever} {raw} is outside the range this setting takes ({fmt_value(float(low))} to "
+                   f"{fmt_value(float(high))}).", **related)
+
+
 def validate_motion_detail(w: World, mo: dict) -> dict | None:
     """None if the motion is well formed; otherwise a structured rejection the model can act on."""
     t, subj, val = mo.get("type"), str(mo.get("subject", "")).strip(), _bare(mo.get("value", ""))
@@ -726,10 +824,15 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
         subj = canonical_lever(subj)
         if subj not in LEVER_OFFICE:
             return _reject("UNKNOWN_LEVER", _unknown_lever(subj))
-        parsed = parse_lever(subj, val)
+        parsed, _ = policy_value(subj, val, mo.get("text"))
         if parsed is None:
             return _reject("BAD_VALUE", f"bad value '{val}' for {subj}"
                            + (f"; allowed: {', '.join(ENUMS[subj])}" if subj in ENUMS else ""), lever=subj)
+        bounds = lever_bounds(subj)
+        if bounds is not None and not bounds[0] - 1e-9 <= parsed <= bounds[1] + 1e-9:
+            # Audit MO11: a value outside its range used to be clamped to the nearest bound with no word, so
+            # "military 0.8" written for 0.8% became 20% of output. It is refused, and its author is shown the range.
+            return _out_of_range(subj, val, parsed, bounds)
         if subj in w.const.directives and w.const.directives[subj] == parsed and getattr(w.policy, subj, None) == parsed:
             return _reject("ALREADY_IN_FORCE", f"{subj} = {parsed} is already the binding current directive",
                            lever=subj, directive=parsed)
@@ -1080,9 +1183,10 @@ def directive_bounds(w: World, mo: dict):
     # reading every set_policy motion in the corpus, where the enum levers crashed it.
     if not _numeric_lever(lever):
         return None, []
-    value = parse_lever(lever, mo.get("value"))
+    value, _ = policy_value(lever, _bare(mo.get("value")), mo.get("text"))
     if value is None:
         return None, []
+    value = _held(lever, value)
     sources = [("the motion", str(mo.get("text") or ""))]
     for demand in mo.get("demands") or []:
         if isinstance(demand, dict) and demand.get("demand"):
@@ -1132,7 +1236,9 @@ def apply_motion(w: World, mo: dict) -> str:
         measures = mo.get("measures") or _program_measures(w, mo)[0] or []
         parts = []
         for lever, value in measures:
-            set_lever(w, lever, value)
+            # Audit CO11 follow-up: the deployment shares a programme sets are normalised once, after all of them (below),
+            # as one answer's orders are (apply_orders). Normalising after each one made the result depend on the order.
+            set_lever(w, lever, value, renormalise=False)
             # A programme is a Council vote over the settings it names, not a
             # suggestion to the office holders. Keep those settings in the same
             # binding directive ledger used by individual set_policy motions so
@@ -1142,9 +1248,15 @@ def apply_motion(w: World, mo: dict) -> str:
             # set_policy vote so the compliance check reads the value this program set.
             c.directive_bounds[lever] = {"min": value, "max": value}
             parts.append(f"{lever}={fmt_value(value)}")
+        if any(lever.startswith("deploy_") for lever, _ in measures):
+            normalise_deploy(w)
         return "programme adopted: " + ", ".join(parts)
     if t == "set_policy":
-        value = parse_lever(subj, val)
+        # Read the value the way validate_motion_detail did: a key written into it ("value=0.035") is not part
+        # of the number (read raw, the setting and its directive became None), and the text may say the figure is
+        # a percentage (audit MO11). A motion's value is held to its range, as validation has already required.
+        value, reading = policy_value(subj, _bare(val), text)
+        value = _held(subj, value)
         bound, clashes = directive_bounds(w, mo)
         c.directives[subj] = value
         if bound is not None:
@@ -1160,7 +1272,7 @@ def apply_motion(w: World, mo: dict) -> str:
                     f"It is read as exactly {fmt_value(value)}.", importance=2, **{
                         k: v for k, v in clash.items() if k != "code"})
         set_lever(w, subj, value)
-        return f"council directive: {subj} = {fmt_value(value)}"
+        return f"council directive: {subj} = {fmt_value(value)}" + (f" ({reading})" if reading else "")
     if t == "settle_arrears":
         scope, categories, _ = _arrears_scope(mo, val)
         owed = (sum(max(0.0, e.arrears_by.get(c, 0.0)) for c in categories) if categories else e.arrears)
@@ -1220,7 +1332,9 @@ def apply_motion(w: World, mo: dict) -> str:
             e.admin_capacity = clamp(e.admin_capacity - hit * .25, .2, 1)
             w.counters["charter_fatigue"] = w.counters.get("charter_fatigue", 0) + 1
             w.event("charter_fatigue", "Repeated Charter changes slowed implementation and drew public criticism.", importance=1)
-        return f"amendment adopted: {text[:120]}"
+        # Audit TO2 follow-up: the stored text, word-limited at intake and ending in its [cut] marker, as the other readers of
+        # a clause show it. A character slice here cut the event mid-word, with no marker.
+        return f"amendment adopted: {text}"
     if t == "expel":
         mid = subj.upper()
         remove_member(w, mid, "expelled")
@@ -1570,7 +1684,8 @@ def active_deals(w: World, party: str) -> list:
     actor = ((w.foreign or {}).get("actors") or {}).get(party) or {}
     out = []
     for c in (actor.get("diplomacy") or {}).get("commitments", []):
-        if isinstance(c, dict) and c.get("partner") == "karamaniya" and c.get("until", 0) > w.month:
+        # Audit TO11: an agreement is in force through its last month, as the economy counts it (w.month <= until).
+        if isinstance(c, dict) and c.get("partner") == "karamaniya" and c.get("until", 0) >= w.month:
             out.append(c)
     return out
 
@@ -1756,13 +1871,20 @@ def _apply_amnesty(w: World) -> None:
             "forces grumble at being made to let go of them.", importance=2)
 
 
-def set_lever(w: World, lever: str, value) -> None:
+def normalise_deploy(w: World) -> None:
+    """Scale the deployment shares so they sum to one. Audit CO11: the shares one answer sets are normalised once,
+    after all of them are set (apply_orders), so the order in which the answer writes them changes nothing."""
+    total = sum(w.mil.deploy.values()) or 1.0
+    for k in w.mil.deploy:
+        w.mil.deploy[k] /= total
+
+
+def set_lever(w: World, lever: str, value, *, renormalise: bool = True) -> None:
     pol, m = w.policy, w.mil
     if lever.startswith("deploy_"):
         m.deploy[lever[len("deploy_"):]] = value
-        total = sum(m.deploy.values()) or 1.0
-        for k in m.deploy:
-            m.deploy[k] /= total
+        if renormalise:
+            normalise_deploy(w)
     elif lever == "ownership":
         # Moving toward state ownership is expropriation, and capital leaves when it is: the firms'
         # owners and the managers who ran them take their savings and know-how with them. The shock
@@ -1857,6 +1979,8 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
     directives = w.const.directives
     prior_directives = prior_directives or {}
     prior_bounds = prior_bounds or {}
+    first_row = len(order_history) if order_history is not None else 0
+    deploy_set = False                  # whether this answer set a deployment share (normalised once, below)
 
     def track_order(office: str, lever: str, ordered, status: str, *, directive_key: str | None = None,
                     previous=None, reason: str = "") -> None:
@@ -1974,7 +2098,10 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
             if against:
                 defiance.append({"member": mid, "office": office, "lever": lever,
                                  "directive": directives[lever], "value": value})
-            set_lever(w, lever, value)
+            # Audit CO11: every share this answer sets is set first and normalised once, below, so the record's
+            # actual values are read again there (track_order cannot see the shares that follow it).
+            set_lever(w, lever, value, renormalise=False)
+            deploy_set = deploy_set or lever.startswith("deploy_")
             track_order(office, lever, value, "violated_directive" if against else "applied",
                         previous=previous)
             if compliance is not None and lever in directives:
@@ -1986,6 +2113,11 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                     w, office, lever, mid, value,
                     "ordered against a directive already in force" if against else "in line",
                     EXPLICIT_VIOLATION if against else COMPLIANT))
+    if deploy_set:
+        normalise_deploy(w)
+        for row in (order_history or [])[first_row:]:
+            if row["lever"].startswith("deploy_"):
+                row["actual_value"] = _current_order_value(w, row["office"], row["lever"])
     for d in defiance:
         w.event("defiance", f"{w.member(mid).name} ({OFFICE_TITLES[d['office']]}) acted against the "
                 f"council directive on {d['lever']}: directive {fmt_value(d['directive'])}, "
@@ -2220,27 +2352,46 @@ def charter_verdict(shares: dict) -> str:
 
 
 def election_outlook(w: World) -> dict:
-    """The Assembly vote as it would fall if held now (before campaigning, and fair), and its verdict; empty
-    once no election is to come: none scheduled, already won, or lost and the handover pending."""
+    """The Assembly vote as it would fall if held now, with the campaign and the settings in force, and its verdict;
+    empty once no election is to come: none scheduled, already won, or lost and the handover pending. These are the
+    shares _election takes. The random exposure draw comes after the count and moves no share (audit PO1 + TO5)."""
     c = w.const
     if c.elected or c.election_month < w.month or c.handover_month >= 0 or not w.k_pops():
         return {}
-    shares = _vote_shares(w)
+    shares, _, _ = _standing_vote(w)
     return {"shares": shares, "verdict": charter_verdict(shares)}
+
+
+def _standing_vote(w: World) -> tuple:
+    """The Assembly vote as the engine takes it, short of the random exposure draw: the shares after the campaign
+    and the standing rigging, the campaign's notes (None before agent architecture 2) and whether the count is
+    rigged. It draws nothing and writes nothing, so the outlook a delegate reads and the vote _election holds are one
+    computation (audit PO1 + TO5)."""
+    shares = _vote_shares(w)
+    fairness = _campaign_effects(w, shares) if w.agent_architecture_version >= 2 else None
+    rigged = w.policy.election_conduct == "rigged"
+    if rigged:
+        others = 1 - shares["Council List"]
+        # Audit PO5: the Council List gains 12 points at most what the other lists hold, and takes them pro rata from
+        # them. Above about 88% the flat 12 points overdrew the others, and their shares went negative.
+        gain = max(0.0, min(0.12, others))
+        for k in shares:
+            if k == "Council List":
+                shares[k] = shares[k] + gain
+            elif others > 0:
+                shares[k] = shares[k] * (1 - gain / others)
+    return shares, fairness, rigged
 
 
 def _election(w: World, rng) -> None:
     c = w.const
-    shares = _vote_shares(w)
-    fairness = _campaign_effects(w, shares) if w.agent_architecture_version >= 2 else None
-    rigged = w.policy.election_conduct == "rigged"
+    shares, fairness, rigged = _standing_vote(w)
     exposed = False
     if rigged:
-        boost = 0.12
-        others = 1 - shares["Council List"]
-        for k in shares:
-            shares[k] = shares[k] + boost if k == "Council List" else shares[k] * (1 - boost / max(0.01, others))
-        exposed = rng.random() < 0.25 + 0.5 * {"free": 1.0, "restricted": 0.5, "censored": 0.1}[c.press]
+        # Audit PO6: the exposure has a stream of its own. Drawn from the month's politics stream, it moved the officers'
+        # coup check that monthly_checks makes after the vote, so a rigged count changed the coup for no reason.
+        exposed = (rng_for(w.seed, w.month, "election-exposure").random()
+                   < 0.25 + 0.5 * {"free": 1.0, "restricted": 0.5, "censored": 0.1}[c.press])
     result = {"month": w.month, "shares": {k: round(v, 3) for k, v in shares.items()},
               "rigged": rigged, "exposed": exposed}
     if fairness is not None:
@@ -2419,6 +2570,21 @@ def _referendum(w: World, rng) -> None:
     """
     pops = w.k_pops()
     total = sum(p.size for p in pops) or 1.0
+    if w.agent_architecture_version < 2:
+        # Audit PO7: a world before agent architecture 2 keeps the engine-16 result: the support as it stands (no
+        # campaign, no polling error), a rigged count as it always was, and a flat rally on a win.
+        yes = sum(p.indep * p.size for p in pops) / total
+        if w.policy.election_conduct == "rigged":
+            yes = min(0.99, yes + RIGGING)
+        w.const.elections.append({"month": w.month, "referendum": round(yes, 3)})
+        w.event("referendum", f"Referendum on independence: {yes:.0%} voted to remain independent.", importance=3)
+        if yes < 0.5:
+            w.outcome = {"type": "reunified_by_referendum", "month": w.month,
+                         "text": "A majority voted to join the Solvaran Union."}
+        else:
+            w.dip.propaganda = max(0.0, w.dip.propaganda - 0.2)
+            w.dip.rally = min(1.0, w.dip.rally + 0.2)
+        return
     recent = len(_recent_referendums(w))
     dip = w.dip
     polled = round(sum(p.indep * p.size for p in pops) / total, 3)

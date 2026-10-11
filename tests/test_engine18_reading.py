@@ -209,14 +209,15 @@ class TheUnionsDemand(unittest.TestCase):
                 w.month = 4
                 resolve.state(w)["value"] = value
                 foreign._issue_ultimatum(w)
-                self.assertNotIn("terms_id", w.dip.ultimatum)
+                # Audit FO5: the Union's status demand names its terms and its neighbour, as a cabinet's does.
+                self.assertEqual((w.dip.ultimatum["terms_id"], w.dip.ultimatum["by"]), ("status_talks", "veleria"))
                 self.assertEqual(w.dip.ultimatum["deadline"], 8)
         lost = world()
         lost.month = 4
         resolve.state(lost)["value"] = .2
         lost.region("kessel").controller = "union"
         foreign._issue_ultimatum(lost)
-        self.assertNotIn("terms_id", lost.dip.ultimatum)
+        self.assertEqual(lost.dip.ultimatum["terms_id"], "status_talks")
 
     def test_the_unions_rule_gives_a_demand_at_a_lower_agreement_when_karamaniya_yields(self):
         # The bar is .70 - .3 * (.5 - figure): .61 at a figure of .2 and .70 at .6. The agreement .65 lies between

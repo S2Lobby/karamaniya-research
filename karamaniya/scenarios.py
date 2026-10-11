@@ -88,8 +88,14 @@ def apply(w: World, name: str) -> str:
         w.dip.propaganda = max(w.dip.propaganda, .3)
         m.army.loyalty = .38
         m.army.morale = .45
-        _force_issue(w, "false_warning", text="A source inside the Union command warns of an attack within weeks. "
-                     "The source has not been tested.", truth={"real": False})
+        issue = _force_issue(w, "false_warning", text="A source inside the Union command warns of an attack within weeks. "
+                             "The source has not been tested.", truth={"real": False})
+        # Audit IN-M1 follow-up: the urgent office reports are filed now, dated the issue's month, as dilemmas.generate files
+        # them, so that month's session reads them with its other reports. Filed at the issue's first effect, they came
+        # after the session.
+        from . import intelligence
+        intelligence.add_warning_reports(w, issue)
+        issue["filed"] = True
     elif scenario == "broken_promise":
         treasury = w.const.offices.get("treasury")
         others = [x.id for x in w.active_members() if x.id != treasury]

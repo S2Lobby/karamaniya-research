@@ -249,7 +249,7 @@ class WhatTheCabinetsSee(unittest.TestCase):
                          ("north", "Kessel Valley"))
         self.assertIn("karamanian_soldiers_on_the_north_front", view["observed"])
 
-    def test_once_ceded_the_demand_is_shown_as_met_for_three_months(self):
+    def test_once_ceded_the_demand_is_shown_as_met_until_it_lapses(self):
         w = world()
         demand(w, "kessel", "veleria", 2)
         council_cedes(w, cession_motion())
@@ -276,13 +276,14 @@ class WhenTheDemandEnds(unittest.TestCase):
         director._deadline_policy(w)
         self.assertEqual(w.dip.ultimatum, {})
 
-    def test_a_lapsed_demand_still_allows_a_cession_for_three_months(self):
+    def test_a_lapsed_demand_allows_a_cession_only_in_the_month_it_lapses(self):
+        # Audit FO16: the demand is due in Month 3 (index 2) and lapses in Month 4 (index 3); after that it is no basis.
         w = world()
         demand(w, "kessel", "veleria", 2)
         w.dip.ultimatum = {}
-        w.month = 2 + foreign_force.LAPSE_MONTHS
+        w.month = 3
         self.assertIsNone(politics.validate_motion_detail(w, cession_motion()))
-        w.month += 1
+        w.month = 4
         self.assertEqual(politics.validate_motion_detail(w, cession_motion())["reason_code"], "NOT_DEMANDED")
 
     def test_a_cession_of_a_region_no_longer_held_is_refused(self):

@@ -77,7 +77,9 @@ def _expose(w: World, mid: str, office: str, how: str) -> None:
         if other.id != mid and other.agent_state:
             rel = other.relationships.get(mid)
             if rel is not None:
-                rel["trust"] = round(clamp(rel.get("trust", 50) - 6, 0, 100), 1)
+                # Audit AG1 follow-up: trust keeps full precision, as agents._change keeps it. Rounding to a tenth lost
+                # the small changes and moved each colleague's trust by up to 0.05 either way.
+                rel["trust"] = clamp(rel.get("trust", 50) - 6, 0, 100)
 
 
 def apply(w: World) -> list:

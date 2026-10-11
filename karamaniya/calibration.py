@@ -35,6 +35,7 @@ PRINTING = 1e-4         # a monthly printing share above this counts as printing
 EMIGRATION_SHARE_36M = .15            # emigrants over 36 months, as a share of the starting population
 ARMY_LOW, ARMY_HIGH = 5000, 200000    # Karamaniya's soldiers at every month
 RIVAL_LOW, RIVAL_HIGH = .75, 1.25     # a neighbour's real output at the end, against its start, in a run without war
+PEAK_MIN_MONTHS = 6                   # audit EC11: the monthly peak is judged only over this many months with no war or printing
 
 
 # ---- what a figure is and how it is judged -----------------------------------------------------------------
@@ -52,6 +53,10 @@ def _closest_to_edge(values: list, low, high) -> float:
     """The figure that decides a check over several months or several neighbours: the one nearest an edge of its
     range, or furthest outside it. A run passes exactly when this figure is inside the range."""
     return min(values, key=lambda v: _margin(v, low, high))
+
+
+class NotApplicable(Exception):
+    """Raised by a measure that cannot judge the run; its check then reports applies=False and the message as the reason."""
 
 
 @dataclass(frozen=True)
@@ -72,9 +77,14 @@ class Check:
         return self.low, high
 
     def run(self, history: list, world) -> dict:
-        """The check on one finished world. A check that does not apply to the run reports applies=False."""
+        """The check on one finished world. A check that does not apply to the run reports applies=False, and the
+        reason when the measure gives one (NotApplicable)."""
         low, high = self.bounds(len(history))
-        value = self.measure(history, world) if history else None
+        try:
+            value = self.measure(history, world) if history else None
+        except NotApplicable as exc:
+            return {"applies": False, "value": None, "low": low, "high": high, "margin": None, "ok": None,
+                    "reason": str(exc)}
         if value is None:
             return {"applies": False, "value": None, "low": low, "high": high, "margin": None, "ok": None}
         margin = _margin(value, low, high)
@@ -107,11 +117,18 @@ def _inflation_mean(history, world):
 
 
 def _inflation_monthly_peak(history, world):
-    """The largest one-month rise of the zone's price level, in months with neither war nor printing."""
+    """The largest one-month rise of the zone's price level, in months with neither war nor printing.
+
+    Audit EC11: a scripted treasury prints in most months (35 of 37 in a 36-month run), so the peak could rest on two
+    months. Below PEAK_MIN_MONTHS such months the check does not apply, and says how many it could read.
+    """
     rises = [cur["zone_price"] / prev["zone_price"] - 1.0
              for prev, cur in zip(history, history[1:])
              if not cur.get("war") and not _printed(cur)]
-    return max(rises) if rises else None
+    if len(rises) < PEAK_MIN_MONTHS:
+        raise NotApplicable(f"only {len(rises)} month-on-month rise(s) fall in a month with neither war nor printing; "
+                            f"the monthly peak is judged from {PEAK_MIN_MONTHS} such months")
+    return max(rises)
 
 
 def _unemployment_mean(history, world):

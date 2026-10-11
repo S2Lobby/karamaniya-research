@@ -208,11 +208,13 @@ class VoteAccountability(unittest.TestCase):
 
     def test_repeated_charter_clause_is_rejected_and_rewrites_cost_capacity(self):
         w = self.w
-        text = "The Constituent Assembly election shall be held in Month 18 without postponement by decree."
+        # Audit PO3: the guard protects the Charter's election date, Month 36 (it was written for Month 18).
+        month = w.const.charter_election_month + 1
+        text = f"The Constituent Assembly election shall be held in Month {month} without postponement by decree."
         motion = {"type": "amend", "subject": "", "value": "", "text": text, "proposer": "A"}
         politics.apply_motion(w, motion)
         self.assertIn("duplicates", politics.validate_motion(w, motion))
-        same_date = {**motion, "text": "The election for the Constituent Assembly must occur in Month 18 even during an emergency."}
+        same_date = {**motion, "text": f"The election for the Constituent Assembly must occur in Month {month} even during an emergency."}
         self.assertIn("duplicates", politics.validate_motion(w, same_date))
         first = w.econ.admin_capacity
         for index in range(2):

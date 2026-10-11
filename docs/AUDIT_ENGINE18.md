@@ -15,6 +15,39 @@ Slices: EC economy, FO foreign policy and war, MI military and institutions, PO 
 delegates' minds, CO the council's month, MO motions and actions, TO what the AIs are told, IN intelligence and
 events, RU runs, saves, reports and tools.
 
+## Status: fixed in engine 19
+
+Every finding below is fixed in world engine 19 (agent prompt 16, psychology 8), each with a regression test that
+failed on engine 18 (`tests/test_engine19_*.py`); `CHANGELOG.md` says what changed for a run. Where a fix needed a
+choice the finding left open, the choice was:
+
+- **MI1:** calling up reservists costs their pay and their activation; the trained pool's standing upkeep is
+  reported by `reserve_cost`, not charged, since no engine charged it and the army's budget lines were set without it.
+- **MO11 + CO10:** a value outside its setting's range is refused, not clamped; a share whose text writes the same
+  figure with a percent sign is read as that percent, at intake. Office orders keep their clamp, with a note.
+- **FO6 + RU4:** the baselines always run the stand-in neighbours, and with the cabinets off the Union's rule sets
+  demands as the stand-in does. Review found that a blockade the rule imposed could then never lift; it now lifts
+  after four months, when status talks open, or when the Union's cohesion falls to 0.55.
+- **FO10:** a soldier is priced at 815 crowns a month at founding prices; readiness holds at 77% of the burden cap.
+- **FO11 + FO19:** Veleria's coal embargo eases a step in a month of low pressure, and its trade concession eases coal.
+- **FO16:** a land demand stands for a cession through its deadline and the month it lapses.
+- **MI6:** an accepted inspection regime makes the cabinets' estimate of Karamaniya's army exact; it has no economic
+  effect.
+- **EC1:** a League tranche funds the budget once and never enters the reserves.
+- **EC12, IN-L6:** documented (the neighbours' printing and rate are reserved fields; only the fiscal impulse is lagged).
+- **PO9:** the opposition's first look at a resumed world uses the previous month's settings from the history; using
+  the run's starting settings, as the finding proposed, reported old settings as new acts.
+- **CO8 and CO6** apply to the architecture-2 month; the legacy month keeps its tally, which a test pins.
+- **AG3:** a pledge is judged in the month it is made; motion ids restart each month, so a later M1 is another motion.
+- **TO9:** the English word "union" stays English in prose; an identifier, a quoted value or a key is translated.
+
+Review of the merged fixes found more, fixed in the same engine: the grounding check on the delegates' statements and
+notes, made stricter, read amounts, thresholds and settings as false facts (run over the 133 motion texts of three
+real runs it flagged 13 that engine 18 passed; it now flags none, and none of engine 18's 9 flags was a false fact); a
+human-factor-off run crashed when an audit reached a verdict (29 of 40 seeds); a dilemma and a border incident still wrote psychology or a threat that
+the next month erased; a failed cabinet call blocked the Union's rules for its month. One fault outside the audit is
+open: in the karam a higher policy rate raises the price level (backlog T94); engine 18 had it too.
+
 ## Critical
 
 | ID | What happens | Where | Fix |

@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 
 from . import tuning
+from .motion_actions import MONEY_METRICS, canonical_metric_value
 from .politics import LEVER_OFFICE
 from .world import OFFICES, World, clamp
 
@@ -79,10 +80,15 @@ def parse_condition(text: str) -> dict | None:
     elif number:
         value = float(number.group(1))
         unit = number.group(2) or ""
-        if unit == "%" or (metric in ("food_ratio", "unemployment", "inflation", "approval", "deficit", "army_morale") and value > 1):
+        if unit == "%":
             value /= 100
         elif unit in ("m", "million") or (metric in ("reserves", "arrears") and value < 1e5):
             value *= 1e6
+        elif metric not in MONEY_METRICS:
+            # Audit MO9 follow-up: a figure with no scale (no unit, or a month count) is read as motion_actions.
+            # canonical_metric_value reads it. Food coverage above 1 is a ratio (1.05 is 105%), so only 10 or more is a
+            # percent here, where this read any figure above 1 as one and turned "keep food coverage above 1.05" into 1.05%.
+            value = canonical_metric_value(metric, value)
     if value is None:
         return None
     lower = any(x in s for x in ("below", "under", "less than", "at most", "remain zero", "stay zero", "no more than",
@@ -273,6 +279,9 @@ def _change(rel: dict, *, month: int | None = None, reason: str | None = None, *
 # promise of this kind is not judged: nothing is kept or broken on it, and nothing settles (engine 18).
 VOTE_PROMISE_KINDS = ("support_proposals_of", "support_motion", "support_policy", "oppose_policy", "support_appointment",
                       "fund", "raise", "cut", "policy_limit")
+# The kinds an office order can also keep or break. Orders are public, so under a secret ballot these are still judged on
+# their orders (audit AG4); only the vote part is hidden.
+ORDER_PROMISE_KINDS = ("fund", "raise", "cut", "policy_limit")
 
 
 def evaluate(w: World, record_: dict) -> list:
@@ -287,10 +296,13 @@ def evaluate(w: World, record_: dict) -> list:
     shares = [x for x in w.intel.get("shared", []) if x.get("month") == w.month] if w.intel else []
     for m in w.members:
         for p in m.promises:
-            if p.get("status") != "active" or p.get("created_month") == w.month and p.get("source") != "dm":
+            # Audit AG3: a promise is judged in the month it is made, as a message always was. Every promise is written
+            # before that month's votes (opening statements, session and response messages), so a same-month vote is the test.
+            if p.get("status") != "active":
                 continue
             norm = p.get("normalized") or {}
-            if w.ballot == "secret" and norm.get("type") in VOTE_PROMISE_KINDS:
+            hidden = w.ballot == "secret" and norm.get("type") in VOTE_PROMISE_KINDS
+            if hidden and norm.get("type") not in ORDER_PROMISE_KINDS:
                 continue
             cond = p.get("condition_metric")
             met = condition_met(w, cond)
@@ -299,7 +311,9 @@ def evaluate(w: World, record_: dict) -> list:
             if cond and met and w.month not in p["reminders"]:
                 p["reminders"].append(w.month)
             verdict = _judge(w, m.id, p, norm, motions, decisions, shares, record_)
-            if verdict is None and p.get("deadline_month", -1) >= 0 and w.month >= p["deadline_month"]:
+            # Audit AG4: a deadline with no verdict is not "broken" or "lapsed" under a secret ballot, because the vote that
+            # may have kept the promise is hidden; only the public orders can judge it then.
+            if verdict is None and not hidden and p.get("deadline_month", -1) >= 0 and w.month >= p["deadline_month"]:
                 verdict = "broken" if p.get("deadline_explicit") else "lapsed"
             if verdict:
                 results.append(_settle(w, m.id, p, verdict))
@@ -322,7 +336,10 @@ def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: di
             return "broken"
         return None
     if kind == "support_motion":
-        if norm.get("motion_id") and p.get("created_month") != w.month:
+        # Audit AG3: a pledge about a motion is judged in the month it was made, against that month's motion. Motion ids
+        # restart each month (council: f"M{len(tabled) + 1}"), so a later "M1" is another motion; and a topic such as
+        # "budget" matches whichever budget motion comes next, which is not the one the pledge was made about.
+        if p.get("created_month") != w.month:
             return None
         relevant = []
         for mo in motions:
@@ -360,7 +377,8 @@ def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: di
     if kind in ("fund", "raise", "cut", "policy_limit"):
         lever = norm.get("lever")
         increased = decreased = False
-        for mo in motions:
+        # Audit AG4: under a secret ballot the votes cannot be read, so only the public orders below judge the promise.
+        for mo in (motions if w.ballot != "secret" else []):
             if mo.get("type") == "set_policy" and mo.get("subject") == lever and mo.get("passed"):
                 v = vote_of(mo)
                 if v == "yes":

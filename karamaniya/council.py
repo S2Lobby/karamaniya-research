@@ -447,6 +447,23 @@ def _rejected_last_month(last_record: dict | None, mid: str) -> list:
     return [decision_context.Section("rejected_last_month", 2, "\n".join(lines))]
 
 
+def _conflict_fields(conflict: dict) -> dict:
+    """A motion_actions.conflict() finding without its "motion" key. That key holds the id of the motion (None
+    until it is tabled), and spreading it over a refused motion replaced the motion's own record, so its author
+    never saw the refusal the next month (Audit MO14)."""
+    return {k: v for k, v in (conflict or {}).items() if k != "motion"}
+
+
+def _repair_answer_schema(w, ids: list) -> dict:
+    """The answer to a MOTION_ACTION_MISMATCH: each corrected motion, with the repair id it answers (Audit MO13)."""
+    schema = actions.repair_schema(w, len(ids))
+    motions = schema["properties"]["motions"]
+    item = motions["items"]
+    tagged = {**item, "properties": {"id": {"type": "string", "enum": list(ids)}, **item["properties"]},
+              "required": ["id", *item["required"]]}
+    return {**schema, "properties": {**schema["properties"], "motions": {**motions, "items": tagged}}}
+
+
 MONTH_OUTCOMES_KEPT = 6
 
 
@@ -624,8 +641,9 @@ def _motion_versions(w, mo: dict) -> dict:
             "repair_attempts": mo.get("repair_attempts", 0)}
 
 
-def _audit_state(snapshot: dict) -> dict:
-    """The canonical numbers an execution audit needs: before/after on one motion."""
+def _audit_state(snapshot: dict, approval: float | None = None) -> dict:
+    """The canonical numbers an execution audit needs: before/after on one motion. Approval is the council's average
+    (World.avg), which a snapshot does not carry, so the caller passes it (Audit CO12)."""
     econ, mil = snapshot.get("econ", {}), snapshot.get("mil", {})
     dip = snapshot.get("dip", {})
     league = ((snapshot.get("foreign") or {}).get("league", {})) if isinstance(snapshot.get("foreign"), dict) else {}
@@ -641,7 +659,7 @@ def _audit_state(snapshot: dict) -> dict:
             "league_credit": loan.get("principal", 0) or dip.get("league_loan_pending", 0) or 0,
             "army_size": ((mil.get("army") or {}).get("size") if isinstance(mil, dict) else None),
             "army_morale": ((mil.get("army") or {}).get("morale") if isinstance(mil, dict) else None),
-            "approval": snapshot.get("approval")}
+            "approval": approval if approval is not None else snapshot.get("approval")}
 
 INTERCEPT = {"low": 0.0, "medium": 0.12, "high": 0.3}
 
@@ -972,7 +990,14 @@ class Council:
                 record["repair"] = {"attempted": True, "seat": self.seats[mid].label,
                                     "raw": fixed["raw"], "errors": fixed["errors"],
                                     "mismatches": fixed["mismatches"],
-                                    "slate_received": fixed["slate_received"]}
+                                    "slate_received": fixed["slate_received"],
+                                    "refused": bool(repair.refusal), "error": repair.error[:300]}
+                if not fixed["answered"]:
+                    # Audit CO13: a repair that returns nothing is no correction. It used to be logged as "repaired" with
+                    # no errors, and the proposal went on to the vote as if it had been fixed. It is unreadable, so it is
+                    # excluded, and the attempt stays in the record.
+                    record["status"] = "unreadable"
+                    return mid, record
                 if not fixed["errors"] and not fixed["mismatches"]:
                     # The original malformed answer is kept alongside the correction: the audit log
                     # shows what was sent, what was wrong with it, and what replaced it.
@@ -1131,7 +1156,7 @@ class Council:
             user = decision_context.for_member(w, mid, "independent opening round") + "\n\n" + prompts.session_prompt(
                 w, mid, brief, annex, inbox[mid], [], [], order, schema, left)
             res = self._call(mid, "session", user, schema, {"motions": [], "statements": []})
-            out, problems = actions.normalize_session(w, mid, res.data, left)
+            out, problems = actions.read_answer(actions.normalize_session, w, mid, res.data, left)
             return mid, res, out, problems
 
         seen_motions = set()
@@ -1203,7 +1228,7 @@ class Council:
                 user = decision_context.for_member(w, mid, "sequential council session", motions) + "\n\n" + prompts.session_prompt(
                     w, mid, brief, annex, inbox[mid], statements, motions, order, schema, left)
                 res = self._call(mid, "session", user, schema, {"motions": motions, "statements": statements})
-                out, problems = actions.normalize_session(w, mid, res.data, left)
+                out, problems = actions.read_answer(actions.normalize_session, w, mid, res.data, left)
                 sent_before = len(sent_messages)
                 record_opening(mid, res, out, problems)
                 self._deliver(sent_messages[sent_before:], inbox, intercepted, rng)
@@ -1218,7 +1243,7 @@ class Council:
             user = decision_context.for_member(w, mid, "simultaneous decisions", motions) + "\n\n" + prompts.decision_prompt(
                 w, mid, brief, annex, inbox[mid], statements, motions, schema, left)
             res = self._call(mid, "decision", user, schema, {"motions": motions, "statements": statements})
-            out, problems = actions.normalize_decision(w, mid, res.data, motion_ids, left)
+            out, problems = actions.read_answer(actions.normalize_decision, w, mid, res.data, motion_ids, left)
             return mid, res, out, problems
 
         workers = len(active) if self.settings.get("parallel_decisions", True) else 1
@@ -1388,7 +1413,7 @@ class Council:
                 schema_text=self._schema_text(mid, schema), budget=self._budget(mid),
                 extra=own_brief(mid) + _rejected_last_month(self.last_record, mid), layout=self.tokens["layout"])
             res = self._call(mid, "session", prompt, schema, {"motions": [], "statements": [], "prompt_meta": meta})
-            out, problems = actions.normalize_session_v2(w, mid, res.data, left)
+            out, problems = actions.read_answer(actions.normalize_session_v2, w, mid, res.data, left)
             return mid, res, out, problems
 
         if quiet:
@@ -1402,6 +1427,13 @@ class Council:
         held_back = []
         for mid, res, out, problems in opening:
             cuts = actions.text_cuts(out, res.data)
+            # Audit CO14: a motion past the two-motion cap was not heard. It is refused on the record, with the cap
+            # as its reason, and the delegate is told so in the next month's briefing (_rejected_last_month).
+            for dropped in out.get("over_cap", []):
+                refusal = actions.cap_refusal(mid, dropped)
+                rejected.append(refusal)
+                errors.record(w, refusal["reason_code"], refusal["explanation"], member=mid,
+                              motion_type=dropped.get("type"), subject=dropped.get("subject"))
             principles_changed = False
             if w.human_factor and out["principles"] and out["principles"] != w.member(mid).ideology:
                 member = w.member(mid)
@@ -1506,22 +1538,19 @@ class Council:
         scheduled, deferred, agenda_notes = deliberation.allocate(w, carried + tabled, head_priorities, forced, carried)
         agenda_notes = carry_notes + agenda_notes
         lapsed = [m for m in deferred if m.get("carried_over")]
-        # A deferral the council passed this month names a question to hold over. It is applied
-        # here, where the agenda for next month is written, so it changes WHEN the matter is heard
-        # and never what the setting is — the delegate that deferred it has not decided it.
-        wanted = {str(d.get("target") or ""): d for d in w.agenda.get("deferrals", [])
-                  if d.get("month") == w.month}
+        # A deferral the council passes changes WHEN a matter is heard and never what the setting is. The month
+        # it names is set below, once this month's votes have written the deferral (Audit CO3).
         entries = []
         for m in deferred:
             if m.get("carried_over"):
                 continue
-            entry = {**{k: v for k, v in m.items() if k not in ("carried_over", "cosponsors")},
-                     "deferred_month": w.month}
-            asked = wanted.get(str(m.get("id"))) or wanted.get(str(m.get("subject")))
-            if asked and asked.get("until") is not None and asked["until"] >= 0:
-                entry["defer_until"] = asked["until"]
-            entries.append(entry)
-        w.agenda["deferred"] = entries
+            entries.append({**{k: v for k, v in m.items() if k not in ("carried_over", "cosponsors")},
+                            "deferred_month": w.month})
+        # A question held until a named month was not re-deferred this month, so it stays on the agenda until then
+        # (Audit CO4). carried_over() offers it in that month, and lapses it under its own window.
+        held = [e for e in w.agenda.get("deferred", [])
+                if e.get("defer_until") is not None and w.month < e["defer_until"]]
+        w.agenda["deferred"] = entries + held
         for m in lapsed:
             agenda_notes.append({"motion": m["id"], "code": "LAPSED", "explanation": "deferred twice; it lapses"})
         intelligence.answer_requests(w, capacity, scheduled, "session")
@@ -1549,7 +1578,7 @@ class Council:
                     extra=own_brief(mid), layout=self.tokens["layout"])
                 res = self._call(mid, "revision", prompt, schema, {"motions": scheduled, "statements": statements,
                                                                     "prompt_meta": meta})
-                out, problems = actions.normalize_revision(w, mid, res.data, scheduled, left)
+                out, problems = actions.read_answer(actions.normalize_revision, w, mid, res.data, scheduled, left)
                 return mid, res, out, problems
 
             # Revision responses change the agenda. Serialize this phase so each delegate gets
@@ -1625,7 +1654,7 @@ class Council:
                 extra=own_brief(mid), layout=self.tokens["layout"])
             res = self._call(mid, "decision", prompt, schema, {"motions": final, "statements": statements,
                                                                 "prompt_meta": meta, "election_pending": election_pending})
-            out, problems = actions.normalize_decision_v2(w, mid, res.data, motion_ids, left)
+            out, problems = actions.read_answer(actions.normalize_decision_v2, w, mid, res.data, motion_ids, left)
             answers = [res.data]
             ballot_repairs = _decision_ballot_repairs(problems)
             clashes = (_vote_intent_clashes(revisions.get(mid, {}), out)
@@ -1688,14 +1717,16 @@ class Council:
                                   {"motions": final, "statements": statements, "prompt_meta": meta,
                                    "vote_intent_repair": bool(asked),
                                    "ballot_validation_repair": bool(ballot_repairs)})
-                fixed, problems2 = actions.normalize_decision_v2(w, mid, res2.data, motion_ids, left)
+                fixed, problems2 = actions.read_answer(actions.normalize_decision_v2, w, mid, res2.data, motion_ids, left)
                 answers.append(res2.data)
                 names = sorted({c["motion"] for c in asked} | {r["motion"] for r in ballot_repairs})
                 first = out
                 if fixed.get("votes"):
                     # The answer is a fresh generation, not an edit, and the question was about these
                     # ballots only: take them from it and nothing else.
-                    answered = set((res2.data.get("votes") or {})) if isinstance(res2.data, dict) else set()
+                    # Audit CO2: a repair whose votes are not an object answers no motion; set() of a list raised.
+                    answered = (set(res2.data["votes"]) if isinstance(res2.data, dict)
+                                and isinstance(res2.data.get("votes"), dict) else set())
                     out = _merge_vote_repair(first, fixed, asked, ballot_repairs, answered)
                     still = (_vote_intent_clashes(revisions.get(mid, {}), out)
                              + _conditional_reason_clashes(out, final))
@@ -1758,6 +1789,13 @@ class Council:
                           "offices": dict(w.const.offices), "war": w.dip.war}
         record = self._resolve_v2(decisions, final, scheduled, statements, order, calls, opening_values,
                                   pre_positions, commitments_added, election_pending)
+        # Audit CO3: a deferral this month's votes passed is written during resolution, so the month it names is read
+        # here, after it, and set on this month's deferred entries (the same dicts the agenda holds).
+        wanted = {str(d.get("target") or ""): d for d in w.agenda.get("deferrals", []) if d.get("month") == w.month}
+        for entry in entries:
+            asked = wanted.get(str(entry.get("id"))) or wanted.get(str(entry.get("subject")))
+            if asked and asked.get("until") is not None and asked["until"] >= 0:
+                entry["defer_until"] = asked["until"]
         record.update({"pre_resolution": pre_resolution, "agenda_capacity": slots, "agenda_priorities": head_priorities,
                        "agenda_notes": agenda_notes, "deferred": [m["summary"] for m in deferred if not m.get("carried_over")],
                        "lapsed": [m["summary"] for m in lapsed], "rejected_motions": rejected,
@@ -1787,10 +1825,12 @@ class Council:
         record["vote_costs"] = standing.apply_vote_costs(w, record)
         phase2_dms = [dm for dm in self.pending_dms if dm.get("month") == w.month]
         month_dms = sent_messages + revision_dms + phase2_dms
+        # Audit IN-M2: the reports withheld this month are flagged before the leak check. The check only looks at this
+        # month's reports, so when it ran first a withheld report could never leak.
+        record["withheld_reports"] = intelligence.flag_withheld(w)
         leaks = intelligence.leaks(w, month_dms, self._month_intercepts)
         self._publish_leaks(leaks, statements)
         record["leaks"] = leaks
-        record["withheld_reports"] = intelligence.flag_withheld(w)
         deliveries = {}
         for d in intelligence.state(w)["deliveries"]:
             if d["deliver_month"] == w.month:
@@ -1825,15 +1865,18 @@ class Council:
         w.agenda["recent_records"] = (w.agenda.get("recent_records", []) + [
             {"month": w.month, "passed": [m["summary"] for m in record["motions"] if m.get("passed")],
              "motions": compact, "office_orders": list(record["office_orders"])}])[-4:]
+        # Audit AG11: a setting counts as changed only when this month's passed motions or applied orders moved it. The
+        # one-off losses in standing.implementation_effects follow a change, so a setting a delegate repeats costs nothing.
+        # The value kept is the one now in force.
         changed = {}
         for mo in record["motions"]:
-            if mo.get("passed") and mo["type"] == "set_policy":
+            if mo.get("passed") and mo["type"] == "set_policy" and getattr(w.policy, mo["subject"], None) != mo.get("previous_value"):
                 changed[mo["subject"]] = getattr(w.policy, mo["subject"], None)
-        for mid, d in decisions.items():
-            for office, levers in (d.get("orders") or {}).items():
-                for lever, value in (levers or {}).items():
-                    if lever in ("rationing", "requisition", "price_controls", "tax", "military") and lever not in changed:
-                        changed[lever] = getattr(w.policy, lever, None)
+        for entry in record["office_orders"]:
+            lever = entry.get("lever")
+            if (entry.get("status") in ("applied", "violated_directive") and entry.get("actual_value") != entry.get("previous_value")
+                    and lever in ("rationing", "requisition", "price_controls", "tax", "military") and lever not in changed):
+                changed[lever] = getattr(w.policy, lever, None)
         w.institutions["changed_levers"] = changed
         self._emit(type="resolved", month=w.month, resigned=record["resigned"], defiance=len(record["defiance"]),
                    defiance_details=[{k: d.get(k) for k in ("member", "office", "lever", "directive", "value")}
@@ -1909,7 +1952,10 @@ class Council:
         res = self._call(mid, "motion_repair", body + "\n\nReply with this JSON:\n" + actions.example(schema),
                          schema, {"motion": motion, "repair_code": rejection.get("reason_code")})
         problems = []
-        raw_items = (res.data.get("motions") if isinstance(res.data, dict) else None) or []
+        # Audit CO2: an answer whose "motions" is not a list, or whose items are not objects, is no repair.
+        # It used to raise here and end the month.
+        raw_items = res.data.get("motions") if isinstance(res.data, dict) else None
+        raw_items = raw_items if isinstance(raw_items, list) else []
         raw = next((x for x in raw_items if isinstance(x, dict)), None)
         repaired = None
         if raw:
@@ -1948,21 +1994,40 @@ class Council:
         rejected rather than executed as the wrong act.
         """
         w = self.w
-        schema = actions.repair_schema(w, len(items))
-        body = "\n\n".join(motion_actions.repair_request(w, item["conflict"]) for item in items)
+        # Audit MO13: each held-back motion has a repair id, which the reply must give back. Replies are paired
+        # with the motions by these ids, never by their position in the answer.
+        ids = [f"R{i}" for i in range(1, len(items) + 1)]
+        schema = _repair_answer_schema(w, ids)
+        body = "\n\n".join(f"Repair id {rid}\n" + motion_actions.repair_request(w, item["conflict"])
+                           for rid, item in zip(ids, items))
         res = self._call(mid, "motion_repair", body + "\n\nReply with this JSON:\n" + actions.example(schema),
                          schema, {"motions": [], "statements": [], "prompt_meta": {}})
         problems = []
-        repaired = []
-        if isinstance(res.data, dict):
-            for raw in (res.data.get("motions") or []):
-                if not isinstance(raw, dict):
-                    continue
-                fixed = actions.normalize_motion_v2(w, raw)
-                repaired.append(fixed)
+        repaired = {}
+        # Audit CO2: an answer whose "motions" is not a list, or whose items are not objects, is no repair.
+        # It used to raise here and end the month.
+        motions = res.data.get("motions") if isinstance(res.data, dict) else None
+        for raw in (motions if isinstance(motions, list) else []):
+            if not isinstance(raw, dict):
+                continue
+            rid = raw.get("id") if isinstance(raw.get("id"), str) else None
+            if rid is None and len(items) == 1:
+                rid = ids[0]      # with one motion held back, a reply that names no id can only answer that one
+            if rid in ids and rid not in repaired:
+                repaired[rid] = actions.normalize_motion_v2(w, raw)
         calls.append(self._call_summary(mid, "motion_repair", res, problems))
-        for item, fixed in zip(items, repaired):
+        for rid, item in zip(ids, items):
             original = item["motion"]
+            fixed = repaired.get(rid)
+            if fixed is None:
+                # No corrected motion came back for this one, so it is refused under its own reason.
+                rejected.append({"member": mid, "motion": {k: original.get(k) for k in
+                                                           ("type", "subject", "value", "text")},
+                                 **_conflict_fields(item["conflict"]),
+                                 "reason_code": "MOTION_ACTION_MISMATCH_UNREPAIRED",
+                                 "explanation": "no corrected motion was returned for this one",
+                                 "repair_attempts": 1})
+                continue
             if not str(fixed.get("text", "") or "").strip():
                 rejected.append({"member": mid, "motion": {k: original.get(k) for k in
                                  ("id", "type", "subject", "value", "text")},
@@ -1985,25 +2050,27 @@ class Council:
                                   "detail": cond_clash["detail"], "reasons": [cond_clash]}
                 rejected.append({"member": mid, "motion": {k: original.get(k) for k in
                                                            ("type", "subject", "value", "text")},
-                                 **clash, "reason_code": "MOTION_ACTION_MISMATCH_AFTER_REPAIR",
+                                 **_conflict_fields(clash), "reason_code": "MOTION_ACTION_MISMATCH_AFTER_REPAIR",
                                  "explanation": "; ".join(r["detail"] for r in clash.get("reasons", [clash])),
                                  "repair_attempts": 1})
                 self._emit(type="motion_blocked", month=w.month, member=mid, motion=original.get("id"),
                            code=clash.get("code", "MOTION_ACTION_MISMATCH"), text=original.get("text", ""),
                            because="; ".join(r["detail"] for r in clash.get("reasons", [clash])))
                 continue
-            entry = {**fixed, "id": f"M{len(tabled) + 1}", "proposer": mid,
-                     "summary": actions.motion_summary(w, fixed), "repair_attempts": 1}
-            if fixed.get("force_agenda"):
-                forced.add(entry["id"])
-            tabled.append(entry)
-        for item in items[len(repaired):]:
-            original = item["motion"]
-            rejected.append({"member": mid, "motion": {k: original.get(k) for k in
-                                                       ("type", "subject", "value", "text")},
-                             "reason_code": "MOTION_ACTION_MISMATCH_UNREPAIRED",
-                             "explanation": "no corrected motion was returned for this one",
-                             **item["conflict"], "repair_attempts": 1})
+            # Audit CO5: a repaired motion gets the intake checks a new motion gets, before it is tabled. Without
+            # them an invalid motion went to a vote and took an agenda slot, then lapsed.
+            rejection, warning = deliberation.check(w, {**fixed, "proposer": mid}, tabled, mid)
+            if rejection:
+                label = f"{fixed.get('type', '')} {fixed.get('subject', '')} {fixed.get('value', '')}".strip()
+                errors.record(w, rejection.get("reason_code", ""), rejection.get("explanation", ""),
+                              member=mid, motion_label=label)
+                rejected.append({"member": mid, "motion": {k: original.get(k) for k in
+                                                           ("type", "subject", "value", "text")},
+                                 **rejection, "repair_attempts": 1})
+                continue
+            entry = self._record_tabled_motion(w, fixed, mid, tabled, forced, warning)
+            if entry is not None:
+                entry["repair_attempts"] = 1
 
     def _repair_duplicate_principles(self, opening: list, calls: list) -> list:
         """Repair only verbatim public-principle collisions, without assigning viewpoints.
@@ -2232,6 +2299,11 @@ class Council:
                   "pre_positions": dict(pre_positions), "commitments_added": list(commitments_added),
                   "grounding": grounding,
                   "decisions": {mid: {k: v for k, v in d.items() if k != "private_messages"} for mid, d in decisions.items()}}
+        # The members who cast this decision's votes are those seated when it was made. A delegate who resigns in the
+        # decision still voted, so the count keeps its vote, though it has left office by the time the count is made
+        # (Audit CO8).
+        seated = [mid for mid in decisions if w.member(mid).status == "active"]
+        head_at_vote = w.const.offices.get("head")
         for mid, d in decisions.items():
             if d["resign"] and w.member(mid).status == "active":
                 politics.remove_member(w, mid, "resigned")
@@ -2246,6 +2318,12 @@ class Council:
         if coups:
             record["coups"] = politics.resolve_coups(w, coups, stances)
         coup_success = any(c["success"] for c in record["coups"])
+        # Force first: a member an armed coup removed does not vote. A resignation in the decision does not remove
+        # its vote (Audit CO8).
+        resigned_now = set(record["resigned"])
+        electorate = [mid for mid in seated if w.member(mid).status == "active" or mid in resigned_now]
+        electorate_set = set(electorate)
+        head_id = head_at_vote if head_at_vote in electorate_set else None
         votes_by_motion = {mo["id"]: {mid: d["votes"].get(mo["id"], "abstain") for mid, d in decisions.items()} for mo in final}
         submitted_votes_by_motion = {mo["id"]: {mid: d["votes"].get(mo["id"], "abstain")
                                                    for mid, d in decisions.items()} for mo in final}
@@ -2256,7 +2334,22 @@ class Council:
             for mid, vote in votes.items():
                 if vote == "conditional" and mid not in conditions[motion_id]:
                     votes[mid] = "abstain"
-        details = deliberation.resolve_conditionals(w, final, votes_by_motion, conditions, opening_values)
+        # Audit CO6: a condition on another motion is met by that motion's final outcome, not by its vote alone. A
+        # motion the vote carried does not pass if it is void, lapsed, or its proposer is no longer in government:
+        # the same checks the motion loop below applies, in the same order.
+        motions_by_id = {mo["id"]: mo for mo in final}
+
+        def outcome_for_conditions(motion_id: str, votes: dict) -> bool:
+            mo = motions_by_id[motion_id]
+            if coup_success or (w.member(mo["proposer"]).status != "active" and mo["type"] != "diplomacy"):
+                return False
+            if politics.validate_motion(w, mo) is not None:
+                return False
+            counted = {mid: v for mid, v in votes.items() if mid in electorate_set}
+            return deliberation.decision_passes(w, counted, electorate, head_id)
+
+        details = deliberation.resolve_conditionals(w, final, votes_by_motion, conditions, opening_values,
+                                                    passed=outcome_for_conditions)
         executed: dict = {}   # execution key -> motion id, for this resolution cycle
         for mo in scheduled:
             base = {"id": mo["id"], "proposer": mo["proposer"], "proposer_name": w.member(mo["proposer"]).name,
@@ -2277,7 +2370,7 @@ class Council:
                                           "result": "withdrawn by its proposer", **_motion_versions(w, mo)})
                 continue
             votes = votes_by_motion[mo["id"]]
-            counted = {mid: v for mid, v in votes.items() if w.member(mid).status == "active"}
+            counted = {mid: v for mid, v in votes.items() if mid in electorate_set}
             tally = "({} yes, {} no, {} abstain)".format(*(sum(1 for v in counted.values() if v == x)
                                                            for x in ("yes", "no", "abstain")))
             previous = None
@@ -2291,7 +2384,7 @@ class Council:
             submitted_votes = submitted_votes_by_motion[mo["id"]]
             entry = {**base, "votes": counted, "submitted_votes": submitted_votes,
                      "eligible_voters": list(counted), "decision_rule_at_vote": w.const.decision_rule,
-                     "head_at_vote": w.const.offices.get("head"),
+                     "head_at_vote": head_at_vote,
                      "vote_reasons": {mid: decisions[mid].get("vote_reasons", {}).get(mo["id"], "")
                                       for mid in counted},
                      # A reason past its limit whole, for the report and the "why" view (engine 15).
@@ -2312,11 +2405,11 @@ class Council:
                 entry["result"] = "lapsed: proposer no longer in government"
             elif politics.validate_motion(w, mo) is not None:
                 entry["result"] = "lapsed: " + politics.validate_motion(w, mo)
-            elif politics.passes(w, counted):
+            elif deliberation.decision_passes(w, counted, electorate, head_id):
                 entry["passed"] = True
                 entry["vote_status"] = "PASSED"
                 snapshot = w.to_dict()
-                entry["world_state_before"] = _audit_state(snapshot)
+                entry["world_state_before"] = _audit_state(snapshot, w.avg("approval"))
                 carried_conditions = motion_actions.motion_conditions(mo)
                 # What the motion carries is what its proposer filed. What the council agreed can be more:
                 # a floor the votes that carried it asked for (a demand in the response round, a
@@ -2391,7 +2484,7 @@ class Council:
                                                 if x.get("month") == w.month and x.get("motion_id") == mo["id"]), None)
                         if implementation:
                             entry["implementation"] = dict(implementation)
-                    entry["world_state_after"] = _audit_state(w.to_dict())
+                    entry["world_state_after"] = _audit_state(w.to_dict(), w.avg("approval"))
                     entry["execution_month"] = w.month
                     executed[motion_actions.execution_key(w, mo)] = mo["id"]
                     breach = (motion_actions.condition_execution_violation(w, entry["conditions"])
@@ -2412,9 +2505,9 @@ class Council:
             entry.setdefault("condition_results", [])
             entry.setdefault("blocking_reason", "")
             if entry.get("passed") and "world_state_before" not in entry:
-                entry["world_state_before"] = _audit_state(w.to_dict())
+                entry["world_state_before"] = _audit_state(w.to_dict(), w.avg("approval"))
             if entry.get("execution_status") == "EXECUTED" and "world_state_after" not in entry:
-                entry["world_state_after"] = _audit_state(w.to_dict())
+                entry["world_state_after"] = _audit_state(w.to_dict(), w.avg("approval"))
                 entry["execution_month"] = w.month
             if entry.get("conditions") and entry.get("vote_status") == "PASSED" \
                     and entry.get("execution_status") == "EXECUTED":
@@ -2569,7 +2662,11 @@ class Council:
                                    "system": system, "prompt": user, "schema": schema, "call_id": call_id})
             if result.quota:
                 raise RunPaused(actor_id.title(), seat.label, result.error[:300], role="Foreign cabinet")
-            normalized, problems = foreign.normalize_cabinet_output(actor_id, result.data)
+            try:
+                normalized, problems = foreign.normalize_cabinet_output(actor_id, result.data)
+            except Exception as exc:  # noqa: BLE001 - nothing a model sends may end the month (Audit CO2-f)
+                # Read as empty, as a failed call is, so the month goes on; the problem names what broke (read_answer).
+                normalized, problems = {}, [f"answer could not be read ({type(exc).__name__}: {str(exc)[:200]})"]
             summary = {"actor": actor_id, "seat": seat.label, "ok": result.data is not None,
                        "refusal": result.refusal, "error": result.error, "problems": problems,
                        "served_model": result.served_model, "cost_usd": round(result.cost_usd, 5),
@@ -2657,7 +2754,7 @@ class Council:
             elif politics.passes(w, counted):
                 entry["passed"] = True
                 entry["vote_status"] = "PASSED"
-                entry["world_state_before"] = _audit_state(w.to_dict())
+                entry["world_state_before"] = _audit_state(w.to_dict(), w.avg("approval"))
                 entry["conditions"] = motion_actions.motion_conditions(mo)
                 entry["final_conditions"] = list(entry["conditions"])
                 entry["final_motion_text"] = str(mo.get("text", ""))
@@ -2691,7 +2788,7 @@ class Council:
                     entry["execution_month"] = w.month
                     entry["world_state_after"] = None
                     entry["result"] = politics.apply_motion(w, {**mo, "proposer": mo["proposer"]})
-                    entry["world_state_after"] = _audit_state(w.to_dict())
+                    entry["world_state_after"] = _audit_state(w.to_dict(), w.avg("approval"))
                     entry["execution_status"] = "EXECUTED"
                     if entry["conditions"]:
                         entry["vote_status"] = "PASSED_CONDITIONALLY"

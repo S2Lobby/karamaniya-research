@@ -28,6 +28,28 @@ def state(w: World) -> dict:
     return d
 
 
+# Audit MI9-f: an incident moves Veleria's belief in Karamaniyan offensive intent, the belief its threat of Karamaniya is
+# rebuilt from each month (foreign.positions weights it .34). The reliability is the intelligence estimates' (foreign.py).
+INCIDENT_INTENT_RELIABILITY = .60
+THREAT_PER_OFFENSIVE_INTENT = .34
+
+
+def _raise_veleria_threat(w: World, amount: float) -> None:
+    """Audit MI9-f: raise Veleria's threat of Karamaniya by `amount` through the belief behind it. foreign.positions rebuilds
+    that threat from beliefs each month, so a direct write to the threat was lost at the next call. The belief moves by
+    weight * (evidence - value) in foreign._update_belief; the evidence is solved so the belief moves by amount / .34, which
+    lifts the threat by amount. The evidence is not observed and can exceed 1 when the belief is high; the belief itself is
+    clamped by _update_belief."""
+    from . import foreign
+    vel = w.foreign.get("actors", {}).get("veleria") if w.foreign else None
+    if not vel:
+        return
+    belief = foreign._belief(vel, "karamaniya_offensive_intent")
+    weight = clamp(INCIDENT_INTENT_RELIABILITY * (.30 + .45 * belief["confidence"]), .04, .38)   # _update_belief's weight
+    evidence = belief["value"] + amount / THREAT_PER_OFFENSIVE_INTENT / weight
+    foreign._update_belief(vel, "karamaniya_offensive_intent", evidence, INCIDENT_INTENT_RELIABILITY)
+
+
 def _region_avg(w: World, rid: str, attr: str) -> float:
     pops = [p for p in w.k_pops() if p.region == rid]
     total = sum(p.size for p in pops)
@@ -526,7 +548,9 @@ def _setup(w: World, kind: str, rng) -> dict:
             return {}
         details["target"] = holder.id
         details["truth"] = {"true": rng.random() < .35 + float((w.institutions.get("corruption") or {}).get(office, 0)) * 4}
-        details["text"] = f"Auditors found padded contracts in the {office} procurement programme overseen by {holder.name}."
+        # Audit IN-M7: an allegation, as corruption_ally's is; the auditors have not reported yet.
+        details["text"] = (f"Documents allege padded contracts in the {office} procurement programme overseen by "
+                           f"{holder.name}. The evidence is suggestive, not conclusive.")
     elif kind == "polling_threat":
         details["truth"] = {"election_month": w.const.election_month}
     elif kind == "governor_defiance":
@@ -591,6 +615,12 @@ def generate(w: World) -> list:
             # Engine 18: the shooting goes on record with its hidden perpetrator. The issue itself lasts a single
             # month; the record outlives it, for the forensic reports, the leak and the inquiries (attribution.py).
             attribution.record(w, issue)
+        if issue["kind"] == "false_warning":
+            # Audit IN-M1: the urgent office reports are filed now, for the month the issue starts, so that month's session
+            # reads them with its other reports (intelligence.add_warning_reports).
+            from . import intelligence
+            intelligence.add_warning_reports(w, issue)
+            issue["filed"] = True
         w.event("issue", f"New issue: {issue['title']}. {issue['text']}", importance=2, issue=issue["id"],
                 member=issue.get("target"))
     return raised
@@ -617,6 +647,14 @@ def apply_ongoing(w: World) -> None:
     s["modifiers"] = mods
 
 
+def _cut_logistics(r, drop: float, ledger: dict, key: str) -> None:
+    """Lower a region's logistics by `drop`, floored at .3, and record the change actually made in the ledger. The floor
+    can clip the cut, and undoing the ledger must restore what was taken, not the nominal drop (Audit IN-L2)."""
+    before = r.logistics
+    r.logistics = max(.3, before - drop)
+    ledger[key] = ledger.get(key, 0) + (before - r.logistics)
+
+
 def _effect(w: World, issue: dict, first: bool, add) -> None:
     kind, region = issue["kind"], issue.get("region")
     e, m, dip = w.econ, w.mil, w.dip
@@ -624,9 +662,7 @@ def _effect(w: World, issue: dict, first: bool, add) -> None:
     if kind == "rail_blockade":
         if first:
             for rid, drop in (("kessel", .10), ("aster", .04)):
-                r = w.region(rid)
-                r.logistics = max(.3, r.logistics - drop)
-                applied[rid] = applied.get(rid, 0) + drop
+                _cut_logistics(w.region(rid), drop, applied, rid)
         add("approval", "*", -.004)
     elif kind == "polling_threat":
         add("fear", "*", .02)
@@ -642,9 +678,7 @@ def _effect(w: World, issue: dict, first: bool, add) -> None:
         dip.propaganda = min(1.0, dip.propaganda + .03)
     elif kind == "leaked_plan" and first:
         m.army.training = clamp(m.army.training - .02)
-        vel = w.foreign.get("actors", {}).get("veleria") if w.foreign else None
-        if vel:
-            vel["threat_perception"]["karamaniya"] = round(clamp(vel["threat_perception"]["karamaniya"] + .02), 3)
+        _raise_veleria_threat(w, .02)     # Audit MI9-f: through the belief the threat is rebuilt from, not a write it loses
     elif kind == "corruption_ally" and first and issue.get("target"):
         from .standing import reputation_effect
         reputation_effect(w, issue["target"], "corruption", 1.0 if issue["truth"].get("true") else .6)
@@ -658,20 +692,12 @@ def _effect(w: World, issue: dict, first: bool, add) -> None:
         m.police.morale = clamp(m.police.morale - .03)
         add("fear", "*", .015)
         _stress(w, _holder(w, "interior"), "security", 12)
-    elif kind == "false_warning" and first:
+    elif kind == "false_warning" and first and not issue.get("filed"):
+        # Audit IN-M1: generate files a warning's reports before its month. One that generate never saw (a test scenario
+        # forces its issue) is filed at its first effect, as it always was.
         from . import intelligence
-        s = intelligence.state(w)
-        for office in ("army", "head"):
-            if w.holder(office):
-                est = 78.0
-                s["reports"].append({"id": f"R{w.month + 1}-{office[:3].upper()}W", "month": w.month, "office": office,
-                                     "subject": "union_intent", "estimate": est, "low": 70.0, "high": 85.0,
-                                     "confidence": "medium", "proposition": "union_attack_soon", "alarming": True,
-                                     "truth": intelligence.union_offensive_risk(w) * 100,
-                                     "accurate": bool(issue["truth"].get("real")), "error": "none" if issue["truth"].get("real") else "deception",
-                                     "shared_with": [], "requested_by": [],
-                                     "text": "URGENT: a source inside the Union command warns of an attack within weeks (70-85%). "
-                                             "The source is untested. Confidence: medium."})
+        intelligence.add_warning_reports(w, issue)
+        issue["filed"] = True
     elif kind == "media_campaign" and first:
         dip.propaganda = min(1.0, dip.propaganda + .05)
     elif kind == "pay_crisis":
@@ -687,17 +713,17 @@ def _effect(w: World, issue: dict, first: bool, add) -> None:
         _stress(w, issue["target"], "personal", 30)
         dip.rally = min(1.0, dip.rally + .04)
         add("fear", "*", .02)
-        from .standing import ensure
-        s = ensure(w, issue["target"])
-        s["personal_approval"] = round(clamp(s["personal_approval"] + .03), 3)
+        if w.human_factor:      # engine 19: no psychology without the human factor (audit RU5)
+            from .standing import ensure
+            s = ensure(w, issue["target"])
+            s["personal_approval"] = round(clamp(s["personal_approval"] + .03), 3)
     elif kind == "election_disinformation":
         dip.propaganda = min(1.0, dip.propaganda + .015)
         add("approval", "*", -.003)
     elif kind == "border_incident" and first:
         perpetrator = issue["truth"].get("perpetrator")
-        vel = w.foreign.get("actors", {}).get("veleria") if w.foreign else None
-        if vel and perpetrator == "our own troops":
-            vel["threat_perception"]["karamaniya"] = round(clamp(vel["threat_perception"]["karamaniya"] + .03), 3)
+        if perpetrator == "our own troops":
+            _raise_veleria_threat(w, .03)     # Audit MI9-f: as the leaked plan's lift, through the belief
         m.army.morale = clamp(m.army.morale + (.01 if perpetrator != "our own troops" else -.01))
     elif kind == "refugees" and first:
         for p in w.pops:
@@ -712,21 +738,21 @@ def _effect(w: World, issue: dict, first: bool, add) -> None:
         for rid, damage in (("lissen", .03), ("aster", .015)):
             r = w.region(rid)
             r.damage = clamp(r.damage + damage)
-            r.logistics = max(.3, r.logistics - .05)
-            applied[rid] = applied.get(rid, 0) + .05
+            _cut_logistics(r, .05, applied, rid)
         e.food_stock *= .97
     elif kind == "industrial_strike":
         r = w.region(region or "kessel")
         r.strike = min(.4, r.strike + .08)
     elif kind == "civil_service_strike" and first:
         e.admin_capacity = clamp(e.admin_capacity - .05, .2, 1)
-        e.compliance = clamp(e.compliance - .02, .3, 1)
+        from .economy import cut_compliance     # audit IN-L1: a shock that fiscal subtracts, not a value it overwrites
+        cut_compliance(w, .02)
     elif kind == "separatist_rally" and first:
         add("grievance", "kessel", .02)
     elif kind == "arms_cache" and first:
         w.event("arms_cache", issue["text"], importance=2)
         holder = _holder(w, "interior")
-        if holder:
+        if holder and w.human_factor:       # engine 19: no psychology without the human factor (audit RU5)
             from .standing import ensure
             ensure(w, holder)["reputation"]["competent"] = round(clamp(ensure(w, holder)["reputation"]["competent"] + 2, 0, 100), 1)
     elif kind == "intelligence_overreach":
@@ -746,7 +772,8 @@ def _effect(w: World, issue: dict, first: bool, add) -> None:
                 applied[f"industry:{rid}"] = .97
     elif kind == "procurement_scandal" and first and issue.get("target"):
         from .standing import reputation_effect
-        reputation_effect(w, issue["target"], "corruption", .8)
+        # Audit IN-M7: the hit follows the hidden truth as corruption_ally's does (an unproven allegation counts .6).
+        reputation_effect(w, issue["target"], "corruption", .8 if issue["truth"].get("true") else .8 * .6)
         w.event("corruption_allegation", issue["text"], importance=2, member=issue["target"])
     elif kind == "officer_petition":
         m.army.loyalty = clamp(m.army.loyalty - .01)
@@ -756,9 +783,9 @@ def _effect(w: World, issue: dict, first: bool, add) -> None:
     elif kind == "governor_defiance":
         r = w.region(region or "highlands")
         if first:
-            r.logistics = max(.3, r.logistics - .03)
-            applied[r.id] = applied.get(r.id, 0) + .03
-        e.compliance = clamp(e.compliance - .01, .3, 1)
+            _cut_logistics(r, .03, applied, r.id)
+        from .economy import cut_compliance     # audit IN-L1: a shock that fiscal subtracts, not a value it overwrites
+        cut_compliance(w, .01)
     elif kind == "grain_shortage":
         add("fear", "aster", .01)
 
@@ -919,6 +946,8 @@ def set_emergency_measure(w: World, measure: str, on: bool, proposer: str, text:
     log = w.institutions.setdefault("emergency_log", [])
     if not on:
         entry = measures.pop(measure, None)
+        if entry:
+            _undo(w, entry)          # Audit IN2: a lifted measure's logistics cuts end with it, as an expiry's do
         log.append({"month": w.month, "measure": measure, "action": "lifted", "by": proposer})
         return f"emergency measure lifted: {measure.replace('_', ' ')}" if entry else "no effect"
     current = measures.get(measure)
@@ -943,6 +972,7 @@ def _emergency_effects(w: World, add) -> None:
     for name, entry in list(measures.items()):
         if w.month > entry["until"]:
             measures.pop(name)
+            _undo(w, entry)
             w.institutions.setdefault("emergency_log", []).append({"month": w.month, "measure": name, "action": "expired"})
             w.event("emergency_expired", f"The emergency measure on {name.replace('_', ' ')} expired.", importance=1)
             continue
@@ -955,9 +985,10 @@ def _emergency_effects(w: World, add) -> None:
             m.police.loyalty = clamp(m.police.loyalty + .005)
         elif name == "movement_restrictions":
             add("repression", "*", .05)
+            # Audit IN2: each cut is recorded on the measure and undone when it expires or is lifted (_undo).
             for r in w.k_regions():
                 if not r.capital:
-                    r.logistics = max(.3, r.logistics - .01)
+                    _cut_logistics(r, .01, entry.setdefault("applied", {}), r.id)
         elif name == "military_aid_civil":
             add("repression", "aster", .05)
             m.army.training = clamp(m.army.training - .01)

@@ -61,7 +61,10 @@ def audit(store: RunStore, world: dict | None = None) -> dict:
             if not clash:
                 continue
             action = clash["structured_action"]
-            executed = bool(mo.get("passed")) and not mo.get("withdrawn") and not mo.get("void")
+            # Audit PO2: a passed motion the execution gate blocked changed nothing, so it is not executed. A record with
+            # no execution_status is an older one, which executed what passed (psychology.py reads it the same way).
+            executed = (bool(mo.get("passed")) and mo.get("execution_status", "EXECUTED") == "EXECUTED"
+                        and not mo.get("withdrawn") and not mo.get("void"))
             findings.append({
                 "month": rec.get("month"), "motion": mo.get("id"), "proposer": mo.get("proposer"),
                 "prose": clash["prose"], "structured_action": action,
@@ -107,7 +110,7 @@ def _WorldView(world: dict):
     return view
 
 
-def mark(store: RunStore, world: dict | None = None, write: bool = False) -> dict:
+def mark(store: RunStore, world: dict | None = None, write: bool = False, up_to_month: int | None = None) -> dict:
     """The correction record for a run. With write=False it only reports.
 
     The recorded log is never touched: the correction stands beside it, and a reader can see both
@@ -117,7 +120,7 @@ def mark(store: RunStore, world: dict | None = None, write: bool = False) -> dic
     if world is None:
         world = store.load_checkpoint()[0].to_dict()
     history = world.get("history", [])
-    clean_month = _last_clean_month(report, history)
+    clean_month = _last_clean_month(report, history) if up_to_month is None else up_to_month   # Audit PO8
     record = {
         "kind": "behavioural_integrity",
         "run": report["run"],
@@ -137,11 +140,12 @@ def mark(store: RunStore, world: dict | None = None, write: bool = False) -> dic
 
 
 def _last_clean_month(report: dict, history: list) -> int:
-    """The last month before the earliest wrongly-executed motion."""
+    """The last month before the earliest wrongly-executed motion. When that motion is in month 0 there is no clean month,
+    and the answer is -1 (audit PO10): 0 would name the bad month itself."""
     months = [f["month"] for f in report["executed_wrongly"] if f["month"] is not None]
     if not months:
         return (len(history) - 1) if history else 0
-    return max(0, min(months) - 1)
+    return min(months) - 1
 
 
 def replay_plan(store: RunStore, up_to_month: int) -> dict:
@@ -165,7 +169,10 @@ def replay_plan(store: RunStore, up_to_month: int) -> dict:
         "recorded_answers": len(answers),
         "live_seats": sorted({p for p in seats.values() if p not in ("scripted", "replay")}),
         "deterministic": not any(p not in ("scripted", "replay") for p in seats.values()),
-        "how": ("Re-run the same config to month " + str(up_to_month + 1) +
+        # Audit PO10: with no clean month (-1) there is nothing to replay, and "to month 0" would name the bad month.
+        "how": ("The first wrongly executed motion is in Month 1, so no month is clean and there is nothing to replay: "
+                "re-run the same config from Month 1 with the corrected engine." if up_to_month < 0 else
+                "Re-run the same config to month " + str(up_to_month + 1) +
                 " with the recorded answers replayed in place of fresh model calls, then let the "
                 "corrected engine continue. Stand-in runs reproduce exactly from the config alone; a "
                 "run with live model seats is reproducible only from its recorded answers, since the "
@@ -174,9 +181,7 @@ def replay_plan(store: RunStore, up_to_month: int) -> dict:
 
 
 def record_replay(store: RunStore, up_to_month: int | None = None, write: bool = True) -> dict:
-    """Convenience: audit the run and write the correction record for the last clean month."""
+    """Convenience: audit the run and write the correction record for the last clean month, or for up_to_month."""
     world = store.load_checkpoint()[0].to_dict()
-    report = audit(store, world)
-    if up_to_month is None:
-        up_to_month = _last_clean_month(report, world.get("history", []))
-    return mark(store, world, write=write)
+    # Audit PO8: the month asked for reaches the record. It used to be worked out here and then dropped.
+    return mark(store, world, write=write, up_to_month=up_to_month)

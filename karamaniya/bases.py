@@ -74,18 +74,23 @@ def _capital(text: str) -> str:
 VOTE_MEMORY = 12        # the noted votes a base keeps (it reads only the month just resolved)
 
 
-def note_vote(w: World, mid: str, mo: dict, vote: str, tags: list, factor: float) -> None:
+def note_vote(w: World, mid: str, mo: dict, vote: str, tags: list, factor: float, conduct: tuple = ()) -> None:
     """What one costed vote did to the delegate's base: the act's effect on each audience in the base's mix, weighted
     by the mix, as standing.apply_vote_costs reads it for an audience the delegate answers to. Called from there, so a
-    vote that is not costed (an abstention, a void motion, a secret ballot) is never seen."""
+    vote that is not costed (an abstention, a void motion, a secret ballot) is never seen.
+
+    `conduct` is the conduct a yes vote is charged with (repression, election delay, dishonesty). The audiences take it
+    through standing.action_tags_for at full strength, so the base reads it at factor 1.0 (audit AG12)."""
     member = w.member(mid)
     base = _base(member.agent_state if member else None)
-    if not base or not tags:
+    if not base or not (tags or conduct):
         return
     from .standing import ACTION_EFFECTS
     mix = BASES[base["id"]]["mix"]
     effect = sum(.02 * weight * ACTION_EFFECTS[tag][1].get(audience, 0.0) * factor
                  for tag in tags if tag in ACTION_EFFECTS for audience, weight in mix.items())
+    effect += sum(.02 * weight * ACTION_EFFECTS[tag][1].get(audience, 0.0)
+                  for tag in conduct if tag in ACTION_EFFECTS for audience, weight in mix.items())
     if abs(effect) < 1e-9:
         return
     noted = base.setdefault("votes", [])
@@ -97,7 +102,9 @@ def note_vote(w: World, mid: str, mo: dict, vote: str, tags: list, factor: float
 def update_all(w: World) -> None:
     """The monthly update of every base. It runs in the month the votes were cast, before the clock moves on
     (engine.step runs agents.update_conditions first), so the reactions logged for w.month are this month's."""
-    for m in w.members:
+    # Audit AG8: only the members on the council have a live base. A delegate who has left keeps its base as it was, so its
+    # approval does not slip and no disowning is recorded for a member who is no longer there.
+    for m in w.active_members():
         if _base(m.agent_state):
             _monthly(w, m)
 

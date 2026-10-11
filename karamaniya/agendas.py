@@ -174,8 +174,12 @@ def crosses(w: World, motion: dict, agenda_id: str) -> bool:
     value = str(motion.get("value") or "").strip().lower()
     changes = _changes(w, motion)
     if agenda_id == "order_first":
-        return ((t == "constitution" and subject == "decision_rule" and value in ("unanimity", "two_thirds"))
-                or _lowers(changes, "officer_pay", "military", "police"))
+        # Audit PO4: the line is a government that cannot act, and cuts to the pay of the army and the police. The
+        # pay levers are officer_pay (the army's pay scale) and the police budget, which pays the police; the military
+        # budget is the defence agenda's line. A rule already in force is no change, so setting it again is no crossing.
+        return ((t == "constitution" and subject == "decision_rule" and value in ("unanimity", "two_thirds")
+                 and w.const.decision_rule != value)
+                or _lowers(changes, "officer_pay", "police"))
     if agenda_id == "defence":
         return _lowers(changes, "army_target", "military", "recruitment", "mobilization")
     if agenda_id == "sovereignty":
@@ -186,7 +190,7 @@ def crosses(w: World, motion: dict, agenda_id: str) -> bool:
                 or any(lever == "debt_service" and new == "suspend" and old != "suspend" for lever, new, old in changes))
     if agenda_id == "constitution":
         if t == "emergency_measure":
-            return True
+            return value == "on"      # Audit PO4: imposing (or extending) a measure crosses the line; lifting one does not
         if t == "constitution":
             c = w.const
             if subject == "election_month":

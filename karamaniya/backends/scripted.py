@@ -327,9 +327,12 @@ class ScriptedBackend(Backend):
             for office, candidate in assignments.items():
                 if candidate == mid:
                     continue
-                # A candidate's portfolio and record matter more than procedural harmony.
-                own_traits = w.member(mid).agent_state["traits"]
-                candidate_traits = w.member(candidate).agent_state["traits"]
+                # A candidate's portfolio and record matter more than procedural harmony. Audit RU1: without the
+                # human factor no delegate has traits, so the trait rule has nothing to read and the vote stays yes.
+                own_traits = (w.member(mid).agent_state or {}).get("traits")
+                candidate_traits = (w.member(candidate).agent_state or {}).get("traits")
+                if not own_traits or not candidate_traits:
+                    continue
                 if office == "army" and self.persona in DEMOCRAT_LIKE:
                     if (own_traits["democratic_commitment"] - candidate_traits["democratic_commitment"] > 12
                             and candidate_traits["military_assertiveness"] > 50):
@@ -812,7 +815,10 @@ class ScriptedBackend(Backend):
             try:
                 proposed = float(mo["value"])
             except (TypeError, ValueError):
-                proposed = None
+                # Engine 19: a share the intake stored as a percent ("0.8%", audit MO11) is read as the engine reads it.
+                from ..politics import parse_lever
+                parsed = parse_lever(subject, mo["value"])
+                proposed = parsed if isinstance(parsed, float) else None
             if subject == "military" and proposed is not None:
                 if p == "technocrat" and proposed > w.policy.military and w.econ.arrears > 0:
                     return "no"

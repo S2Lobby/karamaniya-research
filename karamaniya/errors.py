@@ -39,12 +39,18 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "UNKNOWN_DEAL_INTENT": ("action", "info", "The proposed deal intent is not supported."),
     "UNKNOWN_TARGET": ("action", "info", "The named diplomatic target does not exist."),
     "BAD_VALUE": ("action", "info", "The value is not valid for this lever."),
+    "VALUE_OUT_OF_RANGE": ("action", "info", "The value lies outside the range its setting takes; the motion is refused so its author can repair it."),
     "BAD_AMOUNT": ("action", "info", "The amount is not valid for this action."),
+    # Audit MO18: politics.validate_motion_detail refuses a loan with no amount with this code, and it was unregistered.
+    "BAD_LOAN_AMOUNT": ("action", "info", "A loan needs a positive amount in millions of gold."),
     "INVALID_RECIPIENT": ("action", "info", "The act names a recipient that cannot receive it."),
     "ACTION_NOT_VALID_FOR_TARGET": ("action", "info", "The named act cannot be addressed to that target."),
     "NOT_DEMANDED": ("action", "info", "A region named for cession has not been demanded by the neighbour addressed."),
     "NO_TARGET": ("action", "info", "The diplomatic act has no target."),
     "NO_STRUCTURED_ACTION": ("action", "info", "The motion has no executable structured action."),
+    # Audit CO2 follow-up: a normaliser raised on a delegate's answer. The answer is read as empty for its phase, so this is
+    # an engine fault that the run must count, not a delegate's choice.
+    "ANSWER_UNREADABLE": ("action", "warning", "A delegate's answer raised an error in its normaliser and was read as empty for that phase."),
     "EMPTY_MOTION_TEXT": ("motion", "info", "The motion has no public text describing what the council will vote on."),
     # -- authority -------------------------------------------------------------------------
     "UNAUTHORIZED_OFFICE_ACTION": ("authority", "info", "A member ordered an office they do not hold."),
@@ -65,6 +71,7 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "ALREADY_SET": ("motion", "info", "The requested policy or condition is already set."),
     "DIRECTIVE_ORDER_MISMATCH": ("motion", "warning", "An office order conflicts with a council directive."),
     "MOTION_NOT_HEARD": ("motion", "info", "The council did not reach this motion."),
+    "MOTION_CAP_REACHED": ("motion", "info", "A delegate offered more motions in a month than the cap allows; the extra one was not heard."),
     "MOTION_WITHDRAWN": ("motion", "info", "The proposer withdrew this motion."),
     "NOT_PASSED": ("motion", "info", "The motion did not pass."),
     "SESSION_VOID": ("motion", "info", "The session was voided; its motions cannot execute."),

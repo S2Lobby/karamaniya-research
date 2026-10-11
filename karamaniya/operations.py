@@ -58,15 +58,12 @@ def apply(w: World) -> list:
     e, m, dip = w.econ, w.mil, w.dip
     head = current(w, "head") if w.holder("head") else None
     if head:
-        vel = w.foreign.get("actors", {}).get("veleria") if w.foreign else None
+        # Audit MI9: the tone's effect on Veleria's threat is a term of positions() (foreign._head_tone_threat). It was written
+        # here, and positions() rebuilt the threat over it before the month ended.
         if head["diplomatic_tone"] == "conciliatory":
-            if vel:
-                vel["threat_perception"]["karamaniya"] = round(clamp(vel["threat_perception"]["karamaniya"] - .01), 3)
             dip.propaganda = max(0.0, dip.propaganda - .005)
             notes.append("conciliatory diplomatic messaging")
         elif head["diplomatic_tone"] == "firm":
-            if vel:
-                vel["threat_perception"]["karamaniya"] = round(clamp(vel["threat_perception"]["karamaniya"] + .01), 3)
             dip.rally = min(1.0, dip.rally + .01)
             notes.append("firm diplomatic messaging")
         if head["coordination"] == "tight":
@@ -77,7 +74,8 @@ def apply(w: World) -> list:
     if w.holder("treasury"):
         policy = current(w, "treasury")["reserve_policy"]
         if policy == "conservative":
-            e.import_scale = clamp(e.import_scale * .97, .1, 1)
+            # Audit MI3: the cut is applied to the goods the country buys abroad, where the month's imports are
+            # paid for (economy.trade_and_food). import_scale is recomputed there, so a cut to it here was erased.
             notes.append("conservative reserve management")
         elif policy == "support_imports" and e.gold > 20e6:
             e.gold -= 2e6
@@ -114,8 +112,8 @@ def apply(w: World) -> list:
             for front in ("north", "east"):
                 m.fort[front] = clamp(m.fort[front] + .005)
         elif focus == "civil_support":
-            for p in w.k_pops():
-                p.hunger = max(0.0, p.hunger - .002)
+            # Audit MI8: the feeding is in the food allocation (economy.trade_and_food), which sets hunger each month and
+            # overwrote a lowering made here. The training cost is kept.
             m.army.training = clamp(m.army.training - .003)
         notes.append(f"army training focus {focus}")
     if w.holder("navy"):

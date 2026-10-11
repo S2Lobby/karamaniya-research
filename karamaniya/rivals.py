@@ -10,14 +10,22 @@ Deterministic: all randomness comes from `rng_for(seed, month, tag)`.
 """
 from __future__ import annotations
 
+from . import foreign_force
 from .world import World, clamp, rng_for
 
-# What one soldier costs a month, as a share of that country's monthly output: a big army on a
-# small economy is a heavy burden, which is exactly the pressure that shapes rival behaviour.
-UPKEEP_PER_SOLDIER = 0.00000128
+# What one soldier costs a month, in crowns at founding prices. The burden is this money over the country's current
+# monthly output, so a big army on a small economy is a heavy burden, which is the pressure that shapes rival
+# behaviour (Audit FO10: the cost used to be a share of output, which cancelled out the economy). Calibrated so that
+# Veleria's founding army of 65,000 sits near 70% of the cap.
+UPKEEP_PER_SOLDIER = 815.0
 # A rival cannot spend more of its output on defence than this before readiness falls.
 DEFENCE_BURDEN_CAP = 0.065
-# Readiness drift: money below this share of the cap buys training; above it, readiness erodes.
+# The share of the cap at which readiness holds in peace (Audit FO10). A founding army starts near 70% of the cap and,
+# once the treasury has recovered in peace, settles at about this share (Veleria 0.769 of the cap after 36 peaceful
+# months). Below it money buys training and readiness rises; above it readiness erodes. The engine used to erode it
+# every peacetime month from the cap.
+READINESS_HOLD = 0.77
+# Readiness drift: the most readiness gains in a month (at no burden) or loses (at the cap).
 READINESS_DRIFT = 0.012
 # How fast a rival replaces battlefield losses from its reserve pool.
 REPLACEMENT_RATE = 0.06
@@ -29,13 +37,23 @@ def _monthly_output(actor: dict) -> float:
     return max(1.0, annual / 12.0)
 
 
+def _readiness_drift(burden: float) -> float:
+    """What one month's burden does to readiness (Audit FO10): a burden below READINESS_HOLD of the cap buys training,
+    up to READINESS_DRIFT a month at no burden; above it readiness erodes, down to READINESS_DRIFT a month at the cap."""
+    hold = READINESS_HOLD * DEFENCE_BURDEN_CAP
+    if burden <= hold:
+        return READINESS_DRIFT * (1 - burden / hold)
+    return -READINESS_DRIFT * (burden - hold) / (DEFENCE_BURDEN_CAP - hold)
+
+
 def _defence_budget(w: World, actor_id: str) -> tuple[float, float, str]:
-    """(spend, burden, mood) for one rival this month."""
+    """(spend, burden, mood) for one rival this month. The army is priced in money and the burden is that money over the
+    country's current output (Audit FO10)."""
     actor = w.foreign["actors"][actor_id]
     rival = w.rivals[actor_id]
     dom, econ = actor["domestic"], actor["economy"]
     output = _monthly_output(actor)
-    want = rival.army * UPKEEP_PER_SOLDIER * output
+    want = rival.army * UPKEEP_PER_SOLDIER
     if w.dip.war:
         want *= 1.25
     want *= 1 + 0.2 * float(actor["threat_perception"].get("karamaniya", 0.45))
@@ -55,6 +73,25 @@ def _defence_budget(w: World, actor_id: str) -> tuple[float, float, str]:
     else:
         mood = "manageable"
     return spend, burden, mood
+
+
+def _union_losses(w: World, actor_id: str) -> float:
+    """The Union's soldiers this neighbour's army killed this month, from military.update's combat record. That record
+    is keyed by front, not by actor (Audit FO4), so each front's losses go to the neighbours that hold it, in proportion
+    to their armies: the ones whose border reaches the front, among the armies at war."""
+    combat = w.mil.last_combat if isinstance(w.mil.last_combat, dict) else {}
+    participants = (w.dip.war_aim or {}).get("participants") or list(w.rivals)
+    losses = 0.0
+    for front in foreign_force.FRONTS:
+        record = combat.get(front)
+        if not isinstance(record, dict):
+            continue
+        holders = [p for p in participants if p in w.rivals and front in foreign_force.FRONTS_OF.get(p, ())]
+        if actor_id not in holders:
+            continue
+        total = sum(w.rivals[p].army for p in holders) or 1.0
+        losses += float(record.get("u_loss", 0.0) or 0.0) * w.rivals[actor_id].army / total
+    return losses
 
 
 def monthly(w: World) -> dict:
@@ -86,22 +123,21 @@ def monthly(w: World) -> dict:
                                       - 0.004 * (burden / max(DEFENCE_BURDEN_CAP, 1e-9))), 3)
 
         # Reserves: losses are replaced from the trained pool; peace lets the pool grow.
-        loss = 0.0
-        if isinstance(w.mil.last_combat, dict) and isinstance(w.mil.last_combat.get(actor_id), dict):
-            loss = float(w.mil.last_combat[actor_id].get("u_loss", 0.0) or 0.0)
+        loss = _union_losses(w, actor_id)
         pool = float(mil.get("reserves", 0.0))
         if loss > 0 and pool > 0:
             replaced = min(loss * REPLACEMENT_RATE * (0.5 + 0.5 * float(mil.get("readiness", 0.5))),
                            pool * 0.05)
             mil["reserves"] = round(pool - replaced, 1)
-            rival.army += replaced * 0.4
-        elif not w.dip.war and burden < DEFENCE_BURDEN_CAP * 0.7:
+            # Audit FO4: one soldier for each reserve drawn. The engine used to add 0.4 of them to the army.
+            rival.army += replaced
+        elif not w.dip.war and burden < DEFENCE_BURDEN_CAP * READINESS_HOLD:
             mil["reserves"] = round(pool + rival.army * 0.01 * (1 - burden / DEFENCE_BURDEN_CAP), 1)
 
         # Readiness follows money, continuously: a light burden buys training, a crushing one
         # hollows the force out. A sustained war erodes it further.
         readiness = float(mil.get("readiness", 0.5))
-        drift = READINESS_DRIFT * (1 - 2.0 * burden / DEFENCE_BURDEN_CAP)
+        drift = _readiness_drift(burden)
         if w.dip.war:
             drift -= 0.008 * (1 + float(dom.get("war_weariness", 0.0)))
         mil["readiness"] = round(clamp(readiness + drift, 0.05, 0.95), 3)

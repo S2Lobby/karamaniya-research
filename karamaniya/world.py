@@ -270,8 +270,8 @@ class Rival:
     morale: float = 0.65
     equipment: float = 1.0
     training: float = 0.65
-    printing: float = 0.0       # share of its money stock it prints each month
-    rate: float = 0.06
+    printing: float = 0.0       # share of its money stock it prints each month. Audit EC12: reserved, nothing assigns it
+    rate: float = 0.06          # its policy rate. Audit EC12: reserved, nothing assigns it; every neighbour keeps 6%
 
 
 @dataclass
@@ -712,15 +712,11 @@ def new_world(seed: int, months: int = 36, framing: str = "simulation",
     e = w.econ
     e.gdp_real0 = e.gdp_real = prod["gdp_real"]
     e.gdp_nominal = e.gdp_real
-    # Establish potential output at the founding, so the starting output gap is whatever the
-    # founding conditions actually imply rather than zero by construction.
-    e.potential_output = economy.frictionless(w)
+    # Potential output, the output gap and the starting prices are set by economy.found_economy once the founding
+    # conditions are applied (audits EC4 and EC5): measured here, the gap was zero by construction.
     e.productivity = 1.0
-    e.output_gap = e.prev_output_gap = (e.gdp_real / e.potential_output - 1.0
-                                        if e.potential_output > 0 else 0.0)
     e.industry0 = e.industry_out = prod["industry"]
     e.arms_diversion = prod["industry"] * 0.03
-    e.consumer_goods0 = e.consumer_goods = prod["industry"] * 0.97 + e.goods_imports
     e.food_out = prod["food"]
     e.services_out = e.services0 = prod["services"]
     e.debt_dom = 0.40 * 12 * e.gdp_real0
@@ -735,6 +731,7 @@ def new_world(seed: int, months: int = 36, framing: str = "simulation",
     if founding_scenario not in ("none", "serene"):
         from . import founding
         founding.initialize(w, founding_scenario, founding_severity, founding_problems)
+    economy.found_economy(w)
     return w
 
 

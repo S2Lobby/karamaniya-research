@@ -424,10 +424,11 @@ def record_month(w: World, record: dict, private_messages=(), events=None,
                         [voter, proposer], written_phase="POST_EXECUTION",
                         execution_status=str(mo.get("execution_status") or ""))
             # A lone holdout is worth remembering by itself: it is the seed a later
-            # vindication grows from, even before any outcome is known.
+            # vindication grows from, even before any outcome is known. Audit AG10: a secret ballot keeps none, as
+            # agents.update_political says, because the dissent is what the secret ballot hides.
             from .psychology import lone_dissenter
             lone = lone_dissenter(mo)
-            if lone in active:
+            if lone in active and w.ballot != "secret":
                 remember(lone, "minority_stand",
                     f"You stood alone against {mo.get('summary', '')} ({yes}-{no}) in Month {month + 1}.",
                     tags, [lone, proposer], written_phase="POST_EXECUTION",

@@ -25,10 +25,16 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
     if w.ended():
         return
     v2 = w.human_factor and w.agent_architecture_version >= 2
-    if v2:
-        from . import audits, dilemmas, operations, standing
+    # Audit MI5: the public's reactions, the emergency measures and the audits under way are the institutions', not the
+    # delegates' psychology, so they run on the architecture version alone. The human factor still gates what the
+    # delegates' own minds feel (operations, implementation, and the issues and opposition further down).
+    arch2 = w.agent_architecture_version >= 2
+    if arch2:
+        from . import audits, dilemmas
         dilemmas.apply_ongoing(w)
         audits.apply_ongoing(w)
+    if v2:
+        from . import operations, standing
         w.institutions["operation_notes"] = operations.apply(w)
         standing.implementation_effects(w, w.institutions.get("changed_levers", {}))
     director.act(w, foreign_decisions, foreign_prepared)
@@ -44,11 +50,12 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         trade = economy.trade_and_food(w, prod)
         fiscal = economy.fiscal(w, prod, trade)
         economy.money_and_prices(w, prod)
-        # Score any forecast whose horizon has now elapsed, against the state just produced.
-        from . import forecasts
-        forecasts.resolve_due(w)
         military.update(w, fiscal)
         society.update(w, prod, fiscal)
+        # Score any forecast whose horizon has now elapsed, once the month's approval, unemployment and army morale are set
+        # by the society and military updates (Audit IN-M3); scored before them, it read last month's figures.
+        from . import forecasts
+        forecasts.resolve_due(w)
         politics.monthly_checks(w)
         # Engine 18: the opposition says what the government did this month, and its momentum moves the next vote
         # (opposition.py). Only where the delegates can hear it: a world without the human factor runs the older
@@ -61,9 +68,14 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
     snapshot(w)
     if v2:
         # Credit, blame, beliefs and stress respond to this month's outcome, so they run after the snapshot.
-        from . import audits, dilemmas
         agents.update_conditions(w)
+    if arch2:
+        # Audit MI5: the audits' reports arrive on the architecture version alone. With the human factor they still come
+        # after the delegates' conditions update, as before.
+        from . import audits
         audits.deliver(w)
+    if v2:
+        from . import dilemmas
         dilemmas.review(w, w.agenda.get("this_month"))
         dilemmas.generate(w)
     if w.agent_architecture_version >= 2:
@@ -315,8 +327,10 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
             "regions": {r.id: r.controller for r in w.regions if r.nation == "karamaniya"},
         },
         "members": {mem.id: mem.status for mem in w.members},
-        "member_social": (agents.snapshot(w) if w.agent_architecture_version >= 1
-                          else human.snapshot(w) if w.human_factor else {}),
+        # Audit RU5: the psychology snapshot is written only where the delegates have psychology (the human factor),
+        # whatever the architecture; agents.snapshot would otherwise create traits, agendas and bases for every seat.
+        "member_social": ((agents.snapshot(w) if w.agent_architecture_version >= 1 else human.snapshot(w))
+                          if w.human_factor else {}),
         "agent_architecture_version": w.agent_architecture_version,
         "constitution": {"regime_name": c.regime_name, "decision_rule": c.decision_rule,
                          "press": c.press, "assembly": c.assembly, "emergency": c.emergency,

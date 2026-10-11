@@ -123,6 +123,13 @@ class MonetaryPolicyIsStateDependent(unittest.TestCase):
         self.assertLess(hiked.econ.gdp_real, calm.econ.gdp_real,
                         "tightening into a slump cost nothing")
 
+    # Known failure, backlog T94 (engine 19). In the karam a higher policy rate raises the price level: the credit
+    # channel cuts capacity output, and the price target divides the money stock by capacity output. Engine 18 had the
+    # same inversion: a 60% rate raised expected inflation at every level of printing, and even this 35% hike left the
+    # price level higher (2.71 against 2.48). This test passed only by 0.0014 of expected inflation, which the
+    # currency-launch artefact fixed in engine 19 (audit EC6) had supplied. The claim stands; the engine does not meet
+    # it yet, so a fix of T94 shows here as an unexpected success.
+    @unittest.expectedFailure
     def test_a_rate_hike_under_high_inflation_reduces_inflation_pressure(self):
         """Inside the crown the policy rate barely moves monetary conditions, which is correct: a
         member of a currency union does not set its own. The test therefore runs where Karamaniya

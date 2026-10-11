@@ -49,7 +49,7 @@ def text(prompt: dict) -> str:
 
 class Versions(unittest.TestCase):
     def test_the_bump(self):
-        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY), (18, 15, 7))
+        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY), (18, 15, 7))
 
 
 class EveryPartReachesItsPrompt(unittest.TestCase):

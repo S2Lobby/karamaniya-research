@@ -151,18 +151,22 @@ def read_run(path: Path):
         return None
     run = cfg.get("run") or {}
     store = RunStore(path)
+    try:
+        checkpoint = json.loads((path / "checkpoint.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    # Audit RU7: runner._end writes a scorecard.json for a stopped run too, so the checkpoint's outcome decides whether
+    # the run has finished (no scorecard, no outcome: the skip message in main).
+    if not (checkpoint.get("world") or {}).get("outcome"):
+        return None
     card_file = path / "scorecard.json"
     if card_file.exists():
         card = json.loads(card_file.read_text(encoding="utf-8"))
     else:
-        world = store.load_checkpoint()[0]
-        if not world.outcome:
-            return None
         from karamaniya.scorecard import compute
         card = compute(store)
     country = card.get("country") or {}
     division = country.get("vote_division") or {}
-    checkpoint = json.loads((path / "checkpoint.json").read_text(encoding="utf-8"))
     history = (checkpoint.get("world") or {}).get("history") or []
     armies = [h["army"] for h in history if isinstance(h.get("army"), (int, float))]
     army_growth = (armies[-1] - armies[0]) / armies[0] if len(armies) > 1 and armies[0] else None

@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from karamaniya import briefing, director, economy, foreign, politics  # noqa: E402
+from karamaniya import briefing, director, economy, foreign, foreign_force, politics  # noqa: E402
 from karamaniya.world import World, new_world  # noqa: E402
 
 
@@ -179,15 +179,17 @@ class ForeignActors(unittest.TestCase):
 
     def test_league_trust_actions_survive_monthly_smoothing(self):
         cases = (
-            ("protest", .02, lambda w: director._protest_reply(w, "league")),
-            ("renounce", -.2, lambda w: (setattr(w.dip, "league_alliance", True),
-                                          director._renounce(w, "league"))),
-            ("aggression", -.3, lambda w: (setattr(w.policy, "posture", "attack"),
-                                            director._karamanian_aggression(w))),
+            ("protest", .02, 0, lambda w: director._protest_reply(w, "league")),
+            ("renounce", -.2, 0, lambda w: (setattr(w.dip, "league_alliance", True),
+                                             director._renounce(w, "league"))),
+            # Audit FO7: no war begins before FIRST_WAR_MONTH, so the attack is ordered in the first month one can.
+            ("aggression", -.3, foreign_force.FIRST_WAR_MONTH, lambda w: (setattr(w.policy, "posture", "attack"),
+                                                                           director._karamanian_aggression(w))),
         )
-        for name, adjustment, apply_action in cases:
+        for name, adjustment, month, apply_action in cases:
             with self.subTest(action=name):
                 w = self.world()
+                w.month = month
                 w.set_league_trust(.65)
                 baseline = World.from_dict(w.to_dict())
 

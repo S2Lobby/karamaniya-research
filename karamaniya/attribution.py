@@ -17,6 +17,7 @@ what happened on the border.
 from __future__ import annotations
 
 from . import public_mood
+from .opposition import RESTRICTED_REACTION
 from .world import World, clamp, rng_for
 
 KEY = "incidents"                # w.institutions key: the border incidents on record, with their hidden perpetrators
@@ -134,18 +135,27 @@ def leaks(w: World) -> list:
 
 
 def learn(w: World, entry: dict) -> None:
-    """The press has learned what the shooting was: an event for everyone, and what that does to the country."""
+    """The press has learned what the shooting was: an event for everyone, and what that does to the country. A censored
+    press knows it and cannot print it (Audit TO12): the truth is recorded as learned but unpublished, with a private
+    event only, and no public reaction or propaganda change, as opposition.py leaves a censored statement unheard.
+    Restricted reporting halves the public reaction, as opposition.py does."""
     who, when = entry["perpetrator"], f"Month {entry['month'] + 1}"
+    public = w.const.press != "censored"
+    share = RESTRICTED_REACTION if w.const.press == "restricted" else 1.0
+    entry["published"] = public
     if who == UNION_PATROL:
         union = (w.names or {}).get("union", "Union")
-        public_mood.react(w, "approval", "ident:karamanian", LEAK_UNION_APPROVAL, REACTION_MONTHS, "incident:union_fired")
-        w.dip.rally = clamp(w.dip.rally + LEAK_UNION_RALLY)
-        w.dip.propaganda = clamp(w.dip.propaganda - LEAK_UNION_PROPAGANDA)
+        if public:
+            public_mood.react(w, "approval", "ident:karamanian", LEAK_UNION_APPROVAL * share, REACTION_MONTHS,
+                              "incident:union_fired")
+            w.dip.rally = clamp(w.dip.rally + LEAK_UNION_RALLY)
+            w.dip.propaganda = clamp(w.dip.propaganda - LEAK_UNION_PROPAGANDA)
         text = f"The press has learned that the shots on the border in {when} were fired by a {union} patrol."
     elif who == OWN_TROOPS:
-        public_mood.react(w, "approval", "*", LEAK_OWN_APPROVAL, REACTION_MONTHS, "incident:our_troops")
-        w.dip.propaganda = clamp(w.dip.propaganda + LEAK_OWN_PROPAGANDA)
+        if public:
+            public_mood.react(w, "approval", "*", LEAK_OWN_APPROVAL * share, REACTION_MONTHS, "incident:our_troops")
+            w.dip.propaganda = clamp(w.dip.propaganda + LEAK_OWN_PROPAGANDA)
         text = f"The press has learned that the shots on the border in {when} were fired by our own troops."
     else:
         text = f"The press has learned that the shots on the border in {when} were fired by smugglers."
-    w.event("incident_leak", text, importance=2, incident=entry["id"])
+    w.event("incident_leak", text, importance=2, public=public, incident=entry["id"])

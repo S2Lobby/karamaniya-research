@@ -115,7 +115,9 @@ def open_audit(w: World, office: str, proposer: str, text: str = "", votes: dict
              "due": w.month + months - 1,
              "supporters": sorted(mid for mid, vote in (votes or {}).items() if vote == "yes")}
     state(w)["open"].append(audit)
-    if proposer in {m.id for m in w.active_members()}:
+    # Audit MI5-f: the proposer's capital is the delegate's psychology, and spend_capital creates it. Without the human factor
+    # there is none to charge, and the audit is ordered all the same.
+    if w.human_factor and proposer in {m.id for m in w.active_members()}:
         standing.spend_capital(w, proposer, float(tuning.get(w, "audits.capital_cost")))
     if holder is not None and proposer != holder.id and holder.agent_state:
         _relate(w, holder.id, proposer, trust=-4, resentment=4)
@@ -252,23 +254,27 @@ def _consequences(w: World, audit: dict, report: dict) -> None:
     proposer = audit["by"] if audit["by"] in active_ids else None
     force = {"army": w.mil.army, "navy": w.mil.navy, "interior": w.mil.police}.get(office)
     corruption = w.institutions.setdefault("corruption", {o: 0.0 for o in OFFICES})
+    # Audit MI5-f: the delegates' psychology (standing, grievances, relationships, memories) is written only with the human
+    # factor, the one run that has any (RU5). Without it, the finding, the office's strain, the league's trust and the public
+    # event below still happen.
+    psychology = w.human_factor
     if verdict == "irregularities":
         corruption[office] = round(float(corruption.get(office, 0.0)) * CLEANUP, 3)
-        if same:
+        if psychology and same:
             standing.reputation_effect(w, holder.id, "corruption", 1.0)
-        if proposer and proposer != target:
+        if psychology and proposer and proposer != target:
             standing.reputation_effect(w, proposer, "audit_called_right", .8)
         if force is not None:
             force.bond = max(0.0, force.bond * .85)
             force.morale = clamp(force.morale - .01)
         w.adjust_league_trust(.02)
-        if target:
+        if psychology and target:
             for mid in active_ids - {target}:
                 _relate(w, mid, target, trust=-3)
     elif verdict == "clean":
-        if same:
+        if psychology and same:
             standing.reputation_effect(w, holder.id, "audit_cleared", 1.0)
-        if proposer and proposer != target:
+        if psychology and proposer and proposer != target:
             standing.reputation_effect(w, proposer, "witch_hunt", .8)
             if target and target in active_ids:
                 from .agents import _grievance
@@ -277,8 +283,9 @@ def _consequences(w: World, audit: dict, report: dict) -> None:
         if force is not None:
             force.morale = clamp(force.morale - .005)
     w.event("audit_report", report["text"], importance=2, office=office, member=target, verdict=verdict)
-    for mid in active_ids:
-        memory.add(w, mid, "audit_report", report["text"], [office, "corruption"], [target or ""])
+    if psychology:
+        for mid in active_ids:
+            memory.add(w, mid, "audit_report", report["text"], [office, "corruption"], [target or ""])
 
 
 # ---- what delegates see -----------------------------------------------------------------------
@@ -297,7 +304,9 @@ def text(w: World) -> str:
                 f"an audit of the {OFFICE_TITLES[audit['office']]}, ordered in Month {audit['opened'] + 1} by "
                 f"{ordered_by}, reports after Month {audit['due'] + 1} (the office is under strain meanwhile)")
         lines.append("Investigations under way: " + "; ".join(descriptions) + ".")
-    recent = [r for r in s["done"] if w.month - r["month"] <= 3]
+    # Audit MI10: a finding is shown in the month it is delivered and the next two, which is the three months the
+    # docstring promises. The window used to be three months after delivery, so four monthly states showed it.
+    recent = [r for r in s["done"] if w.month - r["month"] <= 2]
     if recent:
         lines.append("Audit findings (public; auditors can be wrong or unable to say): "
                      + " | ".join(r["text"] for r in recent))

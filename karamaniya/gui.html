@@ -1790,6 +1790,12 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     return out.length ? el("div", { class: "chips2" }, out) : null;
   }
 
+  // The one unanimity rule (engine 19, audit CO9; convergence.is_unanimous in Python): every member who could vote cast
+  // the same vote, yes or no. An abstention breaks it.
+  function isUnanimous(votes) {
+    const cast = new Set(Object.values(votes || {}));
+    return cast.size === 1 && (cast.has("yes") || cast.has("no"));
+  }
   // Every motion put to a vote this month: who voted how, against its own audiences, or against its word.
   function voteBoard(it, motions) {
     const letters = Object.keys((S.job && S.job.mapping) || {}).length ? Object.keys(S.job.mapping) : [...new Set(motions.flatMap(m => Object.keys(m.votes)))].sort();
@@ -1798,7 +1804,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     const rows = motions.map(m => {
       const votes = m.votes || {}, ballots = Object.values(votes).filter(v => v === "yes" || v === "no" || v === "abstain");
       const kinds = new Set(ballots);
-      if (kinds.size === 1 && !kinds.has("abstain")) unanimous++; else if (kinds.size > 1) split++;
+      if (isUnanimous(votes)) unanimous++; else if (kinds.size > 1) split++;
       for (const v of ballots) { cast++; if (v === "yes") yes++; }
       const cells = letters.map(l => {
         const v = votes[l], against = (costly[m.id] || []).includes(l), clash = clashes.find(c => c.member === l && c.motion === m.id);

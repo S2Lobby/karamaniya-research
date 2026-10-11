@@ -7,6 +7,7 @@ onto everyone who uses them. Karamaniya can leave by launching its own currency.
 """
 from __future__ import annotations
 
+import copy
 import math
 import re
 
@@ -24,6 +25,8 @@ REQUISITION = {"none": 0.0, "partial": 0.15, "heavy": 0.35}
 FOOD_WEIGHT = {"elite": 4.0, "middle": 1.8, "workers": 1.0, "farmers": 1.0}
 WORLD_FOOD_PRICE = 25.0   # gold per food unit on overseas markets
 EXPORTS0 = 62e6           # overseas exports per month at start, gold
+CONSERVATIVE_IMPORT_CUT = 0.97   # share of goods imports a conservative treasury still buys (audit MI3)
+CIVIL_SUPPORT_FEED = 0.002       # share of the national need the army's civil support feeds from the grain reserve (MI8)
 
 
 def labor(p) -> float:
@@ -137,7 +140,9 @@ def produce(w: World) -> dict:
     # same crown does more work when there is idle capacity to absorb it. Bounded, so this is a
     # nudge on utilisation rather than a lever that can make the economy produce anything.
     demand_support = clamp(1.0 + 0.8 * e.fiscal_impulse * causality.fiscal_multiplier(w), 0.85, 1.15)
-    util_ind = min(energy ** 0.6, credit * uncertainty) * taxdrag * capctl * demand_support
+    # Audit EC9: utilisation cannot exceed full capacity. The demand support from past spending can lift it above 1,
+    # and output then rose with demand past what plant and labour allow.
+    util_ind = min(1.0, min(energy ** 0.6, credit * uncertainty) * taxdrag * capctl * demand_support)
 
     fronts = set()
     if dip.war:
@@ -155,8 +160,8 @@ def produce(w: World) -> dict:
         farm = sum(labor(p) for p in pops if p.cls == "farmers")
         workers = sum(labor(p) for p in pops if p.cls == "workers")
         middle = sum(labor(p) for p in pops if p.cls == "middle")
-        util_serv = (credit * uncertainty * taxdrag * admin * capctl * demand_support
-                     * (1 - 0.45 * dip.blockade_eff if r.coast else 1.0))
+        util_serv = min(1.0, credit * uncertainty * taxdrag * admin * capctl * demand_support
+                        * (1 - 0.45 * dip.blockade_eff if r.coast else 1.0))
         # Productivity multiplies what the same labour can produce. It is applied to actual
         # output as well as to potential, so that the output gap measures frictions and demand
         # rather than being contaminated by the trend: without this, potential grows every month
@@ -175,6 +180,47 @@ def produce(w: World) -> dict:
     if e.potential_output > 0:
         update_potential(w, out)
     return out
+
+
+def found_economy(w: World) -> None:
+    """Settle the starting economy from the state the founding left it in (Audits EC4 and EC5).
+
+    world.new_world calls this once, after the inherited conditions are applied. The founded economy is measured on
+    a copy, so the writes below are the only changes to the world:
+
+    - Prices (Audit EC4). Month 1 moves food_rel halfway toward the level the founding harvest implies, and consumer
+      goods toward the level the founding industry implies. Both used to be measured before the founding conditions,
+      so Month 1 carried the founding correction as a price shock (seed 3: -3.0%; seeds 1 and 5: +1.6% to +1.8%, from
+      goods). The starts are now the founded levels. The consumer price index is divided by its founding bracket, so
+      it still reads 1.0 at founding.
+    - Potential output and the output gap (Audit EC5). Start conditions have every friction at 1, so production equals
+      frictionless output and the gap is zero by construction. Measured on the founded economy, the gap is what the
+      inherited conditions imply, and Okun's law reads no artificial widening in Month 1.
+
+    Output indices (gdp_real0, industry0, services0) keep the pre-founding baseline: the founding shock is a real fall
+    in output, and the public's "start = 100" is measured from there.
+    """
+    e = w.econ
+    probe = copy.deepcopy(w)
+    prod = produce(probe)           # the probe's potential is unset, so this reads production only
+    probe.econ.food_rel = 0.0
+    trade_and_food(probe, prod)
+    target = 2.0 * probe.econ.food_rel      # trade_and_food moves food_rel halfway to its target
+    e.food_rel = target
+    imp = 1.0 if e.currency == "crown" else 1.0 / max(0.3, e.fx_conf)
+    w.institutions["cpi_bracket0"] = (0.40 * e.food_rel * (0.8 + 0.2 * imp)
+                                      + 0.35 * e.goods_rel * (0.75 + 0.25 * imp) + 0.25)
+    e.consumer_goods0 = e.consumer_goods = max(1.0, prod["industry"] - e.arms_diversion + e.goods_imports)
+    # Audit EC5: potential is what the founded labour force and land can produce; the gap is the production the
+    # founded economy actually delivers, read against it. Start conditions have every friction at 1, so the gap
+    # there is zero by construction, and the inherited conditions are what make it non-zero.
+    e.potential_output = frictionless(w) * e.productivity
+    e.output_gap = e.prev_output_gap = ((prod["gdp_real"] / e.potential_output - 1.0)
+                                        if e.potential_output > 0 else 0.0)
+    # The price terms the first month's trace is measured from (audit EC7): the founded prices, with no price gap open.
+    w.institutions["price_terms"] = {"bracket": w.institutions["cpi_bracket0"], "extra": 1.0, "food_rel": e.food_rel,
+                                     "goods_rel": e.goods_rel, "lagged_fx": 0.0, "import_cost": 0.0,
+                                     "demand_pressure": 0.0, "money_pressure": 0.0}
 
 
 # ---- trade and food --------------------------------------------------------------------
@@ -199,6 +245,11 @@ def trade_and_food(w: World, prod: dict) -> dict:
     cap = float(getattr(pol, "import_cap", 0.0) or 0.0)
     if cap > 0:
         goods_want = min(goods_want, cap)
+    # Audit MI3: a conservative reserve policy trims the goods bought abroad, as its help text says ("conservative
+    # trims imports"). It used to cut energy and output, because import_scale is recomputed below every month.
+    from . import operations
+    if w.holder("treasury") and operations.current(w, "treasury")["reserve_policy"] == "conservative":
+        goods_want *= CONSERVATIVE_IMPORT_CUT
     union_cost = union_exports = 0.0
     if not in_crown and not dip.war:
         union_cost = food_dors * WORLD_FOOD_PRICE + 0.40 * (1 - coal_restriction) * 60e6
@@ -222,13 +273,16 @@ def trade_and_food(w: World, prod: dict) -> dict:
         flight_rate *= 0.2
     flight = max(0.0, e.gold) * flight_rate
     spend_want = food_over_want * WORLD_FOOD_PRICE + fuel_cost + goods_want + union_cost
-    available = max(0.0, e.gold - flight) + exports + union_exports + loans
+    # Audit EC1: a League tranche is paid in gold and funds the crown budget at the going rate (fiscal reads it
+    # as crowns against the deficit). It is therefore neither a reserve nor an import payment: counting it in both
+    # the reserves and the budget counted one tranche twice. The reserves are debited by what the Treasury sells.
+    available = max(0.0, e.gold - flight) + exports + union_exports
     scale = 1.0 if spend_want <= available else available / spend_want
     e.import_scale = scale
     # Reserves cannot go below zero: `scale` already limits spending to what is available, but
     # floating-point residue could leave a trace of a negative balance, which reads downstream as
     # a state the world does not allow.
-    e.gold = max(0.0, e.gold - flight + exports + union_exports + loans - spend_want * scale)
+    e.gold = max(0.0, e.gold - flight + exports + union_exports - spend_want * scale)
     food_over = food_over_want * scale
     e.goods_imports = goods_want * scale
     if union_cost > 0:
@@ -254,6 +308,12 @@ def trade_and_food(w: World, prod: dict) -> dict:
     market = farm_food - farmer_eat
     imports = food_dors + food_over
     gap = need_nf - (market + imports)
+    # Audit MI8: the army's civil support sets aside its share of the grain reserve before the ordinary release, to feed
+    # the hungriest once the allocation below has run (what they do not need goes back to the reserve).
+    reserved = 0.0
+    if w.holder("army") and operations.current(w, "army")["training_focus"] == "civil_support":
+        reserved = min(e.state_grain, CIVIL_SUPPORT_FEED * (farmers_need + need_nf))
+        e.state_grain -= reserved
     release = min(e.state_grain, max(0.0, gap) * (0.8 if pol.rationing else 0.3))
     e.state_grain -= release
     gap -= release
@@ -307,6 +367,19 @@ def trade_and_food(w: World, prod: dict) -> dict:
             for i, p in enumerate(grp):
                 p.hunger = clamp(1 - alloc[i] / p.size, 0.0, 1.0) if p.size else 0.0
 
+    # Audit MI8: the reserved grain feeds the hungriest populations, after the allocation has set everyone's hunger.
+    # Before, operations.apply lowered hunger and this allocation overwrote it within the month.
+    left = reserved
+    for p in sorted(pops, key=lambda p: -p.hunger):
+        if left <= 1e-9:
+            break
+        if p.size <= 0 or p.hunger <= 0:
+            continue
+        taken = min(left, p.size * p.hunger)
+        p.hunger = clamp(p.hunger - taken / p.size, 0.0, 1.0)
+        left -= taken
+    fed = reserved - left
+    e.state_grain += left
     # A region is short when less reached it than its people need. Recorded explicitly so the
     # national ratio and the regional reality can be read side by side -- the whole point is that
     # "food availability is 103%" and "Kessel is hungry" can both be true.
@@ -314,7 +387,7 @@ def trade_and_food(w: World, prod: dict) -> dict:
         r.id for r, _grp, need_r in region_rows
         if need_r > 0 and delivered.get(r.id, 0.0) < need_r * 0.95)
     need = farmers_need + need_nf
-    e.food_ratio = (supply + farmer_eat) / need if need else 1.0
+    e.food_ratio = (supply + farmer_eat + fed) / need if need else 1.0
     target_rel = clamp((need_nf / max(supply, 1.0)) ** 1.8, 0.6, 12.0)
     e.food_rel = 0.5 * e.food_rel + 0.5 * target_rel
     e.imports_food = imports
@@ -638,6 +711,18 @@ def procurement_premium(w: World) -> float:
 
 
 # ---- the state budget ------------------------------------------------------------------
+# Share of a compliance shock still in force the following month (audit IN-L1). A cut of 0.01 is 0.01 in its month,
+# 0.008 the next, and so on, so an inherited or temporary loss of tax collection fades rather than lasting forever.
+COMPLIANCE_SHOCK_DECAY = 0.8
+
+
+def cut_compliance(w: World, amount: float) -> None:
+    """Audit IN-L1: lower tax compliance by `amount` (a negative amount raises it). The shock is kept in the world and
+    subtracted by fiscal, so it reaches revenue. Before, the cut was written to the compliance value that fiscal
+    recomputed from the formula, and it never reached revenue, the costing or the state-capacity gauge."""
+    w.institutions["compliance_shock"] = float(w.institutions.get("compliance_shock", 0.0)) + amount
+
+
 def fiscal(w: World, prod: dict, trade: dict) -> dict:
     e, pol, dip = w.econ, w.policy, w.dip
     z = w.zone_of("karamaniya")
@@ -646,8 +731,11 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
     unrest = w.avg("unrest")
     exp_annual = annualize(z.exp_infl)
 
-    e.compliance = clamp(0.88 - 0.35 * max(0.0, unrest - 0.08) - 0.1 * (1 - e.admin_capacity),
+    # Audit IN-L1: compliance shocks (cut_compliance) are subtracted here, so they reach revenue, and then decay.
+    shock = float(w.institutions.get("compliance_shock", 0.0))
+    e.compliance = clamp(0.88 - 0.35 * max(0.0, unrest - 0.08) - 0.1 * (1 - e.admin_capacity) - shock,
                          0.3, 0.95)
+    w.institutions["compliance_shock"] = shock * COMPLIANCE_SHOCK_DECAY
     olivera_tanzi = 1 / (1 + 1.5 * max(0.0, e.infl))
     revenue = (pol.tax * gdp_nom * e.compliance * olivera_tanzi
                + 0.02 * gdp_nom * (1 - dip.blockade_eff) * (0.5 if dip.war else 1.0)
@@ -678,7 +766,8 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
     # slice of the stock is refinanced each month.
     e.interest_dom = e.debt_dom * (pol.rate + 0.02 + risk) / 12
     e.interest_for = e.debt_for * foreign_rate / 12 * gold_to_local
-    interest = e.interest_dom + e.interest_for
+    # Audit EC8: only domestic interest is a crown bill; foreign interest is paid from the reserves below.
+    interest = e.interest_dom
     e.rollover_need = e.debt_short_share * e.debt_dom / 12.0
     if pol.debt_service == "suspend":
         interest = 0.0
@@ -756,6 +845,16 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
         _sync_arrears_composition(w)
         e.arrears += unpaid
         _accrue_arrears(w, e, unpaid)
+    # Audit EC8: foreign interest is a claim in someone else's money, so the reserves pay it, in gold, and not the
+    # crown budget. What they cannot pay is owed to the foreign creditors and becomes foreign-debt arrears.
+    foreign_due = 0.0 if pol.debt_service == "suspend" else e.interest_for / max(gold_to_local, 1e-9)
+    foreign_paid = min(max(0.0, e.gold), foreign_due)
+    e.gold = max(0.0, e.gold - foreign_paid)
+    foreign_short = (foreign_due - foreign_paid) * gold_to_local
+    if foreign_short > 0:
+        _sync_arrears_composition(w)
+        e.arrears += foreign_short
+        e.arrears_by["foreign_debt"] = e.arrears_by.get("foreign_debt", 0.0) + foreign_short
     base = programs + patronage + interest
     e.paid_share = clamp(1 - unpaid / base, 0.0, 1.0) if base > 0 else 1.0
     e.admin_capacity += 0.15 * ((1 - 1.5 * (1 - e.paid_share)) - e.admin_capacity)
@@ -813,13 +912,28 @@ def statistics(w: World) -> None:
         w.count("stats_scandals", 1)
 
 
+def _close_price_gap(w: World, channel: str, flow: float, rigidity: float) -> float:
+    """Audit EC3. Add this month's price effect to the gap still open on one channel, let the share (1 - rigidity) of
+    that gap arrive in the price level, and carry the rest to the following months. Returns the level that has arrived
+    on the channel so far (the term the price level multiplies by), which persists after the flow has stopped."""
+    gaps = w.institutions.setdefault("price_gaps", {})
+    state = gaps.setdefault(channel, {"open": 0.0, "level": 0.0})
+    due = state["open"] + flow
+    arrival = due * (1.0 - rigidity)
+    state["open"] = due - arrival
+    state["level"] = state["level"] + arrival
+    return state["level"]
+
+
 # ---- money and prices ------------------------------------------------------------------
 def money_and_prices(w: World, prod: dict) -> None:
     from . import causality
     e, pol = w.econ, w.policy
-    launch_currency_if_due(w)
+    launch_currency_if_due(w, prod)
     for z in w.zones:
         for nid in z.members:
+            # Audit EC12: Rival.printing is reserved. Nothing assigns it, so it is 0.0 in every run and this reader
+            # changes nothing. A neighbour's money creation would enter here.
             growth = CREDIT_GROWTH + (w.rivals[nid].printing if nid in w.rivals else 0.0)
             z.money[nid] *= 1 + growth
         # Money is measured against the economy's CAPACITY, not against this month's output.
@@ -831,6 +945,8 @@ def money_and_prices(w: World, prod: dict) -> None:
         # and the output gap, which is where the brief's transmission chain expects it.
         y = sum((w.rivals[n].gdp_real if n in w.rivals else _capacity_gdp(w, prod)) for n in z.members)
         m = sum(z.money.values())
+        # Audit EC12: Rival.rate is reserved. Nothing assigns it, so every neighbour keeps the default 6% and this
+        # reader changes nothing; a neighbour's own policy rate would enter here.
         rates = {n: (w.rivals[n].rate if n in w.rivals else pol.rate) for n in z.members}
         rate = sum(rates[n] * z.money[n] for n in z.members) / m
         v = math.exp(ALPHA * ((z.exp_infl - THETA * rate / 12) - BASE_TERM))
@@ -882,10 +998,18 @@ def money_and_prices(w: World, prod: dict) -> None:
     # `e.fx` is crowns per karam, so a FALLING rate is a depreciation and must raise prices.
     fx_change = causality.depreciation(w)
     passthrough = causality.pass_through(w) if e.currency == "karam" else 0.0
-    lagged_fx = clamp(fx_change * passthrough * (1.0 - causality.param(w, "price_rigidity")), -0.15, 0.15)
+    # Audit EC3: each month's pass-through and imported-input cost is a price gap. The share of the gap still open that
+    # the economy does not pass on within the month (price_rigidity) arrives in the price level over the following
+    # months; what arrives stays in the level. So a depreciation raises prices by its pass-through over several months,
+    # and the level stays up when the currency stops falling. Before, each month's flow was a one-month multiplier and
+    # reversed the next month.
+    rigidity = causality.param(w, "price_rigidity")
+    lagged_fx = _close_price_gap(w, "fx", clamp(fx_change * passthrough, -0.15, 0.15), rigidity)
     # Imported input costs reach the consumer basket at the economy's import share, independent of
     # whether the currency itself is the country's own.
-    import_cost = clamp(causality.param(w, "import_dependency") * e.import_price_infl, -0.10, 0.12)
+    import_cost = _close_price_gap(w, "import",
+                                   clamp(causality.param(w, "import_dependency") * e.import_price_infl, -0.10, 0.12),
+                                   rigidity)
 
     # Persistent demand and money pressure. Small weights: the output gap and the money stock
     # already reach prices through the money-market relation, so these carry only the extra pull
@@ -894,12 +1018,18 @@ def money_and_prices(w: World, prod: dict) -> None:
     extra = clamp(1.0 + lagged_fx + import_cost + urgency["demand_pressure"]
                   + urgency["money_pressure"], 0.5, 3.0)
 
-    new_cpi = z.price * (0.40 * e.food_rel * (0.8 + 0.2 * imp)
-                         + 0.35 * e.goods_rel * (0.75 + 0.25 * imp) + 0.25) * extra
+    # Audit EC4: the index is the bracket relative to its founding value, so it reads 1.0 at founding whatever the
+    # founding food price (economy.found_economy sets the value; it is 1.0 for runs that predate it).
+    bracket0 = float(w.institutions.get("cpi_bracket0", 1.0))
+    bracket = 0.40 * e.food_rel * (0.8 + 0.2 * imp) + 0.35 * e.goods_rel * (0.75 + 0.25 * imp) + 0.25
+    new_cpi = z.price * bracket * extra / bracket0
     e.cpi_official = z.price * (0.40 * food_official * (0.8 + 0.2 * imp)
-                                + 0.35 * goods_official * (0.75 + 0.25 * imp) + 0.25) * extra
+                                + 0.35 * goods_official * (0.75 + 0.25 * imp) + 0.25) * extra / bracket0
     e.infl = new_cpi / e.cpi - 1
     e.cpi = new_cpi
+    # Audit TO1: the month whose prices these are. society.months_of_prices reads it, so every reader of the
+    # inflation figure counts the months the CPI really covers, whenever it asks.
+    w.institutions["cpi_month"] = w.month
     e.infl_history = (e.infl_history + [e.infl])[-12:]
     e.gdp_trend = (e.gdp_trend + [prod["gdp_real"]])[-6:]
 
@@ -914,29 +1044,35 @@ def money_and_prices(w: World, prod: dict) -> None:
     # Nominal wage growth is not real wage growth. A raise that trails inflation is a cut, and
     # this is the number that reaches soldiers, civil servants and workers.
     e.wage_prev = e.wage_prev if e.wage_prev > 0 else e.wage
-    wage_growth = e.wage / e.wage_prev - 1.0 if e.wage_prev > 0 else 0.0
     e.wage_prev = e.wage
     e.real_wage = e.wage / e.cpi if e.cpi > 0 else 1.0
     e.fx_prev = e.fx
 
     # Why prices moved, with each channel named. Kept for research and debugging; agents never
     # see it, because a delegate who could read the decomposition would be reading the answer key.
-    excess_wage = wage_growth - e.infl
     # Note there is no separate `expectations` line. Expectations reach prices through the
     # money-market velocity of the zone, so they are already inside `zone_price_level`; listing
-    # them again would report a contributor that did not independently move anything.
+    # them again would report a contributor that did not independently move anything. Wages are not in the
+    # consumer price at all, and import shortage is not in the formula, so neither is listed (audit EC7).
+    # Audit EC7: each term is the price formula's own term. The total is this month's change in the price level,
+    # so each entry is this month's change in the term, weighted as the formula weights it and over last month's
+    # bracket (or extra). The zone weighs 1 because it multiplies the whole bracket. The terms add up to the total,
+    # apart from the small cross terms of a monthly change.
+    now = {"bracket": bracket, "extra": extra, "food_rel": e.food_rel, "goods_rel": e.goods_rel,
+           "lagged_fx": lagged_fx, "import_cost": import_cost,
+           "demand_pressure": urgency["demand_pressure"], "money_pressure": urgency["money_pressure"]}
+    prev = w.institutions.get("price_terms", now)
     contributions = {
-        "zone_price_level": z.infl * 0.75,
-        "food_relative_price": (e.food_rel - 1.0) * 0.04,
-        "goods_relative_price": (e.goods_rel - 1.0) * 0.03,
-        "exchange_rate_passthrough": lagged_fx,
-        "import_cost": import_cost,
-        "excess_wage_growth": clamp(excess_wage, -0.05, 0.05) * 0.15,
-        "demand_pressure": urgency["demand_pressure"],
-        "money_pressure": urgency["money_pressure"],
-        "import_shortage": (e.import_scale - 1.0) * -0.03,
+        "zone_price_level": z.infl,
+        "food_relative_price": 0.40 * (0.8 + 0.2 * imp) * (now["food_rel"] - prev["food_rel"]) / prev["bracket"],
+        "goods_relative_price": 0.35 * (0.75 + 0.25 * imp) * (now["goods_rel"] - prev["goods_rel"]) / prev["bracket"],
+        "exchange_rate_passthrough": (now["lagged_fx"] - prev["lagged_fx"]) / prev["extra"],
+        "import_cost": (now["import_cost"] - prev["import_cost"]) / prev["extra"],
+        "demand_pressure": (now["demand_pressure"] - prev["demand_pressure"]) / prev["extra"],
+        "money_pressure": (now["money_pressure"] - prev["money_pressure"]) / prev["extra"],
     }
     causality.trace(w, "inflation", e.infl, contributions)
+    w.institutions["price_terms"] = now
     # Output growth feeds real money demand, so it is measured before prices are set next month.
     e.output_growth = (prod["gdp_real"] / e.gdp_prev - 1.0) if e.gdp_prev > 0 else 0.0
     e.gdp_prev = prod["gdp_real"]
@@ -970,14 +1106,16 @@ def _capacity_gdp(w: World, prod: dict) -> float:
     return _trend_gdp(w, prod)
 
 
-def launch_currency_if_due(w: World) -> None:
+def launch_currency_if_due(w: World, prod: dict) -> None:
     e = w.econ
     if e.currency != "crown" or e.currency_launch < 0 or w.month < e.currency_launch:
         return
     crown = w.zone_of("karamaniya")
     money = crown.money.pop("karamaniya")
     crown.members.remove("karamaniya")
-    y = e.gdp_real
+    # Audit EC6: scale the new zone on the capacity later months use (potential output), not on last month's output,
+    # so the zone prices where the crown did at the moment of the launch.
+    y = _capacity_gdp(w, prod)
     v = math.exp(ALPHA * ((crown.exp_infl * 0.7 - THETA * w.policy.rate / 12) - BASE_TERM))
     karam = type(crown)(id="karam", name=w.names["karam"], members=["karamaniya"],
                         money={"karamaniya": money}, price=crown.price,

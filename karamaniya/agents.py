@@ -283,7 +283,7 @@ def ensure(w: World, trait_baselines: dict | None = None) -> None:
         w.member(a).relationships.setdefault(b, _relationship(w, a, b))
         w.member(b).relationships.setdefault(a, _relationship(w, b, a))
     for m in w.members:
-        m.agent_state["constituencies"] = audiences_for(w, m.id)
+        _hold_audiences(w, m.id)
         if m.ideology and not m.commitments:
             add_commitment(w, m.id, m.ideology, initial=True)
 
@@ -293,12 +293,35 @@ def audiences_for(w: World, mid: str) -> dict:
     current = m.agent_state.get("constituencies", {})
     if not isinstance(current, dict):
         current = {}
+    # Audit AG9: an audience its office has taken is kept while the office is away (_hold_audiences), and returns with it.
+    dormant = m.agent_state.get("dormant_constituencies")
+    dormant = dormant if isinstance(dormant, dict) else {}
     out = {name: {**_new_audience(name, w.seed, mid), **(current.get(name) or {})}
            for name in AUDIENCES["head"]}
     for office in w.offices_of(mid):
         for name in AUDIENCES[office]:
-            out.setdefault(name, {**_new_audience(name, w.seed, mid), **(current.get(name) or {})})
+            kept = current.get(name) or dormant.get(name) or {}
+            out.setdefault(name, {**_new_audience(name, w.seed, mid), **kept})
     return out
+
+
+def _hold_audiences(w: World, mid: str) -> None:
+    """Set a delegate's audiences from its offices now. An audience its office has taken is kept, not discarded, so the
+    support it had is still there when the office returns (audit AG9). Only a delegate whose offices have changed has
+    the store written at all."""
+    state = w.member(mid).agent_state
+    old = state.get("constituencies")
+    old = old if isinstance(old, dict) else {}
+    dormant = dict(state.get("dormant_constituencies") or {})
+    new = audiences_for(w, mid)
+    dormant.update({name: entry for name, entry in old.items() if name not in new})
+    for name in new:
+        dormant.pop(name, None)
+    state["constituencies"] = new
+    if dormant:
+        state["dormant_constituencies"] = dormant
+    else:
+        state.pop("dormant_constituencies", None)
 
 
 def _audience_priorities(name: str) -> list[str]:
@@ -470,7 +493,8 @@ def _action_tags(record: dict, mid: str, votes: bool = True) -> set[str]:
         if mo.get("void") or mo.get("votes", {}).get(mid) != "yes":
             continue
         t, s, v = mo.get("type"), mo.get("subject"), str(mo.get("value", "")).lower()
-        repressive_policy = (t == "set_policy" and s in ("protest_response", "arrests", "surveillance", "election_conduct", "stats", "emigration")
+        # Audit AG2: massaging the statistics is dishonesty (the dishonesty tag below), not repression.
+        repressive_policy = (t == "set_policy" and s in ("protest_response", "arrests", "surveillance", "election_conduct", "emigration")
                              and v in ("lethal", "mass", "high", "rigged", "massaged", "closed"))
         repressive_constitution = (t == "constitution" and (
             (s == "press" and v in ("restricted", "censored"))
@@ -511,11 +535,15 @@ def _action_tags(record: dict, mid: str, votes: bool = True) -> set[str]:
 def _change(rel: dict, *, month: int | None = None, reason: str | None = None, **deltas) -> None:
     changes = {}
     for key, delta in deltas.items():
-        before = round(float(rel.get(key, 50 if key in ("trust", "respect", "perceived_reliability") else 0)), 1)
-        after = round(clamp(before + delta, 0, 100), 1)
+        # Audit AG1: the value keeps full precision. Rounding every change to 0.1 erased the small ones (a 0.04 respect
+        # gain, a 1.5% monthly decay of resentment below 3.3). Display code rounds what it shows.
+        before = float(rel.get(key, 50 if key in ("trust", "respect", "perceived_reliability") else 0))
+        after = clamp(before + delta, 0, 100)
         rel[key] = after
-        if after != before:
-            changes[key] = {"from": before, "to": after, "delta": round(after - before, 1)}
+        # The event ledger records what a reader would see: a change too small to show at 0.1 is not logged, so the
+        # monthly decay of fear and resentment does not add an event to every relationship every month.
+        if round(after, 1) != round(before, 1):
+            changes[key] = {"from": round(before, 3), "to": round(after, 3), "delta": round(after - before, 3)}
     if changes:
         events = rel.setdefault("events", [])
         events.append({"month": month, "reason": reason or "unspecified: caller did not provide a cause",
@@ -682,7 +710,9 @@ def _political_obligations(w: World, record: dict) -> None:
             else:
                 raw_measures = (motion.get("measures") or (motion.get("action") or {}).get("measures") or [])
                 levers = [str(x.get("lever", "")) for x in raw_measures if isinstance(x, dict)]
-            offices = {politics.LEVER_OFFICE.get(lever) for lever in levers} - {None}
+            # Audit AG6: the offices in a fixed order. A set iterates in an order that depends on the process's hash seed,
+            # which changed the grievances' order and the prompt that lists the first three.
+            offices = sorted({politics.LEVER_OFFICE.get(lever) for lever in levers} - {None})
             for office in offices:
                 holder = w.holder(office)
                 if holder and holder.id != proposer and votes.get(holder.id) == "no":
@@ -800,7 +830,7 @@ def _update_stress(w: World) -> None:
             "smoothing": {"prior": .65, "target": .35},
         })
         del trace[:-24]
-        state["constituencies"] = audiences_for(w, m.id)
+        _hold_audiences(w, m.id)
         forgiveness = state["traits"].get("stubbornness", 50)
         for grievance in state.get("grievances", []):
             if w.agent_architecture_version >= 2:
@@ -1049,13 +1079,25 @@ def update(w: World, record: dict) -> dict:
 
 
 def snapshot(w: World) -> dict:
+    def two_decimals(value):
+        # Audit AG1-f: the copy rounds the relationship figures to 2 decimals. AG1 keeps the stored values at full precision,
+        # and the copy wrote every float at about 17 digits into each month's record. It builds new containers too, so the
+        # copy does not share a ledger's change dicts with the stored relationship.
+        if isinstance(value, float):
+            return round(value, 2)
+        if isinstance(value, dict):
+            return {k: two_decimals(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [two_decimals(v) for v in value]
+        return value
+
     out = {m.id: {
         "clout": m.clout, "alignment": dict(m.alignment), "ideology": m.ideology,
         "ideology_history": list(m.ideology_history),
         "private_disposition": context(w, m.id),
         "constituencies": audiences_for(w, m.id),
-        "relationships": {o: {**{k: v for k, v in r.items() if k != "events"},
-                               "events": [dict(event) for event in r.get("events", [])[-20:]]}
+        "relationships": {o: two_decimals({**{k: v for k, v in r.items() if k != "events"},
+                                           "events": r.get("events", [])[-20:]})
                           for o, r in m.relationships.items()},
         "stress": dict(m.agent_state.get("stress", {})),
         "stress_trace": [dict(x) for x in m.agent_state.get("stress_trace", [])[-6:]],
@@ -1234,7 +1276,9 @@ def secret_goal_context(state: dict) -> str:
 
 def context(w: World, mid: str) -> str:
     """Render private disposition in prose, without exposing numeric trait scores."""
-    ensure(w)
+    # Audit RU5: rendering a disposition creates the delegates' psychology, so it is created only with the human factor.
+    if w.human_factor:
+        ensure(w)
     if w.agent_architecture_version >= 2:
         return disposition_v2(w, mid)
     m, state = w.member(mid), w.member(mid).agent_state

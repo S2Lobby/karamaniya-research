@@ -4,6 +4,87 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 19, agent prompt 16 and psychology 8
+
+`WORLD_ENGINE` 19, `AGENT_PROMPT` 16, `PSYCHOLOGY` 8 and `ERROR_TAXONOMY` 4: the audit of engine 18, fixed. Ten read-only
+audits found 116 faults in engine 18, each reproduced by a script (`docs/AUDIT_ENGINE18.md`); fifteen agents fixed them
+by slice, each fix with a regression test that failed first (`tests/test_engine19_*.py`), and review found and fixed
+what the fixes left or met. Nothing here tells the delegates what to decide. The prompts changed on purpose, so the
+prompt-freeze fixture was rewritten with this bump. Backlog T93-T96.
+
+- **No answer ends a run.** A list, a number or an object where the schema wants another type, in any delegate's or
+  cabinet's answer, ended the month with a TypeError (47 field and junk combinations did). Each field is now read
+  for its type, a problem is recorded, and an answer a normaliser still cannot read is counted as
+  `ANSWER_UNREADABLE` and read as empty. A failed or unreadable cabinet answer leaves the month to the Union's rules.
+  A non-finite number ("nan") is no policy value, and the state check reports one wherever it hides.
+- **Values mean what they say.** A set_policy value outside its setting's range is refused with the range
+  (`VALUE_OUT_OF_RANGE`), where it was clamped with no word: "military 0.8" written for 0.8% became 20% of output.
+  A share whose own text writes it with a percent sign ("0.8%") is read as that percent, once, at intake. Programmes
+  are held to the same ranges, and deployment shares set together no longer depend on their order. An inflation or
+  deficit threshold of 2 is 2%, as an approval threshold always was; a figure such as 1.5bn or 12,500,000 in a
+  safeguard is read whole.
+- **Motions say what they do.** A rejection is not an offer ("we reject the Union's call for a joint inquiry" offered
+  one); one negation vocabulary serves the fine print and the act checks; an appointment, an expulsion, a referendum
+  or an emergency whose text names another member, office, question or direction is held back for repair; a joint
+  trade commission is not an inquiry; a stand-down said in other words is one. Repairs are paired by id and go
+  through intake. A motion past the two-motion cap is refused on the record.
+- **Numeric grounding judges facts.** The check on the delegates' statements and notes judges a figure only where
+  the text states it as a fact about the state, against the metric its own clause names: not amounts proposed,
+  thresholds, settings, targets, motion ids or dates. On the 133 motion texts of three real runs, engine 18 would
+  have flagged 9 (loans and relief read as reserves, a rate change read as unemployment, a payment read as army
+  size), all wrongly; engine 19 flags none. Comma-grouped figures, "/100", the Union's troops and opinion words are
+  read as the audit asked.
+- **The neighbours.** Call-ups are capped per month across a decision's acts and the Union's own build-up, and draw
+  the reserve pool one for one; the Union's losses are replaced; a neighbour's defence burden is its army priced in
+  money over its current output, so readiness no longer erodes in every peaceful month; the cabinets see the
+  regions the Union or the rebels hold and an unbiased band for Karamaniya's army (the exact figure while
+  inspectors are in); a demand is due in its deadline month and an expired one lapses once enforced; Veleria's coal
+  embargo can ease. With the cabinets off, the Union's rule now sets demands (from Month 3, once Karamaniya looks
+  wavering or is outnumbered three to one), and a blockade it imposed lifts after four months, when talks on status
+  open, or when its cohesion falls to 0.55. Karamaniya's own attack posture starts no war in Month 1 and returns to
+  defence with a ceasefire. Every change of an embargo's level moves the exporter's output.
+- **The army.** Calling up reservists costs their pay and their activation (it was free); the trained pool's upkeep
+  is reported, not charged, as no engine charged it. The General Staff's request is judged against the gap it arose
+  with, and a call-up counts by the strength it adds. A stand-down holds the two months it is documented for; audit
+  findings show three months. A lost region's reservists leave the labour books, and a resumed run matches the
+  unbroken one.
+- **The economy.** A run starts at its founded food and goods prices and output gap, so Month 1 shows only that
+  month's shocks (seed 3 opened with -3.0%, annualised to -30.7% "a year"); inflation is shown over the months it
+  covers; a League tranche funds the budget once; foreign interest is paid from the reserves; exchange-rate
+  pass-through accumulates; utilisation is capped at capacity; a price fall is labelled deflation; a compliance cut
+  reaches revenue; "conservative" reserves trim goods imports; civil support feeds the hungriest from the grain
+  reserve; the karam launches at potential output.
+- **Information.** A costing request costs the motion it named, at the engine's own prices (a soldier cost 900
+  crowns a month there and 260 in the pay bill); a ministry's request capacity is for the month; a false warning's
+  reports are read in the month the issue starts; forecasts are scored after the month's figures are set; a censored
+  press does not publish a border leak; "mayor" is not a hedge.
+- **The council's month.** A deferral to a named month holds; a conditional vote on a motion that lapsed counts no;
+  a resignation in the decision does not drop the resigner's vote from the tally; a withheld report can leak; the
+  audit log records approval.
+- **What the delegates read.** A motion's and an amendment's text is shown as stored, with its [cut] mark; a seat
+  with a small context keeps its instructions and answer format, loses the canonical state last, and is told what
+  was shortened; settings print as the directives do; one published output figure; the election line is the vote
+  under the campaign and the settings in force; the short disposition keeps the agenda, the past, the base, the
+  priorities and the fears; under seeded names the English word "union" stays English.
+- **The delegates' minds.** Relationships keep the exact size of every change; massaging the statistics is
+  dishonesty; promises are judged in the month they are made, and public orders under a secret ballot; a base reads
+  a yes vote's conduct and ends with its delegate; an audience an office brings is kept while the office is away; a
+  setting counts as changed only when it moves. Without the human factor no psychology is created or reported, the
+  scripted stand-ins can form a government, audits deliver and public reactions apply; an audit's verdict in such a
+  run crashed it in 29 of 40 seeds before this.
+- **Elections and integrity.** A rigged count never overdraws another list and draws its exposure from its own
+  stream; the engine-17 referendum formula applies from architecture 2; the integrity audit counts only motions that
+  executed; red lines count only the act they name; the amendment guard protects the Charter's Month 36.
+- **Runs and tools.** Baselines always run the stand-in neighbours and record a stopped mode as failed, with the
+  report still showing the modes that finished; one unanimity rule (an abstention breaks it) in the panel, the
+  scorecard and the control room; a secret-ballot run reports its vote costs as not recorded; `tools/matrix.py
+  --compare` reads only finished runs; the calibration's monthly-peak check needs six readable months.
+- **Calibration.** On 6 seeds x 4 rule councils x 36 months every check passes in every run it applies to: `inflation_mean` passes 24 of 24 (21 of 24 on engine 18, all three failures seed 3's founding glut, T93), and the monthly-peak check now applies to the 11 runs with six readable months. The rule councils came out as on engine 18: the same outcomes on every seed (the do-nothing council voted out in 3 of 6, the dove in 5, the scripted and hawk councils keeping power by force), approval within 0.02 (do-nothing 0.45, hawk 0.22), the same 36 ultimatums, and no war, cession, plot or coup; the hawk's army peaked at 55,000 (49,000).
+- **Known, not fixed (T94).** In the karam a higher policy rate raises the price level: the credit channel cuts
+  capacity output, and the price target divides the money by it. Engine 18 had it too (a 60% rate raised expected
+  inflation at every level of printing); a test that passed only by 0.0014, on the currency-launch artefact engine 19
+  removes, is now marked as a known failure.
+
 ## World engine 18, agent prompt 15 and psychology 7
 
 `WORLD_ENGINE` 18, `AGENT_PROMPT` 15 and `PSYCHOLOGY` 7: the neighbours read how firm Karamaniya looks, an opposition

@@ -13,6 +13,7 @@ metric or on another motion's fate, and say what happens if the condition fails.
 """
 from __future__ import annotations
 
+import math
 import re
 from difflib import SequenceMatcher
 
@@ -553,13 +554,33 @@ METRICS = ("food_ratio", "reserves", "arrears", "unemployment", "army_morale", "
            "inflation", "approval", "deficit")
 
 
+def decision_passes(w: World, votes: dict, electorate: list, head_id: str | None) -> bool:
+    """Whether a motion carries, counted over the members who cast the vote (Audit CO8).
+
+    politics.passes counts the members seated when it is called, so a delegate who resigned in the same decision
+    would drop out of the count it was cast in. This is the same rule over an explicit electorate. Over the live
+    roster it gives politics.passes' answer under every decision rule (tests/test_engine19_council.py checks it).
+    """
+    yes = sum(1 for mid in electorate if votes.get(mid) == "yes")
+    n = len(electorate)
+    if w.const.decision_rule == "head_decides" and head_id is not None and head_id in electorate:
+        return votes.get(head_id) == "yes"
+    if w.const.decision_rule == "two_thirds":
+        return yes >= math.ceil(2 * n / 3)
+    if w.const.decision_rule == "unanimity":
+        return yes == n
+    return yes > n / 2
+
+
 def resolve_conditionals(w: World, motions: list, votes_by_motion: dict, conditions: dict,
-                         opening_values: dict) -> dict:
+                         opening_values: dict, passed=None) -> dict:
     """Turn conditional votes into yes / no / abstain.
 
     conditions: motion id -> member -> condition dict. Metric conditions are tested against the
     state at the start of the session. Motion conditions ('yes if M2 passes') are resolved in
-    dependency order using the other motions' provisional outcomes."""
+    dependency order using the other motions' outcomes. `passed(motion_id, votes)` gives a motion's
+    outcome; the council passes its final one, so a motion that was void or lapsed does not pass
+    (Audit CO6). Without it, the vote alone decides."""
     from .politics import passes
     outcome = {}
     details = {}
@@ -609,8 +630,11 @@ def resolve_conditionals(w: World, motions: list, votes_by_motion: dict, conditi
                 del pending[motion_id][member]
                 progress = True
             if not pending.get(motion_id):
-                counted = {k: v for k, v in votes_by_motion[motion_id].items() if w.member(k).status == "active"}
-                resolved_outcome = passes(w, counted)
+                if passed is None:
+                    counted = {k: v for k, v in votes_by_motion[motion_id].items() if w.member(k).status == "active"}
+                    resolved_outcome = passes(w, counted)
+                else:
+                    resolved_outcome = passed(motion_id, votes_by_motion[motion_id])
                 if motion_id not in outcome or outcome[motion_id] != resolved_outcome:
                     outcome[motion_id] = resolved_outcome
                     progress = True

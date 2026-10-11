@@ -132,3 +132,9 @@ of one council is usually that council's behaviour, not the world. Both are wort
   (`foreign.EMBARGO_COST`, `tests/test_engine18_embargo.py`). The range did not catch it, since 0.892 is inside
   0.75 to 1.25; the identical straight line on every run did. Read the figure against the range, and read the
   spread too: a figure that is the same on every seed and council is a rule at work, not luck.
+- On engine 19 the same grid (6 seeds x 4 councils x 36 months) passes every check in every run it applies to.
+  `inflation_mean` passes 24 of 24 (21 of 24 on engine 18): seed 3's opening fall came from a founding food price of
+  1.0 whatever the harvest, annualised over a partial year (audit TO1, EC4; T93). `inflation_monthly_peak` now needs
+  six readable months, so it applies to 11 of the 24 runs; on engine 18 it "passed" runs it read two months of.
+  `rival_output_drift` is 1.037 to 1.038 on every run, on engine 18 after its embargo fix as on 19: the neighbours'
+  trend growth, which no rule council moves. Read it as a rule at work, as above.

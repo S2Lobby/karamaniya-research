@@ -226,13 +226,15 @@ NORMAL = "NORMAL"
 SLOWDOWN = "SLOWDOWN"
 RECESSION = "RECESSION"
 HIGH_INFLATION = "HIGH_INFLATION"
+DEFLATION = "DEFLATION"              # audit EC10: a fall in prices is not high inflation
 BALANCE_OF_PAYMENTS_STRESS = "BALANCE_OF_PAYMENTS_STRESS"
 FISCAL_CRISIS = "FISCAL_CRISIS"
 SUPPLY_CRISIS = "SUPPLY_CRISIS"
-REGIMES = (NORMAL, SLOWDOWN, RECESSION, HIGH_INFLATION, BALANCE_OF_PAYMENTS_STRESS,
+REGIMES = (NORMAL, SLOWDOWN, RECESSION, HIGH_INFLATION, DEFLATION, BALANCE_OF_PAYMENTS_STRESS,
            FISCAL_CRISIS, SUPPLY_CRISIS)
 
 HIGH_INFLATION_ANNUAL = 0.40
+DEFLATION_ANNUAL = -0.10
 RECESSION_GAP = -0.04
 SLOWDOWN_GAP = -0.01
 RESERVE_MONTHS_CRITICAL = 1.0
@@ -254,8 +256,10 @@ def regime(w: World) -> str:
     reserve_months = e.gold / max(1.0, 0.10 * gdp_m) if e.gold >= 0 else 0.0
     if e.food_ratio < 0.88 or e.energy < 0.70:
         return SUPPLY_CRISIS
-    if infl_a >= HIGH_INFLATION_ANNUAL or infl_a <= -0.10:
+    if infl_a >= HIGH_INFLATION_ANNUAL:
         return HIGH_INFLATION
+    if infl_a <= DEFLATION_ANNUAL:
+        return DEFLATION
     if e.confidence < 0.35 and (e.arrears > 0.05 * gdp_m or deficit_ratio > DEFICIT_GDP_CRISIS):
         return FISCAL_CRISIS
     if reserve_months < RESERVE_MONTHS_CRITICAL or (e.import_scale < 0.75 and e.debt_for > 0):

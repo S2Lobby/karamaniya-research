@@ -290,9 +290,12 @@ def panel_questions(w: World, mid: str) -> dict:
     """This month's panel for one delegate: key -> (question, starting figure). The same for every
     delegate except own_seat, asked only while the delegate stands for its own seat at an election
     still to come."""
+    from .briefing import _yoy_window
     due = w.month + PANEL_HORIZON - 1          # the panel asks about the end of the third month from now
-    out = {"inflation_up": (f"reported annual inflation will be higher at the end of Month {due + 1} than its "
-                            f"{_reported_inflation(w):.1%} now", round(_reported_inflation(w), 5)),
+    # Audit TO1-f: the figure names the window it covers, in the words the briefing and the prompts use (_yoy_window). Before,
+    # it said "annual inflation" whatever the months of prices behind it, so in Month 3 it claimed a year it did not cover.
+    out = {"inflation_up": (f"reported inflation will be higher at the end of Month {due + 1} than its "
+                            f"{_reported_inflation(w):.1%} {_yoy_window(w)} now", round(_reported_inflation(w), 5)),
            "approval_up": (f"the government's approval will be higher at the end of Month {due + 1} than its "
                            f"{_approval(w):.0%} now", round(_approval(w), 5)),
            "war": (f"Karamaniya will be at war at the end of Month {due + 1}", None)}

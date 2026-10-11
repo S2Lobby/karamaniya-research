@@ -83,13 +83,48 @@ def _soonest_front(w: World) -> tuple:
     return soonest or (None, None, None)
 
 
-def answered(w: World, extra: int) -> bool:
-    """The government answers by calling up reservists, or by an army target that covers ANSWER_SHARE
-    of the gap with recruitment open."""
+def arise(w: World) -> None:
+    """Called at the start of the month's military update, before its recruitment and call-ups.
+
+    Audit MI4: a request that arises this month is recorded as it stands here, so the government's answer is judged
+    against the gap the request was made for, not against the gap that the answer itself leaves."""
+    if w.agent_architecture_version < 2:
+        return
+    entry = state(w)["army"]
+    if entry["since"] is None:
+        req = request(w)
+        if req is not None:
+            _note_arising(w, entry, req)
+
+
+def _note_arising(w: World, entry: dict, req: dict) -> None:
+    """Records a request as it arises: its gap, and the army and call-up strength the answer is counted from.
+
+    A request that is already standing in a checkpoint from before this record is given its gap where it stands,
+    and keeps the month it arose."""
+    from . import military
+    if entry.get("since") is None:
+        entry["since"] = w.month
+    if entry.get("gap") is None:
+        entry.update(gap=req["extra"], army0=w.mil.army.size, mob0=military.mobilized_strength(w))
+
+
+def answered(w: World, extra: float) -> bool:
+    """Whether the government has answered a request for `extra` soldiers, judged against the request as it arose.
+
+    Audit MI4 and MI7: the army target counts its soldiers beyond the army the request arose with (only with
+    recruitment open), and a call-up counts by the effective strength it has added since then, like any other soldier.
+    Together they must cover ANSWER_SHARE of the gap. Before, the target was tested against the army of the day, which
+    the answer had already grown, so a half answer fell short in the month it was delivered; and any call-up of
+    reservists answered the request, however small."""
+    from . import military
     p = w.policy
-    if p.mobilization != "none":
-        return True
-    return p.recruitment != "none" and p.army_target >= w.mil.army.size + ANSWER_SHARE * extra
+    entry = state(w)["army"]
+    base_army = entry["army0"] if entry.get("army0") is not None else w.mil.army.size
+    base_call_up = entry["mob0"] if entry.get("mob0") is not None else military.mobilized_strength(w)
+    target_part = max(0.0, p.army_target - base_army) if p.recruitment != "none" else 0.0
+    call_up_part = max(0.0, military.mobilized_strength(w) - base_call_up)
+    return target_part + call_up_part >= ANSWER_SHARE * extra
 
 
 def monthly(w: World) -> None:
@@ -108,14 +143,13 @@ def monthly(w: World) -> None:
         # the army at its target still counts as answered: recruitment closed the gap, and it can do so in the
         # month the government answers (partial recruitment adds about 11,000 soldiers a month in a new world),
         # which would otherwise let the grievance decay without the soothing the answer earns.
-        if entry["unanswered"] >= GRIEVE_AFTER and answered(w, 0):
+        if entry["unanswered"] >= GRIEVE_AFTER and entry.get("gap") is not None and answered(w, entry["gap"]):
             ministries.soothe(w, "army", SOOTHE, "the government acting on the General Staff's request")
-        entry.update(extra=0, since=None, unanswered=0)
+        entry.update(extra=0, since=None, unanswered=0, gap=None, army0=None, mob0=None)
     else:
-        if entry["since"] is None:
-            entry["since"] = w.month
+        _note_arising(w, entry, req)
         entry["extra"] = req["extra"]
-        if answered(w, req["extra"]):
+        if answered(w, entry["gap"]):
             if entry["unanswered"] >= GRIEVE_AFTER:
                 ministries.soothe(w, "army", SOOTHE, "the government acting on the General Staff's request")
             entry["unanswered"] = 0

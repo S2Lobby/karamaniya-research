@@ -11,6 +11,10 @@ from .military import DEFENDER_BONUS, quality, union_army, union_navy, union_qua
 from .world import World, clamp, democracy_index, month_label, rng_for
 
 MAX_UNION_ARMY = 260000
+# Audit FO6-f: a blockade the Union's rule imposes on an expired demand is lifted after RULE_BLOCKADE_MONTHS months, or
+# once the Union's cohesion is at or below RULE_BLOCKADE_COHESION (_lift_rule_blockade).
+RULE_BLOCKADE_MONTHS = 4
+RULE_BLOCKADE_COHESION = .55
 
 
 def _msg(w: World, sender: str, text: str) -> None:
@@ -79,6 +83,8 @@ def _foreign_cabinets(w: World, cabinet_decisions: dict | None = None, prepared:
     positions = foreign.positions(w)
     foreign.resolve_union(w, positions, cabinet_decisions)
     _deadline_policy(w)
+    # Audit FO6-f: a blockade the Union's rule imposed is lifted once a month, after the rule's deadline step.
+    _lift_rule_blockade(w)
     foreign.sync_embargoes(w)
 
 
@@ -88,15 +94,23 @@ def cabinet_decides(w: World, actor_id: str = "veleria") -> bool:
     return (w.foreign or {}).get("cabinet_month", {}).get(actor_id) == w.month
 
 
+def _enforced_this_month(w: World, by: str) -> bool:
+    """Whether the cabinet imposed a blockade or began a war this month. foreign_force.apply writes both with the actor and
+    the month, and a month's events last until the next month begins."""
+    return any(e.get("actor") == by and e.get("month") == w.month and e.get("kind") in ("blockade", "war")
+               for e in w.events)
+
+
 def _deadline_policy(w: World) -> None:
     dip, union = w.dip, w.foreign["union"]
     _settle_land_demand(w)
     deadline = dip.ultimatum.get("deadline")
-    if deadline is None or w.month < deadline or dip.war or dip.blockade:
+    if deadline is None or w.month < deadline:
         return
     by = dip.ultimatum.get("by", "veleria")
     if cabinet_decides(w, by):
-        if w.month > deadline:
+        # A cabinet that imposed a blockade or began a war this month acted on its demand, so it does not lapse (Audit FO9).
+        if w.month > deadline and not _enforced_this_month(w, by):
             # The cabinet had the month the deadline fell in, and this one, to act on its demand and did
             # neither: the demand lapses, the threat behind it counts for less, and a new one can be set.
             dip.ultimatum = {}
@@ -105,6 +119,16 @@ def _deadline_policy(w: World) -> None:
             w.event("ultimatum_lapsed", f"{w.names.get(by, by.title())}'s deadline has passed and it has not "
                     "acted on it.", importance=2, actor=by)
             resolve.note(w, "demand_lapsed", f"{w.names.get(by, by.title())}'s deadline left to lapse in Month {w.month + 1}")
+        return
+    # Audit FO9 / MO2: an expired demand lapses under a war or a blockade too. Before, either returned at the top, so the
+    # demand stood for as long as it ran and blocked any new one. A blockade already imposed may continue; only the
+    # demand lapses, and the blockade's lift paths are unchanged.
+    if dip.war or dip.blockade:
+        dip.ultimatum = {}
+        name = w.names.get(by, by.title())
+        w.event("ultimatum_lapsed", f"{name}'s deadline has passed and its demand lapses while "
+                f"{'a war' if dip.war else 'a blockade'} is in force.", importance=2, actor=by)
+        resolve.note(w, "demand_lapsed", f"{name}'s deadline left to lapse in Month {w.month + 1}")
         return
     # Engine 17: a demand for land whose deadline has passed is enforced when the troops are there; otherwise the
     # embargo and blockade path below runs, as it does for every other demand.
@@ -117,15 +141,54 @@ def _deadline_policy(w: World) -> None:
         w.event("union_dispute", "The Union failed to agree on enforcing its expired status demand.", importance=2)
         resolve.note(w, "demand_lapsed", f"the Union's deadline left to lapse in Month {w.month + 1}")
         return
-    dip.grain_embargo = max(dip.grain_embargo, .75)
+    # Audit FO8: a change of an embargo's level moves the exporter's output (foreign._embargo_output), and this one did not.
+    old_grain = dip.grain_embargo
+    dip.grain_embargo = max(old_grain, .75)
+    foreign._embargo_output(w, "dorsania", old_grain, dip.grain_embargo, "grain trade policy", approval=-.004)
     if union_navy(w) > 1.2 * w.mil.navy.size and union["cohesion"] > .70:
         dip.blockade = True
+        # Audit FO6-f: the blockade is the rule's, so _lift_rule_blockade may end it; a cabinet's never has this record.
+        w.foreign["rule_blockade"] = {"month": w.month, "by": by}
         w.event("blockade", f"After the Union's deadline expired, its navy began restricting Karamaniya's ports.",
                 importance=3)
         w.foreign["league"]["shipping_security_concern"] = min(1.0, w.foreign["league"]["shipping_security_concern"]+.2)
     else:
         w.event("union", "The Union tightened grain restrictions after its deadline expired.", importance=2)
     dip.rally = min(1.0, dip.rally + .18)
+    # Audit FO9: the demand is spent by its first enforcement, as a land demand is by its war (_enforce_land_demand). Left
+    # standing, the rules enforced it again every month: the rally rose .18 a month, and a blockade held the demand open. A
+    # land demand the first month barred from war (FIRST_WAR_MONTH) stands for the war the next month, as the engine-17 land
+    # path has it, so its troops can cross then.
+    if not (dip.ultimatum.get("terms_id") == foreign_force.LAND_TERMS and w.month < foreign_force.FIRST_WAR_MONTH):
+        dip.ultimatum = {}
+
+
+def _lift_rule_blockade(w: World) -> None:
+    """Audit FO6-f: lift a blockade the Union's rule imposed on an expired demand (_deadline_policy). Before, only a
+    ceasefire or a cabinet's own lift ended it, so a run without cabinets kept it for good and starved the country.
+    It is lifted in a month the rule decides for its actor and there is no war, once any of these holds: Karamaniya has
+    opened status talks since the blockade began, it has run RULE_BLOCKADE_MONTHS months, or the Union's cohesion is at
+    or below RULE_BLOCKADE_COHESION. A cabinet's blockade has no record here and is never lifted by the rule."""
+    rule = w.foreign.get("rule_blockade")
+    if not rule:
+        return
+    dip = w.dip
+    if not dip.blockade:
+        # It ended some other way without clearing the record, so there is nothing left for the rule to lift.
+        w.foreign.pop("rule_blockade", None)
+        return
+    by, since = rule.get("by", "veleria"), rule["month"]
+    # Imposed this month: it has run no month yet. Talks opened this month came before it, so they do not count yet.
+    if w.month <= since or dip.war or cabinet_decides(w, by):
+        return
+    talks = any(month >= since for month in w.foreign.get("status_talks", []))
+    ran_out = w.month - since >= RULE_BLOCKADE_MONTHS
+    union_weak = w.foreign["union"]["cohesion"] <= RULE_BLOCKADE_COHESION
+    if not (talks or ran_out or union_weak):
+        return
+    dip.blockade = False
+    w.foreign.pop("rule_blockade", None)
+    w.event("blockade_lifted", "The Union lifts its blockade of Karamaniya's ports.", importance=2)
 
 
 def _settle_land_demand(w: World) -> None:
@@ -158,7 +221,9 @@ def _enforce_land_demand(w: World, by: str) -> bool:
 
 def _karamanian_aggression(w: World) -> None:
     dip = w.dip
-    if not w.ended() and w.policy.posture == "attack" and not dip.war:
+    # Audit FO7: no war begins before FIRST_WAR_MONTH, whatever the posture; an attack ordered in Month 1 begins in Month 2
+    # if the posture still says attack. A war this posture began ends with it (_end_war), so it is not begun again.
+    if not w.ended() and w.policy.posture == "attack" and not dip.war and w.month >= foreign_force.FIRST_WAR_MONTH:
         dip.war = True
         dip.war_start = w.month
         dip.aggressor = "karamaniya"
@@ -325,12 +390,20 @@ def _end_war(w: World, how: str) -> None:
     dip.war = False
     dip.ceasefire = True
     dip.blockade = False
+    # Audit FO6-f: a ceasefire ends the blockade whoever imposed it, so the Union's rule's record of one goes too.
+    w.foreign.pop("rule_blockade", None)
     dip.union_front = {"north": 0.0, "east": 0.0}
     dip.union_intensity = 1.0
     dip.war_aim = {}
     w.counters["ceasefire_month"] = float(w.month)
     w.event("ceasefire", f"The war has stopped ({how}). Occupied regions remain under Union control.",
             importance=3)
+    # Audit FO7: an attack posture belongs to the war it began. Once a ceasefire or an armistice has ended it, the posture
+    # returns to defence, so the council must order the attack again to resume the war (_karamanian_aggression).
+    if w.policy.posture == "attack":
+        w.policy.posture = "defend"
+        w.event("posture", "The army's posture returns to defence with the ceasefire; the council must order an attack "
+                "again to resume the war.", importance=2)
 
 
 def _answer_proposals(w: World) -> None:
@@ -381,13 +454,17 @@ def _protest_reply(w: World, party: str) -> None:
         actor = (w.foreign or {}).get("actors", {}).get("dorsania", {})
         trust = (actor.get("relations", {}).get("karamaniya", {}) or {}).get("trust", 0.5)
         if dip.grain_embargo > 0.1 and trust > 0.35:
-            dip.grain_embargo = max(0.0, dip.grain_embargo - 0.1)
+            old = dip.grain_embargo
+            dip.grain_embargo = max(0.0, old - 0.1)
+            foreign._embargo_output(w, "dorsania", old, dip.grain_embargo, "grain trade policy", approval=.002)
             _msg(w, n["dorsania"], "Dorsania notes the protest and eases its grain export restrictions.")
         else:
             _msg(w, n["dorsania"], "Dorsania rejects the protest; its grain exports answer to Union obligations.")
     elif party == "veleria":
         if dip.coal_embargo > 0.1:
-            dip.coal_embargo = max(0.0, dip.coal_embargo - 0.1)
+            old = dip.coal_embargo
+            dip.coal_embargo = max(0.0, old - 0.1)
+            foreign._embargo_output(w, "veleria", old, dip.coal_embargo, "targeted embargo", approval=0.0)
             _msg(w, n["veleria"], "Veleria acknowledges the protest and relaxes some coal shipment checks.")
         else:
             _msg(w, n["veleria"], "Veleria dismisses the protest as unwarranted.")
@@ -467,7 +544,9 @@ def _union_reply(w: World, kind: str, pr: dict | None = None) -> None:
     if kind == "trade_talks":
         if not dip.war and shift(w) < 6 and not dip.ultimatum:
             w.counters["union_delay"] = shift(w) + 3
-            dip.grain_embargo = max(0.0, dip.grain_embargo - 0.2)
+            old = dip.grain_embargo
+            dip.grain_embargo = max(0.0, old - 0.2)
+            foreign._embargo_output(w, "dorsania", old, dip.grain_embargo, "grain trade policy", approval=.002)
             _msg(w, union, "The Union agrees to trade talks and will postpone further trade measures for "
                  "three months.")
         else:
@@ -486,7 +565,9 @@ def _union_reply(w: World, kind: str, pr: dict | None = None) -> None:
         # pressure it is applying, and stiffens when it is not.
         if dip.union_weariness > 0.3 or dip.grain_embargo > 0.15:
             dip.union_weariness = max(0.0, dip.union_weariness - 0.05)
-            dip.grain_embargo = max(0.0, dip.grain_embargo - 0.1)
+            old = dip.grain_embargo
+            dip.grain_embargo = max(0.0, old - 0.1)
+            foreign._embargo_output(w, "dorsania", old, dip.grain_embargo, "grain trade policy", approval=.002)
             if dip.union_intensity:
                 dip.union_intensity = max(0.0, dip.union_intensity - 0.05)
             _msg(w, union, "The Union acknowledges the protest and reduces its inspections of Karamanian "

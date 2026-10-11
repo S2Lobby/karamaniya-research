@@ -63,7 +63,9 @@ _INTENT_PATTERNS = (
 _INTENT_RE = re.compile("|".join(_INTENT_PATTERNS), re.IGNORECASE)
 # "if" is deliberately not here: "we will seize the treasury if the vote fails" is a conditional
 # threat, which is an assertion of intent, not a hedge.
-_HEDGES = ("may", "might", "could", "perhaps", "possibly", "risk", "fear", "worry", "concern")
+# Audit IN-L5: a modal hedge must be a whole word, so "mayor" and "dismayed" do not hide an intent; the other hedges are
+# stems matched at the start of a word, so "risks" and "concerned" still hedge, as they did under the substring test.
+_HEDGE_RE = re.compile(r"\b(?:may|might|could|perhaps|possibly)\b|\b(?:risk|fear|worry|concern)", re.IGNORECASE)
 
 
 def _clean(text: str) -> str:
@@ -75,8 +77,7 @@ def _has_intent(text: str) -> bool:
 
 
 def _is_hedged(text: str) -> bool:
-    low = text.lower()
-    return any(w in low for w in _HEDGES)
+    return bool(_HEDGE_RE.search(text))
 
 
 def canonical(raw_text: str) -> dict:
@@ -107,7 +108,8 @@ def _distort(text: str, rng) -> tuple[str, str]:
     if _is_hedged(text) and _has_intent(text):
         # The hedge is what the paper drops: "may" becomes "is preparing to".
         for hedge in ("may", "might", "could", "possibly", "perhaps"):
-            if hedge in out.lower():
+            # Audit IN-L5: a whole-word match only, so "mayor" is not reported as a dropped hedge.
+            if re.search(rf"\b{hedge}\b", out, flags=re.IGNORECASE):
                 out = re.sub(rf"\b{hedge}\b", "is preparing to", out, count=1, flags=re.IGNORECASE)
                 added.append("dropped the hedge")
         for soft in ("risk of", "fear of", "concern about", "worry about"):

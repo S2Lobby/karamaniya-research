@@ -880,7 +880,8 @@ footer { font-size: 12.5px; color: var(--muted); }
   // The headline (engine 17): this run beside each council on the same seed, one line near the top of the page.
   function baselineHeadline() {
     const b = D.baseline || {}, run = b.this_run || {}, modes = b.modes || {};
-    if (b.status !== "ok" || typeof run.approval_final !== "number") return null;
+    // Audit RU2-f: a failed file still has the modes that finished, and their figures are the headline's.
+    if ((b.status !== "ok" && b.status !== "failed") || typeof run.approval_final !== "number") return null;
     const figure = (m, k) => ((modes[m] || {}).summary || {})[k];
     const order = ["passive", "scripted", "hawk", "dove"].filter(m => typeof figure(m, "approval_final") === "number");
     if (!order.length) return null;
@@ -902,13 +903,28 @@ footer { font-size: 12.5px; color: var(--muted); }
         "its seats were all stand-ins, which are a baseline themselves, or the run turned baselines off. python -m karamaniya baseline <run folder> runs one when the engine on disk made the run." }));
       return;
     }
-    if (b.status !== "ok") {
+    if (b.status !== "ok" && b.status !== "failed") {
       host.replaceChildren(...head, el("p", { class: "note", text: b.status === "engine_mismatch"
         ? "This run was made by world engine " + b.run_world_engine + ". A baseline is only run by the engine that made the run (engine " + b.world_engine + " is on disk)."
         : "There are no months to compare yet." }));
       return;
     }
-    const modes = Object.keys(b.modes || {}), run = b.this_run || {};
+    // Audit RU2-f: in a file where a mode stopped the status is "failed". The modes that finished are shown as before, and
+    // each failed mode is stated with the reason baseline.py recorded. "There are no months to compare yet." is printed only
+    // when no mode has months, so a file with finished modes never reads as having none.
+    const names = Object.keys(b.modes || {}), run = b.this_run || {};
+    const failedModes = names.filter(m => (b.modes[m] || {}).status === "failed");
+    const modes = names.filter(m => !failedModes.includes(m));
+    const monthsOf = m => {
+      const s = b.modes[m] || {};
+      return s.summary && typeof s.summary.months === "number" ? s.summary.months : typeof s.months === "number" ? s.months : 0;
+    };
+    const notes = failedModes.map(m => {
+      const reason = String(b.modes[m].reason || "").replace(/[.\s]+$/, ""), months = monthsOf(m);
+      return el("p", { class: "note", text: (BASELINE_NAME[m] || m) + " failed" +
+        (months ? " after " + months + " month" + (months === 1 ? "" : "s") : "") + (reason ? ": " + reason : "") + "." });
+    });
+    const noMonths = b.status === "failed" && !names.some(m => monthsOf(m) > 0);
     const rows = BASELINE_ROWS.filter(([k]) => typeof run[k] === "number");
     const t = el("table", { class: "said-did baseline" },
       el("thead", {}, el("tr", {}, el("th", { text: "Over " + (b.length || b.months) + " months" }), el("th", { text: "This run" }),
@@ -923,14 +939,16 @@ footer { font-size: 12.5px; color: var(--muted); }
               text: Math.abs(d) < 1e-9 ? "the same" : "this run " + dfmt(d) }));
         })))));
     const outcomes = modes.map(m => (BASELINE_NAME[m] || m) + ": " + (((OUTCOMES[(b.modes[m].summary || {}).outcome] || [])[0]) || (b.modes[m].summary || {}).outcome || "-"));
-    host.replaceChildren(...head,
+    const table = modes.length ? [
       el("p", { class: "note", text: "The same seed and settings meet the same weather, inherited problems and random draws; what differs is the council. " +
         "The rule-following stand-ins are the free test lineup; the council that does nothing forms a government and then tables nothing, abstains on everything " +
         "and leaves every setting where it is. The all-hawk and all-dove councils are five seats of one persona each: the hawks raise the military budget, and the Army " +
         "is ordered to the General Staff's request for soldiers; the doves never raise the military and offer talks when a deadline is set. The neighbours in every baseline are " +
         "played by rule, and they press as the models' cabinets do: Veleria sets deadlines, masses troops before them and invades when a demand for land is ignored, and Dorsania sets its own demand for the Dorran March. Green is better for the country than the baseline, red worse." }),
       el("div", { class: "tablewrap" }, t),
-      el("p", { class: "muted", text: "Outcomes: " + outcomes.join(" · ") + ". Run by world engine " + b.world_engine + (b.computed ? " on " + b.computed : "") + "." }));
+      el("p", { class: "muted", text: "Outcomes: " + outcomes.join(" · ") + ". Run by world engine " + b.world_engine + (b.computed ? " on " + b.computed : "") + "." })] : [];
+    host.replaceChildren(...head, ...(noMonths ? [el("p", { class: "note", text: "There are no months to compare yet." })] : []),
+      ...table, ...notes);
   }
 
   function renderConsensusLine() {

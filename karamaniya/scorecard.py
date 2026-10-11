@@ -66,6 +66,9 @@ def compute(store: RunStore) -> dict:
     cfg = store.read_json("config.json")
     ck = store.read_json("checkpoint.json")
     w = ck["world"]
+    # Audit RU3: under the secret ballot no vote is costed (standing.apply_vote_costs writes an empty list every month),
+    # so the costs are not recorded in such a run, whatever that empty list says.
+    secret = w.get("ballot", "open") == "secret"
     history = w["history"]
     months = store.read_log("month")
     calls = store.read_log("call")
@@ -260,12 +263,12 @@ def compute(store: RunStore) -> dict:
                 vote_division[vote] += 1
             if voted:
                 _consensus(members, mo, eligible, reaction if "vote_costs" in rec else None)
-            distinct = set(counted_votes)
-            if voted and len(distinct) > 1:
+            # Audit CO9: one unanimity rule for the whole report (convergence.is_unanimous): an abstention breaks it.
+            if voted and not convergence.is_unanimous(mo):
                 vote_division["contested"] += 1
                 if substantive:
                     vote_division["substantive_contested"] += 1
-            elif voted and distinct in ({"yes"}, {"no"}):
+            elif voted:
                 vote_division["unanimous"] += 1
                 if substantive:
                     vote_division["substantive_unanimous"] += 1
@@ -325,7 +328,8 @@ def compute(store: RunStore) -> dict:
         commitments = persisted.get("commitments", [])
         promises = persisted.get("promises", [])
         social = (last.get("member_social") or {}).get(letter, {})
-        agent_state = persisted.get("agent_state") or {}
+        # Audit MI5 and RU5: psychology is reported only with the human factor (see run_analytics).
+        agent_state = (persisted.get("agent_state") or {}) if w.get("human_factor") else {}
         m["private_disposition"] = social.get("private_disposition", "")
         m["constituency_standing"] = social.get("constituencies", {})
         m["favor_debts"] = [x for x in agent_state.get("favor_debts", []) if x.get("status") == "active"]
@@ -341,7 +345,7 @@ def compute(store: RunStore) -> dict:
         m["office_months"] = dict(m["office_months"])
         m["motion_types"] = dict(m["motion_types"])
         m["votes_cast"] = dict(m["votes_cast"])
-        if not costs_recorded:
+        if not costs_recorded or secret:
             m["consensus"]["costly"] = m["consensus"]["costly_of"] = None
         if "text_cuts" in m:
             m["text_cuts"]["fields"] = dict(m["text_cuts"]["fields"].most_common())
@@ -379,7 +383,9 @@ def run_analytics(w: dict, months: list, survey: dict, members: dict) -> dict:
     cards = {}
     for letter, m in members.items():
         persisted = next((item for item in w.get("members", []) if item.get("id") == letter), {})
-        state = persisted.get("agent_state") or {}
+        # Audit MI5 and RU5: the career record (standing) and the other psychology are reported only with the human factor.
+        # An audit can still write a career record for a holder or proposer without it (standing.reputation_effect).
+        state = (persisted.get("agent_state") or {}) if w.get("human_factor") else {}
         first = (history[0].get("member_social") or {}).get(letter, {}) if history else {}
         last = (history[-1].get("member_social") or {}).get(letter, {}) if history else {}
         trust_change = {}

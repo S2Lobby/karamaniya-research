@@ -46,7 +46,7 @@ FORMAT = 1
 # the models are told (framing, latitude, the mandate, token saving, the forecast panel, place names) is left out:
 # the stand-ins read the world, not the prompt.
 KEPT = ("seed", "dm_per_turn", "human_factor", "founding_scenario", "founding_severity", "founding_problems",
-        "agent_architecture_version", "revision_round", "tuning", "foreign_cabinets", "test_scenario",
+        "agent_architecture_version", "revision_round", "tuning", "test_scenario",
         "parallel_decisions", "framing",
         # The ballot is a rule of the world the stand-ins play in (what they can see), not something a model is told.
         "ballot")
@@ -101,7 +101,10 @@ def summary(history: list, outcome: dict | None = None) -> dict:
 def _config(run_cfg: dict, seats: int, mode: str, months: int) -> dict:
     """A council of stand-ins with the run's own world settings, and nothing that reaches a model."""
     run = {k: run_cfg[k] for k in KEPT if k in run_cfg}
-    run.update(months=months, survey=False, shuffle_seats=False, baseline=False, report=False, forecast_panel=False)
+    # Audit RU4/FO6: the neighbours are the stand-in cabinets in every baseline, whatever the run's own setting, so the
+    # cabinets are always on here (with them off the neighbours never set a demand, ultimatum or incident).
+    run.update(months=months, survey=False, shuffle_seats=False, baseline=False, report=False, forecast_panel=False,
+               foreign_cabinets=True)
     if mode == "passive":
         personas = ["passive"] * seats
     elif mode in SAME_PERSONA_OFFICES:
@@ -173,13 +176,21 @@ def compute(run_dir, modes=MODES, force: bool = False) -> dict:
             raw = _config(run_cfg, seats, mode, length)
             bcfg = normalize_config(raw, raw["source"])
             path = new_run(bcfg, runs_dir=tmp, name=f"baseline-{mode}", quiet=True, check=False)
-            bworld, _, _ = RunStore(path).load_checkpoint()
+            bworld, _, bmeta = RunStore(path).load_checkpoint()
+            personas = [s["persona"] for s in bcfg["seats"]]
+            # Audit RU2: a mode that was stopped (the control room, a pause, an error) or never reached its outcome is
+            # not a baseline. It is recorded as failed with its reason, so the file cannot read "ok" with zero months.
+            stopped = str((bmeta or {}).get("stopped") or "")
+            if stopped or not bworld.outcome:
+                results[mode] = {"status": "failed", "reason": stopped or "did not reach its outcome",
+                                 "months": len(bworld.history), "summary": {}, "monthly": [], "personas": personas}
+                continue
             results[mode] = {"summary": summary(bworld.history, bworld.outcome),
-                             "monthly": monthly(bworld.history),
-                             "personas": [s["persona"] for s in bcfg["seats"]]}
+                             "monthly": monthly(bworld.history), "personas": personas, "status": "ok"}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    out = {"format": FORMAT, "status": "ok", "world_engine": versions.WORLD_ENGINE,
+    failed = [mode for mode, res in results.items() if res["status"] != "ok"]
+    out = {"format": FORMAT, "status": "failed" if failed else "ok", "world_engine": versions.WORLD_ENGINE,
            "agent_prompt": versions.AGENT_PROMPT, "source_fingerprint": RUNTIME_SOURCE_FINGERPRINT,
            "seed": run_cfg.get("seed"), "months": months, "length": length,
            "computed": dt.datetime.now().strftime("%Y-%m-%d %H:%M"),

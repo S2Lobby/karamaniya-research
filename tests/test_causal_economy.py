@@ -141,11 +141,14 @@ class InflationHasManyCauses(unittest.TestCase):
         self.assertTrue(all(-0.05 < x < 0.20 for x in recent), recent)
 
     def test_the_inflation_trace_names_its_channels(self):
+        """Audit EC7: the channels are the consumer price formula's own terms. Wages are not in the consumer price,
+        so excess wage growth is no longer a channel (the trace used to list it)."""
         w = run(new_world(10, 12), 6, each=steady)
         entry = causality.trace_for(w, "inflation")
         self.assertIsNotNone(entry, "no inflation trace was recorded")
-        for channel in ("zone_price_level", "demand_pressure", "excess_wage_growth"):
+        for channel in ("zone_price_level", "demand_pressure"):
             self.assertIn(channel, entry["contributions"])
+        self.assertNotIn("excess_wage_growth", entry["contributions"])
 
     def test_the_trace_does_not_claim_contributors_that_do_not_contribute(self):
         """Expectations act through the zone's money-market velocity, which `zone_price_level`

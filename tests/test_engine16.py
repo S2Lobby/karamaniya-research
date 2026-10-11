@@ -268,7 +268,11 @@ class Agendas(unittest.TestCase):
         self.assertTrue(agendas.crosses(w, program, "relief"))
         later = {"type": "constitution", "subject": "election_month", "value": "Month 40"}
         self.assertTrue(agendas.crosses(w, later, "constitution"))
-        self.assertTrue(agendas.crosses(w, {"type": "emergency_measure"}, "constitution"))
+        # Engine 19 (audit PO4): imposing a measure crosses the line, lifting one does not, and a motion with no value
+        # imposes nothing. This asserted that any emergency measure crosses.
+        self.assertTrue(agendas.crosses(w, {"type": "emergency_measure", "subject": "curfew", "value": "on"}, "constitution"))
+        self.assertFalse(agendas.crosses(w, {"type": "emergency_measure", "subject": "curfew", "value": "off"}, "constitution"))
+        self.assertFalse(agendas.crosses(w, {"type": "emergency_measure"}, "constitution"))
 
     def test_the_record_names_who_backed_a_motion_across_their_line(self):
         w = new_world(1, 36)

@@ -150,6 +150,17 @@ def _counted(motion: dict) -> list:
     return [votes.get(x) for x in names if votes.get(x) in ("yes", "no")]
 
 
+def is_unanimous(motion: dict) -> bool:
+    """Audit CO9: a vote is unanimous when every member who could vote cast the same vote, yes or no. An abstention
+    breaks it (three yes and two abstentions is not unanimous), and so does a member with no recorded vote. The
+    scorecard and the GUI (isUnanimous) use this one rule; it used to be counted here with abstentions as agreement."""
+    votes = motion.get("votes") or {}
+    eligible = motion.get("eligible_voters")
+    names = eligible if eligible is not None else list(votes)
+    cast = {votes.get(x) for x in names}
+    return bool(names) and cast in ({"yes"}, {"no"})
+
+
 def reached_vote(motion: dict) -> bool:
     """True when members actually cast a yes or no. Withdrawn and deferred motions never did."""
     if motion.get("withdrawn") or motion.get("void") or motion.get("deferred"):
@@ -565,7 +576,7 @@ def month_analytics(record: dict) -> dict:
     codes, deferred = _note_codes(record), _deferred_ids(record)
     state = {m["id"]: motion_status(m, codes, deferred) for m in substantive if m.get("id")}
     voted = [m for m in substantive if state.get(m.get("id")) in VOTED_STATES]
-    unanimous = [m for m in voted if set(_counted(m)) in ({"yes"}, {"no"})]
+    unanimous = [m for m in voted if is_unanimous(m)]
     groups = family_groups(motions)
     # A family is a contest only where the alternatives actually reached the floor. Two motions the
     # agenda pushed out agreed nothing and competed for nothing.
@@ -822,8 +833,9 @@ def bargain_followthrough(months: list) -> list:
     """Favours owed between delegates, and whether the favour was repaid by a recorded vote."""
     out = []
     for rec in months:
-        for mid, social in ((rec.get("social") or {}).get("members") or {}).items():
-            for debt in (social.get("favor_debts") or []):
+        # Audit RU6: a month record's social is keyed by member id (council._post_month_social), not by a "members" key.
+        for mid, social in (rec.get("social") or {}).items():
+            for debt in ((social or {}).get("favor_debts") or []):
                 out.append({"month": rec.get("month"), "member": mid, "to": debt.get("to"),
                             "what": debt.get("motion") or debt.get("what"),
                             "status": (debt.get("status") or "active").upper(),

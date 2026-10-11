@@ -519,7 +519,9 @@ def transcript_v2(w, statements: list, motions: list, agenda_notes: list | None 
             who = w.member(target).name if target in {m.id for m in w.members} else target
             lines.append(f"  [{comm['kind'].replace('_', ' ')} -> {who}] {comm.get('about', '')}")
         for mo in (x for x in motions if x["proposer"] == st["member"] and not x.get("carried_over")):
-            lines.append(f"  tabled {mo['id']}: {mo['summary']}" + (f" - \"{mo['text'][:160]}\"" if mo.get("text") and mo["type"] != "amend" else ""))
+            # Audit TO2: the stored text, word-limited and ending in its [cut] marker. A character slice here cut
+            # it mid-sentence with no marker, while the engine executes the whole stored text.
+            lines.append(f"  tabled {mo['id']}: {mo['summary']}" + (f" - \"{mo['text']}\"" if mo.get("text") and mo["type"] != "amend" else ""))
         for bad in st.get("invalid", []):
             lines.append(f"  (rejected: {bad})")
         for share in st.get("shared", []):

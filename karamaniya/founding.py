@@ -115,9 +115,9 @@ def _apply(w, pid, severity, rng, mix=None):
     first = lambda i: weights[i] if i < len(weights) else .25
     if pid == "fiscal_arrears":
         weak_collection, hidden_liabilities, overspending = first(0), first(1), first(2)
-        from .economy import seed_arrears
+        from .economy import cut_compliance, seed_arrears
         seed_arrears(w, w.econ.gdp_real * (.035 + .10 * hidden_liabilities + .05 * overspending) * s)
-        w.econ.compliance -= .05 * s * weak_collection
+        cut_compliance(w, .05 * s * weak_collection)     # audit IN-L1: a shock fiscal subtracts
         w.econ.gold *= 1 - .12 * s
         w.econ.confidence -= .04 * s + .04 * s * hidden_liabilities
     elif pid == "food_dependence":
@@ -163,7 +163,8 @@ def _apply(w, pid, severity, rng, mix=None):
     elif pid == "bureaucratic_overload":
         departures, duplicate_rules, poor_records, weak_regions = (first(i) for i in range(4))
         w.econ.admin_capacity -= (.07 + .19 * s) * (departures + duplicate_rules) / 2
-        w.econ.compliance -= (.025 + .07 * s) * poor_records
+        from .economy import cut_compliance     # audit IN-L1: a shock fiscal subtracts
+        cut_compliance(w, (.025 + .07 * s) * poor_records)
         for p in w.pops:
             if p.region in ("kessel", "highlands", "dorran"):
                 p.approval -= .012 * s * weak_regions
@@ -203,11 +204,12 @@ def initialize(w, scenario="random", severity="default", custom_problems=None):
     for p in problems:
         _apply(w, p["id"], p["severity"], rng, p.get("hidden_cause_decomposition"))
     strengths = [{"id": key, "description": desc} for key, desc in rng.sample(STRENGTHS, 3)]
+    from .economy import cut_compliance     # audit IN-L1: a negative shock raises compliance, as the strengths do
     for strength in strengths:
         if strength["id"] == "working_ports":
             w.region("aster").logistics += .035; w.region("lissen").logistics += .035
         elif strength["id"] == "educated_workforce":
-            w.econ.admin_capacity += .035; w.econ.compliance += .015
+            w.econ.admin_capacity += .035; cut_compliance(w, -.015)
         elif strength["id"] == "gold_buffer":
             w.econ.gold += 8e6
         elif strength["id"] == "farm_potential":
@@ -215,7 +217,7 @@ def initialize(w, scenario="random", severity="default", custom_problems=None):
         elif strength["id"] == "professional_navy":
             w.mil.navy.training += .04; w.mil.navy.morale += .04
         elif strength["id"] == "civil_service_core":
-            w.econ.admin_capacity += .06; w.econ.compliance += .015
+            w.econ.admin_capacity += .06; cut_compliance(w, -.015)
     for pop in w.k_pops():
         pop.unrest = max(pop.unrest, pop.grievance * (1 - 0.75 * pop.fear))
     prng = rng_for(w.seed, 0, "founding-dossiers")

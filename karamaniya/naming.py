@@ -47,6 +47,10 @@ REGIONS = ["Brannock", "Dunmere", "Halvic", "Oskeld", "Corrow", "Elstan", "Gorra
            "Belvane", "Caddor", "Droval", "Essick", "Garvel", "Hollin", "Kerrow", "Lothar", "Morrin", "Starn"]
 CANONICAL_REGIONS = ("Kessel", "Aster", "Lissen", "Vell", "Dorran", "Arven", "Tolmar", "Irongate", "Belcor",
                      "Goldfield")
+# Lower-case forms that are also English words. "union" is the bloc's canonical name in lower case too, so it is
+# translated where it is an identifier (an underscore touches it: join_union, union_attack_soon; or it is a whole
+# quoted JSON key or value: "union"), and left alone in running prose: "your union" (TO9).
+PROSE_WORDS = ("union",)
 
 
 def draw(seed: int) -> dict:
@@ -94,6 +98,13 @@ def _pattern(words) -> re.Pattern:
     return re.compile(r"(?<![A-Za-z])(" + alternatives + r")(?![A-Za-z])")
 
 
+def _is_identifier(text: str, start: int, end: int) -> bool:
+    """Whether the word at text[start:end] is an identifier or a value on its own, rather than a word of running prose.
+    A schema is translated string by string (names.out_obj), so a key or an enum value arrives as the whole string."""
+    before, after = text[start - 1:start], text[end:end + 1]
+    return before == "_" or after == "_" or (before == '"' and after == '"') or (before == "" and after == "")
+
+
 class Names:
     """Canonical <-> seeded, for texts and for JSON-like values (dict keys included)."""
 
@@ -109,7 +120,16 @@ class Names:
         self._back = _pattern(self.back_map)
 
     def out(self, text: str) -> str:
-        return self._out.sub(lambda m: self.out_map[m.group(1)], text) if isinstance(text, str) else text
+        return self._out.sub(self._out_match, text) if isinstance(text, str) else text
+
+    def _out_match(self, m) -> str:
+        # Audit TO9: a prose word that is also a canonical name's lower-case form is kept in running prose. "the
+        # administrators' union" stays; join_union, union_attack_soon and a quoted "union" (a JSON key or value) are
+        # translated, and come back with back().
+        word = m.group(1)
+        if word in PROSE_WORDS and not _is_identifier(m.string, m.start(1), m.end(1)):
+            return m.group(0)
+        return self.out_map[word]
 
     def back(self, text: str) -> str:
         return self._back.sub(lambda m: self.back_map[m.group(1)], text) if isinstance(text, str) else text

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 
-from . import foreign_force, resolve
+from . import fine_print, foreign_force, operations, resolve
 from .world import KARAMANIYA_REGIONS, clamp, rng_for
 
 
@@ -53,6 +53,17 @@ RESOLVE_NEUTRAL = .5
 RESOLVE_AGREEMENT_SLACK = .3
 RESOLVE_LAND = .35
 RULE_LAND_REGION = "kessel"
+# Audit FO6: in a month no cabinet answered, the Union's own rule also demands when Karamaniya looks wavering (below
+# RULE_DEMAND_RESOLVE) or the Union has more than RULE_DEMAND_RATIO soldiers per Karamanian soldier, from RULE_DEMAND_FROM
+# on, as the baselines' stand-in neighbour does (backends/scripted.py: 0-based Month 3, the stand-in's VELERIAN_FROM). A
+# demand the rule has set is followed by no other for RULE_DEMAND_GAP months (w.foreign["rule_demand_month"]).
+RULE_DEMAND_FROM = 2
+RULE_DEMAND_RESOLVE = .45
+RULE_DEMAND_RATIO = 3.0
+RULE_DEMAND_GAP = 6
+# Audit FO11: in a month Veleria's pressure on Karamaniya is below COAL_EASE_PRESSURE, its coal embargo eases by COAL_EASE_STEP.
+COAL_EASE_PRESSURE = .3
+COAL_EASE_STEP = .05
 
 
 def _bilateral_trade_open(w) -> bool:
@@ -507,8 +518,16 @@ def _signal_intelligence(w) -> None:
         if actor_id == "veleria":
             _update_belief(actor, "dorsania_resists_escalation",
                            clamp(.25 + .60 * (1 - state["union"]["cohesion"]) + rng.uniform(-.10, .10)), .55)
-        evidence = {"visible_karamaniyan_force_estimate": [round(m.army.size * rng.uniform(.83, 1.17), -2),
-                                                            round(m.army.size * rng.uniform(1.12, 1.30), -2)],
+        # Audit TO4 + FO15: one centre with symmetric noise and a band of ±half around it, so the ends are ordered and the figure
+        # is unbiased (two independent draws centred the band about 10% high, and its ends could reverse). The two draws are the
+        # stream's as before, so the draws after them keep their values. While an inspection regime is in force its inspectors
+        # count the army: the band is the army, to the hundred (fine_print.inspected, Audit MI6).
+        centre = m.army.size * rng.uniform(.90, 1.10)
+        half = m.army.size * rng.uniform(.05, .15)
+        band = [round(centre - half, -2), round(centre + half, -2)]
+        if fine_print.inspected(w):
+            band = [math.floor(m.army.size / 100) * 100, math.ceil(m.army.size / 100) * 100]
+        evidence = {"visible_karamaniyan_force_estimate": band,
                     "visible_fortification": round((m.fort.get("north", 0) + m.fort.get("east", 0)) / 2, 2),
                     "poll_estimates": {"independence_support": round(poll_estimate, 2),
                                        "government_approval": round(approval_estimate, 2)},
@@ -659,13 +678,23 @@ def _government_estimates(w) -> None:
     w.foreign["government_intelligence"] = w.foreign["government_intelligence"][-24:]
 
 
+def _head_tone_threat(w) -> float:
+    """Audit MI9: the head's diplomatic tone, as a term of Veleria's threat (operations.py: a conciliatory head lowers it .01,
+    a firm one raises it .01). It is read here rather than written to the threat in operations.apply, because positions()
+    rebuilds the threat from beliefs each month and a write made earlier in the month was lost. Like operations.apply, it
+    counts only where the human factor runs at architecture 2 or later, and while the head holds office."""
+    if not (w.human_factor and w.agent_architecture_version >= 2) or not w.holder("head"):
+        return 0.0
+    return {"conciliatory": -.01, "firm": .01}.get(operations.current(w, "head")["diplomatic_tone"], 0.0)
+
+
 def positions(w) -> dict:
     """Independent monthly positions; Dorsania has not seen this month's Velerian choice."""
     state, dip = w.foreign, w.dip
     v, d = state["actors"]["veleria"], state["actors"]["dorsania"]
     threat_v = clamp(.48*_belief(v, "karamaniya_permanent_separation")["value"]
                      + .34*_belief(v, "karamaniya_offensive_intent")["value"]
-                     + .18*_belief(v, "league_strategic_influence")["value"])
+                     + .18*_belief(v, "league_strategic_influence")["value"] + _head_tone_threat(w))
     threat_d = clamp(.60*_belief(d, "karamaniya_offensive_intent")["value"]
                      + .20*_belief(d, "karamaniya_permanent_separation")["value"]
                      + .20*(1-state["union"]["cohesion"]))
@@ -777,6 +806,10 @@ def resolve_union(w, positions: dict, cabinet_decisions: dict | None = None) -> 
     _strategy_change(w, "dorsania", dors["strategy"], "farm and exporter pressure")
     v, d = state["actors"]["veleria"], state["actors"]["dorsania"]
     v_increase = vel["coal_embargo"] * (0.55 + .45*agreement)
+    # Audit FO11: a month of Velerian pressure below COAL_EASE_PRESSURE eases the coal embargo a step. It used to only ratchet
+    # up, since nothing in the positions could lower it. The change is paid or given back through _embargo_output below.
+    if vel["pressure"] < COAL_EASE_PRESSURE:
+        v_increase -= COAL_EASE_STEP
     d_change = dors["grain_embargo"] * (.35 + .65*agreement) if dors["grain_embargo"] >= 0 else dors["grain_embargo"]
     old_coal, old_grain = dip.coal_embargo, dip.grain_embargo
     dip.coal_embargo = clamp(dip.coal_embargo + v_increase)
@@ -810,8 +843,15 @@ def resolve_union(w, positions: dict, cabinet_decisions: dict | None = None) -> 
     # the agreement it needs falls by RESOLVE_AGREEMENT_SLACK for every unit the figure lies below neutral, so a
     # Karamaniya that looks yielding is more likely to be given one (resolve.py).
     bar = .70 - RESOLVE_AGREEMENT_SLACK * max(0.0, RESOLVE_NEUTRAL - resolve.value(w))
-    if (vel["ultimatum"] and agreement > bar and union["cohesion"] > .55
-            and state.get("cabinet_month", {}).get("veleria") != w.month):
+    # Audit FO6: in a month no cabinet answered, the rule's flag also rises when Karamaniya looks wavering or the Union
+    # outnumbers it (RULE_DEMAND_*); a demand the rule set is followed by no other for RULE_DEMAND_GAP months.
+    unanswered = state.get("cabinet_month", {}).get("veleria") != w.month
+    looks_weak = unanswered and w.month >= RULE_DEMAND_FROM and (
+        resolve.value(w) < RULE_DEMAND_RESOLVE or _union_per_karamanian_soldier(w) > RULE_DEMAND_RATIO)
+    last_demand = w.foreign.get("rule_demand_month")
+    cooled = last_demand is None or w.month - int(last_demand) >= RULE_DEMAND_GAP
+    if ((vel["ultimatum"] or looks_weak) and agreement > bar and union["cohesion"] > .55
+            and unanswered and cooled):
         _issue_ultimatum(w)
     sync_embargoes(w)
     _build_forces(w, vel, dors, agreement)
@@ -836,6 +876,10 @@ def _incident(w, agreement: float) -> None:
     w.event("border_incident", f"Near the Kessel frontier, {text}. Both governments disputed responsibility.",
             importance=2)
     vel["threat_perception"]["karamaniya"] = round(clamp(tension+.035),3)
+    # Engine 19 (audit MI9's class): positions() rebuilds the threat from Veleria's beliefs each month, so the write above
+    # lasts only the month; the belief behind it moves too, so the incident still counts after the rebuild.
+    from .dilemmas import _raise_veleria_threat
+    _raise_veleria_threat(w, .035)
     vel["relations"]["karamaniya"]["hostility"] = round(clamp(relations["hostility"]+.025),3)
     w.foreign["escalation_chains"].append({"month": w.month, "actor": "veleria", "signal": "border incident",
                                             "threat_belief": vel["threat_perception"]["karamaniya"]})
@@ -913,7 +957,9 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
     """
     from . import errors
     for actor_id, decision in decisions.items():
-        if actor_id not in positions or not isinstance(decision, dict):
+        # A failed call, or an answer that could not be read, leaves an empty decision: no cabinet decided, so the
+        # Union's rules decide for that actor this month, as director.cabinet_decides says (audit CO2 follow-up).
+        if actor_id not in positions or not isinstance(decision, dict) or not decision:
             continue
         actor = w.foreign["actors"][actor_id]
         # The cabinet decided this month: the Union's own rules do not also decide on war or a blockade
@@ -961,7 +1007,8 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
             pos_before = {k: v for k, v in positions[actor_id].items() if isinstance(v, (int, float, bool))}
             before = {"propaganda": w.dip.propaganda,
                       "hostility": actor["relations"]["karamaniya"]["hostility"],
-                      "trust": actor["reputation"]["diplomatic_trust"]}
+                      "trust": actor["reputation"]["diplomatic_trust"],
+                      "coal_embargo": w.dip.coal_embargo}
             force_effects = {}
             if kind in foreign_force.KINDS:
                 force_effects = foreign_force.apply(w, actor_id, action)
@@ -979,6 +1026,12 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
                                                                    int(action.get("troops", 0))))
             elif kind == "offer_talks":
                 positions[actor_id]["strategy"] = "conditional talks with continued security precautions"
+            elif kind == "trade_concession" and actor_id == "veleria":
+                # Audit FO19: Veleria's concession eases the coal embargo it holds (resolve_union reads that level), by the step
+                # Dorsania's concession eases grain. It is applied now, so the ledger records the easing that happened.
+                old_coal = w.dip.coal_embargo
+                w.dip.coal_embargo = clamp(old_coal - (.04+.08*magnitude))
+                _embargo_output(w, actor_id, old_coal, w.dip.coal_embargo, "targeted embargo", approval=.002)
             elif kind == "trade_concession":
                 positions[actor_id]["grain_embargo"] = -(.04+.08*magnitude)
                 positions[actor_id]["independent_trade"] = True
@@ -1019,9 +1072,17 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
                        for k, v in positions[actor_id].items()
                        if isinstance(v, (int, float)) and not isinstance(v, bool)
                        and abs(v - pos_before.get(k, 0.0)) > 1e-9}
+            if kind == "trade_concession" and actor_id == "dorsania":
+                # Audit FO19: the grain concession eases the level by its amount through resolve_union, and no more: at zero
+                # grain nothing eases. The ledger records the level it moves, not the position it sets.
+                eased = min(w.dip.grain_embargo, .04+.08*magnitude)
+                effects.pop("position.grain_embargo", None)
+                if eased > 1e-9:
+                    effects["grain_embargo"] = round(-eased, 6)
             for name, now in (("propaganda", w.dip.propaganda),
                               ("hostility", actor["relations"]["karamaniya"]["hostility"]),
-                              ("trust", actor["reputation"]["diplomatic_trust"])):
+                              ("trust", actor["reputation"]["diplomatic_trust"]),
+                              ("coal_embargo", w.dip.coal_embargo)):
                 if abs(now - before[name]) > 1e-9:
                     effects[name] = round(now - before[name], 6)
             effects.update(force_effects)
@@ -1111,13 +1172,18 @@ def _build_forces(w, vel, dors, agreement: float) -> None:
         actor = w.foreign["actors"][actor_id]
         requested = max(0.0, position["military_build"])
         reserve_room = max(0.0, actor["military"]["reserves"] - actor["military"]["active"]*.45)
-        increase = min(requested, reserve_room, 9000 if actor_id == "veleria" else 3000)
+        # Audit FO2-f: a build is a call-up as a cabinet's mobilize is (foreign_force.apply). It is capped by what this
+        # month has left of the call-up cap, and its soldiers come out of the reserve pool and are recorded against the cap.
+        cap_left = max(0.0, foreign_force.MOBILIZE_CAP[actor_id] - foreign_force.called_up_this_month(w, actor_id))
+        increase = min(requested, reserve_room, cap_left, 9000 if actor_id == "veleria" else 3000)
         if w.dip.union_formed:
             increase *= .35 + .65*agreement
         rival = w.rivals[actor_id]
         if increase > 0:
             rival.army += increase
             actor["military"]["active"] += increase
+            actor["military"]["reserves"] = max(0.0, actor["military"]["reserves"] - increase)
+            foreign_force._record_callup(w, actor_id, increase)
             actor["military"]["readiness"] = round(clamp(actor["military"]["readiness"] + increase/150000),3)
             _pay_action(w, actor_id, "readiness and deployment", increase/(rival.population)*.18, approval=.002)
             w.foreign["escalation_chains"].append({"month": w.month, "actor": actor_id,
@@ -1133,6 +1199,12 @@ def _build_forces(w, vel, dors, agreement: float) -> None:
             actor["domestic"]["war_weariness"] = round(max(0, actor["domestic"]["war_weariness"]-.004),3)
 
 
+def _union_per_karamanian_soldier(w) -> float:
+    """Union soldiers per Karamanian soldier, reservists called up counted as Karamanian (as resolve.baseline measures it)."""
+    from .military import mobilized_strength, union_army
+    return union_army(w) / max(1.0, w.mil.army.size + mobilized_strength(w))
+
+
 def _issue_ultimatum(w) -> None:
     dip = w.dip
     if dip.ultimatum or dip.war:
@@ -1142,13 +1214,18 @@ def _issue_ultimatum(w) -> None:
                "deadline_months": 4}
         if foreign_force.check(w, "veleria", act) is None:
             foreign_force.apply(w, "veleria", act)
+            w.foreign["rule_demand_month"] = w.month          # Audit FO6: the six-month cooldown starts
             _remember(w.foreign, "veleria", "diplomacy",
                       f"Issued a time-limited demand for {w.region(RULE_LAND_REGION).name}.", w.month,
                       action="ultimatum", factors=["Karamaniya looks yielding", "Union agreement"])
             return
     deadline = w.month + 4
+    w.foreign["rule_demand_month"] = w.month                  # Audit FO6: the six-month cooldown starts
+    # Audit FO5: the rule's status demand names its terms and its neighbour as a cabinet's does, so talks lift it
+    # (director._union_reply) and a cabinet is shown it (foreign_force.ultimatum_compliance).
     dip.ultimatum = {"issued": w.month, "deadline": deadline,
-                     "terms": "Open negotiations on Karamaniya's status in the Solvaran Union."}
+                     "terms": "Open negotiations on Karamaniya's status in the Solvaran Union.",
+                     "terms_id": "status_talks", "by": "veleria"}
     dip.rally = clamp(dip.rally + .16)
     _spend(w, "veleria", ACT_BUDGET["ultimatum"], approval=.003)
     _message(w, w.names["union"], f"The {w.names['union']} requests a settlement on Karamaniya's status by {w.month+4}; talks remain open.")
@@ -1198,7 +1275,10 @@ def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "", region: st
     w.counters["dorsania_trade"] = 1.0
     w.counters["dorsania_trade_until"] = float(until)
     w.counters["dorsania_trade_inherited"] = 0.0      # the council's own deal now, new or extended
-    w.dip.grain_embargo = max(0.0, w.dip.grain_embargo-.12)
+    # Audit FO8: a change of an embargo's level moves the exporter's output (_embargo_output).
+    old_grain = w.dip.grain_embargo
+    w.dip.grain_embargo = max(0.0, old_grain - .12)
+    _embargo_output(w, "dorsania", old_grain, w.dip.grain_embargo, "grain trade policy", approval=.002)
     relation["trust"] = round(clamp(relation["trust"]+.08),3)
     relation["trade_importance"] = round(clamp(relation["trade_importance"]+.06),3)
     if existing:
@@ -1417,11 +1497,15 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
             problems.append(f"{key} must be text")
     allowed_union = {"support", "oppose", "conditional", "consult"}
     position = data.get("union_position")
-    out["union_position"] = position if position in allowed_union else None
+    if position is not None and not isinstance(position, str):
+        problems.append("union_position must be text")
+    # Audit CO2: a list or an object is not a position, and testing it against the set raised.
+    out["union_position"] = position if isinstance(position, str) and position in allowed_union else None
     allowed = {a["type"] for a in action_catalog(actor_id)}
     actions = []
     for raw in data.get("actions", [])[:4] if isinstance(data.get("actions", []), list) else []:
-        if not isinstance(raw, dict) or raw.get("type") not in allowed:
+        # Audit CO2-f: a type that is not text (a list, say) is an unsupported action, not an error in the set test.
+        if not isinstance(raw, dict) or not isinstance(raw.get("type"), str) or raw.get("type") not in allowed:
             problems.append("unsupported cabinet action")
             continue
         action = {"type": raw["type"]}
@@ -1442,7 +1526,8 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
         for key, allowed_values in (("front", foreign_force.FRONTS), ("aim", foreign_force.AIMS),
                                     ("region", CABINET_REGIONS), ("terms", tuple(foreign_force.ULTIMATUM_TERMS))):
             if key in raw and raw[key] not in (None, ""):
-                if raw[key] in allowed_values:
+                # Audit CO2-f: only text is a name; a list or an object is a problem, as any other wrong value is.
+                if isinstance(raw[key], str) and raw[key] in allowed_values:
                     action[key] = raw[key]
                 else:
                     problems.append(f"{key} must be one of {', '.join(allowed_values)}")
@@ -1460,7 +1545,8 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
     out["actions"] = actions
     messages = []
     for raw in data.get("diplomatic_messages", [])[:3] if isinstance(data.get("diplomatic_messages", []), list) else []:
-        if isinstance(raw, dict) and raw.get("recipient") in ("karamaniya", "union", "league") and isinstance(raw.get("text"), str):
+        if (isinstance(raw, dict) and isinstance(raw.get("recipient"), str)
+                and raw.get("recipient") in ("karamaniya", "union", "league") and isinstance(raw.get("text"), str)):
             messages.append({"recipient": raw["recipient"], "text": raw["text"][:500]})
         else:
             problems.append("invalid diplomatic message")
@@ -1469,7 +1555,8 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
     out["decision_factors"] = [str(v)[:160] for v in factors[:8]] if isinstance(factors, list) else []
     updates = []
     for raw in data.get("belief_updates", [])[:4] if isinstance(data.get("belief_updates", []), list) else []:
-        if (isinstance(raw, dict) and raw.get("belief") in {
+        # Audit CO2-f: a belief's name is text; tested against a set, a list raised before the answer was read.
+        if (isinstance(raw, dict) and isinstance(raw.get("belief"), str) and raw.get("belief") in {
                 "karamaniya_permanent_separation", "karamaniya_offensive_intent",
                 "league_strategic_influence", "dorsania_resists_escalation",
                 "economic_pressure_effectiveness", "karamaniya_government_instability"}

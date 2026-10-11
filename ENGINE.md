@@ -241,6 +241,12 @@ simulated.
 - **What happened at the border comes out (engine 18):** after a border incident the Army staff's forensic reports
   narrow down who fired, three months on the press may learn it, and a joint inquiry's finding follows what
   happened, steered by the Union (`attribution.py`).
+- **The audit of engine 18 (engine 19):** ten read-only audits found 116 faults, each reproduced by a script
+  (`docs/AUDIT_ENGINE18.md`), and engine 19 fixes them; `CHANGELOG.md` says what changed for a run. Among them: no
+  malformed answer ends a run; a policy value outside its range is refused, not clamped; the neighbours' call-ups are
+  capped per month and drawn from their reserves; the economy starts at its founded prices; inflation is shown over
+  the months it covers; a motion's text is shown as stored; a small seat keeps its answer format; the Union's rule
+  sets demands when the cabinets are off, and a blockade it imposed can lift.
 - **Political agendas (engine 16):** each delegate is dealt an agenda of its own, no two the same, with a red
   line: order first, defence, sovereignty, results, the constitution (and, for a larger council, living
   standards and peace). It opens the delegate's private disposition and orders nothing; each motion records
@@ -301,7 +307,11 @@ simulated.
   troops another neighbour sends to the fighting take it into the war. While a cabinet answers, the
   rule-based war, ultimatum and deadline-blockade rules stand down, and an ultimatum its cabinet has not
   acted on by the month after the deadline lapses; with `foreign_cabinets = false` the rules decide as
-  before.
+  before. Since engine 19 the rules also set a demand when no cabinet answers, from Month 3 and no more than one
+  in six months, once Karamaniya looks wavering or is outnumbered three to one; an expired demand lapses once
+  enforced; and a blockade the rules imposed lifts after four months, when talks on status open, or when the
+  Union's cohesion falls to 0.55. A cabinet call that fails, or an answer that cannot be read, leaves the month
+  to the rules.
 - **Net assessment (engine 13):** each month the Army office's reports end with the General Staff's reading
   of the combat model for each front still held: how the troops massed at that border, or fighting on it,
   and the most the neighbours bordering it could send would fare against our soldiers there (active and
@@ -399,7 +409,9 @@ the denominator being *only* motions that actually reached a vote, how far apart
 response round, how many competing alternatives were on the floor, how many delegates changed position, how
 many motions were withdrawn after opposition, and whether any minority position survived to the vote. A
 month can then read "100% unanimity, HIGH pre-revision divergence, 2 competing alternatives, 2 strategic
-withdrawals, negotiated convergence: YES".
+withdrawals, negotiated convergence: YES". A vote is unanimous when every member who could vote voted the
+same way, so an abstention breaks unanimity; since engine 19 the panel, the scorecard and the control room all
+count it so.
 
 Every unanimous vote is classified, from the recorded state rather than from reading prose:
 **INITIAL_CONSENSUS** (they agreed before speaking), **NEGOTIATED_CONVERGENCE** (competing alternatives

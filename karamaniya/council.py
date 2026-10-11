@@ -1498,7 +1498,7 @@ class Council:
                          # kept exactly as the delegate wrote them; what is recorded is that the
                          # reference cannot be traced, which is worth knowing before two delegates
                          # argue past each other about what is known.
-                         "fact_references": memory.fact_reference_errors(w, mid, out["statement"])}
+                         "fact_references": memory.fact_reference_errors(w, mid, out["statement"], tabled)}
             pre_positions[mid] = out["private_position"]
             for promise in out["promises"]:
                 created = commitments.record(w, mid, promise["text"], promise["to"], promise.get("condition", ""),
@@ -2611,7 +2611,7 @@ class Council:
             findings = [] if d.get("quiet") else (memory.validate_notes(w, mid, d["notes"], record)
                                                    + memory.validate_note_phase(w, mid, d["notes"])
                                                    + memory.unsupported_facts(w, mid, d["notes"])
-                                                   + memory.fact_reference_errors(w, mid, d["notes"]))
+                                                   + memory.fact_reference_errors(w, mid, d["notes"], record["motions"]))
             for clash in findings:
                 record["memory_mismatches"].append(clash)
                 if getattr(self, "store", None) is not None:

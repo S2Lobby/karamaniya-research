@@ -82,7 +82,7 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # interest. The survey and the founding diagnosis stay anonymous: they ask for a view of the country, not of a seat.
 # 18 goes with world engine 21: the request to send a refused amendment again, and a motion whose proposer's amendment
 # was refused says so to every voter, and the transcript says so to every later speaker.
-AGENT_PROMPT = 18
+AGENT_PROMPT = 19
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose
@@ -234,7 +234,7 @@ PSYCHOLOGY = 8
 # lever does not take, the whole amendment was refused without a word to anyone, and the council voted 5-0 on the text
 # as tabled while three delegates' notes recorded the amendment as law. Now the proposer is told why and may send it
 # again; a refusal that stands is shown on the motion to every voter. The engine never corrects an amendment itself.
-WORLD_ENGINE = 21
+WORLD_ENGINE = 22
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

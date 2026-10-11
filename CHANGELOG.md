@@ -4,6 +4,23 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 22
+
+`WORLD_ENGINE` 22, `AGENT_PROMPT` 19 (psychology 8 unchanged): the council now gets a traceable account of
+what the engine heard and did. Private dispatches lead the office brief so they survive short context budgets;
+League conditions are checked each month while a tranche remains unpaid, and its internal thresholds are not
+presented as part of the credit line. Recruitment and mobilization show their actual per-level scale. Diplomacy
+answers preserve negotiated ultimatum terms and distinguish a stand-down from an invented one; foreign actions
+are read from the supported answer keys and the cabinet is told about actual refusals, not successful acts.
+
+- Fact-reference checks now receive this month's tabled motions and final motions, so a proposed investigation is
+  not reported as a false memory. The recorded run comparison found 25 of 28 false flags and no lost true flags.
+- Reserve-floor wording is scoped to arrears, rather than treating a loan-purpose restriction as a blocked loan.
+- The engine records unpaid bills as current obligations, reports recruitment intake by level, and updates the
+  prompt freeze for the new prompt version.
+- Focused E22 regression tests cover dispatches, diplomacy, stand-down, loan conditions, scale, wording and
+  foreign-action intake.
+
 ## World engine 21
 
 `WORLD_ENGINE` 21, `AGENT_PROMPT` 18 (psychology 8 unchanged): a refused amendment goes back to its proposer once, and

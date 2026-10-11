@@ -149,7 +149,8 @@ available evidence. The optional **Deep inspect** control reveals more private s
 Run reports include a relationship graph and a “why did this happen?” view; neither is shown to the agents.
 Deferred motions remain on the next month's agenda. Renewing one updates its wording or adds a co-sponsor
 without taking another slot. A proposer who withdraws cannot erase a motion that a co-sponsor keeps.
-For inherited unpaid bills, the council can now vote on a one-time `settle_arrears` motion: choose
+For unpaid bills, whether inherited or run up by the current government, the council can now vote on a one-time
+`settle_arrears` motion: choose
 `reserves` or `domestic_bonds` as the funding source and `quarter`, `half`, or `all` as the target.
 Actual payment is limited by cash or credit; it reduces reserves or adds domestic debt.
 The simulation records genuine unanimity when delegates agree and never inserts opposing votes.

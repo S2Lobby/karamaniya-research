@@ -962,7 +962,7 @@ class Council:
 
         def propose(mid):
             label, note = founding.dossier(w, mid)
-            prompt = (decision_context.for_member(w, mid, "government formation") + "\n\n" + public
+            prompt = (decision_context.for_member(w, mid, "government formation", identity=True) + "\n\n" + public
                 + f"\nPRIVATE EVIDENCE DOSSIER ({label}): {note}\n\n"
                 "PROCEDURAL GOVERNMENT FORMATION. The five offices are vacant. Propose a complete slate "
                 "assigning all five offices, OR up to five individual appointments, OR both. "
@@ -1055,7 +1055,7 @@ class Council:
             else f"appoint {m['member']} to {m['office']}") for m in motions)
 
         def vote(mid):
-            prompt = (decision_context.for_member(w, mid, "formation vote") + "\n\n"
+            prompt = (decision_context.for_member(w, mid, "formation vote", identity=True) + "\n\n"
                 + "PROPOSALS AND PUBLIC STATEMENTS\n" + transcript + "\n" + menu + "\n\n"
                 "Vote on each procedural proposal. A full slate appoints all five office holders if it passes; "
                 "otherwise passing individual appointments fill their offices. You may vote no or abstain. "
@@ -2108,7 +2108,8 @@ class Council:
             schema = {"type": "object", "properties": {
                 "principles": {"type": "string", "minLength": 20, "maxLength": 500}},
                 "required": ["principles"], "additionalProperties": False}
-            prompt = (decision_context.for_member(self.w, mid, "private restatement of your public principles")
+            prompt = (decision_context.for_member(self.w, mid, "private restatement of your public principles",
+                                                  identity=True)
                       + "\n\nYour draft public principles exactly match another delegate's declaration. "
                       "Restate your own genuine position in your own words, using your priorities, existing "
                       "ideology, office and private information. Do not copy or coordinate with anyone. "

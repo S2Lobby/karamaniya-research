@@ -10,7 +10,9 @@ FAKE_CLI_COUNTER=<file>       where the call count is kept between calls
 FAKE_CLI_USAGE=<json>         extra usage fields to report (Codex, Claude Code, Copilot): cache and reasoning counts
 FAKE_CLI_ANSWER=<json>        the answer to give (Antigravity), instead of one chosen from the schema
 FAKE_CLI_DETOURS=<n>          Antigravity: the first n calls reach for a tool, which is denied, and end with no answer
-FAKE_CLI_THINKING=<text>      reasoning to print the way each tool prints it (Claude Code, Codex, Cline)
+FAKE_CLI_THINKING=<text>      reasoning to print the way each tool prints it (Claude Code, Codex, Cline); Claude Code,
+                              like 2.1.293, prints the thinking block's text only with --thinking-display summarized
+FAKE_CLI_OLD_CLAUDE=1         Claude Code: refuse --thinking-display as an unknown option, as a CLI older than it would
 FAKE_CLI_CLINE_IGNORES_STDIN=1  Cline: answer from the prompt argument alone, as a Cline that did not read stdin would
 """
 import json
@@ -189,6 +191,12 @@ def main():
 
     if kind == "claude":
         schema = arg_after(argv, "--json-schema")
+        if os.environ.get("FAKE_CLI_OLD_CLAUDE") and "--thinking-display" in argv:
+            if os.environ.get("FAKE_CLI_COUNTER"):
+                with open(os.environ["FAKE_CLI_COUNTER"] + ".refused", "a") as f:
+                    f.write("x")
+            print("error: unknown option '--thinking-display'", file=sys.stderr)   # as commander prints it
+            return 1
         if limited:
             print(json.dumps({"type": "result", "is_error": True, "result": "Claude AI usage limit reached|1790620000"}), file=out)
             return 1
@@ -200,9 +208,11 @@ def main():
                                   "delta": {"type": "text_delta", "text": chunk}}}), file=out, flush=True)
                 time.sleep(0.25)
         if arg_after(argv, "--output-format") == "stream-json" and os.environ.get("FAKE_CLI_THINKING"):
-            # The assistant message stream-json prints before the result, with its thinking block.
+            # The assistant message stream-json prints before the result, with its thinking block: the text is the
+            # summary asked for with --thinking-display, and empty without it (the thinking itself is in the signature).
+            shown = os.environ["FAKE_CLI_THINKING"] if arg_after(argv, "--thinking-display") == "summarized" else ""
             print(json.dumps({"type": "assistant", "message": {"content": [
-                {"type": "thinking", "thinking": os.environ["FAKE_CLI_THINKING"], "signature": "x"},
+                {"type": "thinking", "thinking": shown, "signature": "x"},
                 {"type": "text", "text": json.dumps(data)}]}}), file=out)
         print(json.dumps({"type": "result", "is_error": False, "result": json.dumps(data), "structured_output": data,
                           "stop_reason": "end_turn", "usage": {"input_tokens": 120, "output_tokens": 12, **extra_usage()},

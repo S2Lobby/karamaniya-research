@@ -4,6 +4,29 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## Agent prompt 17
+
+`AGENT_PROMPT` 17 (world engine 20 and psychology 8 unchanged): a delegate asked to act on its own appointment is told
+which delegate it is, and a Claude Code seat keeps its reasoning. Both were found in run 20261011-094417-seed1, by
+replaying a Claude Haiku 5.5 formation vote through the seat's own command.
+
+- **The formation vote says who is voting.** The formation proposal and vote, and the request to restate a declaration
+  of principles that duplicated another delegate's, never said which delegate the model was (backlog T98). Voting on
+  sixteen slates and appointments with its own among them, Haiku 5.5 guessed at its letter from the statements, then
+  voted for the broadest consensus because it could not tell its own interest. The three prompts now carry
+  `YOU ARE DELEGATE X` and the delegate's offices after the canonical state, as a session's role block does; the
+  questionnaire and the founding diagnosis stay anonymous. In the frozen four-month run only the ten formation prompts
+  changed, and the fixture was rewritten (`tests/test_agent_prompt17.py`).
+- **A Claude Code seat keeps its reasoning.** Claude Code 2.1.293 returns each thinking block with empty text unless
+  asked for Anthropic's summary of it, so the reasoning record of engine 12 was empty for every Claude Code call of
+  every run (backlog T97). The seat now passes `--thinking-display summarized` and keeps the summary as the call's
+  reasoning, capped at 40,000 characters as every seat's is; the full thinking is never returned. It also reads the
+  thinking token count, which it recorded as 0. That count explains why a Haiku 5.5 seat takes about five minutes a
+  call: it thinks 50,000 to 70,000 tokens before an answer of about 1,000 (57,128 of 58,211 output tokens in one
+  formation vote; low effort cut that by about a sixth in one replay), and Claude Code cannot turn its thinking off.
+  A Claude Code too old for the flag answers without it.
+- **Still open.** No Codex, Cline, Copilot or Qoder call of three real runs kept any reasoning (backlog T99).
+
 ## World engine 20
 
 `WORLD_ENGINE` 20 (agent prompt 16 and psychology 8 unchanged): in the karam, a higher policy rate lowers the price

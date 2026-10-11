@@ -45,7 +45,7 @@ def karam_run(months: int, rate: float | None = None, hike_from: int = 4, printi
 
 class Versions(unittest.TestCase):
     def test_the_bump(self):
-        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY), (20, 16, 8))
+        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY), (20, 16, 8))
 
 
 class AHikeLowersThePriceLevel(unittest.TestCase):

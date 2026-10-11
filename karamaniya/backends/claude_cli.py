@@ -4,7 +4,8 @@ Runs headless with no tools, no session history and --safe-mode, so your CLAUDE.
 memory, hooks and MCP servers never reach the council member. Environment variables
 that force a different model or provider (ANTHROPIC_MODEL and friends, ANTHROPIC_BASE_URL,
 ANTHROPIC_AUTH_TOKEN) are removed for the child process, and the model that actually
-answered is read back from the CLI's report.
+answered is read back from the CLI's report. Claude's thinking is asked for as Anthropic's
+summary of it (--thinking-display summarized) and kept with the call, with its token count.
 
 The same harness can carry another model that speaks Anthropic's API, such as DeepSeek:
 set `base_url` (for DeepSeek, https://api.deepseek.com/anthropic) and `api_key_env` (the
@@ -41,6 +42,10 @@ class ClaudeCLIBackend(Backend):
         if self.key_env and not os.environ.get(self.key_env):
             raise ValueError(f"environment variable {self.key_env} is not set")
         self.workdir = cli_common.scratch_dir("claude")
+        # Claude's thinking comes back only when asked for, as Anthropic's summary of it (the full thinking stays
+        # encrypted). Claude Code 2.1.293 returned every thinking block empty without --thinking-display, so engine
+        # 12's reasoning_text was empty for every Claude Code call of every run. A CLI too old for the flag drops it.
+        self.thinking_display = "summarized"
 
     def _env(self) -> dict:
         env = {k: v for k, v in os.environ.items() if k not in STRIP_ENV}
@@ -68,6 +73,8 @@ class ClaudeCLIBackend(Backend):
         effort = self.phase_setting(context, self.effort)
         if effort:
             cmd += ["--effort", effort]
+        if self.thinking_display:
+            cmd += ["--thinking-display", self.thinking_display]
         draft = cli_common.StreamPreview(progress) if streaming else None
         def on_line(line):
             try:
@@ -102,6 +109,9 @@ class ClaudeCLIBackend(Backend):
                     for t in reasoning_blocks((e.get("message") or {}).get("content"))]
         if out is None:
             msg = (stderr or stdout or "").strip()[:400]
+            if self.thinking_display and "unknown option '--thinking-display'" in msg.lower():
+                self.thinking_display = ""
+                return self.call(system, user, schema, context)
             raise cli_common.classify(f"unreadable output (exit {code}): {msg}", "Claude CLI")
         if not isinstance(out, dict):
             raise TransientError(f"Claude CLI: unexpected output (exit {code})")
@@ -110,6 +120,10 @@ class ClaudeCLIBackend(Backend):
         cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
         tokens_in = int(usage.get("input_tokens", 0) + cache_read + cache_write)
         tokens_out = int(usage.get("output_tokens", 0))
+        # Part of output_tokens, as the CLI reports it: the hidden thinking, most of a thinking model's output
+        # (57,128 of 58,211 tokens in one Haiku 5.5 formation vote).
+        details = usage.get("output_tokens_details")
+        thinking = int((details.get("thinking_tokens") if isinstance(details, dict) else 0) or 0)
         served = ",".join(sorted((out.get("modelUsage") or {}).keys()))
         text = out.get("result") or ""
         if out.get("is_error"):
@@ -127,5 +141,5 @@ class ClaudeCLIBackend(Backend):
         return CallResult(data=data if isinstance(data, dict) else None, raw=text, served_model=served,
                           input_tokens=tokens_in, output_tokens=tokens_out,
                           cost_usd=self.cost(tokens_in, tokens_out, cache_read, cache_write), refusal=refusal,
-                          cache_read_tokens=cache_read, cache_write_tokens=cache_write,
+                          cache_read_tokens=cache_read, cache_write_tokens=cache_write, reasoning_tokens=thinking,
                           reasoning_text=reasoning(*thoughts))

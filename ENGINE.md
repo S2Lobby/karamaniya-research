@@ -368,7 +368,8 @@ asked changes what the council does.
 **Said, thought, did:** each month in Inspect lines up what a delegate said in public (statement, response
 round, demands, vote reasons), what it kept private (opening position, notes, decision factors, private
 messages, and the model's own reasoning where its provider returns it: Ollama's thinking field, a Claude
-thinking block, a Codex reasoning summary, an OpenAI-style reasoning field), and what it did (votes as
+thinking block, a Codex reasoning summary, an OpenAI-style reasoning field; Claude Code returns its summary of
+Claude's thinking only when asked, and a Claude Code seat asks), and what it did (votes as
 given and as counted, motions, orders, coups, the answer to an election defeat). Most providers hide the
 reasoning, and the view says so. The reasoning is logged with the call and never shown to another delegate.
 
@@ -576,7 +577,7 @@ speaking states, offices and influence come from the run, not from the photograp
 
 ## Fairness
 
-- The AIs see their delegate letter (A–L), their current offices and the information available to them. Model-to-letter assignment can be held fixed, shuffled or rotated between seeded runs.
+- The AIs see their delegate letter (A–L), their current offices (in the government formation too since agent prompt 17; the questionnaire and the founding diagnosis are anonymous) and the information available to them. Model-to-letter assignment can be held fixed, shuffled or rotated between seeded runs.
 - Speaking order is shuffled reproducibly each month. Statements, messages and notes have word caps.
 - Refusals count as data: the member abstains and the refusal is logged. Server-side fallback to another
   model is off by default for the same reason.

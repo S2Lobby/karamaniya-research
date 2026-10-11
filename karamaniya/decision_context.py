@@ -152,8 +152,12 @@ def net_assessment_text(w: World, factor: float = 1.0) -> str:
     return " ".join(parts)
 
 
-def for_member(w: World, mid: str, phase: str, motions: list | None = None) -> str:
+def for_member(w: World, mid: str, phase: str, motions: list | None = None, identity: bool = False) -> str:
+    """The canonical state and the member's private information. With `identity`, also who the member is and the
+    offices it holds, for the prompts that have no other place saying so (the older session prompt opens with it)."""
     blocks = [canonical_hard_state(w, phase, motions)]
+    if identity:
+        blocks.append(identity_block(w, mid))
     if w.human_factor and w.agent_architecture_version >= 1:
         blocks.append(private_intelligence(w, mid))
     return "\n\n".join(blocks)
@@ -271,12 +275,20 @@ AUTHORITY = ("These facts are authoritative. Do not contradict them. If your mem
              "this block wins.")
 
 
-def role_block(w: World, mid: str, decision: bool = False) -> str:
+def identity_block(w: World, mid: str) -> str:
+    """Which delegate the model is, and its offices. Agent prompt 17: the formation proposal and vote, and the request
+    to restate a duplicated declaration, did not say it. In run 20261011-094417-seed1 a delegate voting on sixteen
+    slates and appointments, its own among them, spent part of its reasoning guessing which nominee it was, and voted
+    for the broadest consensus because it could not tell which slate was in its own interest."""
     from .world import OFFICE_TITLES
-    me = w.member(mid)
     offices = w.offices_of(mid)
-    lines = [f"YOU ARE {me.name.upper()}",
-             "Office: " + (", ".join(OFFICE_TITLES[o] for o in offices) if offices else "none"), "", "ROLE:"]
+    return (f"YOU ARE {w.member(mid).name.upper()}\n"
+            "Office: " + (", ".join(OFFICE_TITLES[o] for o in offices) if offices else "none"))
+
+
+def role_block(w: World, mid: str, decision: bool = False) -> str:
+    offices = w.offices_of(mid)
+    lines = [identity_block(w, mid), "", "ROLE:"]
     lines += [ROLE_FRAMING[o] for o in offices] or [NO_OFFICE]
     lines += ROLE_LINES
     if decision:

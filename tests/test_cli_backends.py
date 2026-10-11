@@ -38,7 +38,8 @@ class CliSeats(unittest.TestCase):
         self.record = os.path.join(self.tmp, "record.json")
         self.saved = {k: os.environ.get(k) for k in ("FAKE_CLI_RECORD", "FAKE_CLI_LIMIT_AFTER", "FAKE_CLI_COUNTER", "FAKE_CLI_STREAM",
                                                      "FAKE_CLI_USAGE", "FAKE_CLI_ANSWER", "FAKE_CLI_DETOURS", "FAKE_CLI_THINKING",
-                                                     "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "KARAMANIYA_DS_TEST")}
+                                                     "FAKE_CLI_OLD_CLAUDE", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN",
+                                                     "KARAMANIYA_DS_TEST")}
         os.environ["FAKE_CLI_RECORD"] = self.record
         os.environ.pop("FAKE_CLI_LIMIT_AFTER", None)
         os.environ["FAKE_CLI_COUNTER"] = os.path.join(self.tmp, "count")
@@ -189,6 +190,31 @@ class CliSeats(unittest.TestCase):
             self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
             self.assertEqual(res.reasoning_text, "Concede the port, keep the army.", kind)
         self.assertIn("reasoning_text", res.to_dict())
+
+    def test_claude_asks_for_its_thinking_and_keeps_the_count(self):
+        """Claude Code returns a thinking block's text only when asked for it with --thinking-display: without the flag
+        every Claude Code call of every run kept no reasoning. The thinking count is part of output_tokens."""
+        os.environ["FAKE_CLI_THINKING"] = "Weigh each slate against the dossier."
+        os.environ["FAKE_CLI_USAGE"] = json.dumps({"output_tokens": 5800,
+                                                   "output_tokens_details": {"thinking_tokens": 5700}})
+        res = make_backend(seat("claude", "claude_cli")).complete(SYSTEM, USER, SCHEMA)
+        self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
+        argv = self.sent()["argv"]
+        self.assertEqual(argv[argv.index("--thinking-display") + 1], "summarized")
+        self.assertEqual(res.reasoning_text, "Weigh each slate against the dossier.")
+        self.assertEqual((res.output_tokens, res.reasoning_tokens), (5800, 5700))      # not 5800 + 5700
+
+    def test_a_claude_code_too_old_for_the_flag_answers_without_it(self):
+        os.environ["FAKE_CLI_OLD_CLAUDE"] = "1"
+        os.environ["FAKE_CLI_THINKING"] = "Weigh each slate against the dossier."
+        b = make_backend(seat("claude", "claude_cli"))
+        for _ in range(2):
+            res = b.complete(SYSTEM, USER, SCHEMA)
+            self.assertEqual(res.data, {"ok": True, "note": "ready"}, res.error)
+            self.assertNotIn("--thinking-display", self.sent()["argv"])
+            self.assertEqual(res.reasoning_text, "")
+        with open(os.environ["FAKE_CLI_COUNTER"] + ".refused") as f:
+            self.assertEqual(f.read(), "x")         # refused once: the seat remembers and stops sending it
 
     def test_cache_and_reasoning_counts_are_read_back(self):
         os.environ["FAKE_CLI_USAGE"] = json.dumps({"cache_read_input_tokens": 9000, "cache_creation_input_tokens": 400})

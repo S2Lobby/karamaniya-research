@@ -74,7 +74,13 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # base, the priorities and the fears. Under seeded names the English word "union" stays English. The cabinets see the
 # regions the Union or the rebels hold, an unbiased band for Karamaniya's army, and a demand as due in its deadline
 # month; the forecast panel names its inflation window.
-AGENT_PROMPT = 16
+# 17 goes with world engine 20. The formation proposal and vote, and the request to restate a declaration of principles
+# that duplicated another delegate's, say which delegate the model is and the offices it holds ("YOU ARE DELEGATE E",
+# then its offices, after the canonical state, as the role block has it in a session). They did not: in run
+# 20261011-094417-seed1 a delegate voting on sixteen slates and appointments, its own among them, spent part of its
+# reasoning guessing which nominee it was and voted for the broadest consensus because it could not tell its own
+# interest. The survey and the founding diagnosis stay anonymous: they ask for a view of the country, not of a seat.
+AGENT_PROMPT = 17
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose

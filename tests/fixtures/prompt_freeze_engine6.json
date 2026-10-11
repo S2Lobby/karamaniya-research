@@ -1,6 +1,6 @@
 {
  "about": "Fingerprints of every prompt in a 4-month run of council.scripted.toml, seed 1, produced by the engine-6 code (AGENT_PROMPT 6, WORLD_ENGINE 6; the engine-5 prompts are those of tag engine-5, commit 27d7534). A default run must reproduce them exactly: see tests/test_prompt_freeze.py. Regenerate only with a deliberate AGENT_PROMPT bump: python tools/prompt_freeze.py --write.",
- "engine": "agent prompt 16, world engine 20",
+ "engine": "agent prompt 17, world engine 20",
  "months": 4,
  "config": "council.scripted.toml",
  "seed": 1,
@@ -60,70 +60,70 @@
    "formation_proposal",
    "A",
    1,
-   "f0a205e2308d0482640b57e03d162796dbb041dec1343540d3f149e260f7006f"
+   "7e357f3c2394e484d985710b573375b1df6f63d9e1f8392c59d933c8d6fd9402"
   ],
   [
    0,
    "formation_proposal",
    "B",
    1,
-   "f2ad38e19f6d966b0dea35dfb9cfadcf5b37ef5b5f7bb903e9600c35832c8132"
+   "e3a8588aa46ad940df05a5967f75f740c8146a037eacd49c030f909a66ba28ec"
   ],
   [
    0,
    "formation_proposal",
    "C",
    1,
-   "d594d9da0054bb4382549011d9b4ed4360886e6955974b1d35ba3d0dba0f5b11"
+   "8b7e10b3b93ae05d4e6d2b2451bd8f91e6815f876fadea87bcb8e7407c1c2acb"
   ],
   [
    0,
    "formation_proposal",
    "D",
    1,
-   "5745a7420fe33a624ebcd66c9f0ec9f431c5f3b5c2590adb04d4d79c2a397ffa"
+   "36fb96c15fefd151b96839ba515d4c8ed8c50d9086a183562b3d93f6f71f1d99"
   ],
   [
    0,
    "formation_proposal",
    "E",
    1,
-   "0e22f790c9fa73a2b5728f6169ec260b79dcf47f4963c0439ac6071a105668ea"
+   "779a3c509a1c14d4f1775c57e7a5e4fd0e3ec31581168e58354476db8ca6fd18"
   ],
   [
    0,
    "formation_vote",
    "A",
    1,
-   "853e87a3722f1c85b77c6a78caa8e6a8a7b2eb0c123eeaa13053d944aeeb451e"
+   "5ca5363c536ccfb89fa0ca93ca005332ce82c2393047fe2171a8da6a3e782567"
   ],
   [
    0,
    "formation_vote",
    "B",
    1,
-   "853e87a3722f1c85b77c6a78caa8e6a8a7b2eb0c123eeaa13053d944aeeb451e"
+   "30e3b62ee8dad2d8a2721f641b02695d7f0254a999596b6e51cd6b9327633ab2"
   ],
   [
    0,
    "formation_vote",
    "C",
    1,
-   "853e87a3722f1c85b77c6a78caa8e6a8a7b2eb0c123eeaa13053d944aeeb451e"
+   "72d2d1dc826d43f6950a0762dbae0c3ecba0ac93f52401957797e7dad0a82d46"
   ],
   [
    0,
    "formation_vote",
    "D",
    1,
-   "853e87a3722f1c85b77c6a78caa8e6a8a7b2eb0c123eeaa13053d944aeeb451e"
+   "6e0a271ed94375b0175645260d66482aa1f969113fccdd2d59ff2bab7fd3fc2a"
   ],
   [
    0,
    "formation_vote",
    "E",
    1,
-   "853e87a3722f1c85b77c6a78caa8e6a8a7b2eb0c123eeaa13053d944aeeb451e"
+   "68e92ebd82331d266b5bf5ee35f29b1c537b9fb4f53c4b70ea1c2486c1490185"
   ],
   [
    0,

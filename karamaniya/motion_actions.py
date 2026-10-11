@@ -236,6 +236,77 @@ PERCENT_POINT_METRICS = BOUNDED_PROPORTION_METRICS | {"inflation", "deficit"}
 MONEY_METRICS = {"reserves", "reserves_after_payment", "arrears", "army_arrears"}
 
 
+def pays_from_reserves(motion: dict) -> bool:
+    """Whether executing this motion pays gold out of the reserves, the only payment a reserve floor can limit.
+
+    An arrears settlement pays from reserves when its subject is reserves; relief does when its funding plan draws on
+    them. A loan, a grain or trade deal, a directive or a programme pays nothing out, and a settlement funded from bonds
+    pays out of bonds. A reserve floor on any of those tests today's balance, and a loan whose floor needs the loan to
+    lift that balance blocks itself (run 20261011-105713-seed1, Month 8, M5).
+    """
+    kind = str(motion.get("type", "")).strip()
+    if kind == "settle_arrears":
+        return str(motion.get("subject", "")).strip().lower() == "reserves"
+    if kind == "disaster_relief":
+        # The funding relief executes with: the plan's allocations when it has them, else its one named source.
+        plan = motion.get("action") if isinstance(motion.get("action"), dict) else {}
+        allocations = plan.get("funding_plan") if isinstance(plan.get("funding_plan"), list) else []
+        if allocations:
+            sources = [str(item.get("source", "")).strip().lower() for item in allocations if isinstance(item, dict)]
+        else:
+            sources = [str(plan.get("funding", "")).strip().lower()]
+        return "reserves" in sources
+    return False
+
+
+def _is_non_payment_reserve_floor(cond, motion: dict) -> bool:
+    """A "reserves after payment" condition on a motion that has a type and pays nothing out of reserves."""
+    return (isinstance(cond, dict) and cond.get("metric") == "reserves_after_payment"
+            and bool(str(motion.get("type", "")).strip()) and not pays_from_reserves(motion))
+
+
+#: A reserve level can be the aim of money rather than a level a payment must keep: "reserves rebuilt above 60M",
+#: "restore reserves to at least 60M", "order of use: ... reserves above 60M", "target", "aim". Run
+#: 20261011-105713-seed1, Month 8: the purpose of a 50M loan was read as a floor on that loan. A goal is not a condition.
+_GOAL_VERB = re.compile(r"^(?:rebuil[dt]\w*|restor\w*|rais\w*|bring\w*|brought|build\w*|built|replenish\w*|recover\w*|"
+                        r"lift\w*|increas\w*|grow\w*|grew|grown|boost\w*)$", re.I)
+_GOAL_PHRASE = re.compile(r"\b(?:order\s+of\s+use|targets?|aim(?:s|ed|ing)?|goals?)\b", re.I)
+
+
+#: A sequencing word before a reserve level makes it a precondition: "pay only after reserves are rebuilt above 60M".
+_GATE_WORDS = {"after", "once", "when", "if", "unless", "until", "while", "provided", "subject", "long", "condition"}
+_FLOOR_WORDS = {"floor", "minimum", "buffer", "threshold"}
+
+
+def _states_a_goal(sentence: str, start: int, end: int) -> bool:
+    """Whether the reserve level at sentence[start:end] names what the money is for, not a level to keep.
+
+    A goal verb in the two words before the reserve word, or inside the phrase, makes it a goal: "rebuild reserves above
+    60M", "reserves rebuilt above 60M", "restore reserves to 60M". So does an "order of use", "target" or "aim" earlier
+    in the same sentence. A sequencing word before it ("only after reserves are rebuilt above 60M") makes it a
+    precondition instead, and "raise the reserve floor to 30M" sets the floor itself, not an aim. "Keep reserves above
+    60M" and "reserves remain at or above 30 million" are levels.
+    """
+    span = sentence[start:end].split()
+    # "raise the reserve floor to 30M" sets the floor itself, which is a condition, not an aim for the reserves.
+    if len(span) > 1 and span[1].strip(",:;.()").lower() in _FLOOR_WORDS:
+        return False
+    words = [word.strip(",:;.()").lower() for word in sentence[:start].split()[-2:] + span]
+    for word in words:
+        if word in _GATE_WORDS:
+            return False    # a sequencing word comes first: the level is a precondition, whatever verb follows
+        if _GOAL_VERB.match(word):
+            return True     # a goal verb comes first, with no sequencing word before it
+    return bool(_GOAL_PHRASE.search(sentence[:end]))
+
+
+def _sentence_before(text: str, pos: int) -> str:
+    """The text of the sentence that ends before `pos`: from its last full stop, semicolon or line break."""
+    head = text[:pos]
+    cut = max(head.rfind(";"), head.rfind("\n"), head.rfind(". "))
+    return head[cut + 1:] if cut >= 0 else head
+
+
 def canonical_metric_value(metric: str, value: float) -> float:
     """Read percent-point thresholds in the same fractional units used by world state."""
     value = float(value)
@@ -275,18 +346,31 @@ _CONDITION_CLAUSE = re.compile(
     r"credit|audit|register|league)(?:[^.;]|\.(?=\d))*", re.IGNORECASE)
 
 
-def parse_conditions(text: str, motion_type: str = "", subject: str = "") -> list:
+_FLOOR_HIT = re.compile(r"(reserv\w*|gold|treasury)[^.;]{0,60}?(>=|at\s+least|no\s+less\s+than|"
+                        r"not\s+below|remain\w*|stay\w*|preserv\w*|keep\w*|floor|above|minimum)"
+                        r"[^0-9.;]{0,20}(\d[\d,]*(?:\.\d+)?)\s*(m\b|million|bn\b|billion|k\b|%)?")
+
+
+def parse_conditions(text: str, motion_type: str = "", subject: str = "", action: dict | None = None) -> list:
     """Binding execution safeguards read from final motion prose.
 
     Never invents conditions: plain payment or policy wording yields []. A floor
     ("reserves remain >= 55M"), a sequencing gate ("only after League credit
     clears") or an audit gate ("audited register") yields a structured condition
     the engine must test before mutating state. Opinion yields nothing.
+
+    Two readings are withheld. A goal is not a floor ("reserves rebuilt above 60M" says what the money is for), and a
+    reserve floor binds only a motion that pays out of the reserves (see pays_from_reserves). With no motion type given,
+    the text is read as text alone.
     """
-    clauses = [c.strip() for c in _CONDITION_CLAUSE.findall(text or "") if c.strip()]
-    if not clauses:
+    spans = []
+    for match in _CONDITION_CLAUSE.finditer(text or ""):
+        clause = match.group(0).strip()
+        if clause:
+            spans.append((_sentence_before(str(text), match.start()).lower(), clause.lower()))
+    if not spans:
         return []
-    joined = " ; ".join(clauses).lower()
+    joined = " ; ".join(clause for _lead, clause in spans)
     out: list = []
     seen = set()
 
@@ -297,10 +381,15 @@ def parse_conditions(text: str, motion_type: str = "", subject: str = "") -> lis
         seen.add(key)
         out.append({"metric": metric, "operator": operator, "value": value, "source": source[:220]})
 
-    floor_hit = re.search(r"(reserv\w*|gold|treasury)[^.;]{0,60}?(>=|at\s+least|no\s+less\s+than|"
-                          r"not\s+below|remain\w*|stay\w*|preserv\w*|keep\w*|floor|above|minimum)"
-                          r"[^0-9.;]{0,20}(\d[\d,]*(?:\.\d+)?)\s*(m\b|million|bn\b|billion|k\b|%)?",
-                          joined)
+    # Run 20261011-105713-seed1, Month 8: a 50M loan request read "reserves rebuilt above 60M" as a floor on itself.
+    # Clauses are read in turn, and the first reserve level that is not a goal is the floor.
+    pays = not motion_type or pays_from_reserves({"type": motion_type, "subject": subject, "action": action})
+    floor_hit = None
+    for lead, clause in (spans if pays else []):
+        floor_hit = next((m for m in _FLOOR_HIT.finditer(clause)
+                          if not _states_a_goal(lead + clause, len(lead) + m.start(), len(lead) + m.end())), None)
+        if floor_hit:
+            break
     if floor_hit:
         # Audit MO10: the figure may carry comma groups ("12,500,000"); a bare "12" here was 12 million.
         try:
@@ -340,6 +429,8 @@ def motion_conditions(motion: dict) -> list:
                 continue
             if c.get("operator") not in (">=", "<=", "=="):
                 continue
+            if _is_non_payment_reserve_floor(c, motion):
+                continue  # refused, and reported by dropped_conditions
             try:
                 value = float(c.get("value"))
             except (TypeError, ValueError):
@@ -355,8 +446,36 @@ def motion_conditions(motion: dict) -> list:
                                  and condition["source"] == "audited register gate")]
         if clean:
             return clean
-    return parse_conditions(str(motion.get("text", "")),
-                            str(motion.get("type", "")), str(motion.get("subject", "")))
+    return parse_conditions(str(motion.get("text", "")), str(motion.get("type", "")),
+                            str(motion.get("subject", "")), motion.get("action"))
+
+
+def dropped_conditions(motion: dict) -> list:
+    """The structured reserve floors motion_conditions refuses, each with its reason, for the record.
+
+    A delegate may write "reserves after payment at least 60M" on a loan. The loan pays nothing out, so that floor can
+    only be met by the loan it blocks (run 20261011-105713-seed1, Month 8), and motion_conditions does not bind it. It
+    is listed here so the refusal is a fact about the motion rather than a silence.
+    """
+    explicit = motion.get("conditions") or motion.get("execution_conditions") or []
+    if not isinstance(explicit, list):
+        return []
+    action = motion.get("action") if isinstance(motion.get("action"), dict) else {}
+    label = str(action.get("action_type") or motion.get("subject") or motion.get("type") or "motion")
+    out = []
+    for c in explicit:
+        if not (isinstance(c, dict) and c.get("metric") in CONDITION_METRICS
+                and c.get("operator") in (">=", "<=", "==") and _is_non_payment_reserve_floor(c, motion)):
+            continue
+        try:
+            value = canonical_metric_value("reserves_after_payment", float(c.get("value")))
+        except (TypeError, ValueError):
+            continue
+        out.append({"metric": "reserves_after_payment", "operator": c["operator"], "value": value,
+                    "source": str(c.get("source", "explicit"))[:220],
+                    "note": (f"not bound: a {label} pays nothing out of reserves, so reserves after payment cannot "
+                             f"be a floor on it (reserves_after_payment {c['operator']} {value:,.0f})")})
+    return out
 
 
 def condition_values(w, motion: dict | None = None) -> dict:
@@ -448,6 +567,13 @@ def evaluate_conditions(w, conditions: list, motion: dict | None = None) -> list
     results = []
     for cond in conditions or []:
         metric = cond.get("metric")
+        # A reserve floor on a motion that pays nothing out of reserves is not tested, and cannot block it: the balance
+        # such a motion leaves is today's, so a loan needing its own proceeds to reach the floor would block itself
+        # (run 20261011-105713-seed1, Month 8). It is recorded as not applicable, so the record shows why.
+        if motion is not None and _is_non_payment_reserve_floor(cond, motion):
+            results.append({**cond, "met": True, "observed": None, "applies": False,
+                            "reason": "not applicable: this motion pays nothing out of reserves"})
+            continue
         # A floor on an arrears payment from reserves limits the payment. A floor on any other motion
         # (disaster relief drawing on reserves, say) is a test of the balance the motion would leave.
         if (metric == "reserves_after_payment" and motion is not None and cond.get("operator") == ">="
@@ -483,8 +609,8 @@ def evaluate_conditions(w, conditions: list, motion: dict | None = None) -> list
 
 def condition_mismatch(w, motion: dict) -> dict | None:
     """Final text says 'only after X' but the stored conditions would run now: block."""
-    text_conds = parse_conditions(str(motion.get("text", "")),
-                                  str(motion.get("type", "")), str(motion.get("subject", "")))
+    text_conds = parse_conditions(str(motion.get("text", "")), str(motion.get("type", "")),
+                                  str(motion.get("subject", "")), motion.get("action"))
     if not text_conds:
         return None
     stored = motion.get("conditions") or motion.get("execution_conditions") or []
@@ -613,16 +739,30 @@ def floor_from_demand(text: str) -> float | None:
     """
     found = []
     for clause in re.split(r";|(?<=[A-Za-z0-9)])\.(?=\s)", str(text or "")):
-        for pattern in _FLOOR_PATTERNS:
+        for index, pattern in enumerate(_FLOOR_PATTERNS):
             for match in pattern.finditer(clause):
                 # The floor has to be about reserves: the word is in the phrase, just before it, or
                 # straight after the figure ("55M gold").
                 if not _RESERVE_WORD.search(clause[max(0, match.start() - 60):match.end() + 12]):
                     continue
+                # The first pattern is the negated one ("do not bring reserves below 50M"). Its verbs name how
+                # reserves fall, not an aim, so it is never read as a goal.
+                if index and _demand_states_a_goal(clause, match):
+                    continue
                 value = _figure_value(match, clause)
                 if value and value > 0:
                     found.append(value)
     return max(found) if found else None
+
+
+def _demand_states_a_goal(clause: str, match) -> bool:
+    """Whether a demand's floor is an aim: the reserve word nearest the figure, read as _states_a_goal reads it.
+
+    "Reserves to be rebuilt above 60M before any payment" and "raise reserves to a 60M floor" name a goal;
+    "keep reserves above 50M" names a level to keep."""
+    anchors = [m.start() for m in _RESERVE_WORD.finditer(clause, max(0, match.start() - 60), match.end())]
+    start = anchors[-1] if anchors else match.start()
+    return _states_a_goal(clause, start, match.end())
 
 
 def _is_reserve_floor(cond) -> bool:

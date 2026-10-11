@@ -485,14 +485,39 @@ CONTRADICTIONS = {
 }
 
 
-def _action_tags(record: dict, mid: str, votes: bool = True) -> set[str]:
-    """What a member did this month that the record shows: its yes votes (counted when `votes`, which an open
-    ballot needs; a secret ballot leaves them out, since no one can read them, engine 18), its orders and its coup."""
-    tags = set()
+def _motion_label(mo: dict) -> str:
+    """A motion as the record names it, for an event: "M2 (lethal force against protests)"."""
+    summary = mo.get("summary") or f"{mo.get('type')} {mo.get('subject')} = {mo.get('value')}"
+    return f"{mo.get('id') or 'a motion'} ({summary})"
+
+
+def _vote_text(mo: dict, vote: str) -> str:
+    words = {"yes": "voting yes", "no": "voting no", "abstain": "abstaining", "conditional": "a conditional vote"}
+    return f"{words.get(vote, f'a {vote} vote')} on {_motion_label(mo)}"
+
+
+def _order_text(office: str, lever: str, value) -> str:
+    return f"the {office} order setting {lever} to {value}"
+
+
+def promise_broken_text(name: str, promise: str, broke: list) -> str:
+    """The promise_broken event: who acted against which commitment, as recorded, and what broke it (engine 22)."""
+    text = f'{name} acted against a recorded political commitment ("{promise}")'
+    if broke:
+        text += ", broken by " + "; ".join(dict.fromkeys(broke))
+    return text + "."
+
+
+def _action_sources(record: dict, mid: str, votes: bool = True) -> list:
+    """What a member did this month that the record shows, as (tag, what it was) pairs. The tags are the ones
+    _action_tags returns; the text names the yes vote, order or coup behind each, so a broken commitment can say what
+    broke it (engine 22)."""
+    out = []
     for mo in (record.get("motions", []) if votes else []):
         if mo.get("void") or mo.get("votes", {}).get(mid) != "yes":
             continue
         t, s, v = mo.get("type"), mo.get("subject"), str(mo.get("value", "")).lower()
+        what = _vote_text(mo, "yes")
         # Audit AG2: massaging the statistics is dishonesty (the dishonesty tag below), not repression.
         repressive_policy = (t == "set_policy" and s in ("protest_response", "arrests", "surveillance", "election_conduct", "emigration")
                              and v in ("lethal", "mass", "high", "rigged", "massaged", "closed"))
@@ -502,34 +527,44 @@ def _action_tags(record: dict, mid: str, votes: bool = True) -> set[str]:
             or (s == "emergency" and v == "on")
             or (s == "minority" and v in ("restricted", "interned"))))
         if repressive_policy or repressive_constitution:
-            tags.add("repression")
+            out.append(("repression", what))
         if t == "constitution" and s == "election_month":
             raw_month = str(mo.get("value", "")).strip().lower()
             previous = (record.get("pre_resolution") or {}).get("election_month", -1)
             if raw_month in ("none", "cancel", "cancelled", "never", "-1", "indefinite", "suspended"):
                 if previous >= 0:
-                    tags.add("election_delay")
+                    out.append(("election_delay", what))
             else:
                 digits = "".join(ch for ch in raw_month if ch.isdigit())
                 if digits and previous >= 0 and int(digits) - 1 > previous:
-                    tags.add("election_delay")
+                    out.append(("election_delay", what))
         if t == "set_policy" and s == "stats" and v == "massaged":
-            tags.add("dishonesty")
+            out.append(("dishonesty", what))
         if t == "constitution" and s == "minority" and v in ("restricted", "interned"):
-            tags.add("inequality")
+            out.append(("inequality", what))
     decision = (record.get("decisions") or {}).get(mid, {})
     orders = decision.get("orders", {})
-    if orders.get("interior", {}).get("protest_response") == "lethal" or orders.get("interior", {}).get("arrests") == "mass":
-        tags.add("repression")
+    if orders.get("interior", {}).get("protest_response") == "lethal":
+        out.append(("repression", _order_text("interior", "protest_response", "lethal")))
+    if orders.get("interior", {}).get("arrests") == "mass":
+        out.append(("repression", _order_text("interior", "arrests", "mass")))
     if orders.get("interior", {}).get("election_conduct") == "rigged":
-        tags.add("election_delay")
+        out.append(("election_delay", _order_text("interior", "election_conduct", "rigged")))
     if orders.get("army", {}).get("posture") == "attack":
-        tags.add("war")
+        out.append(("war", _order_text("army", "posture", "attack")))
     if orders.get("treasury", {}).get("stats") == "massaged":
-        tags.add("dishonesty")
-    if (decision.get("coup") or {}).get("action") in ("remove", "take_over"):
-        tags.add("coup")
-    return tags
+        out.append(("dishonesty", _order_text("treasury", "stats", "massaged")))
+    coup = decision.get("coup") or {}
+    if coup.get("action") in ("remove", "take_over"):
+        members = ", ".join(str(x) for x in coup.get("members") or [])
+        out.append(("coup", f"a coup order to {coup['action'].replace('_', ' ')}" + (f" {members}" if members else "")))
+    return out
+
+
+def _action_tags(record: dict, mid: str, votes: bool = True) -> set[str]:
+    """What a member did this month that the record shows: its yes votes (counted when `votes`, which an open
+    ballot needs; a secret ballot leaves them out, since no one can read them, engine 18), its orders and its coup."""
+    return {tag for tag, _ in _action_sources(record, mid, votes)}
 
 
 def _change(rel: dict, *, month: int | None = None, reason: str | None = None, **deltas) -> None:
@@ -577,13 +612,18 @@ def _consequences(w: World, record: dict) -> None:
         if m.id not in (record.get("decisions") or {}):
             continue
         # A principle or promise is broken by a vote only where the vote is seen (engine 18: a secret ballot).
-        actions = _action_tags(record, m.id, votes=w.ballot != "secret")
+        sources = _action_sources(record, m.id, votes=w.ballot != "secret")
+        actions = {tag for tag, _ in sources}
         for item in [*m.commitments, *m.promises]:
             if item.get("status") not in (None, "active") or item.get("superseded_month") is not None:
                 continue
             violated = set().union(*(CONTRADICTIONS.get(tag, set()) for tag in item.get("tags", [])))
             if not actions & violated:
                 continue
+            # What broke it: the votes, orders and coup behind the tags that matched (engine 22: the event used to say
+            # only that the commitment was acted against).
+            hit = actions & violated
+            broke = [what for tag, what in sources if tag in hit]
             item.setdefault("violations", []).append(
                 {"month": w.month, "action_tags": sorted(actions), "text": item["text"]})
             if item in m.promises:
@@ -595,7 +635,7 @@ def _consequences(w: World, record: dict) -> None:
                             _change(rel, month=w.month, reason="promise broken", trust=-5, resentment=4,
                                     perceived_reliability=-8)
                         _grievance(w, other.id, m.id, "a promise to me or the public was broken", 22)
-                w.event("promise_broken", f"{m.name} acted against a recorded political commitment.",
+                w.event("promise_broken", promise_broken_text(m.name, item["text"], broke),
                         importance=2, member=m.id, promise_id=item["id"], tags=sorted(actions))
             else:
                 m.clout = clamp(m.clout - item.get("reputational_cost", 50) / 1000, 0, 1)

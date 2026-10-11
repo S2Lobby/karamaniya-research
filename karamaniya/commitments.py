@@ -310,20 +310,31 @@ def evaluate(w: World, record_: dict) -> list:
                 continue
             if cond and met and w.month not in p["reminders"]:
                 p["reminders"].append(w.month)
-            verdict = _judge(w, m.id, p, norm, motions, decisions, shares, record_)
+            evidence: list = []
+            verdict = _judge(w, m.id, p, norm, motions, decisions, shares, record_, evidence)
             # Audit AG4: a deadline with no verdict is not "broken" or "lapsed" under a secret ballot, because the vote that
             # may have kept the promise is hidden; only the public orders can judge it then.
             if verdict is None and not hidden and p.get("deadline_month", -1) >= 0 and w.month >= p["deadline_month"]:
                 verdict = "broken" if p.get("deadline_explicit") else "lapsed"
+                if verdict == "broken":
+                    evidence.append(f"the deadline of Month {p['deadline_month'] + 1} passed with no vote or order that kept it")
             if verdict:
-                results.append(_settle(w, m.id, p, verdict))
+                results.append(_settle(w, m.id, p, verdict, evidence))
     return results
 
 
 def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: dict, shares: list,
-           record: dict | None = None) -> str | None:
+           record: dict | None = None, evidence: list | None = None) -> str | None:
+    """The verdict on one promise. When it is "broken", `evidence` (if given) receives the votes and orders the verdict
+    rests on, as text, so the event can name what broke the promise (engine 22)."""
+    from .agents import _order_text, _vote_text
     kind = norm.get("type")
     vote_of = lambda mo: mo.get("votes", {}).get(mid)
+
+    def found(*items: str) -> None:
+        if evidence is not None:
+            evidence.extend(items)
+
     if kind == "support_proposals_of":
         relevant = [mo for mo in motions if mo.get("proposer") == norm.get("beneficiary")
                     and (not norm.get("lever") or mo.get("subject") == norm.get("lever"))]
@@ -333,6 +344,7 @@ def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: di
         if all(v == "yes" for v in votes):
             return "kept"
         if any(v == "no" for v in votes):
+            found(*(_vote_text(mo, v) for mo, v in zip(relevant, votes) if v == "no"))
             return "broken"
         return None
     if kind == "support_motion":
@@ -355,7 +367,10 @@ def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: di
         if len(relevant) != 1:
             return None
         vote = vote_of(relevant[0])
-        return "kept" if vote == "yes" else "broken" if vote in ("no", "abstain", "conditional") else None
+        if vote in ("no", "abstain", "conditional"):
+            found(_vote_text(relevant[0], vote))
+            return "broken"
+        return "kept" if vote == "yes" else None
     if kind in ("support_policy", "oppose_policy"):
         relevant = [mo for mo in motions if mo.get("type") == "set_policy" and mo.get("subject") == norm.get("lever")]
         if not relevant:
@@ -365,6 +380,7 @@ def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: di
         if all(v == want for v in votes):
             return "kept"
         if any(v not in (want, "abstain", None) for v in votes):
+            found(*(_vote_text(mo, v) for mo, v in zip(relevant, votes) if v not in (want, "abstain", None)))
             return "broken"
         return None
     if kind == "support_appointment":
@@ -373,29 +389,51 @@ def _judge(w: World, mid: str, p: dict, norm: dict, motions: list, decisions: di
                     and str(mo.get("value", "")).upper() == norm.get("beneficiary")]
         if not relevant:
             return None
-        return "kept" if all(vote_of(mo) == "yes" for mo in relevant) else "broken" if any(vote_of(mo) == "no" for mo in relevant) else None
+        if all(vote_of(mo) == "yes" for mo in relevant):
+            return "kept"
+        if any(vote_of(mo) == "no" for mo in relevant):
+            found(*(_vote_text(mo, "no") for mo in relevant if vote_of(mo) == "no"))
+            return "broken"
+        return None
     if kind in ("fund", "raise", "cut", "policy_limit"):
         lever = norm.get("lever")
-        increased = decreased = False
+        # What raised the setting and what lowered it, as text: a "broken" verdict rests on the list that goes against it.
+        up, down = [], []
         # Audit AG4: under a secret ballot the votes cannot be read, so only the public orders below judge the promise.
         for mo in (motions if w.ballot != "secret" else []):
             if mo.get("type") == "set_policy" and mo.get("subject") == lever and mo.get("passed"):
                 v = vote_of(mo)
                 if v == "yes":
                     direction = _direction(w, mo, record_month=w.month)
-                    increased |= direction > 0
-                    decreased |= direction < 0
+                    if direction:
+                        text = f"{_vote_text(mo, 'yes')}, which set {lever} to {mo.get('value')}"
+                        (up if direction > 0 else down).append(text)
         orders = (decisions.get(mid) or {}).get("orders", {})
         office = LEVER_OFFICE.get(lever)
         if office in orders and lever in orders[office]:
             direction = _order_direction(w, lever, orders[office][lever], p)
-            increased |= direction > 0
-            decreased |= direction < 0
+            if direction:
+                text = _order_text(office, lever, orders[office][lever])
+                (up if direction > 0 else down).append(text)
+        increased, decreased = bool(up), bool(down)
         if kind in ("fund", "raise"):
-            return "kept" if increased else "broken" if decreased else None
+            if increased:
+                return "kept"
+            if decreased:
+                found(*down)
+                return "broken"
+            return None
         if kind == "cut":
-            return "kept" if decreased else "broken" if increased else None
-        return "broken" if increased else None
+            if decreased:
+                return "kept"
+            if increased:
+                found(*up)
+                return "broken"
+            return None
+        if increased:
+            found(*up)
+            return "broken"
+        return None
     if kind == "share_information":
         if any(x["from"] == mid and x["with"] in (norm.get("beneficiary"), "council") for x in shares):
             return "kept"
@@ -445,7 +483,7 @@ def _order_direction(w: World, lever: str, raw, promise: dict) -> int:
     return 0
 
 
-def _settle(w: World, mid: str, p: dict, verdict: str) -> dict:
+def _settle(w: World, mid: str, p: dict, verdict: str, evidence: list | None = None) -> dict:
     m = w.member(mid)
     r = tuning.get
     p["evaluations"].append({"month": w.month, "verdict": verdict})
@@ -475,7 +513,9 @@ def _settle(w: World, mid: str, p: dict, verdict: str) -> dict:
             from .agents import _grievance
             _grievance(w, o.id, mid, "broke a promise to me" if o.id == p.get("to") else "broke a public promise",
                        30 if o.id == p.get("to") else 14, major=o.id == p.get("to"))
-        w.event("promise_broken", f"{m.name} acted against a recorded political commitment.", importance=2,
+        # Engine 22: the event names the promise as recorded, and the votes and orders the verdict rests on.
+        from .agents import promise_broken_text
+        w.event("promise_broken", promise_broken_text(m.name, p["text"], evidence or []), importance=2,
                 public=bool(p.get("public")), member=mid, promise_id=p["id"])
     elif verdict == "lapsed":
         p["status"] = "lapsed"

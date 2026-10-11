@@ -218,6 +218,14 @@ class FactReferenceErrorsOnlyClaimAPastAudit(unittest.TestCase):
         text = ("against a procurement-slowing army audit during the ultimatum and the incomplete Charter amendment.")
         self.assertEqual(memory.fact_reference_errors(w, "A", text, motions=[MOTION_ON_THE_TABLE]), [])
 
+    def test_a_finding_claimed_from_an_army_audit_that_only_failed_as_a_motion_is_still_flagged(self):
+        w = world()
+        w.month = 8
+        audits.state(w)["done"].append(audit_record("interior", 3))
+        findings = memory.fact_reference_errors(
+            w, "A", "The army audit found procurement fraud.", motions=[MOTION_ON_THE_TABLE])
+        self.assertEqual([f["referred_to"] for f in findings], ["army"])
+
     def test_a_motion_on_the_table_names_only_its_own_office(self):
         w = world()
         w.month = 8

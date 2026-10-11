@@ -285,9 +285,83 @@ def unsupported_facts(w: World, mid: str, notes: str) -> list:
 
 
 _AUDIT_MENTION = re.compile(r"\b(?:audit|inquiry|investigation)\b", re.I)
+# A sentence that says an audit or investigation is not warranted, or that none ran, claims nothing about one: the
+# delegate recommends or denies, it does not remember. Those words are cut before the sentence is read (run
+# 20261011-105713-seed1, Months 9 and 10: "no new investigation is warranted this month").
+_NO_CLAIM = re.compile(
+    r"\b(?:no|not|never|none|without)\b(?:\s+[\w'-]+){0,2}?\s+(?:audits?|inquir(?:y|ies)|investigations?|probes?)\b"
+    r"|\b(?:audits?|inquir(?:y|ies)|investigations?|probes?)\s+(?:is|are)\s+(?:not\s+)?"
+    r"(?:warranted|justified|necessary|needed|required)\b", re.I)
+# The words for an inquiry offered to a hostile power (fine_print.py). A joint or foreign inquiry is not an audit of an
+# office, so when the record holds such an offer and the sentence refers to it, these words are cut too.
+_FINE_PRINT_WORD = re.compile(r"\b(?:inquir(?:y|ies)|enquiry|investigations?|probes?)\b", re.I)
+_JOINT_MARK = re.compile(r"\b(?:joint|foreign|international|neutral)\b", re.I)
+_POWER_WORDS = {"union": r"\bunion\b", "veleria": r"\bveleria\b", "dorsania": r"\bdorsania\b"}
+_MONTH_MENTION = re.compile(r"\bm(?:onth\s*)?(\d{1,2})\b", re.I)
+# A sentence that says what an audit found claims an audit that ran. Where the only investigation of an office is a
+# motion on the table, that claim is a false reference (the audit never ran), so the motion does not excuse it.
+_RESULT_PAST = re.compile(r"\b(?:found|finds|showed|shows|proved|proves|cleared|clears|confirmed|confirms|concluded|"
+                          r"revealed|reveals|uncovered|exonerated|condemned|identified)\b", re.I)
 
 
-def fact_reference_errors(w: World, mid: str, text: str) -> list:
+def _offices_on_record(w: World, motions: list | None) -> tuple:
+    """(the offices whose investigation ran or is under way, the offices whose investigation is on the table this
+    month). `motions` are the motions the council heard or tabled this month, whatever their vote; the motions still
+    pending on the agenda are in w.agenda["deferred"], which is read without `motions`."""
+    from . import audits
+    state = audits.state(w)
+    ran = {r.get("office") for r in [*state.get("done", []), *state.get("open", [])] if r.get("office")}
+    on_table = set()
+    proposed = [*(motions or []), *[e for e in (w.agenda or {}).get("deferred", []) if isinstance(e, dict)]]
+    for mo in proposed:
+        if isinstance(mo, dict) and mo.get("type") == "investigation":
+            office = audits.office_of(mo.get("subject"))
+            if office:
+                on_table.add(office)
+    return ran, on_table
+
+
+def _powers_named(text: str) -> set:
+    low = str(text or "").lower()
+    return {power for power, pattern in _POWER_WORDS.items() if re.search(pattern, low)}
+
+
+def _fine_print_offers(w: World) -> list:
+    """The joint or foreign inquiries the council offered a hostile power, as the record holds them: the month of each
+    offer (zero-based) and the powers it was made to. The resolve log keeps every offer for the run, a dismissed one
+    included. An inquiry that was accepted is also in the fine-print state until it reports, and is then pruned."""
+    from . import fine_print
+    offers = []
+    for entry in ((w.foreign or {}).get("resolve") or {}).get("log", []):
+        if isinstance(entry, dict) and entry.get("signal") == "joint_inquiry":
+            offers.append({"month": entry.get("month"), "powers": _powers_named(entry.get("reason"))})
+    for inquiry in ((w.institutions or {}).get(fine_print.KEY) or {}).get("inquiries", []):
+        offers.append({"month": inquiry.get("from"), "powers": {str(inquiry.get("party"))}})
+    return offers
+
+
+def _fine_print_reference(text: str, offers: list) -> bool:
+    """Whether the sentence refers to one of the offers: it says the inquiry is joint or foreign, names a power an offer
+    was made to, or names the month of an offer (the run writes "M7" for Month 7)."""
+    if _JOINT_MARK.search(text):
+        return True
+    powers = _powers_named(text)
+    months = {int(n) - 1 for n in _MONTH_MENTION.findall(text)}
+    return any((powers & offer["powers"]) or offer["month"] in months for offer in offers)
+
+
+def _claiming(sentence: str, offers: list) -> str:
+    """The sentence with the audit words that claim nothing cut out: the negated or non-committal ones (_NO_CLAIM), and
+    the inquiry words of a joint or foreign inquiry on the fine-print record. What is left is what the sentence says
+    about an audit, if anything. A sentence with an audit word of its own keeps its inquiry words."""
+    text = _NO_CLAIM.sub(" ", sentence)
+    if offers and _FINE_PRINT_WORD.search(text) and not re.search(r"\baudits?\b", text, re.I) \
+            and _fine_print_reference(text, offers):
+        text = _FINE_PRINT_WORD.sub(" ", text)
+    return text
+
+
+def fact_reference_errors(w: World, mid: str, text: str, motions: list | None = None) -> list:
     """A reference to an audit or event that is not the one the record holds.
 
     A delegate that writes "the Kessel audit" when the audit that ran was of the Army has not
@@ -296,16 +370,25 @@ def fact_reference_errors(w: World, mid: str, text: str) -> list:
     delegate wrote it — the record is corrected, not the delegate's words — and the mismatch is
     reported, because a reference that cannot be traced explains why two delegates disagree about
     what is known.
+
+    A reference is a claim about an audit that ran only where the record does not hold that office's
+    investigation: one that ran, one under way, or one on the table this month (`motions`: the motions
+    the council heard or tabled this month). A joint or foreign inquiry on the fine-print record is not
+    an audit of an office, and a sentence that says an investigation is not warranted, or that none ran,
+    claims nothing.
     """
     if not text or not isinstance(text, str):
         return []
     from . import audits
     done = [r.get("office") for r in audits.state(w).get("done", []) if r.get("office")]
+    ran, on_table = _offices_on_record(w, motions)
+    offers = _fine_print_offers(w)
     out = []
     for sentence in re.split(r"(?<=[.;!?])\s+|\n", text):
-        if not _AUDIT_MENTION.search(sentence):
+        claim = _claiming(sentence, offers)
+        if not _AUDIT_MENTION.search(claim):
             continue
-        low = sentence.lower()
+        low = claim.lower()
         named_offices = [o for o in OFFICES if o in low]
         # A region mentioned elsewhere in the same coordinated sentence is not the
         # subject of the audit. Require a local link: "Kessel audit" or "audit of
@@ -321,8 +404,11 @@ def fact_reference_errors(w: World, mid: str, text: str) -> list:
         if not (named_offices or linked_regions):
             continue
         # Naming an office that no audit has examined, while some other office has one, is the
-        # shape the check is for. Anything vaguer is prose, not a false reference.
-        wrong = [o for o in named_offices if o not in done]
+        # shape the check is for. Anything vaguer is prose, not a false reference. An office whose
+        # audit ran or is under way is on the record. One whose investigation is only on the table is
+        # not wrong, unless the sentence says what its audit found: a finding from an audit that never ran.
+        asserted = _RESULT_PAST.search(claim) is not None
+        wrong = [o for o in named_offices if o not in ran and (asserted or o not in on_table)]
         if wrong and done:
             out.append({"code": "FACT_REFERENCE_ERROR", "member": mid,
                         "referred_to": wrong[0], "canonical": sorted(set(done)),

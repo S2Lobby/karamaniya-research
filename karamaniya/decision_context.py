@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from . import foreign_force
 from .military import union_army
-from .politics import LEVER_OFFICE, parse_lever
+from .politics import LEVER_OFFICE, canonical_lever, fmt_value, parse_lever
 from .society import inflation_yoy, months_of_prices
 from .world import OFFICES, World, rng_for
 
@@ -485,6 +485,7 @@ def motion_block(w: World, mid: str, motions: list) -> str:
     """The motions on the table with their observable costs (not voting instructions)."""
     if not motions:
         return "CURRENT MOTIONS\nNone."
+    from .briefing import army_change
     from .intelligence import costing
     lines = ["CURRENT MOTIONS (facts and trade-offs, not voting instructions)"]
     for mo in motions:
@@ -504,11 +505,20 @@ def motion_block(w: World, mid: str, motions: list) -> str:
             parsed = parse_lever(subject, mo.get("value"))
             now = w.mil.deploy.get(subject[7:]) if str(subject).startswith("deploy_") else getattr(w.policy, subject, "?")
             detail.append(f"now {now}, proposed {parsed}; office {LEVER_OFFICE.get(subject, '?')}")
+            # Engine 22: a mobilization or recruitment value says what it would call up or add, and what that costs.
+            change = army_change(w, subject, parsed)
+            if change:
+                detail.append(change)
             if subject in TRADEOFFS:
                 detail.append(TRADEOFFS[subject])
             cost = costing(w, mo)
             if cost is not None and w.holder("treasury") and w.holder("treasury").id == mid:
                 detail.append(f"your staff's rough costing: {cost / 1e6:+,.0f}M a month")
+        elif kind == "program":
+            # Engine 22: each measure of a programme shows the value in force beside the one it would set.
+            measures = programme_measures(w, mo)
+            if measures:
+                detail.append("measures, current → proposed: " + "; ".join(measures))
         elif kind == "amend":
             recent = sum(1 for a in w.const.amendments if w.month - a.get("month", -99) < 6)
             detail.append(f"{recent} Charter amendments in the last six months")
@@ -532,6 +542,55 @@ def motion_block(w: World, mid: str, motions: list) -> str:
             detail.append("demands: " + "; ".join(f"{w.member(d['member']).name}: {d['demand']}" for d in mo["demands"][:3]))
         lines.append(text + (" [" + "; ".join(detail) + "]" if detail else ""))
     return "\n".join(lines)
+
+
+def setting_now(w: World, lever: str):
+    """A setting's value in force, read the way briefing.settings_block reads it: deploy shares and patronage flags
+    from their own fields, every other setting from the policy."""
+    if lever.startswith("deploy_"):
+        return w.mil.deploy.get(lever[len("deploy_"):])
+    if lever.startswith("patronage_"):
+        return bool(w.policy.patronage.get(lever[len("patronage_"):]))
+    return getattr(w.policy, lever, None)
+
+
+def _measure_pairs(mo: dict) -> list:
+    """A programme's (lever, value) measures: the list validation keeps (politics.validate_motion_detail) once it has
+    run, else the structured action as it was tabled. Each lever is named the way the engine names it."""
+    raw = mo.get("measures")
+    if not raw:
+        action = mo.get("action") if isinstance(mo.get("action"), dict) else {}
+        raw = action.get("measures") or []
+    pairs = []
+    for item in raw:
+        if isinstance(item, dict):
+            lever, value = item.get("lever", ""), item.get("value")
+        elif isinstance(item, (list, tuple)) and len(item) == 2:
+            lever, value = item
+        else:
+            continue
+        pairs.append((canonical_lever(str(lever).strip()), value))
+    return pairs
+
+
+def programme_measures(w: World, mo: dict) -> list:
+    """Each measure of a programme as "lever: current → proposed (office)". A mobilization or recruitment measure also
+    says the call-up or the monthly intake it means (briefing.army_change). The current value is read as the settings
+    block reads it, so the proposal is compared with what is in force (run 20261011-105713-seed1, Month 10). The
+    package is in force as one, so a figure reads the army target and the recruitment setting the same programme
+    proposes, not the ones in force now."""
+    from .briefing import army_change
+    pairs = _measure_pairs(mo)
+    proposed = {lever: parse_lever(lever, value) for lever, value in pairs}
+    out = []
+    for lever, value in pairs:
+        now = setting_now(w, lever)
+        item = (f"{lever}: {'?' if now is None else fmt_value(now)} → "
+                f"{fmt_value(proposed[lever]) if proposed[lever] is not None else value}")
+        extra = army_change(w, lever, proposed[lever], army_target=proposed.get("army_target"),
+                            recruitment=proposed.get("recruitment"))
+        out.append(f"{item} ({LEVER_OFFICE.get(lever, '?')}" + (f"; {extra}" if extra else "") + ")")
+    return out
 
 
 def force_context(w: World, mid: str) -> str:

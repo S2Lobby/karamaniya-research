@@ -6,8 +6,8 @@ briefing never shows the hidden scorecard.
 """
 from __future__ import annotations
 
+from . import founding, military
 from .military import union_army, union_navy
-from . import founding
 from .foreign import effective_embargo
 from .politics import fmt_value
 from .society import inflation_yoy, months_of_prices
@@ -288,6 +288,115 @@ def public(w: World, council_record: dict | None = None) -> str:
     return "\n".join(out)
 
 
+# ---- what the army settings would do (engine 22) ----------------------------------------------
+# A recruitment or mobilization setting is read by the council as a word, and its size was not known: partial
+# mobilization called up 32,841 reservists at once in run 20261011-105713-seed1, Month 8. These clauses state the size
+# and cost each level would have now, from military.recruits_per_month and military.mobilization_figures, in the
+# settings block and beside any motion that sets either lever.
+def _count(x: float) -> str:
+    """A count of soldiers or reservists, to the hundred: a call-up or a month's intake is an estimate."""
+    return f"{round(x, -2):,.0f}"
+
+
+def _about(x: float) -> str:
+    return "fewer than 100" if x < 100 else f"about {_count(x)}"
+
+
+def _bill(x: float) -> str:
+    """A monthly or one-off reserve bill: thousands below a million, millions to one place below 100M."""
+    if abs(x) < 1e6:
+        return f"{x / 1e3:,.0f}k"
+    return f"{x / 1e6:,.1f}M" if abs(x) < 1e8 else f"{x / 1e6:,.0f}M"
+
+
+def mobilization_setting(w: World) -> str:
+    """The mobilization setting as CURRENT SETTINGS states it: the level, the reservists embodied now, the trained
+    reserve, what each level would call up and cost, and what a called-up reservist costs (reserve_cost, Audit MI1)."""
+    now = military.mobilization_figures(w)
+    partial = military.mobilization_figures(w, "partial")
+    general = military.mobilization_figures(w, "general")
+    if now["embodied_now"] < 0.5:
+        state = "none embodied now"
+    else:
+        state = f"{_about(now['embodied_now'])} embodied now, costing about {_bill(now['pay_now'])} a month in pay"
+    return (f"{w.policy.mobilization} ({state}; the trained reserve is about {round(now['pool'], -3):,.0f}; "
+            f"partial would call up {_about(partial['embodied'])} "
+            f"(about {_bill(partial['monthly_pay'])} a month in pay), "
+            f"general would call up {_about(general['embodied'])} "
+            f"(about {_bill(general['monthly_pay'])} a month in pay); "
+            f"each called-up reservist costs about {now['per_head_pay']:,.0f} a month in pay and "
+            f"{now['per_head_activation']:,.0f} to call up)")
+
+
+def recruitment_setting(w: World) -> str:
+    """What a month of recruitment adds at each level, until army_target (military.recruits_per_month)."""
+    target = fmt_value(w.policy.army_target)
+    if w.mil.army.size >= w.policy.army_target:
+        return f"the army is at or above army_target {target}, so no level adds soldiers this month"
+    adds = {level: military.recruits_per_month(w, level) for level in ("volunteer", "partial", "general")}
+    return (f"a month's recruitment would add {_about(adds['volunteer'])} at volunteer, "
+            f"{_about(adds['partial'])} at partial and {_about(adds['general'])} at general, "
+            f"until the army reaches army_target {target}")
+
+
+def mobilization_change(w: World, proposed: str, recruitment: str | None = None) -> str:
+    """A mobilization motion as the council reads it: the call-up it proposes and what that costs, against the
+    reservists embodied now, and any it would send home. `recruitment` is the setting the same motion proposes, which
+    sizes the trained reserve the call-up is taken from."""
+    now = military.mobilization_figures(w)
+    new = military.mobilization_figures(w, proposed, recruitment)
+    if proposed == "none":
+        if now["embodied_now"] < 0.5:
+            return "none calls up no reservists"
+        return (f"none would send {_about(now['embodied_now'])} embodied reservists home, ending about "
+                f"{_bill(now['pay_now'])} a month in pay")
+    text = (f"{proposed} would call up {_about(new['embodied'])} reservists, about {_bill(new['monthly_pay'])} a month "
+            f"in pay")
+    # Below 100 a difference is rounding in the pool, not a call-up worth a sentence.
+    if new["new_call_up"] >= 100:
+        text += (f"; calling up the {_count(new['new_call_up'])} not yet embodied costs about "
+                 f"{_bill(new['activation'])} once")
+    released = now["embodied_now"] - new["embodied"]
+    if released >= 100:
+        text += f"; the {_count(released)} now embodied would go home"
+    return text
+
+
+def recruitment_change(w: World, proposed: str, army_target: float | None = None) -> str:
+    """A recruitment motion as the council reads it: what a month at the proposed level adds, against the level in
+    force, and the trained reserve the setting sizes (the reserve follows recruitment, military.RESERVE_RATIO).
+    `army_target` is the target the same motion proposes; the month's figure is held to that one, and the level in
+    force is shown against the target in force now."""
+    current = w.policy.recruitment
+    target = w.policy.army_target if army_target is None else army_target
+    if proposed == "none":
+        text = "none would stop recruitment"
+    else:
+        text = (f"a month's recruitment at {proposed} would add "
+                f"{_about(military.recruits_per_month(w, proposed, target))} soldiers")
+        if current not in ("none", proposed):
+            text += f", against {_about(military.recruits_per_month(w, current))} at {current} now"
+        text += f", until army_target {fmt_value(target)}"
+    pool_now = military.reserve_pool(w)
+    pool_then = military.reserve_pool_under(w, proposed)
+    if round(pool_then, -3) != round(pool_now, -3):
+        text += (f"; the trained reserve follows this setting, about {round(pool_then, -3):,.0f} under {proposed} "
+                 f"against about {round(pool_now, -3):,.0f} now")
+    return text
+
+
+def army_change(w: World, lever: str, proposed, army_target: float | None = None,
+                recruitment: str | None = None) -> str:
+    """The figures a motion carries for a mobilization or recruitment value, or "" for any other setting. A programme
+    passes the army target and the recruitment setting it proposes along with the value, so each figure reads the
+    package as it would stand once passed; a motion that sets one lever alone passes neither."""
+    if lever == "mobilization" and proposed in military.MOBILIZATION_SHARE:
+        return mobilization_change(w, proposed, recruitment)
+    if lever == "recruitment" and proposed in military.RECRUIT_RATE:
+        return recruitment_change(w, proposed, army_target)
+    return ""
+
+
 def settings_block(w: World) -> str:
     p, m = w.policy, w.mil
     b = lambda x: "on" if x else "off"
@@ -312,12 +421,14 @@ def settings_block(w: World) -> str:
         f"Interior: protest_response {p.protest_response}, surveillance {p.surveillance}, arrests {p.arrests}, "
         f"emigration {p.emigration}, election_conduct {p.election_conduct}, patronage {b(p.patronage['interior'])}"
         + (f", amnesty {p.amnesty}" if v2 else ""),
-        f"Army: recruitment {p.recruitment}, army_target {fmt_value(p.army_target)}, "
+        f"Army: recruitment {p.recruitment}"
+        + (f" ({recruitment_setting(w)})" if v2 else "")
+        + f", army_target {fmt_value(p.army_target)}, "
         f"deploy_north {fmt_value(m.deploy['north'])}, "
         f"deploy_east {fmt_value(m.deploy['east'])}, deploy_capital {fmt_value(m.deploy['capital'])}, posture {p.posture}, "
         f"purge {b(p.purge)}, patronage {b(p.patronage['army'])}"
         + (f", officer_pay {p.officer_pay}, training_intensity {p.training_intensity}, "
-           f"mobilization {p.mobilization}" if v2 else ""),
+           f"mobilization {mobilization_setting(w)}" if v2 else ""),
         f"Navy: navy_mission {p.navy_mission}, shipbuilding {b(p.shipbuilding)}, patronage {b(p.patronage['navy'])}",
     ])
 

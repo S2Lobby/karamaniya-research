@@ -63,6 +63,8 @@ class AGoalIsNotACondition(unittest.TestCase):
             with self.subTest(text=text[:50]):
                 self.assertEqual(reserve_floors(motion_actions.parse_conditions(text, "diplomacy", "loan")), [])
                 self.assertEqual(motion_actions.motion_conditions(loan(text)), [])
+                # Read as a reserve payment, the same words are still a goal: the wording alone excludes them.
+                self.assertEqual(reserve_floors(motion_actions.parse_conditions(text, "settle_arrears", "reserves")), [])
 
     def test_the_month_8_loan_executes_with_reserves_at_43M(self):
         w = world()
@@ -88,6 +90,18 @@ class AGoalIsNotACondition(unittest.TestCase):
         for text in goals:
             with self.subTest(text=text):
                 self.assertEqual(reserve_floors(motion_actions.parse_conditions(text, "settle_arrears", "reserves")), [])
+
+    def test_a_reserve_level_that_gates_a_payment_is_a_precondition_not_an_aim(self):
+        # "Only after" makes the level a condition on the payment, whatever verb states it.
+        gates = {
+            "Pay one quarter of arrears from reserves, only after reserves are rebuilt above 60M.": 60e6,
+            "Pay one quarter of arrears from reserves once reserves are restored to at least 55M.": 55e6,
+        }
+        for text, want in gates.items():
+            with self.subTest(text=text):
+                got = [c["value"] for c in reserve_floors(
+                    motion_actions.parse_conditions(text, "settle_arrears", "reserves"))]
+                self.assertEqual(got, [want])
 
     def test_real_floors_on_a_reserve_payment_still_bind(self):
         floors = {

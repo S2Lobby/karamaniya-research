@@ -4,6 +4,24 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 21
+
+`WORLD_ENGINE` 21, `AGENT_PROMPT` 18 (psychology 8 unchanged): a refused amendment goes back to its proposer once, and
+a refusal that stands is shown (backlog T100). In Month 1 of run 20261011-105713-seed1 Delegate B amended its own M7
+("On C's point I amend M7 to partial recruitment, target 38,000"). One of the six measures it sent had a value its
+lever does not take (`regional_fund` "0.01"; it takes none, kessel, highlands or both), so the engine refused the
+whole amendment and told no one: not B, not the voters, not the live view. M7 passed 5-0 as tabled, with volunteer
+recruitment, while C's vote reason ("B's amendment incorporated my core demands: partial recruitment, 38,000 target")
+and B's and C's notes recorded the amendment as law.
+
+- **One repair.** The proposer is told the engine's reason and shown its amendment and the motion as tabled, whole, and
+  may send the amendment again or leave the motion as it is (phase `amendment_repair`). The engine never corrects an
+  amendment itself; a corrected one goes through the same checks.
+- **A refusal that stands is shown.** The motion carries `amendment_refused`; every voter reads "an amendment its
+  proposer sent was refused (...), so the vote is on this text as tabled", and later speakers in the response round
+  read it in the transcript. The live view shows refused and repaired amendments, as Inspect already showed refusals.
+- The scripted stand-ins leave their motion as tabled, so the frozen prompts are unchanged (`tests/test_engine21.py`).
+
 ## Agent prompt 17
 
 `AGENT_PROMPT` 17 (world engine 20 and psychology 8 unchanged): a delegate asked to act on its own appointment is told

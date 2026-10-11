@@ -476,6 +476,12 @@ def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_al
             if entry.get("replaced_by"):
                 m["replaced_by"] = entry["replaced_by"]
             notes["withdrawn"].append(motion_id)
+    def refuse(m: dict, entry: dict) -> None:
+        # The motion carries its last refused amendment until one is accepted (engine 21): the council votes on the text
+        # as tabled, and every voter is told that the amendment its proposer announced is not in it.
+        notes["rejected"].append(entry)
+        m["amendment_refused"] = {"by": mid, **{k: v for k, v in entry.items() if k != "motion"}}
+
     limit = int(tuning.get(w, "revision.max_amendments"))
     for item in revision.get("amend", [])[:limit]:
         m = own.get(item.get("motion_id"))
@@ -489,15 +495,15 @@ def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_al
                                     and isinstance(item.get("measures"), list)
                                     and item.get("measures") != (m.get("action") or {}).get("measures"))
         if m.get("type") == "program" and "measures" in item and not isinstance(item.get("measures"), list):
-            notes["rejected"].append({"motion": m["id"], "code": "PROGRAM_AMENDMENT_MISSING_MEASURES",
-                                       "reason_code": "NO_STRUCTURED_ACTION",
-                                       "explanation": "a revised program must provide its complete replacement measure list; the original package remains on the agenda"})
+            refuse(m, {"motion": m["id"], "code": "PROGRAM_AMENDMENT_MISSING_MEASURES",
+                       "reason_code": "NO_STRUCTURED_ACTION",
+                       "explanation": "a revised program must provide its complete replacement measure list; the original package remains on the agenda"})
             continue
         if m.get("type") == "program" and (program_text_changed or program_measures_changed):
             if not isinstance(item.get("measures"), list):
-                notes["rejected"].append({"motion": m["id"], "code": "PROGRAM_AMENDMENT_MISSING_MEASURES",
-                                           "reason_code": "NO_STRUCTURED_ACTION",
-                                           "explanation": "a revised program must provide its complete replacement measure list; the original package remains on the agenda"})
+                refuse(m, {"motion": m["id"], "code": "PROGRAM_AMENDMENT_MISSING_MEASURES",
+                           "reason_code": "NO_STRUCTURED_ACTION",
+                           "explanation": "a revised program must provide its complete replacement measure list; the original package remains on the agenda"})
                 continue
             candidate["original_action"] = m.get("original_action") or m.get("action") or {}
             candidate["action"] = {**(m.get("action") or {}), "measures": item["measures"]}
@@ -515,15 +521,13 @@ def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_al
             continue
         detail = validate_motion_detail(w, candidate)
         if detail:
-            notes["rejected"].append({"motion": m["id"], **detail})
+            refuse(m, {"motion": m["id"], **detail})
             continue
         from . import motion_actions
         clash = motion_actions.conflict(w, candidate)
         if clash:
-            notes["rejected"].append({"motion": m["id"], "status": "rejected",
-                                      "reason_code": clash["code"],
-                                      "explanation": "; ".join(
-                                          reason["detail"] for reason in clash.get("reasons", []))})
+            refuse(m, {"motion": m["id"], "status": "rejected", "reason_code": clash["code"],
+                       "explanation": "; ".join(reason["detail"] for reason in clash.get("reasons", []))})
             continue
         m.setdefault("revisions", []).append({"value": m.get("value"), "text": m.get("text"),
                                               "conditions": list(m.get("conditions", [])) if m.get("conditions") else [],
@@ -545,6 +549,7 @@ def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_al
             m["final_conditions"] = list(m.get("conditions") or [])
             m["final_motion_text"] = str(m["text"])
         m["amended"] = True
+        m.pop("amendment_refused", None)
         notes["amended"].append(m["id"])
     return notes
 

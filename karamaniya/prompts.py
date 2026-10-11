@@ -549,6 +549,9 @@ def transcript_v2(w, statements: list, motions: list, agenda_notes: list | None 
                 parts.append(f"withdrawal of {rejected['motion']} was rejected: {rejected['explanation']}")
             if rev.get("amended"):
                 parts.append("amended " + ", ".join(rev["amended"]))
+            for rejected in rev.get("rejected_amendments", []):
+                parts.append(f"amendment of {rejected['motion']} was refused, so it stands as tabled: "
+                             f"{rejected.get('explanation', '')}")
             for d in rev.get("demands", []):
                 parts.append(f"demands on {d['motion_id']}: {d['demand']}")
             for comm in rev.get("communications", []):

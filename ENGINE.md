@@ -183,7 +183,8 @@ Each month has two phases:
 1. **Council session.** Members write their opening statements independently and they are published
    together; when there are motions, a response round follows in which each member reads them all and
    may respond, amend or withdraw. Each may make a statement (at most 150 words), table up to 2 motions
-   and send private messages.
+   and send private messages. An amendment the engine refuses (a value its setting does not take, say) goes
+   back to its proposer once with the reason; a refusal that stands is shown on the motion to every voter.
 2. **Decisions.** Everyone votes on the motions, gives orders for the offices they hold, may send more
    private messages, and writes private notes. Notes are the only memory an AI keeps between months.
 

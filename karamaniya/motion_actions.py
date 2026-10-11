@@ -1086,6 +1086,21 @@ def structured_action_repair_request(motion: dict, rejection: dict) -> str:
             "do not add new policies or change its political intent. This is the single format-repair retry.")
 
 
+def amendment_repair_request(motion: dict, sent: dict, refusal: dict) -> str:
+    """Ask the proposer once to send a refused amendment again (engine 21), with the engine's reason and both texts whole."""
+    mid = motion["id"]
+    measures = "; ".join(f"{m.get('lever')} = {m.get('value')}" for m in sent.get("measures") or [])
+    return (f"{refusal.get('reason_code') or refusal.get('code') or 'AMENDMENT_REFUSED'}\n"
+            f"Your amendment to {mid} was refused, so {mid} still stands as tabled: "
+            f"{refusal.get('explanation') or 'the amendment could not be carried out'}.\n"
+            f"{mid} as tabled: \"{motion.get('text', '')}\"\n"
+            f"The amendment you sent: \"{sent.get('text', '')}\"" + (f"; measures: {measures}" if measures else "")
+            + ".\n"
+            "Send the amendment again with the fault corrected and everything else as you meant it, or send an empty "
+            f"list to leave {mid} as tabled. Do not add new policies. This is the single repair; the council votes "
+            "after it.")
+
+
 # ---- numeric grounding: what a delegate may claim -------------------------------------------
 #: Important numeric claims and where the engine looks for a supporting source.
 #: Tolerances are generous: briefing figures carry noise and office reports carry ranges.

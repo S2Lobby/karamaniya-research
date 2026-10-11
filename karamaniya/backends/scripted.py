@@ -266,6 +266,8 @@ class ScriptedBackend(Backend):
                 data = self._session_v2(w, mid, data)
         elif phase == "revision":
             data = self._revision(w, mid, context)
+        elif phase == "amendment_repair":
+            data = {"amend": []}            # the stand-in leaves its motion as tabled
         elif phase == "foreign":
             data = self._foreign(context)
         else:

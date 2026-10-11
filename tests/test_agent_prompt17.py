@@ -35,7 +35,7 @@ def recording_backend(prompts: dict):
 
 class Versions(unittest.TestCase):
     def test_the_bump(self):
-        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY), (20, 17, 8))
+        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY), (20, 17, 8))
 
 
 class TheDelegateIsNamed(unittest.TestCase):

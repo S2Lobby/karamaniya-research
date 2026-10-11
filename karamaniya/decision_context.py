@@ -522,6 +522,10 @@ def motion_block(w: World, mid: str, motions: list) -> str:
                           + ("; without a declared emergency the legitimacy cost doubles" if not w.const.emergency else ""))
         if mo.get("amended"):
             detail.append("amended by its proposer after the opening round")
+        if mo.get("amendment_refused"):
+            detail.append("an amendment its proposer sent was refused ("
+                          + (mo["amendment_refused"].get("explanation") or "it could not be carried out")
+                          + "), so the vote is on this text as tabled")
         if mo.get("warning"):
             detail.append("note: " + mo["warning"]["explanation"])
         if mo.get("demands"):

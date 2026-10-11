@@ -1587,6 +1587,9 @@ class Council:
                 mid, res, out, problems = revise(mid)
                 cuts = actions.text_cuts(out, res.data)
                 notes = deliberation.apply_revisions(w, mid, out, scheduled, carried + tabled)
+                if notes["rejected"] and out["amend"]:
+                    self._repair_amendment(mid, out["amend"][0], notes, scheduled, carried + tabled, calls,
+                                           quota - used[mid])
                 for demand in out["demands"]:
                     target = next((m for m in scheduled if m["id"] == demand["motion_id"]), None)
                     if target is not None:
@@ -1603,6 +1606,7 @@ class Council:
                 revisions[mid] = {"response": out["response"], "stances": out["stances"], "demands": out["demands"],
                                   "withdrawn": notes["withdrawn"], "amended": notes["amended"],
                                   "rejected_amendments": notes["rejected"],
+                                  **({"amendment_repairs": notes["repairs"]} if notes.get("repairs") else {}),
                                   "rejected_withdrawals": notes["rejected_withdrawals"],
                                   "communications": applied, "shared": shared,
                                   **({"response_full": out["response_full"]} if "response_full" in out else {})}
@@ -1610,6 +1614,7 @@ class Council:
                 # The live view shows what the delegate wrote, whole; the council is shown the cut copy.
                 self._emit(type="revision", month=w.month, member=mid, text=out.get("response_full") or out["response"],
                            withdrawn=notes["withdrawn"], amended=notes["amended"],
+                           rejected_amendments=notes["rejected"], amendment_repairs=notes.get("repairs", []),
                            rejected_withdrawals=notes["rejected_withdrawals"],
                            demands=[d.get("demand_full") or d["demand"] for d in out["demands"]],
                            dms=[{"to": dm["to"], "text": dm["text"], "kind": dm.get("kind")} for dm in sent],
@@ -1944,6 +1949,40 @@ class Council:
         if self.tokens["briefing"] == "on_demand" and not quiet:
             for mid, d in decisions.items():
                 w.member(mid).agent_state["read_requests"] = list(d.get("read_next_month") or [])
+
+    def _repair_amendment(self, mid: str, sent: dict, notes: dict, scheduled: list, tabled_all: list, calls: list,
+                          dm_left: int) -> None:
+        """One repair for an amendment the engine refused (engine 21).
+
+        In run 20261011-105713-seed1 the proposer of M7 announced an amendment to partial recruitment and an army
+        target of 38,000. One of its six measures had a value its lever does not take (regional_fund "0.01"), so the
+        whole amendment was refused, and no one was told: the council voted 5-0 on the text as tabled, and three
+        delegates' notes recorded the amendment as law. Now the proposer is told what was wrong and asked once to send
+        the amendment again, as a motion's author is. The engine never corrects an amendment itself; a second refusal
+        stands, and the motion then tells every voter that the amendment is not in the text they vote on.
+        """
+        w = self.w
+        refused = next((r for r in notes["rejected"] if r.get("motion") == sent.get("motion_id")), None)
+        motion = next((m for m in scheduled if refused and m["id"] == refused["motion"]), None)
+        if motion is None:
+            return
+        full = actions.revision_schema(w, mid, scheduled, dm_left)
+        schema = {"type": "object", "properties": {"amend": full["properties"]["amend"]},
+                  "required": ["amend"], "additionalProperties": False}
+        prompt = (decision_context.identity_block(w, mid) + "\n\n"
+                  + motion_actions.amendment_repair_request(motion, sent, refused)
+                  + "\n\nReply with this JSON:\n" + actions.example(schema))
+        res = self._call(mid, "amendment_repair", prompt, schema, {"motions": scheduled, "repair": True})
+        fixed, problems = actions.read_answer(actions.normalize_revision, w, mid, res.data, scheduled, dm_left)
+        retry = deliberation.apply_revisions(w, mid, {"amend": fixed["amend"]}, scheduled, tabled_all)
+        notes["rejected"] = [r for r in notes["rejected"] if r is not refused] + retry["rejected"]
+        notes["amended"] += retry["amended"]
+        if not retry["amended"] and not retry["rejected"]:
+            notes["rejected"].append(refused)          # nothing sent again: the first refusal stands
+        notes.setdefault("repairs", []).append({
+            "motion": refused["motion"], "refused": {k: v for k, v in refused.items() if k != "motion"},
+            "sent_again": fixed["amend"], "amended": bool(retry["amended"]), "refused_again": retry["rejected"]})
+        calls.append(self._call_summary(mid, "amendment_repair", res, problems))
 
     def _repair_structured_action(self, mid: str, motion: dict, rejection: dict, calls: list):
         """Give the author one format-only retry for a motion with no executable action."""
@@ -2357,6 +2396,7 @@ class Council:
                     "type": mo["type"], "subject": mo["subject"], "value": mo["value"], "text": mo.get("text", ""),
                     "authorized_action": dict(mo.get("action") or {}),
                     "summary": mo["summary"], "cosponsors": mo.get("cosponsors", []), "amended": bool(mo.get("amended")),
+                    **({"amendment_refused": mo["amendment_refused"]} if mo.get("amendment_refused") else {}),
                     "revisions": mo.get("revisions", []), "warning": mo.get("warning"), "demands": mo.get("demands", []),
                     "forced": bool(mo.get("forced")), "carried_over": bool(mo.get("carried_over")),
                     "previous_proposer": mo.get("previous_proposer"), "withdrawn_by": mo.get("withdrawn_by"),

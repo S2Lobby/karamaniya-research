@@ -1503,6 +1503,8 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         if ((it.withdrawn || []).length) body.push(el("div", { class: "muted small", text: "Withdrew " + it.withdrawn.join(", ") }));
         for (const rejected of it.rejected_withdrawals || []) body.push(el("div", { class: "err small", text: "Attempted to withdraw " + rejected.motion + " in favour of " + rejected.target + ". Rejected: " + rejected.explanation }));
         if ((it.amended || []).length) body.push(el("div", { class: "muted small", text: "Amended " + it.amended.join(", ") }));
+        for (const r of it.amendment_repairs || []) body.push(el("div", { class: r.amended ? "muted small" : "err small", text: "Amendment of " + r.motion + " refused (" + (r.refused.explanation || r.refused.reason_code || "") + ") and sent again: " + (r.amended ? "accepted" : "refused again") }));
+        for (const r of it.rejected_amendments || []) if (!(it.amendment_repairs || []).some(x => x.motion === r.motion)) body.push(el("div", { class: "err small", text: "Amendment of " + r.motion + " refused, so it stands as tabled: " + (r.explanation || r.reason_code || "") }));
         for (const d of it.demands || []) body.push(el("div", { class: "muted small", text: "Demands: " + d }));
         for (const dm of it.dms || []) body.push(el("div", { class: "dm" }, el("b", { text: "Private to " + dm.to + (dm.kind && dm.kind !== "message" ? " [" + dm.kind + "]" : "") + ": " }), el("span", { text: dm.text })));
         if (body.length === 1) return [];
@@ -2528,6 +2530,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       if ((r.withdrawn || []).length) out.push(el("p", { text: "Withdrew: " + r.withdrawn.join(", ") }));
       if ((r.amended || []).length) out.push(el("p", { text: "Amended: " + r.amended.join(", ") }));
       if ((r.rejected_amendments || []).length) out.push(el("p", { class: "err", text: "Amendment rejected: " + r.rejected_amendments.map(x => x.reason_code + " " + x.explanation).join("; ") }));
+      if ((r.amendment_repairs || []).length) out.push(el("p", { class: "muted", text: "Sent again after a refusal: " + r.amendment_repairs.map(x => x.motion + " (" + (x.refused.reason_code || "") + " " + (x.refused.explanation || "") + "): " + (x.amended ? "accepted" : "refused again")).join("; ") }));
       if ((r.demands || []).length) out.push(el("div", null, el("div", { class: "k", text: "Demands" }), el("ul", null, r.demands.map(x => el("li", { text: x.motion_id + ": " + (x.demand_full || x.demand) })))));
       const pers = ((rec.analytics || {}).persuasion || []).filter(x => x.member === m);
       if (pers.length) out.push(el("div", null, el("div", { class: "k", text: "Position changes by the final vote · analyst view" }), el("ul", null, pers.map(x => el("li", { text: x.motion + ": " + x.from + " → " + x.to + " (likely: " + x.likely_reasons.join(", ") + ")" })))));

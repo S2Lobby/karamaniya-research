@@ -7,6 +7,7 @@ of the government.
 """
 from __future__ import annotations
 
+import copy
 import math
 from dataclasses import asdict, dataclass, fields as dataclass_fields
 
@@ -802,6 +803,69 @@ def reserve_cost(w: World, pooled: float | None = None, embodied: float | None =
     return {"pool_monthly": pool_monthly, "embodied_monthly": embodied_monthly,
             "activation_one_off": activation,
             "monthly_total": pool_monthly + embodied_monthly}
+
+
+# ---- what the settings would do, read off the state as it is (engine 22) ----------------------
+# Read-only. The briefing and the motion detail print these figures, so a council can see what a recruitment or
+# mobilization setting means before it votes (run 20261011-105713-seed1, Month 8: 32,841 reservists called up at once,
+# and the army went from 45,000 to 54,654 in a month). Each helper reuses the engine's own constants and functions;
+# test_engine22_scale holds them to what _recruit, _mobilize and update() actually do.
+# The share of eligible labour one month's recruitment draws on: _recruit's own 0.45, which it keeps as a literal.
+# test_engine22_scale pins the two to the same figure.
+RECRUIT_POOL_SHARE = 0.45
+
+
+def recruit_pool(w: World) -> float:
+    """The labour one month's recruitment draws on, as _recruit computes it."""
+    pops = [p for p in w.k_pops() if p.cls in DRAFT_WEIGHT]
+    return sum(labor(p) for p in pops) * RECRUIT_POOL_SHARE
+
+
+def recruits_per_month(w: World, level: str | None = None) -> float:
+    """The soldiers one month of recruitment at `level` adds now, as _recruit adds them: the level's rate on the recruit
+    pool (a volunteer's rate scaled by support for independence), held to the gap to army_target. Zero at "none", and
+    zero once the army is at its target."""
+    level = w.policy.recruitment if level is None else level
+    if level == "none" or level not in RECRUIT_RATE:
+        return 0.0
+    rate = RECRUIT_RATE[level]
+    if level == "volunteer":
+        rate *= 0.5 + w.avg("indep")
+    return max(0.0, min(w.policy.army_target - w.mil.army.size, recruit_pool(w) * rate))
+
+
+def reserve_pool_under(w: World, recruitment: str) -> float:
+    """reserve_pool(w) as it would stand under another recruitment setting. The trained reserve is sized by that setting
+    (RESERVE_RATIO), so a recruitment motion changes how many reservists the Army office could call up. It reads a copy
+    of the world with the setting changed, and leaves w as it is."""
+    ghost = copy.copy(w)
+    ghost.policy = copy.copy(w.policy)
+    ghost.policy.recruitment = recruitment
+    return reserve_pool(ghost)
+
+
+def mobilization_figures(w: World, level: str | None = None) -> dict:
+    """What a mobilization level calls up and costs, against the reservists embodied now.
+
+    `embodied` is the trained reserve times the level's share (MOBILIZATION_SHARE), the figure _mobilize aims for.
+    `new_call_up` is the part of it not yet embodied, and `activation` the one-off charge for calling those up in the
+    month they are called up (Audit MI1). `monthly_pay` is what the embodied reservists draw each month, `pay_now` the
+    same for the reservists embodied now, and `per_head_pay` and `per_head_activation` are one reservist's figures.
+    Every cost comes from reserve_cost, so these are the charges update() makes.
+    """
+    level = getattr(w.policy, "mobilization", "none") if level is None else level
+    pool = reserve_pool(w)
+    embodied_now = mobilization_of(w).called_up
+    embodied = pool * MOBILIZATION_SHARE.get(level, 0.0)
+    new_call_up = max(0.0, embodied - embodied_now)
+    head = reserve_cost(w, pooled=0.0, embodied=1.0)
+    return {"level": level, "pool": pool,
+            "embodied_now": embodied_now,
+            "pay_now": reserve_cost(w, pooled=0.0, embodied=embodied_now)["embodied_monthly"],
+            "embodied": embodied, "new_call_up": new_call_up,
+            "monthly_pay": reserve_cost(w, pooled=0.0, embodied=embodied)["embodied_monthly"],
+            "activation": reserve_cost(w, pooled=0.0, embodied=new_call_up)["activation_one_off"],
+            "per_head_pay": head["embodied_monthly"], "per_head_activation": head["activation_one_off"]}
 
 
 # ---- supply and readiness as a chain ----------------------------------------------------------

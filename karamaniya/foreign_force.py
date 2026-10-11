@@ -566,13 +566,22 @@ def massing_text(w) -> str:
     return ", ".join(seen)
 
 
+_REPLY_STANCE = {"accept": "accepting", "reject": "rejecting", "counter": "countering"}
+
+
 def ultimatum_text(w) -> str:
     ult = w.dip.ultimatum or {}
     if not ult:
         return ""
     by = w.names.get(ult.get("by", ""), "the Union")
     terms = ult.get("terms") or "a settlement on Karamaniya's status"
-    return f"{by} demands: {terms} Deadline Month {ult.get('deadline', w.month) + 1}."
+    text = f"{by} demands: {terms} Deadline Month {ult.get('deadline', w.month) + 1}."
+    # The council's own answer, so that it does not answer the same demand again while the demand stands (engine 22).
+    reply = ult.get("reply")
+    if reply:
+        text += (f" Karamaniya replied in Month {int(reply['month']) + 1}, "
+                 f"{_REPLY_STANCE.get(reply.get('stance'), 'countering')} the demand.")
+    return text
 
 
 # ---- what a cabinet sees ------------------------------------------------------------------------
@@ -617,6 +626,15 @@ def _met_land_demand(w) -> dict | None:
     return None
 
 
+def _reply_facts(ult: dict) -> dict:
+    """Karamaniya's answer to the ultimatum, if it gave one: what the issuing cabinet reads the month after (engine 22)."""
+    reply = ult.get("reply")
+    if not reply:
+        return {}
+    return {"karamaniya_reply": {"stance": reply.get("stance"), "text": reply.get("text", ""),
+                                 "month": f"Month {int(reply['month']) + 1}"}}
+
+
 def ultimatum_compliance(w) -> dict | None:
     """The facts a cabinet weighs about its own ultimatum: what it asked for and what Karamaniya did."""
     ult = w.dip.ultimatum or {}
@@ -626,7 +644,7 @@ def ultimatum_compliance(w) -> dict | None:
     if terms == LAND_TERMS:
         return {"by": ult.get("by", "veleria"), "terms": ult.get("terms"),
                 "region": _region_name(w, ult.get("region", "")), "deadline_month": ult["deadline"] + 1,
-                "expired": w.month > ult["deadline"], "observed": _land_facts(w, ult)}
+                "expired": w.month > ult["deadline"], "observed": _land_facts(w, ult), **_reply_facts(ult)}
     m = w.mil
     talks = [p["kind"] for p in (w.foreign or {}).get("proposal_log", [])
              if p.get("month", -1) >= ult["issued"] and p.get("party") in ("union", "veleria")
@@ -638,7 +656,7 @@ def ultimatum_compliance(w) -> dict | None:
              "protect_imperial_citizens": {"minority_policy": w.const.minority,
                                            "police_response": w.policy.protest_response}}[terms]
     return {"by": ult.get("by", "veleria"), "terms": ult.get("terms"), "deadline_month": ult["deadline"] + 1,
-            "expired": w.month > ult["deadline"], "observed": facts}
+            "expired": w.month > ult["deadline"], "observed": facts, **_reply_facts(ult)}
 
 
 def cabinet_view(w, actor_id: str) -> dict:

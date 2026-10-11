@@ -1252,8 +1252,19 @@ def _private_message(w, sender: str, office: str, text: str, channel: str | None
     w.dip.log.append(item)
 
 
-def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "", region: str = "") -> None:
+def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "", region: str = "", terms=None) -> None:
     """Independent Dorsanian response to Karamaniya's bilateral trade proposal."""
+    import re
+    # What a grain agreement does not carry (engine 22): troops, sovereignty, the ultimatum, citizens' rights, talks, verification
+    # and the like. The grain trade itself (grain, deliveries, volume, price, payment, duration) is not in it. Run
+    # 20261011-105713-seed1, Months 4 and 9: troop withdrawals and an end to the ultimatum were accepted with the grain, and
+    # nobody was told they were not.
+    not_grain = re.compile(r"\b(?:troops?|forces?|army|soldiers?|militar\w*|border|withdr\w*|pull[\s-]?back|drop\w*|"
+                           r"ultimatum\w*|intelligence|sovereign\w*|recogni[sz]\w*|guarantee\w*|citizens?|citizenship|"
+                           r"rights?|safety|minorit\w*|monitor\w*|observers?|inspect\w*|verif\w*|oversight|veto|"
+                           r"jurisdiction|interferen\w*|non[\s-]?aggression|pact|alliance|status|talks|negotiat\w*|"
+                           r"internal|separatis\w*|renounc\w*|subver\w*|cede|cession|territor\w*|courts?|law|laws|"
+                           r"reports?|compliance|surrender|foreign)\b", re.I)
     actor = w.foreign["actors"]["dorsania"]
     relation = actor["relations"]["karamaniya"]
     pressure = actor["political_pressures"].get("exporter_opposition", .2)
@@ -1292,9 +1303,19 @@ def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "", region: st
         commitments.append({"type": "grain agreement", "month": w.month, "until": until,
                             "partner": "karamaniya", "message": text[:240]})
     actor["diplomacy"]["strategy"] = "preserve Union membership while honoring profitable grain agreements"
-    _private_message(w, w.names["dorsania"], "treasury",
-                     f"Dorsania accepts a grain purchase arrangement through Month {until + 1} and will restore some exports to Karamaniya.",
-                     channel="commercial channel")
+    note = (f"Dorsania accepts a grain purchase arrangement through Month {until + 1} and will restore some exports "
+            "to Karamaniya.")
+    # The proposal's sentences that ask for more than grain, quoted as written. Its listed terms are used only when
+    # the text itself names none of them.
+    other = [s.strip() for s in re.split(r"(?<=[.!?;])\s+|\n+", str(text or "")) if s.strip()]
+    other = [s for s in other if not_grain.search(s)]
+    if not other:
+        other = [str(t).strip() for t in (terms or []) if str(t).strip() and not_grain.search(str(t))]
+    other = list(dict.fromkeys(other))
+    if other:
+        note += (" It does not take up the other terms (" + "; ".join(f'"{term}"' for term in other)
+                 + "): a grain agreement carries only the grain trade.")
+    _private_message(w, w.names["dorsania"], "treasury", note, channel="commercial channel")
     _remember(w.foreign, "dorsania", "bilateral_agreement", "Accepted a grain purchase agreement with Karamaniya.",
               w.month, until=until, farmer_pressure=round(1-_support(actor["constituencies"].get("farmers")),2),
               decision_factors=["grain exporter demand", "Karamaniya market access", "Union cohesion"])

@@ -131,6 +131,8 @@ DIPLOMACY = {"trade_talks": "union", "status_talks": "union", "non_aggression": 
 # Engine 17: a cession is answered by the neighbour that demanded the region. The structured target routes it
 # (party_of); this is the fallback only (motion_actions.validate_diplomatic_action refuses the others).
 DIPLOMACY["cede_region"] = "union"
+# Engine 22: an answer to the ultimatum that stands. The issuer receives it (party_of); the Union is the fallback.
+DIPLOMACY["ultimatum_reply"] = "union"
 MOTION_TYPES = ("assign_office", "vacate_office", "set_policy", "settle_arrears", "constitution", "amend",
                 "expel", "diplomacy", "referendum", "launch_currency", "program")
 V2_MOTION_TYPES = ("emergency_measure", "investigation", "disaster_relief", "defer_motion")  # agent architecture 2
@@ -1352,7 +1354,10 @@ def apply_motion(w: World, mo: dict) -> str:
         party = motion_actions.party_of(action.get("target")) or DIPLOMACY[subj]
         # Engine 17: the fine print of the motion is an offer to the party it is addressed to. Its clauses
         # (an inquiry, a stand-down, an inspection regime) take effect now that the council has passed it.
-        found = fine_print.clauses(w, fine_print.detection_text(mo, action), party)
+        # Engine 22: a reply to an ultimatum offers nothing for its issuer to accept or refuse; that cabinet decides
+        # what the reply earns (foreign_force.ultimatum_compliance), so its words are not read as fine print.
+        stance = motion_actions.ultimatum_stance(mo) if subj == "ultimatum_reply" else None
+        found = [] if subj == "ultimatum_reply" else fine_print.clauses(w, fine_print.detection_text(mo, action), party)
         if found:
             fine_print.on_offer(w, mo, found, party)
         from . import resolve
@@ -1362,16 +1367,23 @@ def apply_motion(w: World, mo: dict) -> str:
             # Engine 18: an offer on status while a deadline runs reads as the deadline working.
             resolve.note(w, "concession_under_ultimatum",
                          f"{subj.replace('_', ' ')} offered under a deadline in Month {w.month + 1}")
+        # The terms travel with the proposal so the answer can say which of them a grain agreement leaves out (foreign.dorsania_reply).
         dip.proposals.append({"month": w.month, "kind": subj, "party": party,
                               "amount": amount, "text": text,
                               "action_type": action.get("action_type"), "target": action.get("target"),
-                              "clauses": found})
+                              "clauses": found, "terms": [str(term) for term in action.get("terms") or []],
+                              **({"stance": stance} if stance else {})})
         if subj == "cede_region":
             # The region a cession names travels with the proposal to the neighbour that answers it.
             from . import territory
             dip.proposals[-1]["region"] = territory.region_id(w, val)
         who = {"union": w.names["union"], "league": w.names["league"], "dorsania": w.names["dorsania"],
                "veleria": w.names.get("veleria", "Veleria")}.get(party, party)
+        if subj == "ultimatum_reply":
+            # The council's reply is delivered; whether it is met is judged by what Karamaniya does, not by the reply.
+            said = {"accept": "accepts", "reject": "rejects", "counter": "counters"}[stance]
+            return (f"reply delivered to {'the ' if party in ('union', 'league') else ''}{who}: "
+                    f"the council {said} the ultimatum")
         verb = "protest delivered to" if subj == "diplomatic_protest" else "proposal sent to"
         # "the Solvaran Union" and "the Maritime League", but Veleria and Dorsania are countries: the record said
         # "proposal sent to the Dorsania" (run 20261010-070501-seed1, Month 2).
@@ -1714,7 +1726,13 @@ def deal_action_for(mo: dict, text: str, existing: list) -> str | None:
 
 
 def _deal_problem(w: World, mo: dict, subj: str, text: str):
-    """None if the deal action is coherent with what is already in force, else a rejection."""
+    """None if the deal action is coherent with what is already in force, else a rejection.
+
+    Only a motion that makes or changes an agreement is judged so. A protest, an offer of non-aggression, talks on
+    status and the like are not agreement acts, and a grain agreement in force refused them: run 20261011-105713-seed1,
+    Month 7, three protests to Dorsania were refused for want of a verdict on the grain agreement."""
+    if subj not in _DEAL_SUBJECTS:
+        return None
     from .motion_actions import party_of, structured_action
     action = structured_action(w, mo)
     party = party_of(action.get("target")) or DIPLOMACY.get(subj)

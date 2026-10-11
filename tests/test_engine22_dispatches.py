@@ -181,10 +181,11 @@ class LeagueCreditLine(unittest.TestCase):
         self.assertIn("10M gold drawn", line)
         self.assertIn("0M approved and still to come", line)
 
-    def test_a_tranche_counts_in_the_budget_and_not_in_the_reserves(self):
-        """The clauses the line states about where a tranche goes, checked against the economy (economy.trade_and_food,
-        economy.fiscal)."""
+    def test_a_tranche_is_set_against_the_deficit_before_any_borrowing(self):
+        """The line's budget clause in a month whose deficit is larger than the tranche: what is borrowed or left unpaid
+        falls by the whole tranche, and the reserves are not credited with it (economy.trade_and_food, economy.fiscal)."""
         w = world()
+        w.policy.welfare += .06                          # a deficit of about 35M a month, above the 25M tranche
         approve_loan(w, 40)
         twin = copy.deepcopy(w)
         twin.dip.league_loan_pending = 0.0
@@ -196,8 +197,25 @@ class LeagueCreditLine(unittest.TestCase):
         self.assertEqual(w.econ.gold, twin.econ.gold, "a tranche does not add to the gold reserves")
         economy.fiscal(w, prod, trade)
         economy.fiscal(twin, twin_prod, twin_trade)
-        self.assertGreater(w.econ.loans_in, 0)
-        self.assertLess(w.econ.borrowed, twin.econ.borrowed, "the crown borrows less because of the tranche")
+        self.assertAlmostEqual(w.econ.loans_in, 25e6)
+        self.assertAlmostEqual(twin.econ.borrowed + twin.econ.arrears - w.econ.borrowed - w.econ.arrears, 25e6,
+                               delta=1.0, msg="what is borrowed or left unpaid falls by the whole tranche")
+
+    def test_a_surplus_beyond_the_deficit_repays_domestic_debt(self):
+        """The line's clause for a month whose deficit is smaller than the tranche: nothing is borrowed, and the rest of
+        the tranche repays domestic debt, so the domestic debt falls by the whole tranche (economy.fiscal). The line says
+        this, and does not say that the crown borrows the whole tranche less: here it borrows only what it needed."""
+        w = world()
+        approve_loan(w, 40)
+        twin = copy.deepcopy(w)
+        twin.dip.league_loan_pending = 0.0
+        prod, twin_prod = economy.produce(w), economy.produce(twin)
+        trade = economy.trade_and_food(w, prod)
+        twin_trade = economy.trade_and_food(twin, twin_prod)
+        economy.fiscal(w, prod, trade)
+        economy.fiscal(twin, twin_prod, twin_trade)
+        self.assertEqual(w.econ.borrowed, 0.0)
+        self.assertAlmostEqual(twin.econ.debt_dom - w.econ.debt_dom, 25e6, delta=1.0)
 
 
 class LeagueReviewConditions(unittest.TestCase):

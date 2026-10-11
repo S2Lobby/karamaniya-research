@@ -563,8 +563,9 @@ def private_dispatches(w: World, mid: str) -> list:
 def league_credit_line(w: World, mid: str) -> str:
     """One line of fact on the League's credit, for the Treasury and the Head of Government, from the state at the moment
     the prompt is built. It is empty until the League has approved credit (director._league_reply), so no one is told of a
-    loan that was never granted. Each clause is what the code does: economy.trade_and_food pays at most 25M a month, and a
-    tranche enters the crown budget against the deficit (fiscal) without entering the gold reserves; foreign.league_month
+    loan that was never granted. Each clause is what the code does: economy.trade_and_food pays at most 25M a month; fiscal
+    sets a tranche against the deficit before any borrowing, repays a surplus, and never credits it to the gold reserves;
+    foreign.league_month
     checks the conditions every month while tranches are unpaid, and freezes them when one fails and the League's
     default-risk estimate is above 42%. Run 20261011-105713-seed1, Month 7: Interior still wrote "League 50M loan if
     approved covers it" to Army, after the League had approved 50M in Month 6 in a dispatch only the Treasury could see."""
@@ -581,8 +582,8 @@ def league_credit_line(w: World, mid: str) -> str:
             f"come, at most 25M a month; interest {rate:.1%} a year. While tranches remain unpaid, the League checks each "
             "month that the deficit is at most 5% of output, debt service is not suspended and its trust in Karamaniya is "
             "above 38 out of 100; if one of these fails and its default-risk estimate is above 42%, it freezes the remaining "
-            "tranches. A tranche counts in the crown budget against the deficit, so the crown borrows that much less; it does "
-            "not add to the gold reserves.")
+            "tranches. A tranche is set against the crown budget's deficit before any borrowing: what remains of the deficit is "
+            "borrowed or left unpaid, and any surplus repays arrears and domestic debt; it does not add to the gold reserves.")
 
 
 def office_context(w: World, mid: str, phase: str = "session") -> str:

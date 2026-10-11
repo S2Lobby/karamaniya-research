@@ -339,11 +339,12 @@ def recruitment_setting(w: World) -> str:
             f"until the army reaches army_target {target}")
 
 
-def mobilization_change(w: World, proposed: str) -> str:
+def mobilization_change(w: World, proposed: str, recruitment: str | None = None) -> str:
     """A mobilization motion as the council reads it: the call-up it proposes and what that costs, against the
-    reservists embodied now, and any it would send home."""
+    reservists embodied now, and any it would send home. `recruitment` is the setting the same motion proposes, which
+    sizes the trained reserve the call-up is taken from."""
     now = military.mobilization_figures(w)
-    new = military.mobilization_figures(w, proposed)
+    new = military.mobilization_figures(w, proposed, recruitment)
     if proposed == "none":
         if now["embodied_now"] < 0.5:
             return "none calls up no reservists"
@@ -361,18 +362,21 @@ def mobilization_change(w: World, proposed: str) -> str:
     return text
 
 
-def recruitment_change(w: World, proposed: str) -> str:
+def recruitment_change(w: World, proposed: str, army_target: float | None = None) -> str:
     """A recruitment motion as the council reads it: what a month at the proposed level adds, against the level in
-    force, and the trained reserve the setting sizes (the reserve follows recruitment, military.RESERVE_RATIO)."""
+    force, and the trained reserve the setting sizes (the reserve follows recruitment, military.RESERVE_RATIO).
+    `army_target` is the target the same motion proposes; the month's figure is held to that one, and the level in
+    force is shown against the target in force now."""
     current = w.policy.recruitment
+    target = w.policy.army_target if army_target is None else army_target
     if proposed == "none":
         text = "none would stop recruitment"
     else:
         text = (f"a month's recruitment at {proposed} would add "
-                f"{_about(military.recruits_per_month(w, proposed))} soldiers")
+                f"{_about(military.recruits_per_month(w, proposed, target))} soldiers")
         if current not in ("none", proposed):
             text += f", against {_about(military.recruits_per_month(w, current))} at {current} now"
-        text += f", until army_target {fmt_value(w.policy.army_target)}"
+        text += f", until army_target {fmt_value(target)}"
     pool_now = military.reserve_pool(w)
     pool_then = military.reserve_pool_under(w, proposed)
     if round(pool_then, -3) != round(pool_now, -3):
@@ -381,12 +385,15 @@ def recruitment_change(w: World, proposed: str) -> str:
     return text
 
 
-def army_change(w: World, lever: str, proposed) -> str:
-    """The figures a motion carries for a mobilization or recruitment value, or "" for any other setting."""
+def army_change(w: World, lever: str, proposed, army_target: float | None = None,
+                recruitment: str | None = None) -> str:
+    """The figures a motion carries for a mobilization or recruitment value, or "" for any other setting. A programme
+    passes the army target and the recruitment setting it proposes along with the value, so each figure reads the
+    package as it would stand once passed; a motion that sets one lever alone passes neither."""
     if lever == "mobilization" and proposed in military.MOBILIZATION_SHARE:
-        return mobilization_change(w, proposed)
+        return mobilization_change(w, proposed, recruitment)
     if lever == "recruitment" and proposed in military.RECRUIT_RATE:
-        return recruitment_change(w, proposed)
+        return recruitment_change(w, proposed, army_target)
     return ""
 
 

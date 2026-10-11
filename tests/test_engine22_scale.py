@@ -76,6 +76,14 @@ class TheCallUpFigureIsTheOneTheEngineMakes(unittest.TestCase):
         self.assertAlmostEqual(called, figures["new_call_up"], places=6)
         self.assertAlmostEqual(military.mobilization_of(w).called_up, figures["embodied"], places=6)
 
+    def test_a_figure_can_be_taken_under_the_recruitment_setting_a_programme_proposes(self):
+        w = world()
+        figures = military.mobilization_figures(w, "partial", recruitment="general")
+        self.assertAlmostEqual(figures["embodied"],
+                               military.reserve_pool_under(w, "general") * military.MOBILIZATION_SHARE["partial"],
+                               places=6)
+        self.assertEqual(w.policy.recruitment, "none")
+
     def test_the_pay_and_activation_are_the_charges_update_makes(self):
         w = world()
         figures = military.mobilization_figures(w, "general")
@@ -225,6 +233,30 @@ class TheMotionsShowWhatTheyChange(unittest.TestCase):
         self.assertIn("mobilization: none → partial", block)
         partial = round(pool * military.MOBILIZATION_SHARE["partial"], -2)
         self.assertIn(f"partial would call up about {partial:,.0f} reservists", block)
+
+
+class AProgrammeIsCostedAsOnePackage(unittest.TestCase):
+    """A programme is applied as one package (politics._program_measures): its army target, its recruitment and its
+    mobilization are in force together when the month's _recruit and _mobilize run. So a measure's figure uses the value
+    the same programme proposes for the other lever, not the one in force now."""
+
+    def test_recruits_are_counted_against_the_army_target_the_programme_sets(self):
+        w = world()   # the army is at its target of 28,000
+        program = tabled("M5", type="program", subject="", value="", action={"measures": [
+            {"lever": "recruitment", "value": "partial"}, {"lever": "army_target", "value": "55000"}]})
+        block = decision_context.motion_block(w, "B", [program])
+        ghost = copy.deepcopy(w)
+        ghost.policy.army_target = 55000.0
+        adds = round(military.recruits_per_month(ghost, "partial"), -2)
+        self.assertIn(f"at partial would add about {adds:,.0f} soldiers, until army_target 55,000", block)
+
+    def test_the_call_up_is_sized_by_the_reserve_the_programme_recruitment_would_leave(self):
+        w = world()   # recruitment none: the trained reserve is sized at about the active army
+        program = tabled("M6", type="program", subject="", value="", action={"measures": [
+            {"lever": "mobilization", "value": "partial"}, {"lever": "recruitment", "value": "general"}]})
+        block = decision_context.motion_block(w, "B", [program])
+        under = round(military.reserve_pool_under(w, "general") * military.MOBILIZATION_SHARE["partial"], -2)
+        self.assertIn(f"partial would call up about {under:,.0f} reservists", block)
 
 
 class DescribingTheFiguresChangesNothing(unittest.TestCase):

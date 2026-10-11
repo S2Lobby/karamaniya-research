@@ -576,15 +576,19 @@ def _measure_pairs(mo: dict) -> list:
 def programme_measures(w: World, mo: dict) -> list:
     """Each measure of a programme as "lever: current → proposed (office)". A mobilization or recruitment measure also
     says the call-up or the monthly intake it means (briefing.army_change). The current value is read as the settings
-    block reads it, so the proposal is compared with what is in force (run 20261011-105713-seed1, Month 10)."""
+    block reads it, so the proposal is compared with what is in force (run 20261011-105713-seed1, Month 10). The
+    package is in force as one, so a figure reads the army target and the recruitment setting the same programme
+    proposes, not the ones in force now."""
     from .briefing import army_change
+    pairs = _measure_pairs(mo)
+    proposed = {lever: parse_lever(lever, value) for lever, value in pairs}
     out = []
-    for lever, value in _measure_pairs(mo):
-        proposed = parse_lever(lever, value)
+    for lever, value in pairs:
         now = setting_now(w, lever)
         item = (f"{lever}: {'?' if now is None else fmt_value(now)} → "
-                f"{fmt_value(proposed) if proposed is not None else value}")
-        extra = army_change(w, lever, proposed)
+                f"{fmt_value(proposed[lever]) if proposed[lever] is not None else value}")
+        extra = army_change(w, lever, proposed[lever], army_target=proposed.get("army_target"),
+                            recruitment=proposed.get("recruitment"))
         out.append(f"{item} ({LEVER_OFFICE.get(lever, '?')}" + (f"; {extra}" if extra else "") + ")")
     return out
 

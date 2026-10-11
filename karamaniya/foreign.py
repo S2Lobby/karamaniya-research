@@ -1503,8 +1503,8 @@ def _spaced_lower(text: str) -> str:
 
 
 # A region is named by its id or its display name (world.KARAMANIYA_REGIONS), in any case and spacing. Run
-# 20261011-105713-seed1: both cabinets named Kessel Valley and Dorran March in their covert support, every such act was
-# refused, and no covert support took effect in eleven months.
+# 20261011-105713-seed1: both cabinets named Kessel Valley in their covert support, and Dorsania also named Dorran
+# March. Every such act was refused, and no covert support took effect in eleven months.
 REGION_BY_NAME = {_spaced_lower(text): rid for rid, name, *_ in KARAMANIYA_REGIONS for text in (rid, name)}
 
 
@@ -1546,8 +1546,8 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
         terms = raw["terms"]
         if kind == "ultimatum" and isinstance(terms, list):
             # An ultimatum carries one demand (foreign_force.ULTIMATUM_TERMS): the first valid term is issued and
-            # the rest are reported as not sent. Run 20261011-105713-seed1: Veleria listed four or five terms, and
-            # both of its ultimatums were refused.
+            # the rest are reported as not sent. Run 20261011-105713-seed1: Veleria listed four terms in Month 2 and
+            # two in Month 10, and both of its ultimatums were refused.
             first = next((i for i, t in enumerate(terms) if isinstance(t, str) and t in foreign_force.ULTIMATUM_TERMS),
                          None)
             if first is None:
@@ -1568,7 +1568,7 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
         # Covert support and a demand for land (cede_region) take a region; no other act does, and foreign_force.apply
         # ignores a region an act does not take. So an unreadable region is left out and the act goes ahead, rather
         # than being refused for a field it never uses (run 20261011-105713-seed1: Veleria's Month 2 ultimatum for
-        # status talks was refused for naming "north").
+        # status talks was refused, among other things, for naming "north").
         takes_region = kind == "covert_support" or (kind == "ultimatum"
                                                    and action.get("terms") == foreign_force.LAND_TERMS)
         if rid is not None:

@@ -1,8 +1,8 @@
 """Engine 22, foreign intake: the neighbours' acts the reader dropped, and never told them.
 
-Run 20261011-105713-seed1 (world engine 21, eleven months, real models). Both cabinets named Kessel Valley or Dorran
-March in their covert support, and the reader refused every one ("region must be one of aster, kessel, ..."), so no
-covert support took effect. Veleria listed several ultimatum terms, and each such ultimatum was refused ("terms must
+Run 20261011-105713-seed1 (world engine 21, eleven months, real models). Both cabinets named Kessel Valley, and
+Dorsania also named Dorran March. The reader refused every such covert support ("region must be one of aster, kessel,
+..."), so none took effect. Veleria listed several ultimatum terms, and each such ultimatum was refused ("terms must
 be one of ..."). Veleria wrote the magnitude words "limited" and "moderate", and those acts were refused too. None of
 these refusals reached the cabinet: they stayed in the month record.
 
@@ -52,7 +52,8 @@ def refused_next_month(w, actor="veleria"):
 
 
 class RegionNamesAreRead(unittest.TestCase):
-    """A region named by its display name is the region it names (Run 20261011: 18 covert supports refused for it)."""
+    """A region named by its display name is the region it names. Run 20261011-105713-seed1: 18 covert supports
+    named a region that way, and all 18 were refused."""
 
     def test_a_covert_support_named_by_display_name_keeps_the_region_id(self):
         out, _ = read("veleria", {"type": "covert_support", "region": "Kessel Valley", "magnitude": .4})

@@ -985,6 +985,10 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
             elif w.month % 4 == 0:
                 w.event("diplomacy", f"{w.names[actor_id]} issued a statement on Karamaniya and regional policy.",
                         importance=1)
+        # Every act the reader refused or changed is told to the cabinet the next month: cabinet_view lists these under
+        # your_acts_refused_last_month. Run 20261011-105713-seed1: the reader's refusals stayed in the month record.
+        for note in decision.get("act_notes", []):
+            _remember(w.foreign, actor_id, "rejected_action", note["reason"], w.month, action={"type": note["type"]})
         for index, raw in enumerate(decision.get("actions", [])[:4]):
             action = dict(raw) if isinstance(raw, dict) else raw
             available = max(0, actor["military"]["reserves"]-actor["military"]["active"]*.45) if isinstance(action, dict) else 0
@@ -1484,8 +1488,115 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
             "Give a short assessment and concrete decision factors, never private chain-of-thought.")
 
 
+# A magnitude a cabinet writes as a word, read as the number beside it. Run 20261011-105713-seed1: "limited" (Veleria,
+# Month 2) and "moderate" (Veleria, Month 6) were refused and their acts dropped. Any other word is still refused.
+MAGNITUDE_WORDS = {"minimal": .1, "token": .1,
+                   "low": .25, "limited": .25, "small": .25,
+                   "moderate": .5, "medium": .5,
+                   "high": .75, "large": .75, "major": .75, "heavy": .75,
+                   "maximum": 1.0, "full": 1.0, "total": 1.0}
+
+
+def _spaced_lower(text: str) -> str:
+    """Text with its spacing collapsed and its case folded, for matching a name a model wrote."""
+    return " ".join(text.split()).lower()
+
+
+# A region is named by its id or its display name (world.KARAMANIYA_REGIONS), in any case and spacing. Run
+# 20261011-105713-seed1: both cabinets named Kessel Valley in their covert support, and Dorsania also named Dorran
+# March. Every such act was refused, and no covert support took effect in eleven months.
+REGION_BY_NAME = {_spaced_lower(text): rid for rid, name, *_ in KARAMANIYA_REGIONS for text in (rid, name)}
+
+
+def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
+    """Read one act a cabinet wrote. Returns the act to carry out, or None when it is refused, and the reasons.
+
+    A refused act gives its refusals. A kept act gives what was read or changed in it: a word read as its number, a
+    region read from its name, the one demand an ultimatum carries. Each reason is a problem in the month's record, and
+    normalize_cabinet_output sends it to the cabinet as a note."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("type"), str) or raw.get("type") not in allowed:
+        # Audit CO2-f: a type that is not text (a list, say) is an unsupported action, not an error in the set test.
+        return None, ["unsupported cabinet action"]
+    kind = raw["type"]
+    action, changes = {"type": kind}, []
+    magnitude = raw.get("magnitude", .5)
+    if isinstance(magnitude, str) and _spaced_lower(magnitude) in MAGNITUDE_WORDS:
+        magnitude_read = MAGNITUDE_WORDS[_spaced_lower(magnitude)]
+        changes.append(f"magnitude '{magnitude.strip()}' was read as {magnitude_read:g}")
+        magnitude = magnitude_read
+    if not isinstance(magnitude, (int, float)) or not math.isfinite(magnitude) or not 0 <= magnitude <= 1:
+        return None, ["action magnitude must be between 0 and 1"]
+    action["magnitude"] = float(magnitude)
+    if "troops" in raw:
+        if isinstance(raw["troops"], int) and not isinstance(raw["troops"], bool) and raw["troops"] >= 0:
+            action["troops"] = raw["troops"]
+        else:
+            return None, ["troops must be a nonnegative integer"]
+    refusals = []
+    # The fields an act of force names (foreign_force). A value outside its list refuses the act, and the reason says
+    # which values would have done.
+    for key, allowed_values in (("front", foreign_force.FRONTS), ("aim", foreign_force.AIMS)):
+        if key in raw and raw[key] not in (None, ""):
+            # Audit CO2-f: only text is a name; a list or an object is a problem, as any other wrong value is.
+            if isinstance(raw[key], str) and raw[key] in allowed_values:
+                action[key] = raw[key]
+            else:
+                refusals.append(f"{key} must be one of {', '.join(allowed_values)}")
+    if "terms" in raw and raw["terms"] not in (None, ""):
+        terms = raw["terms"]
+        if kind == "ultimatum" and isinstance(terms, list):
+            # An ultimatum carries one demand (foreign_force.ULTIMATUM_TERMS): the first valid term is issued and
+            # the rest are reported as not sent. Run 20261011-105713-seed1: Veleria listed four terms in Month 2 and
+            # two in Month 10, and both of its ultimatums were refused.
+            first = next((i for i, t in enumerate(terms) if isinstance(t, str) and t in foreign_force.ULTIMATUM_TERMS),
+                         None)
+            if first is None:
+                refusals.append(f"terms must be one of {', '.join(foreign_force.ULTIMATUM_TERMS)}")
+            else:
+                action["terms"] = terms[first]
+                not_sent = [str(t) for i, t in enumerate(terms) if i != first]
+                if not_sent:
+                    changes.append(f"an ultimatum carries one demand: issued with {terms[first]}; "
+                                   f"not sent: {', '.join(not_sent)}")
+        elif isinstance(terms, str) and terms in foreign_force.ULTIMATUM_TERMS:
+            action["terms"] = terms
+        else:
+            refusals.append(f"terms must be one of {', '.join(foreign_force.ULTIMATUM_TERMS)}")
+    if "region" in raw and raw["region"] not in (None, ""):
+        text = raw["region"]
+        rid = REGION_BY_NAME.get(_spaced_lower(text)) if isinstance(text, str) else None
+        # Covert support and a demand for land (cede_region) take a region; no other act does, and foreign_force.apply
+        # ignores a region an act does not take. So an unreadable region is left out and the act goes ahead, rather
+        # than being refused for a field it never uses (run 20261011-105713-seed1: Veleria's Month 2 ultimatum for
+        # status talks was refused, among other things, for naming "north").
+        takes_region = kind == "covert_support" or (kind == "ultimatum"
+                                                   and action.get("terms") == foreign_force.LAND_TERMS)
+        if rid is not None:
+            action["region"] = rid
+            if rid != text:
+                changes.append(f"region '{text}' was read as {rid}")
+        elif takes_region:
+            refusals.append("region must be one of " + ", ".join(name for _, name, *_ in KARAMANIYA_REGIONS))
+        else:
+            changes.append(f"region {text!r} is not a region of Karamaniya; this act takes none, so it was left out")
+    if "deadline_months" in raw and raw["deadline_months"] not in (None, ""):
+        months = raw["deadline_months"]
+        if isinstance(months, (int, float)) and not isinstance(months, bool) and float(months).is_integer():
+            action["deadline_months"] = int(months)
+        else:
+            refusals.append("deadline_months must be a whole number")
+    if refusals:
+        return None, refusals
+    return action, changes
+
+
 def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
-    """Bound model-provided data before it can influence the world."""
+    """Bound model-provided data before it can influence the world.
+
+    Every act the reader refuses or changes is also a note in out["act_notes"] ({"type", "reason"}).
+    _apply_cabinet_decisions writes each note to the cabinet's memory, and cabinet_view shows it to that cabinet the
+    next month (run 20261011-105713-seed1: the same refusals repeated for eleven months, and nothing reached the
+    cabinet)."""
     if not isinstance(data, dict):
         return {}, ["cabinet response was not a JSON object"]
     out, problems = {}, []
@@ -1502,47 +1613,27 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
     # Audit CO2: a list or an object is not a position, and testing it against the set raised.
     out["union_position"] = position if isinstance(position, str) and position in allowed_union else None
     allowed = {a["type"] for a in action_catalog(actor_id)}
-    actions = []
-    for raw in data.get("actions", [])[:4] if isinstance(data.get("actions", []), list) else []:
-        # Audit CO2-f: a type that is not text (a list, say) is an unsupported action, not an error in the set test.
-        if not isinstance(raw, dict) or not isinstance(raw.get("type"), str) or raw.get("type") not in allowed:
-            problems.append("unsupported cabinet action")
+    actions, act_notes = [], []
+    raw_actions = data.get("actions") or []
+    if not isinstance(raw_actions, list):
+        problems.append("actions must be a list")
+        act_notes.append({"type": None, "reason": "actions must be a list; the acts were not read"})
+        raw_actions = []
+    for index, raw in enumerate(raw_actions):
+        kind = raw.get("type") if isinstance(raw, dict) and isinstance(raw.get("type"), str) else None
+        if index >= 4:
+            # A cabinet acts on four things a month (cabinet_schema's maxItems): the rest are not read, and say so.
+            problems.append("only the first 4 acts of a month are read")
+            act_notes.append({"type": kind, "reason": "only the first 4 acts of a month are read; this one was not"})
             continue
-        action = {"type": raw["type"]}
-        magnitude = raw.get("magnitude", .5)
-        if not isinstance(magnitude, (int, float)) or not math.isfinite(magnitude) or not 0 <= magnitude <= 1:
-            problems.append("action magnitude must be between 0 and 1")
-            continue
-        action["magnitude"] = float(magnitude)
-        if "troops" in raw:
-            if isinstance(raw["troops"], int) and not isinstance(raw["troops"], bool) and raw["troops"] >= 0:
-                action["troops"] = raw["troops"]
-            else:
-                problems.append("troops must be a nonnegative integer")
-                continue
-        # The fields an act of force names (foreign_force). A value outside its list is dropped and the
-        # check in foreign_force says what was missing, so the cabinet is told the next month.
-        bad = False
-        for key, allowed_values in (("front", foreign_force.FRONTS), ("aim", foreign_force.AIMS),
-                                    ("region", CABINET_REGIONS), ("terms", tuple(foreign_force.ULTIMATUM_TERMS))):
-            if key in raw and raw[key] not in (None, ""):
-                # Audit CO2-f: only text is a name; a list or an object is a problem, as any other wrong value is.
-                if isinstance(raw[key], str) and raw[key] in allowed_values:
-                    action[key] = raw[key]
-                else:
-                    problems.append(f"{key} must be one of {', '.join(allowed_values)}")
-                    bad = True
-        if "deadline_months" in raw and raw["deadline_months"] not in (None, ""):
-            months = raw["deadline_months"]
-            if isinstance(months, (int, float)) and not isinstance(months, bool) and float(months).is_integer():
-                action["deadline_months"] = int(months)
-            else:
-                problems.append("deadline_months must be a whole number")
-                bad = True
-        if bad:
-            continue
-        actions.append(action)
+        act, reasons = _read_act(raw, allowed)
+        if act is not None:
+            actions.append(act)
+        if reasons:
+            problems.extend(reasons)
+            act_notes.append({"type": kind, "reason": "; ".join(reasons)})
     out["actions"] = actions
+    out["act_notes"] = act_notes
     messages = []
     for raw in data.get("diplomatic_messages", [])[:3] if isinstance(data.get("diplomatic_messages", []), list) else []:
         if (isinstance(raw, dict) and isinstance(raw.get("recipient"), str)

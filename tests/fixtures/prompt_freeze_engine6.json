@@ -1,6 +1,6 @@
 {
  "about": "Fingerprints of every prompt in a 4-month run of council.scripted.toml, seed 1, produced by the engine-6 code (AGENT_PROMPT 6, WORLD_ENGINE 6; the engine-5 prompts are those of tag engine-5, commit 27d7534). A default run must reproduce them exactly: see tests/test_prompt_freeze.py. Regenerate only with a deliberate AGENT_PROMPT bump: python tools/prompt_freeze.py --write.",
- "engine": "agent prompt 16, world engine 19",
+ "engine": "agent prompt 16, world engine 20",
  "months": 4,
  "config": "council.scripted.toml",
  "seed": 1,
@@ -354,203 +354,203 @@
    "decision",
    "A",
    1,
-   "d9489a0373af5412355eb5ba896f5276d56071c77fb84c7cd44a2851f3638a72"
+   "418e53267eb6a77c117ddc9092178912b57fd64479a0de52ab8e97b56885a83b"
   ],
   [
    2,
    "decision",
    "B",
    1,
-   "9817b9ff1af082cffd6fc25c31fb3f5532ae8fa1c568a3392e4e545e533f3d50"
+   "26873ad363151d1d457e73b741657af43891106c72c9f70cd14fc17f5c85e2d6"
   ],
   [
    2,
    "decision",
    "C",
    1,
-   "1ae2dc0b9c315893ea1050762eded37ff859b976069de0392b3d6f36a12f667b"
+   "5e27a64ab0cdbce71653f7b71cdfd052639454da7d60f66f4eaf754253d3a064"
   ],
   [
    2,
    "decision",
    "D",
    1,
-   "c2ce0d4b2c45b8cab4bad6edc067c8695060697ceefbf7cd56045d37294c28f1"
+   "b17ce1fdc82aa351cd42eaebbc900ffb3cfb2ee24b369349398e16711fe13e49"
   ],
   [
    2,
    "decision",
    "E",
    1,
-   "3f1667198cfbc5ae7612efba5e879ac1e1fa4224051363a9e4fd43e18876e4c1"
+   "710ac6f78cf57d09661f4a9494661241118130225b83466a2d8a181ea96dbcf0"
   ],
   [
    2,
    "foreign",
    "dorsania",
    1,
-   "0d67e5dbdb24ee33fa5820e1556c440921647e8cd53cd7c2576b82d055165bd4"
+   "e96bf7b0a277515da1db4056607d5dd1ac6fb3941754915291f4b90fb9f100e5"
   ],
   [
    2,
    "foreign",
    "veleria",
    1,
-   "256de105df87bc15f051a3c1908b5aa22f258c0d309fad527175166f81386ff5"
+   "427ddd529fe555d082f376ce2c56ed5be82f79719ec8bce1531aaff7d8dd1a3b"
   ],
   [
    2,
    "revision",
    "A",
    1,
-   "17253abb225dd21db2e342cba1237d572529cb79016d396b3326986d4162e6e7"
+   "339950bd1762ffbc3f5c055855e329ce8bde747cebccb7c542c239d2b6236154"
   ],
   [
    2,
    "revision",
    "B",
    1,
-   "9e36ef10ef79d537c424c737aa307caf3d355ef59891342b3ebb5f18282c6996"
+   "45e74fa36b9e3dd43627ebf90d17d9f3334c0d1be15ac03b3857fdc360ffda02"
   ],
   [
    2,
    "revision",
    "C",
    1,
-   "f60b7882252a70283ea8d9d0f143cbf640b5006f9eb3f7f262467880026d66fe"
+   "0dcbfd0c669709652328b3638b90a45faf0e5d754354b5f6e56c204105b5eaaf"
   ],
   [
    2,
    "revision",
    "D",
    1,
-   "674573f4a66d500d6312aab97f939dca64b0dfda204894ec94687f362e4c552a"
+   "80cdfe10468e43b91fc570b08a07da0ee7f5c7505a9e01da7fac4eeeb6a2691d"
   ],
   [
    2,
    "revision",
    "E",
    1,
-   "1154e3df984032fe0e120c18abb5436e927470549933ae2ad0f9976439ae12db"
+   "74763aea10d74dbe776661affebdbc0bf568da8b2027f4f7b631e1b325ae92a1"
   ],
   [
    2,
    "session",
    "A",
    1,
-   "9ad7fbab549aff6d42348ed2dced5152d8f69bcbf9303a49d780d80c8e243d87"
+   "aa4b77fcf9ee2ffa2e663675da1aa05e60f8dab995402f66e18624210d9e8b09"
   ],
   [
    2,
    "session",
    "B",
    1,
-   "41da41e759bec6cc3c603cc636c53a7b74f18e4563708f8d8302acecdec000af"
+   "ed3ca36d4edf2debdf9f5d4dc254ce0a632982f7214b4db8728c3694aa1e5a27"
   ],
   [
    2,
    "session",
    "C",
    1,
-   "7f369cf8f2a41fcd7be497a67583ed55efd2973b1200d4ea3315a227fbd37e69"
+   "714eebb765ce299fd2c23a10fa258a2b9ca7b63dc40b69f40016afdaf3e23f57"
   ],
   [
    2,
    "session",
    "D",
    1,
-   "88d8c47b072fb16d8b4544028a2806ffc2c3e7a01c306b1fffaafd0067874943"
+   "2d6d9a37683e6ba74229bb164d322c26c6eca82aef1b8a9c65be17da0256ec88"
   ],
   [
    2,
    "session",
    "E",
    1,
-   "8e039a025973a52ee8906dacea32d58c59ff3f4ecdf96b4dd9da14fe7784f03d"
+   "a3091b170b4b8eb8952d4f6e558f94b94a8450de50673677c1fafbde6c238067"
   ],
   [
    3,
    "decision",
    "A",
    1,
-   "f131b7462824e057af68fa0606cf2af47dbe2d838fbb9757e78d9d1949c9c7f1"
+   "143ccb0f5602506834611a307468d08e4c6d24adc4523fecad9818903d0636b2"
   ],
   [
    3,
    "decision",
    "B",
    1,
-   "badb16c0f4c3f3729e181f4706162b8cc3c14d10741ab36a8d7f75046d659c5c"
+   "f91bdc1b70beb393c5468d4468ad29f9264e62ca2b97f686f1f6a92c36413423"
   ],
   [
    3,
    "decision",
    "C",
    1,
-   "9f7d054cfc8a47eb21354f323d6a80d92e89053700c3ffc56032c04186f586bb"
+   "a6b4719e6c24a52ef1e5a6a34c94df35261744ed77dff957d44772b1553f5131"
   ],
   [
    3,
    "decision",
    "D",
    1,
-   "eec983556d301c61ab874ee49b8e20c7cef733aa18bbacbb5a3364dee873a1c8"
+   "ee2d0c206bdeb97d6f1edb70cdb656440a70c5db9a34a3411335f99a9ae2b963"
   ],
   [
    3,
    "decision",
    "E",
    1,
-   "2150e7170dd0989508a464a3f4da66de8b44e72931ec4916f6cba59abefed21d"
+   "5e88431fab86f55c39851cb5a1080b004d24e23a2b474ebc9940d01c1fd53bec"
   ],
   [
    3,
    "foreign",
    "dorsania",
    1,
-   "a9c9929a42f7bab96b898b2a2697974bfcfbb82fa9e8b5dc089bdcbc7cf9f107"
+   "4d0a64f54f3d1bd0cfeacd92f24536858bdff0bbe6f4696248f0aec3ee053492"
   ],
   [
    3,
    "foreign",
    "veleria",
    1,
-   "5397eb6e738cceb59ceae84e615a71d1cd667a41ba60c51aa91d21a634bf39a7"
+   "297139c49677e1b0be1fb6ef6bb5a174fedb39f5983be0b75b4ef9123954f9f5"
   ],
   [
    3,
    "session",
    "A",
    1,
-   "8656d165415585819e496dc668d35f29d145a9b76396c2694aef11506453dc7c"
+   "6a680d980bc2913517c68631950d0a3ffe3d38eccb6b75d8ed7ff161f6794660"
   ],
   [
    3,
    "session",
    "B",
    1,
-   "5b39d505a767136e102b3426abd636345d3543abb97b7299a8ddb664cfaa32b2"
+   "934202e225354d203e154d658b559a4fde387d6fc3d6bcf62c793b37c0e83b76"
   ],
   [
    3,
    "session",
    "C",
    1,
-   "07ef404046725a74803eb36b321171c758a155150fba12d87a4348e9fabf5384"
+   "8639fb89fbca47b48532333b0c98822710bad79e1fc7efc8607de54bd78d540d"
   ],
   [
    3,
    "session",
    "D",
    1,
-   "bb1c74377d3744b935412b25df81c27db71828f91d6e9c9f503a8cf96ab1e366"
+   "fe3e48e859238b59b8d967b455ad67991454340067be30236a24999d6eb45163"
   ],
   [
    3,
    "session",
    "E",
    1,
-   "a2854fcf85da6ac6f34e3fe693adb6f8fbb73f23cb0d2b95ecee7f27083c03cd"
+   "ca2d9a27dd2bfb7bd64041b6b3034ae395ac96eda770b5f86345ecdcc27b43c4"
   ]
  ]
 }

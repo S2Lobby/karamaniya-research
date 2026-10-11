@@ -4,6 +4,37 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 20
+
+`WORLD_ENGINE` 20 (agent prompt 16 and psychology 8 unchanged): in the karam, a higher policy rate lowers the price
+level. It raised it (backlog T94, engine 18 too): over 16 months a 60% rate left consumer prices higher at every level of
+money printing tried, and a realism test passed only on an artefact of the currency launch. Four faults turned a tighter
+rate into dearer goods; each is fixed with a test that failed on engine 19 (`tests/test_engine20.py`). No prompt
+template changed; the prompt-freeze fixture was rewritten because the default run's budget figures moved (below).
+
+- **The debt reprices as it matures.** The whole domestic debt took the new market rate at once, though the code's own
+  comment said only the maturing slice is refinanced each month: a hike from 6% to 60% took the interest bill from 4% to
+  28% of monthly output in its first month, and the deficit, the arrears and the unrest that followed drained the
+  reserves and sank the karam. The stock now carries the rate it was issued at; each month the slice that matures (a
+  twelfth of the fifth that falls due within a year) and new borrowing take the market rate, and bonds a motion issues
+  count as new borrowing. The same applies to the market's risk premium, which engine 19 also passed to the whole stock
+  in the month it appeared: in the default run the interest bill now climbs month by month (spending 126M against 132M
+  in Month 2), and a test that needed a mild shortfall cuts tax to 0.16 instead of 0.17 to find one.
+- **A credit squeeze is a fall in demand, not a shortage.** The goods market set the goods on sale against a fixed
+  demand, so the lower output of a credit squeeze read as scarcity and raised the price of goods. Spending on goods now
+  follows credit, as output does.
+- **Imports follow credit too.** The import bill was fixed while exports fell with industry, so a squeeze drained the
+  reserves (about 7M gold a month at a 60% rate). Goods bought abroad now follow credit conditions.
+- **A rate raised before the launch bites after it.** The karam was scaled on Karamaniya's own rate, so a rate raised
+  before the launch was built into the scale and never lowered prices. It is now scaled on the rate its money was held
+  at under the crown, and its own rate moves the price from the launch on.
+- **What a hike now does.** A moderate hike (15% to 45%) lowers consumer prices at 12, 24 and 36 months on every seed and
+  printing level tried, at a cost in unemployment and unrest that grows with the hike. A rate held far above inflation
+  for long can still undo its own gain: 60% for two years deepened the slump until unrest weakened the karam and
+  consumer prices passed the no-hike path by Month 24, while the karam's own price level stayed lower. Credit
+  conditions move only above a 4% real rate, so a world that keeps the founding rate is untouched by the demand terms.
+- **Calibration.** On 6 seeds x 4 rule councils x 36 months every check passes in every run it applies to (`inflation_mean` -0.9% to 5.5%). The rule councils end as on engine 19, a little better off for the lower interest bill: approval 0.47 for the do-nothing council (0.45), 0.45 for the dove (0.42, voted out in 4 of 6 seeds against 5), 0.23 and 0.22 for the scripted and hawk councils; no war, cession, plot or coup.
+
 ## World engine 19, agent prompt 16 and psychology 8
 
 `WORLD_ENGINE` 19, `AGENT_PROMPT` 16, `PSYCHOLOGY` 8 and `ERROR_TAXONOMY` 4: the audit of engine 18, fixed. Ten read-only

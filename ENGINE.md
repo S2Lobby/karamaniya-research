@@ -269,7 +269,11 @@ simulated.
 
 - **Money:** all three countries start in the imperial crown, so Veleria's printing pushes inflation onto
   Karamaniya. Karamaniya can launch its own currency, the karam, and then owns its own inflation.
-  Expectations speed up spending, so hyperinflation is possible.
+  Expectations speed up spending, so hyperinflation is possible. In the karam the policy rate is the council's
+  (engine 20): a higher rate makes people hold money longer, which lowers the price level, and tightens credit, which
+  lowers output and what is bought at home and abroad alike. The domestic debt reprices only as it matures, so a
+  hike's interest bill grows month by month. A rate held far above inflation for long deepens the slump until the
+  unrest it brings can weaken the karam and undo the gain.
 - **Food:** Karamaniya grows about three quarters of its food. Drought, embargoes, blockade, occupied
   farmland and conscripted farmers can bring famine. Rationing spreads hunger evenly; the market lets the
   poor starve first.

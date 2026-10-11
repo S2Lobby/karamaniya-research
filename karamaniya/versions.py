@@ -214,7 +214,14 @@ PSYCHOLOGY = 8
 # grounding judges statistics stated as facts. Deferral, repairs, conditionals and resignations keep their votes. A
 # costing request costs its own motion at the engine's own prices. Elections: the outlook is the vote, a rigged count
 # never overdraws a list. Baselines always run the stand-in neighbours and record a stopped mode as failed.
-WORLD_ENGINE = 19
+# 20 (backlog T94): a higher policy rate in the karam lowers the price level. It raised it, through four faults: the whole
+# domestic debt repriced to the new rate at once (a hike from 6% to 60% took the interest bill from 4% to 28% of monthly
+# output in its first month); the goods market read a credit squeeze's lower output as a shortage; the import bill stayed
+# fixed while exports fell with industry, draining the reserves; and the karam's launch scaled its price on Karamaniya's
+# own rate, so a rate raised before it never bit. Now only the maturing slice of the debt and new issuance take the
+# market rate, spending on goods at home and abroad follows credit, and the karam is scaled on the rate its money was
+# held at. A world that keeps the founding rate is unchanged.
+WORLD_ENGINE = 20
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

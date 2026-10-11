@@ -221,6 +221,10 @@ class Economy:
     interest_for: float = 0.0       # this month's interest on foreign debt, in local currency
     debt_short_share: float = 0.20  # share of domestic debt falling due within twelve months
     rollover_need: float = 0.0      # domestic debt that must be refinanced this month
+    # Engine 20 (T94): the average annual rate the domestic debt stock carries, and the stock it was last set for. Only
+    # the maturing slice and new issuance reprice at the market rate; 0 until a budget first sets it.
+    debt_rate: float = 0.0
+    debt_rated: float = 0.0
     procurement_premium: float = 1.0  # contractors charge more when the government owes them
     reserve_months: float = 0.0     # foreign reserves measured in months of imports
     food_loss: float = 0.0          # share of the harvest lost before it can be eaten

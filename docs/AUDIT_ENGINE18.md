@@ -45,8 +45,8 @@ Review of the merged fixes found more, fixed in the same engine: the grounding c
 notes, made stricter, read amounts, thresholds and settings as false facts (run over the 133 motion texts of three
 real runs it flagged 13 that engine 18 passed; it now flags none, and none of engine 18's 9 flags was a false fact); a
 human-factor-off run crashed when an audit reached a verdict (29 of 40 seeds); a dilemma and a border incident still wrote psychology or a threat that
-the next month erased; a failed cabinet call blocked the Union's rules for its month. One fault outside the audit is
-open: in the karam a higher policy rate raises the price level (backlog T94); engine 18 had it too.
+the next month erased; a failed cabinet call blocked the Union's rules for its month. One fault outside the audit, in
+the karam a higher policy rate raised the price level (backlog T94; engine 18 had it too), is fixed in engine 20.
 
 ## Critical
 

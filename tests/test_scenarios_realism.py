@@ -123,17 +123,16 @@ class MonetaryPolicyIsStateDependent(unittest.TestCase):
         self.assertLess(hiked.econ.gdp_real, calm.econ.gdp_real,
                         "tightening into a slump cost nothing")
 
-    # Known failure, backlog T94 (engine 19). In the karam a higher policy rate raises the price level: the credit
-    # channel cuts capacity output, and the price target divides the money stock by capacity output. Engine 18 had the
-    # same inversion: a 60% rate raised expected inflation at every level of printing, and even this 35% hike left the
-    # price level higher (2.71 against 2.48). This test passed only by 0.0014 of expected inflation, which the
-    # currency-launch artefact fixed in engine 19 (audit EC6) had supplied. The claim stands; the engine does not meet
-    # it yet, so a fix of T94 shows here as an unexpected success.
-    @unittest.expectedFailure
     def test_a_rate_hike_under_high_inflation_reduces_inflation_pressure(self):
         """Inside the crown the policy rate barely moves monetary conditions, which is correct: a
         member of a currency union does not set its own. The test therefore runs where Karamaniya
-        controls its own money."""
+        controls its own money.
+
+        Engine 20 (T94): the pressure is read in the price level and its rise over the hike's months. Until engine 20 a
+        hike raised the price level (the whole debt repriced at once, a credit squeeze read as a shortage of goods, a
+        fixed import bill drained the reserves, and the karam's launch absorbed a rate raised before it), and this test
+        passed only on expected inflation, by 0.0014, on the launch artefact audit EC6 removed. Expected inflation is
+        not the measure: it includes printing against nominal output, which a lower price level raises."""
         def make(inflate, hike):
             w = new_world(5, 30)
 
@@ -152,8 +151,9 @@ class MonetaryPolicyIsStateDependent(unittest.TestCase):
         hiked = make(inflate, True)
         loose = make(inflate, False)
         self.assertEqual(hiked.econ.currency, "karam")
-        self.assertLess(hiked.econ.expected_infl, loose.econ.expected_infl,
-                        "tightening under inflation did not lower expected inflation")
+        self.assertLess(hiked.econ.cpi, loose.econ.cpi, "tightening under inflation raised the price level")
+        rise = lambda w: w.econ.cpi / w.history[1]["cpi"]  # noqa: E731 - the rise from the month the hike began
+        self.assertLess(rise(hiked), rise(loose), "prices rose faster under the hike than without it")
 
     def test_a_rate_hike_never_acts_instantly(self):
         w = new_world(5, 30)
@@ -242,9 +242,13 @@ class Military(unittest.TestCase):
 
     def test_a_mild_shortfall_does_not_reach_the_army_at_all(self):
         """Protection shows up as a threshold: small shortfalls land entirely on suppliers."""
+        # Engine 20 (T94): the debt's risk premium reaches the stock a maturing slice at a time, where engine 19 repriced
+        # the whole stock in the month it appeared (17.7M to 23.1M of interest at once), so the same cut now takes longer
+        # to fall short. A tax of 0.16 gives in eight months the mild shortfall 0.17 gave before (the army 0.025 months
+        # behind against the contractors' 0.143; 0.029 against 0.163 on engine 19).
         def mild(x):
             steady(x)
-            x.policy.tax = 0.17
+            x.policy.tax = 0.16
         w = run(new_world(2, 24), 8, each=mild)
         months = economy.arrears_months(w)
         self.assertLess(months["army"], economy.CIVIL_SERVICE_STRIKE_MONTHS)

@@ -239,6 +239,12 @@ def trade_and_food(w: World, prod: dict) -> dict:
     food_over_want = (1.2e6 if maxed else 0.37e6) * sea * e.food_import_capacity
     fuel_cost = (0.5 if maxed else 0.2) * sea * 60e6
     goods_want = (15e6 if maxed else 38e6) * sea
+    # Engine 20 (T94): goods bought abroad follow credit, as goods bought at home do (money_and_prices): what a credit
+    # squeeze takes out of production it takes out of purchases. With the import bill fixed, a rate hike's squeeze cut
+    # industry and so exports while the bill stayed; the reserves drained, the karam sank, and the dearer imports raised
+    # the price level. Credit conditions stay at 1.0 unless the real rate is high, so a world that keeps its rate buys
+    # what it always did.
+    goods_want *= e.credit_conditions
     # A numeric import ceiling (0 = none): the council caps how much is spent abroad on goods -- the
     # 'economic sovereignty' lever delegates reached for as prose. It conserves reserves but leaves
     # fewer consumer and industrial goods on the market, so it feeds the goods-price channel.
@@ -764,7 +770,21 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
     # a claim in someone else's money and can only be met from reserves, exports or new borrowing
     # abroad. Only the domestic rate reprices as the policy rate moves, because only the maturing
     # slice of the stock is refinanced each month.
-    e.interest_dom = e.debt_dom * (pol.rate + 0.02 + risk) / 12
+    #
+    # Engine 20 (T94): the stock carries the rate it was issued at (e.debt_rate), and only the slice that matures this
+    # month and new issuance take today's market rate (_reprice_debt, after the borrowing below). Until engine 19 the
+    # whole stock repriced at once, so a hike from 6% to 60% lifted the interest bill from 4% to 28% of monthly output in
+    # its first month; the deficit, the arrears and the unrest that followed drained the reserves and sank the karam,
+    # and the higher import prices made a rate hike raise consumer prices. Bonds a motion issued since last month's
+    # budget (politics: arrears settled in bonds, bond-funded relief) are new debt at today's rate.
+    market_rate = pol.rate + 0.02 + risk
+    if e.debt_rate <= 0:                # a new world, or a checkpoint from before engine 20: the stock at today's rate
+        e.debt_rate, e.debt_rated = market_rate, e.debt_dom
+    issued_since = max(0.0, e.debt_dom - e.debt_rated)
+    if issued_since > 0:
+        e.debt_rate = ((e.debt_dom - issued_since) * e.debt_rate + issued_since * market_rate) / e.debt_dom
+    stock_at_budget = e.debt_dom
+    e.interest_dom = e.debt_dom * e.debt_rate / 12
     e.interest_for = e.debt_for * foreign_rate / 12 * gold_to_local
     # Audit EC8: only domestic interest is a crown bill; foreign interest is paid from the reserves below.
     interest = e.interest_dom
@@ -841,6 +861,7 @@ def fiscal(w: World, prod: dict, trade: dict) -> dict:
         repay = settle_arrears(w, min(e.arrears, surplus))
         e.debt_dom = max(0.0, e.debt_dom - (surplus - repay))
     e.debt_dom += borrowed
+    _reprice_debt(e, stock_at_budget, market_rate)
     if unpaid > 0:
         _sync_arrears_composition(w)
         e.arrears += unpaid
@@ -983,7 +1004,10 @@ def money_and_prices(w: World, prod: dict) -> None:
     imp = 1.0 if e.currency == "crown" else 1.0 / max(0.3, e.fx_conf)
 
     e.consumer_goods = max(1.0, prod["industry"] - e.arms_diversion + e.goods_imports)
-    goods_target = clamp((e.consumer_goods0 / e.consumer_goods) ** 1.1, 0.8, 5.0)
+    # Engine 20 (T94): the goods people can buy are set against what they spend, and spending follows credit as output
+    # does (produce: utilisation is credit times the rest). A credit squeeze is a fall in demand, not a shortage. Read
+    # against a fixed demand, the squeeze's lower output was scarcity, and a rate hike raised the price of goods.
+    goods_target = clamp((e.consumer_goods0 * e.credit_conditions / e.consumer_goods) ** 1.1, 0.8, 5.0)
     e.goods_rel = 0.5 * e.goods_rel + 0.5 * goods_target
     food_official = min(e.food_rel, 1.25) if pol.price_controls in ("food", "all") else e.food_rel
     goods_official = min(e.goods_rel, 1.2) if pol.price_controls == "all" else e.goods_rel
@@ -1094,6 +1118,20 @@ def _trend_gdp(w: World, prod: dict) -> float:
     return (sum(trend) + prod["gdp_real"]) / (len(trend) + 1)
 
 
+def _reprice_debt(e, stock_at_budget: float, market_rate: float) -> None:
+    """Engine 20 (T94): the domestic debt's average rate after this month's budget. The stock that has not matured keeps
+    its rate; the slice that matured (debt_short_share of the stock falls due within twelve months, so a twelfth of it
+    each month) was refinanced, and new borrowing was issued, at today's market rate. Debt repaid leaves the rate as it
+    was."""
+    stock = e.debt_dom
+    if stock <= 0:
+        e.debt_rated = 0.0
+        return
+    kept = min(stock, stock_at_budget * (1 - clamp(e.debt_short_share / 12.0, 0.0, 1.0)))
+    e.debt_rate = (kept * e.debt_rate + (stock - kept) * market_rate) / stock
+    e.debt_rated = stock
+
+
 def _capacity_gdp(w: World, prod: dict) -> float:
     """What the economy can produce, for scaling the money stock against.
 
@@ -1111,12 +1149,18 @@ def launch_currency_if_due(w: World, prod: dict) -> None:
     if e.currency != "crown" or e.currency_launch < 0 or w.month < e.currency_launch:
         return
     crown = w.zone_of("karamaniya")
+    # Engine 20 (T94): the money was held under the crown's rate (the zone's money-weighted rate, as money_and_prices
+    # reads it), so the karam is scaled on that velocity and starts at the crown's price; from the launch its own policy
+    # rate moves the price, gradually (PRICE_SPEED). Scaled on Karamaniya's own rate, a rate raised before the launch
+    # was built into the scale and never lowered the price level.
+    held_rate = (sum((w.rivals[n].rate if n in w.rivals else w.policy.rate) * crown.money[n] for n in crown.members)
+                 / max(1.0, sum(crown.money.values())))
     money = crown.money.pop("karamaniya")
     crown.members.remove("karamaniya")
     # Audit EC6: scale the new zone on the capacity later months use (potential output), not on last month's output,
     # so the zone prices where the crown did at the moment of the launch.
     y = _capacity_gdp(w, prod)
-    v = math.exp(ALPHA * ((crown.exp_infl * 0.7 - THETA * w.policy.rate / 12) - BASE_TERM))
+    v = math.exp(ALPHA * ((crown.exp_infl * 0.7 - THETA * held_rate / 12) - BASE_TERM))
     karam = type(crown)(id="karam", name=w.names["karam"], members=["karamaniya"],
                         money={"karamaniya": money}, price=crown.price,
                         exp_infl=crown.exp_infl * 0.7, infl=crown.infl)

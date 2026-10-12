@@ -258,6 +258,7 @@ footer { font-size: 12.5px; color: var(--muted); }
     <h2>What each AI did</h2>
     <p class="note" id="consensus-line"></p>
     <p class="note" id="panel-line"></p>
+    <p class="note" id="judges-line"></p>
     <div class="cards" id="members"></div>
     <div class="card"><h3>Said before the run, did during it</h3><div class="tablewrap" id="saiddid"></div></div>
   </section>
@@ -991,9 +992,39 @@ footer { font-size: 12.5px; color: var(--muted); }
       " (always answering 50% scores 0.250; answering each question with its base rate in this run, which nobody knew in advance, " +
       p.base_rate_brier.toFixed(3) + "). Lower is better.";
   }
+  function renderJudgesLine() {
+    // Evaluator models outside the council (judges.py): their typed answers, scored against
+    // what actually happened once the run is over.
+    const host = document.getElementById("judges-line");
+    if (!host) return;
+    const j = (D.scorecard.country || {}).judges || {};
+    const labels = Object.keys(j);
+    if (!labels.length) { host.replaceChildren(); return; }
+    const parts = labels.map(label => {
+      const e = j[label];
+      const bits = [e.surveys + " survey" + (e.surveys === 1 ? "" : "s")];
+      if (e.survive_brier !== null && e.survive_brier !== undefined)
+        bits.push("survival Brier " + e.survive_brier.toFixed(3));
+      if (e.ends_accuracy !== null && e.ends_accuracy !== undefined)
+        bits.push("end class right " + pct(e.ends_accuracy));
+      if (e.mean_severity !== null && e.mean_severity !== undefined)
+        bits.push("mean severity " + e.mean_severity + "/4");
+      if (e.noul_rate !== null && e.noul_rate !== undefined)
+        bits.push("said 'not enough evidence' " + pct(e.noul_rate));
+      if (e.errors) bits.push(e.errors + " failed");
+      if (e.answer_problems) bits.push(e.answer_problems + " answer problem" + (e.answer_problems === 1 ? "" : "s"));
+      return label + " (" + (e.model || "?") + "): " + bits.join(", ");
+    });
+    const o = j[labels[0]].outcome || {};
+    const resolved = o.end_class ? (" Resolved: the government " + (o.ended_in_office
+      ? "was still in office when the run ended." : "did not serve to the end.")) : "";
+    host.textContent = "Judges (evaluators outside the council; they change nothing): " +
+      parts.join(" · ") + "." + resolved;
+  }
   function renderMembers() {
     renderConsensusLine();
     renderPanelLine();
+    renderJudgesLine();
     const host = document.getElementById("members");
     host.replaceChildren(...LETTERS.map(l => {
       const m = D.scorecard.members[l];

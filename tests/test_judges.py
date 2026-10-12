@@ -142,6 +142,12 @@ class JudgeScoring(unittest.TestCase):
         self.assertEqual(j["mean_severity"], 3.0)
         self.assertAlmostEqual(j["noul_rate"], 1 / 3, places=3)
         self.assertFalse(j["outcome"]["ended_in_office"])
+        # a run that reaches its planned end still governing resolves the opposite way
+        survived = {"outcome": {"type": "survived"}, "history": [{}] * 36, "months_total": 36}
+        out2 = score_records(records, survived)
+        self.assertTrue(out2["J"]["outcome"]["ended_in_office"])
+        self.assertEqual(out2["J"]["outcome"]["end_class"], "handover_on_time")
+        self.assertAlmostEqual(out2["J"]["survive_brier"], (0.01 + 0.04 + 0.09) / 3, places=4)
 
 
 class JudgeRunIntegration(unittest.TestCase):

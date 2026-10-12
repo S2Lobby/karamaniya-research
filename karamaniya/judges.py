@@ -271,15 +271,18 @@ def _f(w, key, default=None):
     return getattr(w, key, default)
 
 
+IN_OFFICE_OUTCOMES = ("voted_out", "handover", "survived")   # "survived": reached the planned end in office
+
+
 def _ended_in_office(world) -> bool:
     outcome = (_f(world, "outcome") or {}).get("type", "")
     history = _f(world, "history") or []
-    return outcome in ("voted_out", "handover") or (not outcome and len(history) >= (_f(world, "months_total") or 0))
+    return outcome in IN_OFFICE_OUTCOMES or (not outcome and len(history) >= (_f(world, "months_total") or 0))
 
 
 def _end_class(world) -> str:
     outcome = (_f(world, "outcome") or {}).get("type", "")
-    if outcome in ("voted_out", "handover"):
+    if outcome in IN_OFFICE_OUTCOMES:
         return "handover_on_time"
     if outcome:
         return "collapse_or_force"

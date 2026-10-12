@@ -660,6 +660,7 @@ class Controller:
         self.stop_event = None
         self.thread = None
         self.check = {"status": "idle", "results": [], "error": "", "started": 0.0, "finished": 0.0}
+        self.batch = {"name": "", "items": [], "state": "idle"}
         self.feed = collections.deque(maxlen=FEED_SIZE)
         self.seq = 0
         recent = next((s for s in self.library.all() if s["status"] != "unreadable"), None)
@@ -928,6 +929,231 @@ class Controller:
             self._push("status", text="Stopping after the current month. Everything so far is saved.")
             return dict(self.job)
 
+    # -- batch: a queue of runs played one after another ------------------------------------------
+    def _batch_file(self, name: str) -> Path:
+        return self.root / "batches" / f"{name}.json"
+
+    def batch_list(self) -> list:
+        d = self.root / "batches"
+        return sorted(p.stem for p in d.glob("*.json")) if d.is_dir() else []
+
+    def _batch_persist(self) -> None:
+        name = (self.batch or {}).get("name") or ""
+        if not name:
+            return
+        p = self._batch_file(name)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        plan = {k: v for k, v in self.batch.items() if k not in ("note",)}
+        plan["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(plan, indent=1, default=str), encoding="utf-8")
+        os.replace(tmp, p)
+
+    def _run_state(self, run_dir: Path, months: int) -> dict:
+        if not (run_dir / "checkpoint.json").exists():
+            return {"state": "new", "months_done": 0}
+        try:
+            from .storage import RunStore
+            world, _c, meta = RunStore(run_dir).load_checkpoint()
+        except Exception as exc:
+            return {"state": "unreadable", "months_done": 0, "error": f"{type(exc).__name__}: {exc}"}
+        finished = world.ended() or (months and len(world.history) >= months)
+        return {"state": "done" if finished else "partial", "months_done": len(world.history),
+                "stopped": (meta or {}).get("stopped", "")}
+
+    def batch_save(self, plan: dict) -> dict:
+        name = str((plan or {}).get("name") or "").strip()
+        if not RUN_NAME_RE.match(name):
+            raise ApiError("A batch name uses letters, digits, '.', '_' and '-'.")
+        items = plan.get("items")
+        if not isinstance(items, list) or not 1 <= len(items) <= 200:
+            raise ApiError("A batch needs 1 to 200 runs.")
+        seen = set()
+        for i, it in enumerate(items):
+            if not isinstance(it, dict):
+                raise ApiError(f"batch run {i + 1} is not a run")
+            rid = str(it.get("name") or "").strip()
+            if not RUN_NAME_RE.match(rid):
+                raise ApiError(f"batch run {i + 1}: a run name uses letters, digits, '.', '_' and '-'.")
+            if rid in seen:
+                raise ApiError(f"batch run {i + 1}: two rows share the name {rid}.")
+            seen.add(rid)
+            council = str(it.get("council") or "")
+            if not CONFIG_NAME_RE.match(council) or not (self.root / council).is_file():
+                raise ApiError(f"batch run {i + 1}: no council file called {council or '(none)'}.")
+            try:
+                it["seed"] = int(it.get("seed", 1))
+                it["months"] = int(it.get("months") or 0)
+            except (TypeError, ValueError):
+                raise ApiError(f"batch run {i + 1}: seed and months must be whole numbers.") from None
+            if not it["months"] or not 1 <= it["months"] <= 120:
+                raise ApiError(f"batch run {i + 1}: months must be 1 to 120.")
+            for k, allowed in (("framing", ("", "simulation", "immersive", "unobserved")),
+                               ("severity", ("", "default", "mild", "serious", "critical")),
+                               ("seats", ("", "shuffle", "rotate")),
+                               ("scenario", ("", "random", "fragile-independence", "fiscal-inheritance",
+                                             "regional-divide", "security-crisis", "trade-dependency",
+                                             "post-regime-transition"))):
+                if str(it.get(k) or "") not in allowed:
+                    raise ApiError(f"batch run {i + 1}: {k} '{it.get(k)}' is not one of {allowed}.")
+        with self.lock:
+            if self.busy():
+                raise ApiError("A run or batch is already going. Stop it first.", 409)
+            prior = {it["name"]: it for it in (self.batch or {}).get("items", [])}
+            for it in items:
+                old = prior.get(it["name"])
+                if old and old.get("status") in ("done", "paused", "stopped", "failed"):
+                    it["status"] = old["status"]
+                    it["months_done"] = old.get("months_done", 0)
+                    if old.get("note"):
+                        it["note"] = old["note"]
+            self.batch = {"name": name, "items": items, "state": "idle", "started": 0.0}
+            self._batch_persist()
+            return self.batch_state()
+
+    def batch_start(self, plan: dict) -> dict:
+        with self.lock:
+            if self.busy():
+                raise ApiError("A run or batch is already going. Stop it first.", 409)
+        self.batch_save(plan)
+
+        def work():
+            from .config import load_config, normalize_config
+            from .runner import new_run, resume_run
+            self.thread = threading.current_thread()
+            fails = 0
+            try:
+                self.batch.update(state="running", started=time.time(), note="")
+                for i, it in enumerate(self.batch.get("items", [])):
+                    if self.batch.get("stopping"):
+                        break
+                    st = self._run_state(self.runs_dir / it["name"], it["months"])
+                    if st["state"] == "done":
+                        it.update(status="done", months_done=st.get("months_done", 0))
+                        self._batch_persist()
+                        continue
+                    try:
+                        raw = load_config(self.root / it["council"])
+                        run_cfg = dict(raw["run"])
+                        run_cfg["seed"] = int(it["seed"])
+                        run_cfg["months"] = int(it["months"])
+                        seats = list(raw["seats"])
+                        if it.get("seats") == "shuffle":
+                            run_cfg["shuffle_seats"] = True          # the seed decides which model gets which letter
+                        elif it.get("seats") == "rotate":
+                            k = i % len(seats)                       # this row's place in the plan turns the order
+                            seats = seats[k:] + seats[:k]
+                            run_cfg["shuffle_seats"] = False
+                        if it.get("framing"):
+                            run_cfg["framing"] = it["framing"]
+                        if it.get("severity"):
+                            run_cfg["founding_severity"] = it["severity"]
+                        if it.get("scenario"):
+                            run_cfg["founding_scenario"] = it["scenario"]
+                        cfg = normalize_config({"run": run_cfg, "seat": seats}, f"batch {it['name']}")
+                        with self.lock:
+                            self._new_job("batch", it["name"], cfg["run"]["months"])
+                            self.stop_event = threading.Event()
+                            self.batch["current_run"] = it["name"]
+                            it["status"] = "running"
+                            it["launched_council"] = it["council"]     # what THIS row really runs, frozen at launch
+                        self._batch_persist()
+                        kwargs = {"quiet": True, "observer": self.observer, "stop_event": self.stop_event,
+                                  "live_report": True}
+                        if st["state"] == "new":
+                            new_run(config=cfg, runs_dir=str(self.runs_dir), name=it["name"], **kwargs)
+                        else:
+                            resume_run(run_dir=str(self.runs_dir / it["name"]), **kwargs)
+                        after = self._run_state(self.runs_dir / it["name"], cfg["run"]["months"])
+                        if after["state"] == "done":
+                            it.update(status="done", months_done=after.get("months_done", 0))
+                        elif str(after.get("stopped", "")).startswith("paused"):
+                            it.update(status="paused", months_done=after.get("months_done", 0),
+                                      note=str(after.get("stopped"))[:200])
+                        else:
+                            it.update(status="stopped", months_done=after.get("months_done", 0))
+                        fails = 0
+                    except SystemExit as exc:          # the seat check refused to start this run
+                        it.update(status="failed", note=str(exc)[:300])
+                        self._push("error", text=f"batch: {it['name']} could not start — "
+                                                 f"{str(exc).splitlines()[0][:170]}")
+                        fails += 1
+                    except Exception as exc:
+                        traceback.print_exc()
+                        it.update(status="failed", note=f"{type(exc).__name__}: {exc}"[:300])
+                        self._push("error", text=f"batch: {it['name']} failed — "
+                                                 f"{type(exc).__name__}: {exc}"[:200])
+                        fails += 1
+                    finally:
+                        with self.lock:
+                            if self.job:
+                                self.job["ended"] = time.time()
+                                if self.job["status"] in ("starting", "checking", "running", "stopping"):
+                                    self.job["status"] = "finished" if it.get("status") == "done" else "stopped"
+                                self.library.forget(self.job["run_id"])
+                        self._batch_persist()
+                    if fails >= 2:
+                        self.batch["note"] = (f"stopped after {fails} runs in a row could not start; "
+                                              "check seats, keys and quotas, fix the row, then run the batch again")
+                        self._push("error", text="batch stopped: two rows in a row could not start. Fix the "
+                                                 "reason shown above, then press Run batch again — failed "
+                                                 "rows are retried, finished rows are skipped.")
+                        break
+            except Exception as exc:
+                traceback.print_exc()
+                self.batch["note"] = f"batch stopped by an error: {type(exc).__name__}: {exc}"
+            finally:
+                self.batch.update(state="idle", stopping=False, current_run="", ended=time.time())
+                self._batch_persist()
+
+        thr = threading.Thread(target=work, name="karamaniya-batch", daemon=True)
+        with self.lock:
+            # the queue owns the room from this moment: busy() must be true before batch_start returns
+            self.batch.update(state="running", started=time.time(), note="")
+            self.thread = thr
+        thr.start()
+        return self.batch_state()
+
+    def batch_stop(self) -> dict:
+        with self.lock:
+            if not (self.batch or {}).get("state") == "running":
+                raise ApiError("No batch is going.", 409)
+            self.batch["stopping"] = True
+            self.batch["note"] = "stopping after the current month; the queue keeps its place"
+            if self.stop_event is not None and self.thread is not None and self.thread.is_alive():
+                self.stop_event.set()
+            return dict(self.batch)
+
+    def batch_state(self, name: str = "") -> dict:
+        with self.lock:
+            cur = dict(self.batch or {})
+        if not name and not cur.get("name"):
+            d = self.root / "batches"
+            files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True) if d.is_dir() else []
+            if files:
+                name = files[0].stem
+        if name and name != cur.get("name"):
+            p = self._batch_file(name)
+            if not p.exists():
+                raise ApiError("no batch file with that name", 404)
+            try:
+                cur = json.loads(p.read_text(encoding="utf-8"))
+            except Exception as exc:
+                raise ApiError(f"that batch file cannot be read: {exc}") from None
+            cur["state"] = "idle"
+            cur["running"] = False
+        cur.setdefault("items", [])
+        cur["batches"] = self.batch_list()
+        running = bool(self.batch and self.batch.get("state") == "running")
+        cur["running"] = running
+        for it in cur.get("items", []):
+            if running and it.get("name") == (self.batch or {}).get("current_run"):
+                it["status"] = "running"
+                continue
+            if it.get("status") == "running":
+                it["status"] = "pending"
+        return cur
+
     def start_check(self, raw_cfg: dict) -> dict:
         from .runner import check_seats, seats_to_check
         cfg = normalize_config(raw_cfg, "control room")
@@ -1171,6 +1397,17 @@ class Handler(BaseHTTPRequestHandler):
                 runs = [{**{k: v for k, v in r.items() if k != "card"},
                          **({"status": "running"} if r["id"] == going else {})} for r in c.library.all()]
                 return self._json(200, {"runs": runs, "busy": bool(job and job["active"])})
+            if method == "GET" and name == "batch":
+                return self._json(200, c.batch_state(q("name")))
+            if method == "POST" and name == "batch":
+                act = str(body.get("action") or "")
+                if act == "start":
+                    return self._json(200, c.batch_start(body.get("plan") or {}))
+                if act == "save":
+                    return self._json(200, c.batch_save(body.get("plan") or {}))
+                if act == "stop":
+                    return self._json(200, c.batch_stop())
+                raise ApiError("unknown batch action")
             if method == "GET" and name == "compare":
                 return self._json(200, compare(c.library.all()))
             if method == "GET" and name == "world":

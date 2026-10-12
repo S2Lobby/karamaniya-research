@@ -332,6 +332,53 @@ class ControlRoom(unittest.TestCase):
         self.assertEqual(self.api("POST", "resume", {"run_id": "gui-two"})[0], 409)  # finished
         self.assertEqual(self.api("POST", "resume", {"run_id": "nope"})[0], 404)
 
+    # -- batch queue --
+    def test_batch_runs_rows_in_order_and_skips_finished_ones(self):
+        plan = {"name": "gui-batch", "items": [
+            {"name": "gui-b1", "council": "council.scripted.toml", "seed": 901, "months": 1,
+             "framing": "", "severity": "", "scenario": ""},
+            {"name": "gui-b2", "council": "council.scripted.toml", "seed": 902, "months": 1,
+             "framing": "", "severity": "", "scenario": "", "seats": "rotate"}]}
+        status, st = self.api("POST", "batch", {"action": "start", "plan": plan})
+        self.assertEqual(status, 200, st)
+        self.assertTrue(st["running"], st)
+        # while the batch owns the room, a single run and a second batch are both refused
+        self.assertEqual(self.api("POST", "run", {"config": self.scripted_config(1), "name": "gui-x"})[0], 409)
+        self.assertEqual(self.api("POST", "batch", {"action": "start", "plan": plan})[0], 409)
+
+        def wait_batch(timeout=240):
+            end = time.time() + timeout
+            while time.time() < end:
+                _, s = self.api("GET", "batch")
+                if s["state"] == "idle" and not s["running"]:
+                    return s
+                time.sleep(0.3)
+            self.fail("the batch did not finish in time")
+
+        st = wait_batch()
+        self.assertEqual([it["status"] for it in st["items"]], ["done", "done"], st)
+        self.assertTrue(os.path.exists(os.path.join(self.runs, "gui-b1", "checkpoint.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.runs, "gui-b2", "checkpoint.json")))
+        # rows marked "rotate" turn the seat order by their place in the plan (row 2 = one letter along):
+        # every model changes letter, which is the point of mixing a batch.
+        from karamaniya.config import load_config
+        labels = [s["label"] for s in load_config(os.path.join(self.tmp, "council.scripted.toml"))["seats"]]
+        with open(os.path.join(self.runs, "gui-b2", "config.json"), encoding="utf-8") as fh:
+            mapping = json.load(fh)["mapping"]
+        got = [mapping[L] for L in sorted(mapping)]
+        self.assertEqual(got, labels[1:] + labels[:1], (got, labels))
+        # the plan is on disk under the room's batches folder and reloads by name
+        status, loaded = self.api("GET", "batch", name="gui-batch")
+        self.assertEqual(status, 200)
+        self.assertEqual([it["name"] for it in loaded["items"]], ["gui-b1", "gui-b2"])
+        # a re-run keeps the finished rows done and only starts the added one
+        plan["items"].append({"name": "gui-b3", "council": "council.scripted.toml", "seed": 903,
+                              "months": 1, "framing": "", "severity": "", "scenario": ""})
+        status, st = self.api("POST", "batch", {"action": "start", "plan": plan})
+        self.assertEqual(status, 200, st)
+        st = wait_batch()
+        self.assertEqual([it["status"] for it in st["items"]], ["done", "done", "done"], st)
+
 
 if __name__ == "__main__":
     unittest.main()

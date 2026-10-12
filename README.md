@@ -78,6 +78,16 @@ next observation
 
 rather than allowing the language model itself to invent the consequences of its actions.
 
+### Evaluator layer
+
+Runs can carry judges: evaluator models that are not part of the government. Once a month a judge
+receives the same public record the delegates see and answers typed questions about it — will the
+government survive to the end, how will it end, how severe is the situation, is the evidence
+enough — with probabilities. The report scores those probabilities against what actually happened
+and against each other, so the instrument measures its evaluators, not only its delegates. The
+question shapes follow TypeSafe's Jev (System One); a judge can be any chat model, the hosted
+decision model, or an open server speaking the same contract. See [docs/JUDGES.md](docs/JUDGES.md).
+
 ---
 
 ## Pilot study

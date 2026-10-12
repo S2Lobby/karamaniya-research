@@ -494,6 +494,13 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             <label class="check wide"><input type="checkbox" id="s-human"> Human factor: dispositions, beliefs, relationships and political pressure</label>
             <label class="check wide"><input type="checkbox" id="s-panel"> Monthly forecast panel: every delegate answers the same questions, scored when they fall due</label>
             <label class="check wide"><input type="checkbox" id="s-baseline"> Afterwards, run the same seed with rule-following, do-nothing, all-hawk and all-dove councils (free, about four minutes; only when a seat is a model)</label>
+            <div class="field"><span>&nbsp;</span><label class="check"><input type="checkbox" id="s-judge"> Evaluator models observe the run (judges, outside the government)</label></div>
+            <div id="judge-fields" hidden>
+              <label class="field"><span>Judge provider</span><select id="s-judge-provider"></select></label>
+              <label class="field"><span>Judge model</span><input type="text" id="s-judge-model" placeholder="e.g. jev-latest, qwen3.5:9b" spellcheck="false" autocomplete="off"></label>
+              <label class="field"><span>Ask every (months)</span><input type="number" id="s-judge-every" min="1" max="12" step="1" value="1"></label>
+              <p class="pnote">Judges see the same public record the delegates see and answer typed questions: will the government survive to the end, how will it end, how severe is it, is the evidence enough. Their probabilities are scored against what actually happened, so the report shows each judge's accuracy, not just its opinion. Up to three judges; a second and third are added in the council file.</p>
+            </div>
           </div>
           <p class="pnote">Each member has a seeded private disposition and a different evidence dossier. No office or political priority is preassigned; compare first diagnoses, stated principles and later choices in Inspect.</p>
           <div class="estimate" id="founding-preview"><span class="muted">Preparing inherited-state preview…</span></div>
@@ -1008,6 +1015,14 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     $("s-severity").value = r.founding_severity || "default";
     $("s-problems").value = (r.founding_problems || []).join(", ");
     $("custom-problems-field").hidden = $("s-scenario").value !== "custom";
+    const jsel = $("s-judge-provider");
+    if (!jsel.options.length) put(jsel, Object.keys(PROVIDERS).map(p => { const o = el("option", null, p); o.value = p; return o; }));
+    const j0 = (r.judge_backends || [])[0] || {};
+    $("s-judge").checked = !!r.judge;
+    $("judge-fields").hidden = !r.judge;
+    jsel.value = j0.provider || "ollama";
+    $("s-judge-model").value = j0.model || "";
+    $("s-judge-every").value = Math.max(1, Math.min(12, +r.judge_every_months || 1));
     renderFoundingPreview();
   }
   function bindSettings() {
@@ -1055,6 +1070,24 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     $("s-seed").addEventListener("change", renderFoundingPreview);
     for (const [id, key] of [["s-survey", "survey"], ["s-shuffle", "shuffle_seats"], ["s-parallel", "parallel_decisions"], ["s-human", "human_factor"]])
       $(id).addEventListener("change", ev => { S.cfg.run[key] = ev.target.checked; markDirty(); renderEstimate(); });
+    // Judges: one evaluator model from the panel; a second and third live in the council file.
+    function syncJudge() {
+      const provider = $("s-judge-provider").value;
+      const model = $("s-judge-model").value.trim();
+      S.cfg.run.judge = true;
+      if (provider && model) S.cfg.run.judge_backends = [{ provider: provider, model: model, label: model }];
+      else delete S.cfg.run.judge_backends;
+      S.cfg.run.judge_every_months = Math.max(1, Math.min(12, +$("s-judge-every").value || 1));
+    }
+    $("s-judge").addEventListener("change", ev => {
+      $("judge-fields").hidden = !ev.target.checked;
+      if (ev.target.checked) syncJudge();
+      else { delete S.cfg.run.judge; delete S.cfg.run.judge_backends; delete S.cfg.run.judge_every_months; }
+      markDirty(); renderEstimate();
+    });
+    $("s-judge-provider").addEventListener("change", () => { if (S.cfg.run.judge) syncJudge(); markDirty(); });
+    $("s-judge-model").addEventListener("input", () => { if (S.cfg.run.judge) syncJudge(); markDirty(); });
+    $("s-judge-every").addEventListener("change", () => { if (S.cfg.run.judge) syncJudge(); markDirty(); });
   }
 
   function maxCallEstimate(run, seats) {

@@ -11,6 +11,8 @@ class StubState:
         self.requests = []          # (path, headers, body)
         self.reply = {"ok": True, "note": "ready"}
         self.reject_json_schema = False
+        self.schema_reject_message = "response_format type json_schema is not supported"
+        self.schema_error_in_200 = False   # OpenRouter style: HTTP 200 carrying an error object inside
         self.refuse = False
         self.usage = {}             # extra usage fields, e.g. the cache counts a provider reports
         self.thinking = ""          # reasoning to return: a thinking block, Ollama's thinking field
@@ -51,7 +53,10 @@ def _handler(state: StubState):
             elif self.path.endswith("/chat/completions"):
                 fmt = (body.get("response_format") or {}).get("type")
                 if state.reject_json_schema and fmt == "json_schema":
-                    self._send(400, {"error": {"message": "response_format type json_schema is not supported"}})
+                    if state.schema_error_in_200:
+                        self._send(200, {"error": {"message": state.schema_reject_message, "code": 400}})
+                    else:
+                        self._send(400, {"error": {"message": state.schema_reject_message}})
                     return
                 msg = {"role": "assistant", "content": text, **state.message_extra}
                 if state.refuse:

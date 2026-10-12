@@ -818,6 +818,14 @@ class Controller:
             job["neighbours"] = ev.get("actors") or {}
             self._push("neighbours", month=ev.get("month"), actors=ev.get("actors") or {},
                        seats=dict(job["foreign_seats"]))
+        elif t == "judge_start":
+            self._push("judge_start", month=ev.get("month"), label=ev.get("label", ""),
+                       model=ev.get("model", ""))
+        elif t == "judge":
+            self._push("judge", month=ev.get("month"), label=ev.get("label", ""),
+                       model=ev.get("model", ""), answers=ev.get("answers", []),
+                       problems=ev.get("problems", []), error=ev.get("error", ""),
+                       latency_s=ev.get("latency_s", 0))
         elif t == "month_done":
             if job.get("month_started"):
                 job["month_times"] = (job["month_times"] + [round(time.time() - job["month_started"], 1)])[-36:]

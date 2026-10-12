@@ -246,6 +246,10 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .bcast-feed { position: sticky; top: 76px; min-width: 0; }
 @media (max-width: 1150px) { .bcast-feed { position: static; } }
 .bcast-feed .feed { max-height: calc(100vh - 150px); min-height: 460px; }
+.judge-card { margin: 8px 0 8px 26px; padding: 9px 12px; border: 1px solid var(--line);
+  border-left: 3px solid var(--accent); border-radius: 6px; background: var(--card); }
+.judge-card .by { margin-bottom: 4px; }
+.judge-card p { margin: 2px 0; }
 .live-draft { margin: 10px 0; padding: 11px 13px; border-left: 3px solid var(--accent);
   background: var(--surface-2); border-radius: 5px; }
 .live-draft .draft-label { font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 5px; }
@@ -1620,6 +1624,27 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         return out;
       }
       case "finished": return [el("p", { class: "sysline", text: it.stopped ? "Stopped: " + it.stopped : "The run is over." })];
+      case "judge_start": return [el("p", { class: "sysline", text: "Judge " + it.label +
+        (it.model ? " (" + it.model + ")" : "") + " is reading the record…" })];
+      case "judge": {
+        const body = [el("div", { class: "by" }, el("b", { text: "Judge " + it.label }),
+          it.model ? " · " + it.model : "", it.latency_s ? " · " + dur(it.latency_s) : "")];
+        if (it.error) body.push(el("p", { class: "err", text: it.error }));
+        else {
+          for (const a of it.answers || []) {
+            let val;
+            if (a.kind === "choice") val = (a.choice || "?") +
+              (a.probability != null ? " · " + Math.round(a.probability * 100) + "%" : "");
+            else if (a.kind === "score") val = a.score != null ? String(a.score) : "?";
+            else val = (a.noul ? "not enough evidence" : "enough evidence") +
+              (a.probability != null ? " · " + Math.round(a.probability * 100) + "%" : "");
+            body.push(el("p", { class: "small" }, el("span", { class: "muted", text: a.id.replace(/_/g, " ") + ": " }),
+              el("span", { text: val })));
+          }
+          if ((it.problems || []).length) body.push(el("div", { class: "muted small", text: it.problems.join("; ") }));
+        }
+        return [el("div", { class: "judge-card" }, ...body)];
+      }
       case "error": return [el("p", { class: "err", text: it.text })];
       default: return [];
     }
@@ -1694,9 +1719,10 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     dismissed: 0, primed: false, notify: recall("live-notify") === "1", dms: {} };
   const FEED_KIND = { statement: "speech", revision: "speech", founding_diagnosis: "speech", formation_proposal: "speech",
     resolved: "votes", agenda: "votes", government_formation: "votes", thought: "thought", neighbours: "neighbours",
-    external_problem: "neighbours", problem: "problems", error: "problems", month_done: "summary" };
+    external_problem: "neighbours", problem: "problems", error: "problems", month_done: "summary",
+    judge: "judge", judge_start: "judge" };
   const FEED_FILTERS = [["speech", "Speech"], ["votes", "Votes"], ["thought", "Reasoning"], ["dm", "Private messages"],
-    ["neighbours", "Neighbours"], ["problems", "Problems"], ["summary", "Month summaries"]];
+    ["neighbours", "Neighbours"], ["judge", "Judges"], ["problems", "Problems"], ["summary", "Month summaries"]];
   const cap = s => s ? s[0].toUpperCase() + s.slice(1) : "";
   const REMOVED = { voted_out: "voted out with the government", lost_seat: "lost its own seat", failed_coup: "arrested after a failed coup",
     coup: "removed in a coup", officers_coup: "removed by the officers' coup", expelled: "expelled by the council",

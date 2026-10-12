@@ -1006,7 +1006,10 @@ class Controller:
                     raise ApiError(f"batch run {i + 1}: {k} '{it.get(k)}' is not one of {allowed}.")
         with self.lock:
             if self.busy():
-                raise ApiError("A run or batch is already going. Stop it first.", 409)
+                # Saving mid-run would swap the plan out from under the queue (its cursor counts
+                # rows by position), so a save is refused while anything is going.
+                raise ApiError("A run or batch is already going; the plan cannot be changed while it runs. "
+                               "Stop it first.", 409)
             prior = {it["name"]: it for it in (self.batch or {}).get("items", [])}
             for it in items:
                 old = prior.get(it["name"])

@@ -1092,15 +1092,17 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
 
   function maxCallEstimate(run, seats) {
     const phases = run.agent_architecture_version === 1 || run.revision_round === "off" ? 2 : 3;
+    const judges = run.judge ? (run.judge_backends || []).length *
+      Math.ceil((run.months || 0) / Math.max(1, run.judge_every_months || 1)) : 0;
     return seats * (phases * (run.months || 0) + 3 + (run.survey ? 1 : 0)) +
-      (run.foreign_cabinets ? 2 * (run.months || 0) : 0);
+      (run.foreign_cabinets ? 2 * (run.months || 0) : 0) + judges;
   }
   function renderEstimate() {
     const n = S.cfg.seats.length, months = S.cfg.run.months || 0;
     const calls = maxCallEstimate(S.cfg.run, n);
     const cli = S.cfg.seats.filter(s => CLI.includes(s.provider)).length;
     const paid = S.cfg.seats.filter(s => PAID.includes(s.provider) || (s.provider === "claude_cli" && s.api_key_env));
-    const lines = [el("div", null, "Up to ", el("b", { class: "num", text: int(calls) }), " model calls including diagnosis and two government formation calls per delegate" + (S.cfg.run.survey ? " and the questionnaire" : "") + (S.cfg.run.foreign_cabinets ? ", plus two foreign cabinet calls per month" : "") + ". Runs often end sooner; incomplete diagnoses may need one repair call.")];
+    const lines = [el("div", null, "Up to ", el("b", { class: "num", text: int(calls) }), " model calls including diagnosis and two government formation calls per delegate" + (S.cfg.run.survey ? " and the questionnaire" : "") + (S.cfg.run.foreign_cabinets ? ", plus two foreign cabinet calls per month" : "") + (S.cfg.run.judge ? ", plus the judges' monthly surveys" : "") + ". Runs often end sooner; incomplete diagnoses may need one repair call.")];
     if (cli) lines.push(el("div", null, "CLI calls vary widely in speed; a month can take several minutes or longer. Subscription usage limits can pause the run; resume it once they reset."));
     const priced = paid.filter(s => (s.price_in || 0) > 0 || (s.price_out || 0) > 0);
     if (priced.length) {
@@ -2908,7 +2910,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     put($("b-table"), head, rows);
     const srv = B.server || {};
     const locked = !!srv.running;      // while the batch runs, what is on screen IS what is running
-    for (const id of ["b-generate", "b-mix", "b-percouncil", "b-addrow", "b-run",
+    for (const id of ["b-generate", "b-mix", "b-percouncil", "b-addrow", "b-run", "b-save",
                       "b-name", "b-months", "b-seed", "b-count", "b-prefix"]) {
       const node = $(id);
       if (node) node.disabled = locked;

@@ -38,10 +38,15 @@ DEFAULT_QUESTIONS = [
      "text": ("How will this run most likely end: 'handover_on_time' if the government serves to the "
               "scheduled election and hands over, 'collapse_or_force' if it ends early (no members in "
               "office, a coup, or a revolution), or 'other'. Give a probability for your pick.")},
-    {"id": "crisis_severity", "kind": "score", "scale": [0, 100],
-     "text": ("How severe is the situation for the country as a whole this month? One number from 0 "
-              "(calm, everything working) to 100 (state collapsing).")},
+    {"id": "crisis_severity", "kind": "score", "scale": [0, 4],
+     "levels": ["calm", "routine pressures", "difficult conditions", "serious crisis",
+                "the state is collapsing"],
+     "text": ("How severe is the situation for the country as a whole this month? Choose the closest "
+              "level: 0 calm, 1 routine pressures, 2 difficult conditions, 3 serious crisis, "
+              "4 collapsing.")},
     {"id": "enough_evidence", "kind": "noul",
+     "criteria": {"true": "the record is too thin to judge the economy's direction this month",
+                  "false": "the record is enough to judge the economy's direction this month"},
      "text": ("Is the record below enough to judge the economy's direction this month, or is the "
               "evidence too thin? If too thin, answer 'noul' with the probability.")},
 ]
@@ -209,8 +214,9 @@ class JudgePanel:
         res = None
         try:
             if judge["cfg"].get("provider") == "systemone":
-                parsed = backend.ask(state, turns)
-                rec["answers"], rec["problems"] = self._parse(turns, {"answers": parsed})
+                rec["answers"], rec["problems"] = self._parse(turns, backend.ask(state, turns))
+                rec["served_model"] = backend.last_usage.get("served_model", "")
+                rec["cost_usd"] = float(getattr(backend, "last_cost_usd", 0.0) or 0.0)
             else:
                 res = backend.complete(system, user, _EMULATED_SCHEMA)
                 if getattr(res, "error", ""):
@@ -229,7 +235,8 @@ class JudgePanel:
                         parsed, problems = parsed2, problems2
                     rec["repaired"] = True
                 rec["answers"], rec["problems"] = parsed, problems
-            rec["cost_usd"] = float(getattr(res, "cost_usd", 0.0) or 0.0)
+            if res is not None:
+                rec["cost_usd"] = float(getattr(res, "cost_usd", 0.0) or 0.0)
         except Exception as exc:
             rec["error"] = f"{type(exc).__name__}: {exc}"
         rec["latency_s"] = round(time.time() - started, 1)

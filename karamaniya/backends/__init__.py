@@ -5,7 +5,7 @@ from .base import Backend, CallResult, FatalError, QuotaError, TransientError
 
 # Command-line AIs first: they run on subscriptions you are already logged into.
 PROVIDERS = ("claude_cli", "codex_cli", "cline_cli", "antigravity_cli", "copilot_cli", "qoder_cli", "deepseek", "anthropic", "openai",
-             "openrouter", "openai_compat", "lmstudio", "llamacpp", "ollama", "scripted")
+             "openrouter", "openai_compat", "lmstudio", "llamacpp", "ollama", "scripted", "systemone")
 CLI_PROVIDERS = ("claude_cli", "codex_cli", "cline_cli", "antigravity_cli", "copilot_cli", "qoder_cli")
 
 
@@ -41,6 +41,9 @@ def make_backend(cfg: dict) -> Backend:
     if provider == "scripted":
         from .scripted import ScriptedBackend
         return ScriptedBackend(cfg)
+    if provider == "systemone":
+        from .systemone import SystemOneBackend
+        return SystemOneBackend(cfg)
     raise ValueError(f"unknown provider '{provider}'. Known: {', '.join(PROVIDERS)}")
 
 

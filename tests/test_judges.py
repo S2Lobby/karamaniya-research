@@ -21,7 +21,7 @@ GOOD_REPLY = {"answers": [
      "reason": "arrears and unrest are both climbing"},
     {"id": "how_ends", "choice": "collapse_or_force", "score": None, "probability": 0.6, "noul": None,
      "reason": "the army is unpaid"},
-    {"id": "crisis_severity", "choice": "", "score": 71, "probability": None, "noul": None,
+    {"id": "crisis_severity", "choice": "", "score": 3, "probability": None, "noul": None,
      "reason": "three fronts at once"},
     {"id": "enough_evidence", "choice": "", "score": None, "probability": 0.7, "noul": True,
      "reason": "no treasury detail in the record"},
@@ -55,7 +55,7 @@ class JudgePanelTest(unittest.TestCase):
         by_id = {a["id"]: a for a in rec["answers"]}
         self.assertEqual(by_id["survive_to_end"]["choice"], "no")
         self.assertAlmostEqual(by_id["survive_to_end"]["probability"], 0.2)
-        self.assertEqual(by_id["crisis_severity"]["score"], 71)
+        self.assertEqual(by_id["crisis_severity"]["score"], 3)
         self.assertTrue(by_id["enough_evidence"]["noul"])
         self.assertEqual(rec["problems"], [])
 
@@ -69,6 +69,32 @@ class JudgePanelTest(unittest.TestCase):
         self.assertTrue(rec.get("repaired"))          # the one repair attempt ran
         by_id = {a["id"]: a for a in rec["answers"]}
         self.assertTrue(by_id["survive_to_end"].get("missing"))
+
+    def systemone_panel(self):
+        return JudgePanel({"judge": True, "months": 36,
+                           "judge_backends": [{"provider": "systemone", "model": "jev-latest",
+                                               "label": "Jev", "base_url": self.url, "api_key_env": ""}]})
+
+    def test_systemone_answers_map_to_typed_records(self):
+        panel = self.systemone_panel()
+        rec = panel._ask_one(panel.judges[0], {"month": 5}, panel._asked())
+        self.assertEqual(rec.get("error", ""), "")
+        by_id = {a["id"]: a for a in rec["answers"]}
+        self.assertEqual(by_id["survive_to_end"]["choice"], "no")
+        self.assertAlmostEqual(by_id["survive_to_end"]["probability"], 0.7)
+        self.assertAlmostEqual(by_id["how_ends"]["probability"], 0.6)
+        self.assertAlmostEqual(by_id["crisis_severity"]["score"], 2.9)   # level index on the 0-4 scale
+        self.assertTrue(by_id["enough_evidence"]["noul"])
+        self.assertAlmostEqual(rec["cost_usd"], 5000 / 1e6 * 0.042, places=6)
+        self.assertEqual(rec["served_model"], "jev-stub-1")
+
+    def test_a_422_from_systemone_is_a_recorded_error(self):
+        self.state.systemone_status = 422
+        self.state.systemone_error = "questions.0.criteria: too many levels"
+        panel = self.systemone_panel()
+        rec = panel._ask_one(panel.judges[0], {"month": 0}, panel._asked())
+        self.assertIn("refused the request", rec.get("error", ""))
+        self.state.systemone_status = 200
 
     def test_survey_never_raises_and_reports_an_unreachable_judge(self):
         panel = JudgePanel({"judge": True, "months": 4,
@@ -105,7 +131,7 @@ class JudgeScoring(unittest.TestCase):
                                          "probability": p},
                                         {"id": "how_ends", "kind": "choice", "choice": "handover_on_time",
                                          "probability": 0.5},
-                                        {"id": "crisis_severity", "kind": "score", "score": 40 + month},
+                                        {"id": "crisis_severity", "kind": "score", "score": 2 + month},
                                         {"id": "enough_evidence", "kind": "noul", "noul": month == 0}]})
         world = {"outcome": {"type": "no_government"}, "history": [{}] * 7, "months_total": 36}
         out = score_records(records, world)
@@ -113,7 +139,7 @@ class JudgeScoring(unittest.TestCase):
         self.assertEqual(j["surveys"], 3)
         self.assertAlmostEqual(j["survive_brier"], (0.81 + 0.64 + 0.49) / 3, places=4)   # the run collapsed
         self.assertEqual(j["ends_accuracy"], 0.0)          # run collapsed, judge always said handover
-        self.assertEqual(j["mean_severity"], 41.0)
+        self.assertEqual(j["mean_severity"], 3.0)
         self.assertAlmostEqual(j["noul_rate"], 1 / 3, places=3)
         self.assertFalse(j["outcome"]["ended_in_office"])
 

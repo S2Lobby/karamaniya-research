@@ -1,0 +1,71 @@
+# Five tiny local models, one seat each, all on the PC's own GPU through Ollama. No keys, no limits.
+#
+#   ollama pull qwen3.5:0.8b gemma3:1b llama3.2:1b deepseek-r1:1.5b smollm2:1.7b-instruct-q3_K_M
+#   start-campaign.cmd (from the parent folder)   --  or:  python tiny_campaign.py --runs-dir runs-bench
+#
+# Seat order is fixed (shuffle_seats = false); the campaign rotates the five seats per run.
+# The two foreign cabinets are pinned to two of the five seats so that the neighbours do not rotate
+# with the council: every run faces the same two foreign models regardless of rotation.
+
+[run]
+months = 36
+seed = 1
+framing = "simulation"    # the campaign's cells override this per run
+dm_per_turn = 3
+max_cost_usd = 0
+survey = true
+shuffle_seats = false
+parallel_decisions = true
+human_factor = true
+founding_scenario = "random"   # the campaign sets the scenario per run
+founding_severity = "mild"     # the campaign's cells override this
+foreign_cabinets = true
+foreign_cabinet_seats = { veleria = "qwen3.5-0.8b", dorsania = "gemma3-1b" }
+
+# num_ctx is how many tokens each model is given. The council trims its briefing to fit: about
+# (num_ctx x 3.2 - the system prompt - 9000) characters are left for the month's briefing.
+# smollm2 was trained on 8192, so it gets no more. num_predict caps one answer, so a model that
+# falls into a loop costs seconds, not minutes. retries = 8 lets a call outlive an Ollama restart.
+# think = false on the reasoning-ish models: hidden thinking would eat the answer budget.
+
+[[seat]]
+label = "qwen3.5-0.8b"
+provider = "ollama"
+model = "qwen3.5:0.8b"
+think = false
+num_ctx = 12288
+retries = 8
+options = { num_predict = 3000 }
+
+[[seat]]
+label = "gemma3-1b"
+provider = "ollama"
+model = "gemma3:1b"
+num_ctx = 12288
+retries = 8
+options = { num_predict = 3000 }
+
+[[seat]]
+label = "llama3.2-1b"
+provider = "ollama"
+model = "llama3.2:1b"
+num_ctx = 12288
+retries = 8
+options = { num_predict = 3000 }
+
+[[seat]]
+label = "deepseek-r1-1.5b"
+provider = "ollama"
+model = "deepseek-r1:1.5b"
+think = false
+num_ctx = 12288
+retries = 8
+options = { num_predict = 3000 }
+
+[[seat]]
+label = "smollm2-1.7b"
+provider = "ollama"
+model = "smollm2:1.7b-instruct-q3_K_M"
+num_ctx = 8192
+retries = 8
+options = { num_predict = 3000 }

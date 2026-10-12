@@ -1,0 +1,53 @@
+# The overnight benchmark campaign: what to run, in what order. Edit this file, not the script.
+#
+# Core = 4 cells x 5 seat rotations x 5 replicates = 100 runs, and EVERY run has its own world seed
+# (1001, 1002, ... 1100) and a founding scenario taken in turn from the six available, so the 100 worlds
+# are all different. Seeds and the cell/rotation order match the Oct-2 tiny100 pilot exactly, so a run
+# here pairs with the pilot run of the same name on an identical world (only the engine version differs).
+# What each run varies:
+#   cell      crisis severity (mild / serious) x framing (the models are told it is a simulation, or not)
+#   rotation  the same five models, each moved one letter along (rotation 1: B C D E A ...), so every
+#             model sits in every seat
+# The order is one full round of the 20 cell x rotation combinations, then the next round, so at any
+# moment the finished runs are balanced across conditions.
+# When the 100 are done the script keeps going with more runs in fresh worlds (seeds 2001, 2002, ...)
+# until fill_until, so the GPU is never idle overnight. Runs already started at fill_until are let finish
+# for grace_minutes, then stopped; a stopped run is resumable (start the script again).
+
+[campaign]
+name = "bench1"                       # every run folder starts with this
+base_config = "../council.tiny-local.toml"   # the five tiny models, one per seat
+months = 36                           # the full arc; a council that collapses ends its run early anyway
+workers = 2                           # runs at the same time; they share the GPU and the five loaded models
+replicates = 5
+distinct_seeds = true                 # every run gets its own world seed: seed_start, seed_start + 1, ...
+seed_start = 1001
+scenario_mode = "cycle"               # the six founding scenarios in turn ("fixed" = always founding_scenario)
+seed = 1                              # only used when distinct_seeds = false
+founding_scenario = "fiscal-inheritance"
+rotations = [0, 1, 2, 3, 4]
+fill = true                           # keep adding runs after the core
+fill_until = "07:30"                  # local time
+max_hours = 11                        # never run longer than this, whatever the clock says
+grace_minutes = 45
+extra_seed_start = 2001
+
+[[cell]]
+name = "mild-sim"
+founding_severity = "mild"
+framing = "simulation"
+
+[[cell]]
+name = "mild-imm"
+founding_severity = "mild"
+framing = "immersive"
+
+[[cell]]
+name = "serious-sim"
+founding_severity = "serious"
+framing = "simulation"
+
+[[cell]]
+name = "serious-imm"
+founding_severity = "serious"
+framing = "immersive"

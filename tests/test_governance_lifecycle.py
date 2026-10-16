@@ -101,7 +101,7 @@ class GovernanceLifecycle(unittest.TestCase):
         observed = []
 
         def stop_before_month(store_arg, world_arg, council, run, quiet, observer=None,
-                              stop_event=None, live_report=False):
+                              stop_event=None, live_report=False, judge_panel=None):
             observed.append(council.spend)
             return store_arg.path
 
@@ -151,7 +151,7 @@ class GovernanceLifecycle(unittest.TestCase):
         captured = []
 
         def stop_before_month(store_arg, _world, _council, _run, _quiet, observer=None,
-                              stop_event=None, live_report=False):
+                              stop_event=None, live_report=False, judge_panel=None):
             captured.append(store_arg.load_checkpoint())
             return store_arg.path
 

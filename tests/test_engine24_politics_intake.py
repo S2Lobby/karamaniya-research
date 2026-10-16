@@ -97,6 +97,13 @@ class LoanAmountWrittenInTheText(unittest.TestCase):
         self.assertEqual(problem["reason_code"], "BAD_LOAN_AMOUNT")
         self.assertIn("no unit", problem["explanation"])
 
+    def test_a_length_or_a_count_in_the_text_is_not_read_as_money(self):
+        w = world()
+        problem = politics.validate_motion_detail(w, loan(
+            text="Request a loan to fund 3 m of dredging and 12 months of imports."))
+        self.assertEqual(problem["reason_code"], "BAD_LOAN_AMOUNT")
+        self.assertIn("names no amount", problem["explanation"])
+
     def test_a_negative_amount_in_the_text_is_refused(self):
         # guard: the old refusal says "positive" too; the point is that -50M is never read as 50
         w = world()

@@ -35,13 +35,16 @@ def _socioverse_installed() -> bool:
     return importlib.util.find_spec("socioverse") is not None
 
 
-def _reference(runs_dir: Path):
+FULL_HORIZON = 36  # the study's default horizon: the Charter's election month
+
+
+def _reference(runs_dir: Path, months: int = MONTHS):
     """The legacy loop's per-month state and its final world, from new_run's observer and checkpoint."""
     from karamaniya.config import load_config
     from karamaniya.runner import new_run
 
     events = []
-    path = new_run(load_config(COUNCIL), runs_dir=runs_dir, name="reference", months=MONTHS, seed=SEED,
+    path = new_run(load_config(COUNCIL), runs_dir=runs_dir, name="reference", months=months, seed=SEED,
                    quiet=True, check=False, observer=events.append)
     months = [{k: e[k] for k in ("stats", "members", "offices", "removed")}
               for e in events if e["type"] == "month_done"]
@@ -97,6 +100,72 @@ class LegacySeamReplaysNewRun(unittest.TestCase):
         self.assertEqual(saved, self.reference_world)
 
 
+class LegacySeamFullHorizon(unittest.TestCase):
+    """The seam runs the study's default horizon to the legacy end, handover extension included."""
+
+    @classmethod
+    def setUpClass(cls):
+        from studies.karamaniya_trust.adapter.engine_seam import LegacySeam
+
+        cls.tmp = Path(tempfile.mkdtemp(prefix="kt-full-"))
+        cls.reference_months, cls.reference_world = _reference(cls.tmp / "reference", months=FULL_HORIZON)
+        seam = LegacySeam(COUNCIL, runs_dir=cls.tmp / "seam", name="seam", months=FULL_HORIZON, seed=SEED,
+                          check=False)
+        seam.open()
+        seam.form_government()
+        while seam.may_run():
+            seam.run_month()
+        seam.finish()
+        cls.trace = seam.trace
+        cls.run_dir = seam.run_dir
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_every_legacy_month_matches_new_run(self):
+        # The Month-36 election leaves a handover owed, so the legacy run goes one month past the nominal horizon.
+        self.assertGreater(len(self.reference_months), FULL_HORIZON)
+        self.assertEqual(self.trace, self.reference_months)
+
+    def test_saved_world_matches_new_run(self):
+        saved = json.loads((self.run_dir / "checkpoint.json").read_text(encoding="utf-8"))["world"]
+        self.assertEqual(saved, self.reference_world)
+
+
+@unittest.skipUnless(_socioverse_installed(), SKIP_NO_SOCIOVERSE)
+class SocioVerseWrapFullHorizon(unittest.TestCase):
+    """The SocioVerse2 wrap over the default horizon: the steps the legacy run ran match it, and the world matches."""
+
+    @classmethod
+    def setUpClass(cls):
+        from studies.karamaniya_trust.adapter.providers import build_karamaniya_simulator
+
+        cls.tmp = Path(tempfile.mkdtemp(prefix="kt-full-sv-"))
+        cls.reference_months, cls.reference_world = _reference(cls.tmp / "reference", months=FULL_HORIZON)
+        sim, seam = build_karamaniya_simulator(config=COUNCIL, runs_dir=cls.tmp / "wrapped", name="wrapped",
+                                               months=FULL_HORIZON, seed=SEED,
+                                               trajectory_dir=cls.tmp / "trajectory", check=False)
+        cls.history = sim.run()
+        seam.finish()
+        cls.trace = seam.trace
+        cls.run_dir = seam.run_dir
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_every_legacy_month_matches_new_run(self):
+        self.assertGreater(len(self.reference_months), FULL_HORIZON)
+        self.assertEqual(self.trace, self.reference_months)
+        ran = [row["step"] for row in self.history.rows if row["month_ran"]]
+        self.assertEqual(ran, list(range(1, len(self.reference_months) + 1)))
+
+    def test_final_world_matches_new_run(self):
+        saved = json.loads((self.run_dir / "checkpoint.json").read_text(encoding="utf-8"))["world"]
+        self.assertEqual(saved, self.reference_world)
+
+
 @unittest.skipUnless(_socioverse_installed(), SKIP_NO_SOCIOVERSE)
 class SocioVerseWrapReplaysNewRun(unittest.TestCase):
     """The SocioVerse2 wrap, run by LongitudinalSimulator, matches the legacy loop step by step."""
@@ -120,8 +189,13 @@ class SocioVerseWrapReplaysNewRun(unittest.TestCase):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def test_each_step_matches_new_run(self):
+        from studies.karamaniya_trust.adapter.engine_seam import step_bound
+
+        bound = step_bound(MONTHS)
         rows = {row["step"]: row for row in self.history.rows}
-        self.assertEqual(sorted(rows), list(range(MONTHS + 1)))  # step 0 (the founding state), then the months
+        self.assertEqual(sorted(rows), list(range(bound + 1)))  # step 0 (the founding state), then up to the bound
+        ran = [t for t in range(1, bound + 1) if rows[t]["month_ran"]]
+        self.assertEqual(ran, list(range(1, MONTHS + 1)))  # the legacy run ends after MONTHS months here
         for t, ref in enumerate(self.reference_months, start=1):
             row = rows[t]
             self.assertEqual(row["approval"], ref["stats"]["approval"], f"approval at step {t}")
@@ -138,15 +212,17 @@ class SocioVerseWrapReplaysNewRun(unittest.TestCase):
 
     def test_store_holds_one_panel_row_per_delegate_per_step(self):
         from socioverse.io import open_readonly
+        from studies.karamaniya_trust.adapter.engine_seam import step_bound
 
+        steps = step_bound(MONTHS) + 1  # step 0 and every step up to the bound
         con = open_readonly(self.trajectory / "study.duckdb")
         try:
             panel = con.execute("SELECT count(*) FROM panel").fetchone()[0]
             metrics = con.execute("SELECT count(*) FROM metrics").fetchone()[0]
         finally:
             con.close()
-        self.assertEqual(panel, 5 * (MONTHS + 1))
-        self.assertEqual(metrics, MONTHS + 1)
+        self.assertEqual(panel, 5 * steps)
+        self.assertEqual(metrics, steps)
 
     def test_artifacts_validate_against_socioverse_schemas(self):
         import yaml

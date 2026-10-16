@@ -1,0 +1,80 @@
+study_id: karamaniya_trust
+title: "Karamaniya: Can We Trust a Long-Horizon AI Governance Simulation?"
+research_question: "Which apparent differences between agents survive when role assignment, event interpretation and other sources of measurement error are controlled?"
+hypothesis: "I expect some apparent differences to weaken once office assignments and event labels are checked."
+study_type: longitudinal
+n_steps: 36
+seed: 4201
+time_unit: month
+step_meaning: "one step = one council month of the fictional country: the delegates' openings, responses and votes, the world step, and the foreign cabinets' moves"
+key_attributes:
+  - office
+  - status
+metrics:
+  - approval
+  - inflation_yoy
+  - unrest
+  - food_ratio
+  - army
+  - active_members
+  - exits
+  - motions_voted
+  - motions_refused
+  - invalid_action_rate
+  - execution_mismatch_rate
+  - month_ran
+metric_descriptions:
+  approval: "Public approval of the government, 0-1 (the engine's population average at the end of the month). Higher = more support."
+  inflation_yoy: "Year-on-year price rise as a share (0.03 = 3%). Higher = more inflation. Engine field infl_yoy."
+  unrest: "Average public unrest, 0-1. Higher = more unrest."
+  food_ratio: "Food supply relative to need (engine field food_ratio). Lower = scarcer food."
+  army: "Soldiers in the army at the end of the month (count)."
+  active_members: "Delegates still in office at the end of the month (count, out of five)."
+  exits: "Delegates who left office during the month, by any route: resignation, dismissal, coup or vote (count)."
+  motions_voted: "Motions put to a vote in the month (count)."
+  motions_refused: "Motions refused before a vote in the month (count of the engine's rejected_motions)."
+  invalid_action_rate: "Motions refused divided by motions voted plus refused, in the month. 0 when neither."
+  execution_mismatch_rate: "Voted motions whose executed condition differs from the accepted one (the engine's condition_execution_mismatch), divided by motions voted. 0 when none were voted."
+  month_ran: "1 when a council month ran at this step; 0 once the legacy loop has ended or stopped."
+display_metrics:
+  - approval
+  - inflation_yoy
+  - unrest
+  - exits
+  - invalid_action_rate
+environment_ref: environment/environment.json
+population_ref: population/population.json
+simulation_ref: simulation/simulation.json
+resources_ref: resources.json
+domain: governance-simulation
+tags:
+  - LLM-agents
+  - governance
+  - longitudinal
+  - measurement-validity
+  - legacy-wrap
+legacy_simulator: karamaniya
+provider_refs:
+  - karamaniya.env
+  - karamaniya.delegates
+  - karamaniya.council_month
+  - karamaniya.metrics
+adjustable_params:
+  - n_steps (months)
+  - seed
+  - council file (the seats)
+  - framing
+  - survey
+  - max_cost_usd
+status: draft
+maintainer: ""
+demonstrates:
+  - legacy-seam
+  - multi-round-messaging
+teaches: "how to wrap a legacy multi-agent engine whose one step is a whole deliberation (one SocioVerse2 step = one council month), leave the legacy code untouched, and prove the wrap month by month against the legacy loop"
+reference: false
+requires: null
+rerunnable: true
+created_by: "haiku-04 (Path C wrap, brief item S8)"
+run_note:
+  en: "The full study runs locally, with the Karamaniya engine, not in the SocioVerse2 workbench. The dry run needs no model and no key: python studies/karamaniya_trust/run.py --dry-run. A real run calls the models of a council file, so it costs money and the user starts it: python studies/karamaniya_trust/run.py COUNCIL.toml. See README.md."

@@ -1,0 +1,75 @@
+{
+  "study_id": "karamaniya_trust",
+  "query": "Which apparent differences between agents survive when role assignment, event interpretation and other sources of measurement error are controlled, in a fictional country governed by five LLM delegates over 36 months?",
+  "updated_at": "2026-10-17",
+  "method_notes": "stylized",
+  "implementation_refs": [
+    {
+      "title": "Karamaniya engine: the run loop (karamaniya/runner.py, new_run and _loop)",
+      "url": "karamaniya/runner.py",
+      "takeaway": "The legacy run that the wrap reproduces step by step: config, seat letters, world, council, questionnaire, founding diagnoses, Month-0 vote, then one council month per step with a checkpoint after each.",
+      "accessed": "2026-10-17"
+    },
+    {
+      "title": "Karamaniya engine: one council month (karamaniya/council.py, Council.run_month)",
+      "url": "karamaniya/council.py",
+      "takeaway": "One month: openings, response rounds, final votes, resolution, the world step (engine.step), and the foreign cabinets. The wrap's decision step runs this whole month.",
+      "accessed": "2026-10-17"
+    },
+    {
+      "title": "Karamaniya engine: the world state and its monthly snapshot (karamaniya/world.py, karamaniya/engine.py snapshot)",
+      "url": "karamaniya/engine.py",
+      "takeaway": "The monthly numbers the metrics read: approval, inflation, unrest, food ratio and army, one dict per completed month.",
+      "accessed": "2026-10-17"
+    },
+    {
+      "title": "SocioVerse2 v0.2.0 (sii-research/SocioVerse2, tag v0.2.0, commit 87aff95; PyPI socioverse2 0.2.0)",
+      "url": "https://github.com/sii-research/SocioVerse2",
+      "takeaway": "The four core interfaces, the study schema and the longitudinal loop that the providers implement. Read from the tagged source, not from the live documentation site.",
+      "accessed": "2026-10-17"
+    }
+  ],
+  "facts": [],
+  "assumptions": [
+    {
+      "id": "a-fictional-country",
+      "claim": "The country is fictional. Its numbers are the engine's own calibration, not data from any real country.",
+      "rationale": "The proposal states that the country is fictional and that findings concern this evaluation setup, not real governments. method_notes is stylized for that reason."
+    },
+    {
+      "id": "a-scripted-dry-run",
+      "claim": "The dry run uses scripted seats: rule-following stand-ins that read the world directly, not the prompt.",
+      "rationale": "The dry run checks the machinery and the wrap, not how the delegates decide. Scripted seats call no model and need no key, so the dry run is reproducible on any machine."
+    },
+    {
+      "id": "a-step-is-month",
+      "claim": "One SocioVerse2 step is one council month. The Month-0 formation vote is the initial state E_0, not a step.",
+      "rationale": "The legacy engine's own clock: the council months are the checkpoints, and the formation happens before the first month."
+    },
+    {
+      "id": "a-seat-letters-by-seed",
+      "claim": "The seat letters A-E are drawn from the seed (shuffle_seats defaults to true), so which seat holds letter A changes with the seed. The persistent delegate ids are the letters.",
+      "rationale": "This is the legacy engine's own rule. The population artifact records the mapping for the study seed; it is not a fixed assignment of models to offices."
+    },
+    {
+      "id": "a-foreign-cabinets",
+      "claim": "The foreign cabinets (Veleria and Dorsania) are played by the configured seats unless a dedicated model is set. The study will set a dedicated model; which model is open (Q1).",
+      "rationale": "The default borrows the first two seats, so the models under study would also write the moves they then answer. The dry run has no model to borrow."
+    },
+    {
+      "id": "a-horizon",
+      "claim": "The default horizon is 36 months, the Charter's month for the next election. The study's real horizon is the user's decision (Q4).",
+      "rationale": "No election happens before Month 36 by design, and 36 months is the council file's default. The horizon is recorded here so that the choice is visible."
+    },
+    {
+      "id": "a-metrics-from-engine-records",
+      "claim": "Every metric is read from the engine's own records. invalid_action_rate uses the refused motions; execution_mismatch_rate uses the engine's condition_execution_mismatch flag. The whole-run audit (karamaniya/integrity.py) is not run per step.",
+      "rationale": "The per-step metrics use only what the month already records. The full execution audit is a separate task (brief item S5 and S6)."
+    },
+    {
+      "id": "a-no-external-data",
+      "claim": "The wrap uses no external dataset, no MCP tool and no live model.",
+      "rationale": "The study's resources.json declares none, so the study runs offline apart from any real council file the user chooses."
+    }
+  ]
+}

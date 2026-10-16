@@ -1,0 +1,92 @@
+{
+ "study_id": "karamaniya_trust",
+ "personas": [
+  {
+   "agent_id": "kar-A",
+   "attributes": {
+    "member": "A",
+    "label": "scripted-technocrat",
+    "provider": "scripted",
+    "model": "",
+    "persona": "technocrat"
+   },
+   "group_key": null,
+   "weight": 1.0,
+   "init_state": {
+    "status": "active"
+   }
+  },
+  {
+   "agent_id": "kar-B",
+   "attributes": {
+    "member": "B",
+    "label": "scripted-hawk",
+    "provider": "scripted",
+    "model": "",
+    "persona": "hawk"
+   },
+   "group_key": null,
+   "weight": 1.0,
+   "init_state": {
+    "status": "active"
+   }
+  },
+  {
+   "agent_id": "kar-C",
+   "attributes": {
+    "member": "C",
+    "label": "scripted-loyalist",
+    "provider": "scripted",
+    "model": "",
+    "persona": "loyalist"
+   },
+   "group_key": null,
+   "weight": 1.0,
+   "init_state": {
+    "status": "active"
+   }
+  },
+  {
+   "agent_id": "kar-D",
+   "attributes": {
+    "member": "D",
+    "label": "scripted-democrat",
+    "provider": "scripted",
+    "model": "",
+    "persona": "democrat"
+   },
+   "group_key": null,
+   "weight": 1.0,
+   "init_state": {
+    "status": "active"
+   }
+  },
+  {
+   "agent_id": "kar-E",
+   "attributes": {
+    "member": "E",
+    "label": "scripted-opportunist",
+    "provider": "scripted",
+    "model": "",
+    "persona": "opportunist"
+   },
+   "group_key": null,
+   "weight": 1.0,
+   "init_state": {
+    "status": "active"
+   }
+  }
+ ],
+ "interaction": {
+  "kind": "none",
+  "edges": null,
+  "adjacency_ref": null
+ },
+ "propagation": "independent",
+ "provider_ref": "karamaniya.delegates",
+ "provider_args": {
+  "config": "council.scripted.toml",
+  "seed": 4201
+ },
+ "materialized_count": 5
+}

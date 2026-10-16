@@ -35,7 +35,8 @@ its own files (status-dry-run.json, logs-dry-run/, run folders named dry-<row>),
 
 status.json (status-dry-run.json for a dry run) is a JSON object keyed by row name. Each value:
     {"state": "pending" | "running" | "paused" | "done" | "failed",
-     "reason": "",            # for paused or failed: the engine's text, or the error
+     "reason": "",            # paused or failed: the engine's text or the error; done: a note, if the engine raised
+                              # after the run had ended (its report, say)
      "months_done": 0,
      "outcome": "",           # once the run has ended: its outcome type, e.g. "survived" or "voted_out"
      "resumes": 0,            # resume attempts so far; the first attempt is not a resume
@@ -270,14 +271,16 @@ def _settle(run_dir: Path, error):
     """(state, reason, facts) for a run folder after one attempt. The checkpoint is the record of the run; an
     exception from the engine's entry points says why nothing new was written."""
     facts = _checkpoint_facts(run_dir)
+    if facts is not None and facts["ended"]:
+        # The run is over. An exception after the end (say, while its report was written) is noted, not a failure.
+        note = "" if error is None else f"the engine raised after the run ended: {type(error).__name__}: {error}"
+        return "done", note[:500], facts
     if isinstance(error, SystemExit):                 # the engine's seat check refused to start or resume
         return "paused", (str(error.code) if error.code else "stopped")[:500], facts
     if error is not None:
         return "failed", f"{type(error).__name__}: {error}"[:500], facts
     if facts is None:
         return "failed", "the run wrote no checkpoint", facts
-    if facts["ended"]:
-        return "done", "", facts
     stopped = facts["stopped"]
     if stopped.startswith("paused"):
         return "paused", stopped, facts
@@ -286,11 +289,42 @@ def _settle(run_dir: Path, error):
     return "failed", f"stopped at Month {facts['months_done']} with no reason recorded", facts
 
 
-def _check_same_row(run_dir: Path, task: dict) -> None:
-    """A folder being resumed must be this row's: same seed, same seat order (not a folder from another plan)."""
+def _foreign_folder(run_dir: Path, task: dict) -> str:
+    """Why a folder being resumed is not this row's (a folder from another plan, say), or "" when it is."""
     saved = RunStore(run_dir).read_json("config.json")
     if saved.get("mapping") != task["seat_map"] or (saved.get("run") or {}).get("seed") != task["seed"]:
-        raise RuntimeError(f"{run_dir} is not this row's run: its config has another seed or seat order")
+        return f"{run_dir} is not this row's run: its config has another seed or seat order"
+    return ""
+
+
+def _attempt(engine, run_dir: Path, task: dict):
+    """Call the engine for one row, then (state, reason, facts) for its folder. The checkpoint decides the state
+    only when the engine was called: before that, the folder is left as it was."""
+    if task["action"] == "resume":
+        try:
+            wrong = _foreign_folder(run_dir, task)
+        except Exception as exc:
+            traceback.print_exc()
+            return "failed", f"{run_dir} could not be checked: {type(exc).__name__}: {exc}"[:500], None
+        if wrong:
+            return "failed", wrong[:500], None
+    error = None
+    try:
+        if task["action"] == "resume":
+            engine.resume_run(str(run_dir), quiet=False, check=not task["dry_run"])
+        else:
+            engine.new_run(task["config"], runs_dir=str(run_dir.parent), name=run_dir.name, quiet=False,
+                           check=not task["dry_run"])
+    except SystemExit as exc:                         # the engine's seat check refused to start or resume
+        error = exc
+    except Exception as exc:
+        traceback.print_exc()
+        error = exc
+    try:
+        return _settle(run_dir, error)
+    except Exception as exc:
+        traceback.print_exc()
+        return "failed", f"checkpoint unreadable: {type(exc).__name__}: {exc}"[:500], None
 
 
 def _execute(task: dict, engine=None) -> dict:
@@ -300,27 +334,10 @@ def _execute(task: dict, engine=None) -> dict:
         from karamaniya import runner as engine
     run_dir = Path(task["run_dir"])
     began = time.monotonic()
-    error = None
     with open(task["log"], "a", encoding="utf-8", newline="\n") as log, \
             contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
         print(f"=== {_now()} {task['action']} {task['name']} in {run_dir} ===", flush=True)
-        try:
-            if task["action"] == "resume":
-                _check_same_row(run_dir, task)
-                engine.resume_run(str(run_dir), quiet=False, check=not task["dry_run"])
-            else:
-                engine.new_run(task["config"], runs_dir=str(run_dir.parent), name=run_dir.name, quiet=False,
-                               check=not task["dry_run"])
-        except SystemExit as exc:
-            error = exc
-        except Exception as exc:
-            traceback.print_exc()
-            error = exc
-        try:
-            state, reason, facts = _settle(run_dir, error)
-        except Exception as exc:
-            traceback.print_exc()
-            state, reason, facts = "failed", f"checkpoint unreadable: {type(exc).__name__}: {exc}"[:500], None
+        state, reason, facts = _attempt(engine, run_dir, task)
         print(f"=== {state}{': ' + reason if reason else ''} ===", flush=True)
     return {"name": task["name"], "state": state, "reason": reason, "updated": _now(),
             "months_done": facts["months_done"] if facts else 0,
@@ -436,14 +453,17 @@ def run_plan(plan_path, *, workers: int = 1, max_resumes: int = DEFAULT_MAX_RESU
                     task = inflight.pop(future)
                     try:
                         result = future.result()
-                    except BrokenProcessPool as exc:
+                    except BrokenProcessPool as exc:  # a killed worker: its checkpoint is safe, so the row is paused
                         result = _interrupted(task, f"the worker process died ({exc}); rerun the command to resume")
+                    except Exception as exc:          # _execute catches its own errors, so this is a bug
+                        result = {"name": task["name"], "state": "failed", "updated": _now(),
+                                  "reason": f"{type(exc).__name__}: {exc}"[:500]}
                     _record(status, task, result, max_resumes)
                     _write_status(status_path, status)
                     finished += 1
                     rec = status[task["name"]]
-                    say(f"[{finished}/{len(tasks)}] {task['name']}: {rec['state']}"
-                        + (f" ({rec['reason']})" if rec["reason"] else ""))
+                    reason = " | ".join(rec["reason"].splitlines())   # one line here; status.json keeps all of it
+                    say(f"[{finished}/{len(tasks)}] {task['name']}: {rec['state']}" + (f" ({reason})" if reason else ""))
         finally:
             if pool is not None:
                 pool.shutdown(wait=True, cancel_futures=True)

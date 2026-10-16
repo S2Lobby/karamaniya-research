@@ -251,6 +251,9 @@ class FakeEngine:
         store = RunStore(Path(runs_dir) / name)
         mapping = {letter: seat["label"] for letter, seat in zip(LETTERS, cfg["seats"])}
         store.save_config({"run": cfg["run"], "seats": cfg["seats"], "mapping": mapping})
+        if step == "finish_then_crash":                # the engine raises after the run has ended (its report)
+            self._checkpoint(store, name, "finish")
+            raise RuntimeError("fake report failure")
         self._checkpoint(store, name, step)
         return store.path
 
@@ -352,6 +355,13 @@ class ResumeLogicTests(TempDirTests):
         status = self.invoke(plan, FakeEngine({f"dry-{a}": ["crash"]}))
         self.assertEqual(status[a]["state"], "failed")
         self.assertIn("fake crash", status[a]["reason"])
+
+    def test_an_exception_after_the_run_ended_leaves_the_row_done_with_a_note(self):
+        plan, (a,) = self.grid((1,))
+        status = self.invoke(plan, FakeEngine({f"dry-{a}": ["finish_then_crash"]}))
+        self.assertEqual(status[a]["state"], "done")
+        self.assertIn("after the run ended", status[a]["reason"])
+        self.assertIn("fake report failure", status[a]["reason"])
 
 
 class DryRunGridTests(TempDirTests):

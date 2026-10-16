@@ -63,6 +63,13 @@ this list when it appears.
 - Filling an empty office. In b1-s1005, Month 1, an executed `assign_office` puts E in the empty navy.
 - Defeated, withdrawn or blocked motions. They never executed. Refused motions are not exits; they form the non-exit
   pool with executed motions.
+- A run that is stopped or paused: a spending cap, a stop from the control room, or a usage-limit pause (runner.py sets
+  the run's `stopped` field for these). The government is still in office. Only `world.outcome` ends a government.
+- Offers and demands about resignation. `offer_resignation` and `demand_resignation` are communications
+  (standing.py:478-479, 518-523, 545-547); they change reputation, not office.
+- What `vacancy.py` and `standing.py` do. `vacancy.py` reads the office holders that `politics.py` changes and records
+  vacancies; it removes nobody. `standing.py` applies the reputation effect of a resignation (standing.py:102). Neither
+  creates an exit.
 
 ## 2. What each row carries
 

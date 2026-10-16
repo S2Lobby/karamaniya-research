@@ -1549,12 +1549,10 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     action, changes = {"type": kind}, []
     if named is not None:
         changes.append(f"type '{named}' was read from the key 'action'")
-    # A null magnitude is read as absent, as the reader reads its other optional fields. Runs 20261010-002051-seed1,
-    # 20261010-070501-seed1 and 20261011-094417-seed1: schema-filled answers had "magnitude": null, and each such act was
-    # refused.
-    magnitude = raw.get("magnitude")
-    if magnitude is None:
-        magnitude = .5
+    # A null magnitude stays refused. Reading it as absent would give the act the default size of 0.5, which the cabinet did
+    # not choose, and that choice is for the user (engine 24 report). Runs 20261010-002051-seed1, 20261010-070501-seed1 and
+    # 20261011-094417-seed1 refused 31 such acts, 7 of them ultimatums.
+    magnitude = raw.get("magnitude", .5)
     if isinstance(magnitude, str) and _spaced_lower(magnitude) in MAGNITUDE_WORDS:
         magnitude_read = MAGNITUDE_WORDS[_spaced_lower(magnitude)]
         changes.append(f"magnitude '{magnitude.strip()}' was read as {magnitude_read:g}")
@@ -1562,9 +1560,10 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     if not isinstance(magnitude, (int, float)) or not math.isfinite(magnitude) or not 0 <= magnitude <= 1:
         return None, ["action magnitude must be between 0 and 1"]
     action["magnitude"] = float(magnitude)
-    # A null troops is absent, as the reader reads a null magnitude (runs 20261010-002051-seed1, 20261010-070501-seed1 and
-    # 20261011-094417-seed1).
-    # A force act with no troops is then refused by foreign_force.check, which names the troops it needs.
+    # A null troops is absent. Most acts take no troops, so the field does nothing for them (runs 20261010-002051-seed1,
+    # 20261010-070501-seed1 and 20261011-094417-seed1 refused 31 such acts: intelligence_collection, public_statement,
+    # offer_talks and partial_embargo). A force act with no troops is refused by foreign_force.check, which names the troops
+    # it needs.
     if raw.get("troops") is not None:
         if isinstance(raw["troops"], int) and not isinstance(raw["troops"], bool) and raw["troops"] >= 0:
             action["troops"] = raw["troops"]

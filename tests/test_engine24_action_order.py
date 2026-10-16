@@ -11,9 +11,9 @@ fixed_precedence the shuffle is still drawn, on a copy that is then thrown away,
 does today, and every other draw of the month (the interception draws in Council._deliver above all) comes out the
 same. The integration tests run scripted seats, which read the world and not the prompt, under both protocols on the
 same seeds, for both the current month (_run_month_v2) and the legacy one (_run_month_v1). They check that the state
-before the council acts in Month 1 is identical, that the state before Month 2 differs only in the order of the
-records that the publication order wrote, that the stream is in the same state after each month, and that the models
-are told the order that is used.
+before the council acts in Month 1 is identical, that the state before Month 2 differs only in the order of list
+entries (the intelligence share records, which the publication order writes, are the case that differs), that the
+stream is in the same state after each month, and that the models are told the order that is used.
 """
 import copy
 import json

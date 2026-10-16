@@ -117,12 +117,20 @@ class DispatchesReachTheirOffice(unittest.TestCase):
         self.assertIn(dispatch_line(LEAGUE, "treasury", text), office_text(w, "B"))
         self.assertIn(dispatch_line(LEAGUE, "treasury", text), decision_prompt(w, "B"))
 
-    def test_the_dispatches_follow_the_office_reports(self):
+    def test_the_dispatches_lead_the_office_section(self):
+        # Engine 23: before the office reports, so the nine lines a short budget keeps of the section hold them.
         w = world()
         director._private_msg(w, LEAGUE, "treasury", "The League declines a new trade agreement.")
         text = office_text(w, "B")
-        self.assertIn(DISPATCH_HEADING, text)
-        self.assertLess(text.index("You decide whether to share these reports"), text.index(DISPATCH_HEADING))
+        self.assertTrue(text.startswith(DISPATCH_HEADING))
+        self.assertLess(text.index(DISPATCH_HEADING), text.index("You decide whether to share these reports"))
+
+    def test_a_short_budget_keeps_the_dispatch(self):
+        # decision_context.build keeps the first nine lines of the office section when a seat's budget is short.
+        w = world()
+        line = dispatch_line(LEAGUE, "treasury", "The League declines a new trade agreement.")
+        director._private_msg(w, LEAGUE, "treasury", "The League declines a new trade agreement.")
+        self.assertIn(line, "\n".join(office_text(w, "B").splitlines()[:9]))
 
     def test_the_league_freeze_of_the_remaining_tranches_reaches_the_treasury(self):
         w = world()
@@ -171,6 +179,17 @@ class LeagueCreditLine(unittest.TestCase):
         self.assertIn(f"interest {loan['interest']:.1%} a year", line)
         self.assertIn(line, decision_prompt(w, "B"))
         self.assertEqual(credit_line(w, "A"), line)
+
+    def test_the_line_gives_the_stated_conditions_not_the_league_s_own_thresholds(self):
+        # Engine 23: the deficit and debt-service conditions the League stated, not its trust in Karamaniya or the
+        # default-risk level at which it freezes (engine 22 printed both).
+        w = world()
+        approve_loan(w, 40)
+        line = credit_line(w, "B")
+        self.assertIn("the deficit at most 5% of output, debt service kept up", line)
+        for internal in ("38 out of 100", "42%", "trust", "default-risk"):
+            with self.subTest(internal=internal):
+                self.assertNotIn(internal, line)
 
     def test_the_line_reads_the_state_as_it_is_now(self):
         w = world()

@@ -45,6 +45,10 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "BAD_LOAN_AMOUNT": ("action", "info", "A loan needs a positive amount in millions of gold."),
     "INVALID_RECIPIENT": ("action", "info", "The act names a recipient that cannot receive it."),
     "ACTION_NOT_VALID_FOR_TARGET": ("action", "info", "The named act cannot be addressed to that target."),
+    # Engine 23: the refusals of an ultimatum_reply (engine 22), which were recorded as UNREGISTERED_ERROR_CODE.
+    "NO_ULTIMATUM": ("action", "info", "A reply to an ultimatum was sent while no ultimatum stands."),
+    "ULTIMATUM_NOT_FROM_TARGET": ("action", "info", "A reply to an ultimatum was addressed to a power that did not "
+                                  "issue it."),
     "NOT_DEMANDED": ("action", "info", "A region named for cession has not been demanded by the neighbour addressed."),
     "NO_TARGET": ("action", "info", "The diplomatic act has no target."),
     "NO_STRUCTURED_ACTION": ("action", "info", "The motion has no executable structured action."),

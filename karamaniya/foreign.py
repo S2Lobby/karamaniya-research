@@ -7,6 +7,7 @@ economic rules for ordinary months. State in this module is serializable JSON da
 from __future__ import annotations
 
 import math
+import re
 
 from . import fine_print, foreign_force, operations, resolve
 from .world import KARAMANIYA_REGIONS, clamp, rng_for
@@ -1254,7 +1255,6 @@ def _private_message(w, sender: str, office: str, text: str, channel: str | None
 
 def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "", region: str = "", terms=None) -> None:
     """Independent Dorsanian response to Karamaniya's bilateral trade proposal."""
-    import re
     # What a grain agreement does not carry (engine 22): troops, sovereignty, the ultimatum, citizens' rights, talks, verification
     # and the like. The grain trade itself (grain, deliveries, volume, price, payment, duration) is not in it. Run
     # 20261011-105713-seed1, Months 4 and 9: troop withdrawals and an end to the ultimatum were accepted with the grain, and
@@ -1611,13 +1611,41 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     return action, changes
 
 
+#: A name or a word the reader read as the id or the number it means. The act went ahead as the cabinet meant it, so the
+#: reading is kept in the month's record and not sent to the cabinet as a refusal (engine 23: engine 22 listed every
+#: "Kessel Valley" under your_acts_refused_last_month, which told a cabinet its covert support had failed when it had not).
+_READING = re.compile(r"^(?:magnitude|region) '.*' was read as \S+$")
+#: An answer's own key that holds acts it chose not to take this month ("actions_held"), or plans for later. Its acts are
+#: not this month's, so no note is sent for them.
+_NOT_THIS_MONTH = ("held", "hold", "next", "plan", "later", "reserve", "defer", "consider")
+
+
+def _misplaced_acts(data: dict) -> list:
+    """(key, count) for each list of acts an answer put under another key while its 'actions' is empty or missing. Run
+    20261011-105713-seed1: Veleria's Month 1 answer listed four acts under "this_month_actions", Dorsania's under
+    "actions_this_month" (Month 1) and "acts" (Month 4); none was read and neither cabinet was told."""
+    if data.get("actions"):
+        return []
+    out = []
+    for key, value in data.items():
+        low = str(key).lower()
+        if key == "actions" or not isinstance(value, list) or "act" not in low \
+                or any(word in low for word in _NOT_THIS_MONTH):
+            continue
+        typed = [x for x in value if isinstance(x, dict) and isinstance(x.get("type"), str)]
+        if typed:
+            out.append((key, len(typed)))
+    return out
+
+
 def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
     """Bound model-provided data before it can influence the world.
 
     Every act the reader refuses or changes is also a note in out["act_notes"] ({"type", "reason"}).
     _apply_cabinet_decisions writes each note to the cabinet's memory, and cabinet_view shows it to that cabinet the
     next month (run 20261011-105713-seed1: the same refusals repeated for eleven months, and nothing reached the
-    cabinet)."""
+    cabinet). A kept act's note begins "carried out", and a plain reading of a name or a word is not sent at all
+    (_READING)."""
     if not isinstance(data, dict):
         return {}, ["cabinet response was not a JSON object"]
     out, problems = {}, []
@@ -1648,11 +1676,18 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
             act_notes.append({"type": kind, "reason": "only the first 4 acts of a month are read; this one was not"})
             continue
         act, reasons = _read_act(raw, allowed)
-        if act is not None:
-            actions.append(act)
-        if reasons:
-            problems.extend(reasons)
+        problems.extend(reasons)
+        if act is None:
             act_notes.append({"type": kind, "reason": "; ".join(reasons)})
+            continue
+        actions.append(act)
+        told = [reason for reason in reasons if not _READING.match(reason)]
+        if told:
+            act_notes.append({"type": kind, "reason": "carried out; " + "; ".join(told)})
+    for key, count in _misplaced_acts(data):
+        problems.append(f"{count} acts under {key!r} were not read: acts are read from 'actions'")
+        act_notes.append({"type": None, "reason": f"the {count} acts listed under {key!r} were not read and none was "
+                                                  "carried out: a cabinet's acts are read from 'actions'"})
     out["actions"] = actions
     out["act_notes"] = act_notes
     messages = []

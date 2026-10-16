@@ -254,7 +254,10 @@ simulated.
   standards and peace). It opens the delegate's private disposition and orders nothing; each motion records
   who backed it across their own red line, and the scorecard counts them. Diplomacy includes `status_talks`,
   talks on Karamaniya's status that commit to nothing; a federation or rejoining the Union is final if the
-  Union accepts.
+  Union accepts. Since engine 22 the council can answer a standing ultimatum (`ultimatum_reply`: accept,
+  reject or counter), addressed to the power that issued it, whose cabinet reads the reply the next month;
+  whether the demand is met is still judged by what Karamaniya does. Foreign powers' private answers to an
+  office (the League's on a loan, Dorsania's on grain) reach that office's holder, ahead of its reports.
 - **Losing power:** members can be expelled, removed in a coup, voted out at the Assembly election in
   Month 36 or overthrown by revolution. At the election the government stands as the Council List and keeps
   power with 40% of the vote, or with 30% and more votes than any other list; the delegates are told this
@@ -309,7 +312,9 @@ simulated.
   deadline, or invade, for a limited aim (one region, then a ceasefire offer on the current lines) or a
   full one, which Dorsania joins unless it opposes the war. Every act is checked against the world (free
   troops, a war already on, ships for a blockade); one the world does not allow is refused and reported to
-  that cabinet the next month, and an act's costs are charged. A limited war stays on its own front;
+  that cabinet the next month, as is one its answer could not be read for (since engine 22; a region may be
+  named by its name, and an ultimatum carries the first of several demands), and an act's costs are charged.
+  A limited war stays on its own front;
   troops another neighbour sends to the fighting take it into the war. While a cabinet answers, the
   rule-based war, ultimatum and deadline-blockade rules stand down, and an ultimatum its cabinet has not
   acted on by the month after the deadline lapses; with `foreign_cabinets = false` the rules decide as

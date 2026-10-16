@@ -58,8 +58,8 @@ def package_seat(sent_again, calls: list, prompts_seen: dict):
 
 
 class Versions(unittest.TestCase):
-    def test_current_version(self):
-        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY), (22, 19, 8))
+    def test_the_bump(self):
+        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY), (21, 18, 8))
 
 
 class ARefusedAmendmentGoesBackOnce(unittest.TestCase):

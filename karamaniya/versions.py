@@ -82,7 +82,15 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # interest. The survey and the founding diagnosis stay anonymous: they ask for a view of the country, not of a seat.
 # 18 goes with world engine 21: the request to send a refused amendment again, and a motion whose proposer's amendment
 # was refused says so to every voter, and the transcript says so to every later speaker.
-AGENT_PROMPT = 19
+# 19 goes with world engine 22 (run 20261011-105713-seed1): the office holder reads the private foreign dispatches
+# routed to its office, and the Treasury and the Head a line on the League's credit; mobilization and recruitment say
+# what they would call up or add, and a programme shows each measure current -> proposed; ultimatum_reply is offered;
+# the ultimatum line names its issuer; unpaid bills are no longer called inherited.
+# 20 goes with world engine 23: the dispatches lead the office section, so a short budget keeps them; the credit line
+# gives the conditions the League stated, not its own trust and default-risk thresholds; recruitment gives each level's
+# monthly pace and, apart from it, the gap to the army target (engine 22 printed the pace held to the gap, the same at
+# every level); a neighbour cabinet is told only of acts refused, changed or not read, not of a name read as meant.
+AGENT_PROMPT = 20
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose
@@ -234,14 +242,24 @@ PSYCHOLOGY = 8
 # lever does not take, the whole amendment was refused without a word to anyone, and the council voted 5-0 on the text
 # as tabled while three delegates' notes recorded the amendment as law. Now the proposer is told why and may send it
 # again; a refusal that stands is shown on the motion to every voter. The engine never corrects an amendment itself.
-WORLD_ENGINE = 22
+# 22 (backlog T101-T111), from reading run 20261011-105713-seed1 whole: office-routed foreign dispatches (all three
+# League loan approvals) reach their office's holder; a grain agreement no longer refuses protests and offers to its
+# partner; an ultimatum can be answered (ultimatum_reply) and a grain acceptance names the terms it does not carry; a
+# demand that the other side pull back is not read as our stand-down; a loan's purpose is not a reserve floor on it;
+# the neighbours' acts named by region name, with a list of terms or a magnitude word are read, and a refusal is told;
+# a tax rise tabled as a protest is caught; a broken promise names itself and what broke it; fewer false fact flags.
+# 23 completes it (backlog T112-T116): the review items engine 22's changelog listed without its code doing them.
+# A cabinet's acts filed under another key are reported; a reply to an ultimatum has registered refusal codes.
+WORLD_ENGINE = 23
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1
 # 2 added the refusal codes for actions, motions, audits and foreign deals. 3 adds VOTE_INTENT_MISMATCH and
 # CONDITION_EXECUTION_MISMATCH, which the other line had already added without a bump. 4 (engine 19) adds
 # VALUE_OUT_OF_RANGE, MOTION_CAP_REACHED, ANSWER_UNREADABLE and registers BAD_LOAN_AMOUNT, which was refused unregistered.
-ERROR_TAXONOMY = 4
+# 5 (engine 23) registers NO_ULTIMATUM and ULTIMATUM_NOT_FROM_TARGET, the refusals of engine 22's ultimatum_reply, which
+# were recorded as UNREGISTERED_ERROR_CODE.
+ERROR_TAXONOMY = 5
 
 
 def stamp(agent_architecture: int = AGENT_ARCHITECTURE) -> dict:

@@ -328,15 +328,22 @@ def mobilization_setting(w: World) -> str:
             f"{now['per_head_activation']:,.0f} to call up)")
 
 
+def _room_to_target(w: World, target: float) -> str:
+    """How far below an army target the army stands, where recruitment stops."""
+    return f"up to army_target {fmt_value(target)}, {_about(target - w.mil.army.size)} more than the army has now"
+
+
 def recruitment_setting(w: World) -> str:
-    """What a month of recruitment adds at each level, until army_target (military.recruits_per_month)."""
+    """What a month of recruitment adds at each level (military.recruit_intake), and how far the army is from army_target,
+    where it stops. Engine 23: each level's pace and the gap are given apart; engine 22 gave the pace already held to the
+    gap, so 800 short of the target read "about 800" at every level."""
     target = fmt_value(w.policy.army_target)
     if w.mil.army.size >= w.policy.army_target:
         return f"the army is at or above army_target {target}, so no level adds soldiers this month"
-    adds = {level: military.recruits_per_month(w, level) for level in ("volunteer", "partial", "general")}
-    return (f"a month's recruitment would add {_about(adds['volunteer'])} at volunteer, "
-            f"{_about(adds['partial'])} at partial and {_about(adds['general'])} at general, "
-            f"until the army reaches army_target {target}")
+    pace = {level: military.recruit_intake(w, level) for level in ("volunteer", "partial", "general")}
+    return (f"a month's recruitment adds {_about(pace['volunteer'])} at volunteer, "
+            f"{_about(pace['partial'])} at partial or {_about(pace['general'])} at general, "
+            + _room_to_target(w, w.policy.army_target))
 
 
 def mobilization_change(w: World, proposed: str, recruitment: str | None = None) -> str:
@@ -371,12 +378,13 @@ def recruitment_change(w: World, proposed: str, army_target: float | None = None
     target = w.policy.army_target if army_target is None else army_target
     if proposed == "none":
         text = "none would stop recruitment"
+    elif w.mil.army.size >= target:
+        text = f"the army is at or above army_target {fmt_value(target)}, so {proposed} would add no one this month"
     else:
-        text = (f"a month's recruitment at {proposed} would add "
-                f"{_about(military.recruits_per_month(w, proposed, target))} soldiers")
+        text = f"a month's recruitment at {proposed} adds {_about(military.recruit_intake(w, proposed))} soldiers"
         if current not in ("none", proposed):
-            text += f", against {_about(military.recruits_per_month(w, current))} at {current} now"
-        text += f", until army_target {fmt_value(target)}"
+            text += f" (against {_about(military.recruit_intake(w, current))} at {current} now)"
+        text += ", " + _room_to_target(w, target)
     pool_now = military.reserve_pool(w)
     pool_then = military.reserve_pool_under(w, proposed)
     if round(pool_then, -3) != round(pool_now, -3):

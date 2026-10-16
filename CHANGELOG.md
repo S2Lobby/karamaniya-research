@@ -4,22 +4,70 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 23
+
+`WORLD_ENGINE` 23, `AGENT_PROMPT` 20, `ERROR_TAXONOMY` 5 (psychology 8 unchanged): the review items of engine 22 that
+the engine 22 entry, as first published, described as done while its code did not do them (backlog T112-T116).
+
+- **The dispatches lead the office section.** A seat with a short budget keeps only the first nine lines of its office
+  information, and engine 22 listed the dispatches after the office reports, where such a seat lost them.
+- **The credit line gives the conditions the League stated.** Engine 22's line also printed the thresholds of the
+  League's own judgement (its trust in Karamaniya above 38 out of 100, a default-risk estimate above 42%). It now says
+  that while tranches remain unpaid the League reviews its conditions every month (the deficit at most 5% of output,
+  debt service kept up) and can freeze the rest.
+- **Recruitment gives each level's pace and the gap to the target apart.** Engine 22 gave each level's monthly intake
+  already held to the gap to the army target, so a council 800 soldiers short of 55,000 read "about 800" at volunteer,
+  partial and general alike. The settings and a recruitment motion now give the pace of each level and, separately,
+  how far the army is from the target, where recruitment stops.
+- **A cabinet is told what was refused, changed or not read.** Engine 22 sent every reading of a region's name ("region
+  'Kessel Valley' was read as kessel") to the cabinet under `your_acts_refused_last_month`, for acts that took effect.
+  A reading now stays in the month's record; an act that went ahead changed (an ultimatum issued with the first of
+  several demands) is noted "carried out; ...". Acts a cabinet listed under another key than `actions` (in run
+  20261011-105713-seed1, "this_month_actions", "actions_this_month" and "acts") are reported as not read; acts it holds
+  back ("actions_held") are not reported.
+- **The reply's refusals are registered.** NO_ULTIMATUM and ULTIMATUM_NOT_FROM_TARGET were recorded as
+  UNREGISTERED_ERROR_CODE. A reply is titled "answer the ultimatum of Dorsania", not "propose ultimatum reply to
+  Dorsania", and the integrity record names the state it touches.
+
 ## World engine 22
 
-`WORLD_ENGINE` 22, `AGENT_PROMPT` 19 (psychology 8 unchanged): the council now gets a traceable account of
-what the engine heard and did. Private dispatches lead the office brief so they survive short context budgets;
-League conditions are checked each month while a tranche remains unpaid, and its internal thresholds are not
-presented as part of the credit line. Recruitment and mobilization show their actual per-level scale. Diplomacy
-answers preserve negotiated ultimatum terms and distinguish a stand-down from an invented one; foreign actions
-are read from the supported answer keys and the cabinet is told about actual refusals, not successful acts.
+`WORLD_ENGINE` 22, `AGENT_PROMPT` 19 (psychology 8 unchanged), from reading run 20261011-105713-seed1 whole (backlog
+T101-T111). Each fix has a test that failed on engine 21, and each was checked against the run's own checkpoint, motion
+texts and cabinet answers.
 
-- Fact-reference checks now receive this month's tabled motions and final motions, so a proposed investigation is
-  not reported as a false memory. The recorded run comparison found 25 of 28 false flags and no lost true flags.
-- Reserve-floor wording is scoped to arrears, rather than treating a loan-purpose restriction as a blocked loan.
-- The engine records unpaid bills as current obligations, reports recruitment intake by level, and updates the
-  prompt freeze for the new prompt version.
-- Focused E22 regression tests cover dispatches, diplomacy, stand-down, loan conditions, scale, wording and
-  foreign-action intake.
+- **Private dispatches reach their office.** Foreign powers answer some acts privately, to the office that handles
+  them: in that run all three League loan approvals (140M in all, on condition that the deficit stays below 5% of
+  output) and five Dorsanian grain acceptances. Only the legacy month read them, and none of the run's 226 prompts
+  carried one. The office holder now reads them, and the Treasury and the Head of Government a line on the League's
+  credit.
+- **A deal partner can be protested to.** A grain agreement in force refused every motion to Dorsania that did not say
+  what it did to the agreement, and three protests were refused in Month 7. Only acts that make or change an agreement
+  are checked against one now. A non-aggression offer can go to Dorsania as to Veleria, both Union members, and the
+  Union answers it.
+- **An ultimatum can be answered.** `ultimatum_reply` (accept, reject or counter) goes to the power that issued the
+  ultimatum, whose cabinet reads it the next month; whether the demand is met is still judged by what Karamaniya does.
+  The council had answered Dorsania's ultimatum through grain deals, and a grain acceptance now names the terms a grain
+  agreement does not carry.
+- **A demand is not our stand-down.** "We demand an immediate pull-back to garrison levels" (Month 4) and "the Union
+  ... withdraws troops massed on our borders" (Month 5) were published as Karamaniya's offer to stand its patrols down,
+  and Army Command resented them. A stand-down counts as our offer only when the words make it ours or mutual, and
+  "pull-back" written with a hyphen is read too.
+- **A loan's purpose is not a floor on it.** "Order of use: first, reserves rebuilt above 60M" blocked the 50M loan it
+  described (Month 8). A goal is not a condition, and a reserve floor binds only a motion that pays out of the reserves.
+- **The neighbours' acts are read.** Both cabinets named regions by their names ("Kessel Valley"), Veleria listed its
+  ultimatum's demands, and magnitudes came as words. The reader dropped all of these, so no covert support took effect
+  in eleven months, and told no one. They are read now, and what the reader refuses is told to the cabinet the next
+  month.
+- **Smaller.** A tax rise tabled as a protest is refused before the vote (DOMESTIC_TEXT_FOREIGN_ACTION); unpaid bills are
+  no longer all called inherited; a broken promise names the promise and the vote or order that broke it; mobilization
+  and recruitment state the call-up and the intake, and a programme shows each measure current -> proposed. The
+  fact-reference check gets the month's motions and no longer flags a joint inquiry, an audit under way or one on the
+  table: of the 28 such flags in the recorded runs, all false, 25 are gone, and the three left name an office in
+  passing.
+
+The entry first published for engine 22 also said that the dispatches led the office brief, that the credit line left
+out the League's internal thresholds, that recruitment showed its per-level pace and that cabinets were told only of
+real refusals. Its code did none of these; engine 23 does.
 
 ## World engine 21
 

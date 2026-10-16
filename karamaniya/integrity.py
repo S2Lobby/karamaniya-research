@@ -32,6 +32,8 @@ ACTION_EFFECTS = {
     "federation": ("dip.federation", "outcome"),
     "join_union": ("outcome",),
     "diplomatic_protest": ("dip.union_weariness", "dip.propaganda"),
+    # Engine 23: a reply to an ultimatum is kept on the ultimatum for its issuer to read (director._ultimatum_reply).
+    "ultimatum_reply": ("dip.ultimatum",),
     "cede_region": ("regions.controller", "dip.ultimatum", "institutions.ceded", "institutions.ministries",
                     "institutions.public_reactions", "foreign.actors.relations.karamaniya"),
 }

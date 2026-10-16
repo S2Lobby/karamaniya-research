@@ -130,8 +130,22 @@ class TheRecruitmentFiguresAreWhatRecruitAdds(unittest.TestCase):
         block = briefing.settings_block(w)
         for level in ("volunteer", "partial", "general"):
             with self.subTest(level=level):
-                self.assertIn(f"about {round(military.recruits_per_month(w, level), -2):,.0f} at {level}", block)
-        self.assertIn("until the army reaches army_target 55,000", block)
+                self.assertIn(f"about {round(military.recruit_intake(w, level), -2):,.0f} at {level}", block)
+        gap = round(55000.0 - w.mil.army.size, -2)
+        self.assertIn(f"up to army_target 55,000, about {gap:,.0f} more than the army has now", block)
+
+    def test_a_small_gap_to_the_target_does_not_make_the_levels_look_alike(self):
+        # Engine 23. Run 20261011-105713-seed1, Month 12: the army stood about 800 short of its 55,000 target, and engine 22
+        # read "about 800" at volunteer, partial and general alike, the intake already held to the gap.
+        w = world()
+        w.policy.army_target = w.mil.army.size + 800.0
+        line = briefing.recruitment_setting(w)
+        paces = [round(military.recruit_intake(w, level), -2) for level in ("volunteer", "partial", "general")]
+        self.assertEqual(len(set(paces)), 3, paces)
+        for level, pace in zip(("volunteer", "partial", "general"), paces):
+            with self.subTest(level=level):
+                self.assertIn(f"about {pace:,.0f} at {level}", line)
+        self.assertIn("about 800 more than the army has now", line)
 
 
 class TheTrainedReserveFollowsRecruitment(unittest.TestCase):
@@ -195,8 +209,8 @@ class TheMotionsShowWhatTheyChange(unittest.TestCase):
         block = decision_context.motion_block(
             w, "B", [tabled("M2", type="set_policy", subject="recruitment", value="partial")])
         self.assertIn("now none, proposed partial", block)
-        adds = round(military.recruits_per_month(w, "partial"), -2)
-        self.assertIn(f"at partial would add about {adds:,.0f} soldiers", block)
+        adds = round(military.recruit_intake(w, "partial"), -2)
+        self.assertIn(f"at partial adds about {adds:,.0f} soldiers", block)
 
     def test_a_recruitment_motion_shows_the_trained_reserve_it_would_size(self):
         w = world()
@@ -245,10 +259,10 @@ class AProgrammeIsCostedAsOnePackage(unittest.TestCase):
         program = tabled("M5", type="program", subject="", value="", action={"measures": [
             {"lever": "recruitment", "value": "partial"}, {"lever": "army_target", "value": "55000"}]})
         block = decision_context.motion_block(w, "B", [program])
-        ghost = copy.deepcopy(w)
-        ghost.policy.army_target = 55000.0
-        adds = round(military.recruits_per_month(ghost, "partial"), -2)
-        self.assertIn(f"at partial would add about {adds:,.0f} soldiers, until army_target 55,000", block)
+        adds = round(military.recruit_intake(w, "partial"), -2)
+        gap = round(55000.0 - w.mil.army.size, -2)
+        self.assertIn(f"at partial adds about {adds:,.0f} soldiers, up to army_target 55,000, about {gap:,.0f} more "
+                      "than the army has now", block)
 
     def test_the_call_up_is_sized_by_the_reserve_the_programme_recruitment_would_leave(self):
         w = world()   # recruitment none: the trained reserve is sized at about the active army

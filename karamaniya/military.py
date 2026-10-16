@@ -826,14 +826,22 @@ def recruits_per_month(w: World, level: str | None = None, army_target: float | 
     pool (a volunteer's rate scaled by support for independence), held to the gap to the army target. `level` and
     `army_target` default to the settings in force; a programme that sets a new target is costed against that one.
     Zero at "none", and zero once the army is at its target."""
+    target = w.policy.army_target if army_target is None else army_target
+    return max(0.0, min(target - w.mil.army.size, recruit_intake(w, level)))
+
+
+def recruit_intake(w: World, level: str | None = None) -> float:
+    """A month's intake at `level` before the army target holds it back: the level's rate on the recruit pool, a
+    volunteer's rate scaled by support for independence (_recruit). Engine 23: the settings and the motions give this pace
+    beside the gap to the target; engine 22 gave each level's intake already held to the gap, so a council 800 soldiers
+    short of its target read "about 800" at volunteer, partial and general alike (run 20261011-105713-seed1, Month 12)."""
     level = w.policy.recruitment if level is None else level
     if level == "none" or level not in RECRUIT_RATE:
         return 0.0
-    target = w.policy.army_target if army_target is None else army_target
     rate = RECRUIT_RATE[level]
     if level == "volunteer":
         rate *= 0.5 + w.avg("indep")
-    return max(0.0, min(target - w.mil.army.size, recruit_pool(w) * rate))
+    return recruit_pool(w) * rate
 
 
 def reserve_pool_under(w: World, recruitment: str) -> float:

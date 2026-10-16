@@ -171,7 +171,44 @@ class TheCabinetIsToldTheNextMonth(unittest.TestCase):
         answer_month(w, "veleria", {"type": "ultimatum", "terms": ["status_talks", "protect_imperial_citizens"],
                                     "deadline_months": 2})
         w.month += 1
-        self.assertEqual(refused_next_month(w), [{"action": "ultimatum", "reason": ONE_DEMAND}])
+        # Engine 23: the act went ahead, so its note says so.
+        self.assertEqual(refused_next_month(w), [{"action": "ultimatum", "reason": "carried out; " + ONE_DEMAND}])
+
+    def test_a_name_or_a_word_read_as_meant_is_not_shown_as_a_refusal(self):
+        # Engine 23: engine 22 sent "region 'Kessel Valley' was read as kessel" to the cabinet under
+        # your_acts_refused_last_month, for a covert support that took effect. The reading stays in the month's record.
+        w = world(month=2)
+        w.region("kessel").unrest = .45
+        out, problems = foreign.normalize_cabinet_output(
+            "veleria", {"actions": [{"type": "covert_support", "region": "Kessel Valley", "magnitude": "limited"}]})
+        self.assertEqual(out["act_notes"], [])
+        self.assertIn("region 'Kessel Valley' was read as kessel", problems)
+        foreign._apply_cabinet_decisions(w, foreign.positions(w), {"veleria": out})
+        w.month += 1
+        self.assertEqual(refused_next_month(w), [])
+
+    def test_acts_filed_under_another_key_are_shown_once(self):
+        # Run 20261011-105713-seed1, Month 1: Veleria's four acts sat under "this_month_actions", none was read, and
+        # Veleria was never told.
+        w = world(month=2)
+        out, problems = foreign.normalize_cabinet_output("veleria", {"this_month_actions": [
+            {"type": "partial_embargo", "magnitude": .5}, {"type": "offer_talks", "magnitude": .3}]})
+        self.assertEqual(out["actions"], [])
+        foreign._apply_cabinet_decisions(w, foreign.positions(w), {"veleria": out})
+        w.month += 1
+        shown = refused_next_month(w)
+        self.assertEqual(len(shown), 1, shown)
+        self.assertIn("'this_month_actions' were not read", shown[0]["reason"])
+
+    def test_acts_a_cabinet_holds_back_are_not_shown(self):
+        # Dorsania's Month 11 answer listed the acts it chose not to take under "actions_held", beside its "actions".
+        out, _ = foreign.normalize_cabinet_output("dorsania", {
+            "actions": [{"type": "intelligence_collection", "magnitude": .5}],
+            "actions_held": [{"type": "grain_embargo", "magnitude": .5}]})
+        self.assertEqual(out["act_notes"], [])
+        out, _ = foreign.normalize_cabinet_output("dorsania", {
+            "actions": [], "actions_held": [{"type": "grain_embargo", "magnitude": .5}]})
+        self.assertEqual(out["act_notes"], [])
 
     def test_two_refusals_in_one_month_are_two_lines(self):
         w = world(month=2)

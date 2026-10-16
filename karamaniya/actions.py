@@ -562,6 +562,9 @@ def motion_summary(w: World, mo: dict) -> str:
         amt = _loan_amount_summary(mo) if s == "loan" else ""
         if s == "diplomatic_protest":
             return f"deliver a diplomatic protest to {who}"
+        if s == "ultimatum_reply":
+            # Engine 22 titled it "propose ultimatum reply to Dorsania".
+            return f"answer the ultimatum of {who}"
         return f"propose {s.replace('_', ' ')}{amt} to {who}"
     if t == "referendum":
         return "hold a referendum on independence this month"

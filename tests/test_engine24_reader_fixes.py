@@ -7,7 +7,7 @@ Private messages (F2):
 Cabinet answers (F4):
 - an act named under "action" instead of "type" (runs 20261008-130316-seed1 and 20261011-211521-seed1);
 - a null magnitude or null troops read as absent, as the reader already reads its other optional fields (runs
-  20261010-002051-seed1 and 20261010-070501-seed1, where schema-filled answers had null for both).
+  20261010-002051-seed1, 20261010-070501-seed1 and 20261011-094417-seed1: schema-filled answers with null fields).
 
 The classes at the end pin what stays refused, and the two "terms" shapes that main already reads. Nothing here calls
 a model.
@@ -134,7 +134,8 @@ class SessionReportsEachRefusalOnce(unittest.TestCase):
 
 class ActNamedUnderActionKey(unittest.TestCase):
     """Runs 20261008-130316-seed1 (Dorsania, Months 4 and 5) and 20261011-211521-seed1 (Dorsania Month 2, Veleria Month
-    7): eight acts that were valid types were written under "action", and each was refused as "unsupported cabinet action"."""
+    7): twelve acts that were valid types were written under "action", and each was refused as "unsupported cabinet
+    action"."""
 
     def test_an_act_named_under_action_is_read_as_its_type(self):
         out, problems = read("dorsania", {"action": "intelligence_collection", "magnitude": .6})
@@ -167,8 +168,8 @@ class ActNamedUnderActionKey(unittest.TestCase):
 
 
 class NullMagnitudeAndTroopsAreAbsent(unittest.TestCase):
-    """Runs 20261010-002051-seed1 and 20261010-070501-seed1: schema-filled answers had "magnitude": null and
-    "troops": null in 31 acts, and each act was refused. The reader already reads null as absent for front, aim,
+    """Runs 20261010-002051-seed1, 20261010-070501-seed1 and 20261011-094417-seed1: 62 acts had a null magnitude or a
+    null troops, and each was refused (31 for each field). The reader already reads null as absent for front, aim,
     region, terms and deadline_months."""
 
     def test_null_magnitude_and_null_troops_are_read_as_absent(self):

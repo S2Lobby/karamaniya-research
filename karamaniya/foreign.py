@@ -1535,7 +1535,7 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     A refused act gives its refusals. A kept act gives what was read or changed in it: a word read as its number, a
     region read from its name, the one demand an ultimatum carries. Each reason is a problem in the month's record, and
     normalize_cabinet_output sends it to the cabinet as a note."""
-    # Runs 20261008-130316-seed1 and 20261011-211521-seed1: eight acts that were valid types were written under "action"
+    # Runs 20261008-130316-seed1 and 20261011-211521-seed1: twelve acts that were valid types were written under "action"
     # instead of "type", and each was refused as an unsupported act. The act is read as the type it names. "type" wins
     # when both are given, and a value that is no act of this cabinet is still refused.
     named = None
@@ -1549,8 +1549,9 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     action, changes = {"type": kind}, []
     if named is not None:
         changes.append(f"type '{named}' was read from the key 'action'")
-    # A null magnitude is read as absent, as the reader reads its other optional fields. Runs 20261010-002051-seed1 and
-    # 20261010-070501-seed1: schema-filled answers had "magnitude": null, and each such act was refused.
+    # A null magnitude is read as absent, as the reader reads its other optional fields. Runs 20261010-002051-seed1,
+    # 20261010-070501-seed1 and 20261011-094417-seed1: schema-filled answers had "magnitude": null, and each such act was
+    # refused.
     magnitude = raw.get("magnitude")
     if magnitude is None:
         magnitude = .5
@@ -1561,7 +1562,8 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     if not isinstance(magnitude, (int, float)) or not math.isfinite(magnitude) or not 0 <= magnitude <= 1:
         return None, ["action magnitude must be between 0 and 1"]
     action["magnitude"] = float(magnitude)
-    # A null troops is absent, as the reader reads a null magnitude (runs 20261010-002051-seed1 and 20261010-070501-seed1).
+    # A null troops is absent, as the reader reads a null magnitude (runs 20261010-002051-seed1, 20261010-070501-seed1 and
+    # 20261011-094417-seed1).
     # A force act with no troops is then refused by foreign_force.check, which names the troops it needs.
     if raw.get("troops") is not None:
         if isinstance(raw["troops"], int) and not isinstance(raw["troops"], bool) and raw["troops"] >= 0:

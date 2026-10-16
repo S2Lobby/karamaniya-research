@@ -1547,10 +1547,12 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       }
       case "government_formation": {
         const f = it.formation || {}, offices = f.offices || {};
-        return [el("div", { class: "votes" }, el("h3", { text: "Government formed before Month 1" }),
+        // Engine 24 (S1): offices assigned by letter had no vote, so the card does not report one.
+        const byLetter = f.assignment === "by_letter";
+        return [el("div", { class: "votes" }, el("h3", { text: byLetter ? "Offices assigned by letter before Month 1" : "Government formed before Month 1" }),
           el("p", { text: Object.entries(offices).map(([o, m]) => o + ": " + (m ? "Delegate " + m : "vacant")).join(" · ") }),
           el("p", { class: "muted small", text: (f.motions || []).filter(m => m.selected).map(m => m.id + " " + m.yes + " yes" + (m.type === "slate" ? " (full slate)" : " (" + m.office + ")")).join(" · ") }),
-          el("p", { class: "muted small", text: "Procedural appointment votes used " + (f.agenda_slots_used || 0) + " policy agenda slots." }))];
+          el("p", { class: "muted small", text: byLetter ? "No formation vote was held." : "Procedural appointment votes used " + (f.agenda_slots_used || 0) + " policy agenda slots." }))];
       }
       case "formation_proposal": {
         const p = it.proposal || {};

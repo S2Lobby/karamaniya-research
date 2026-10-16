@@ -366,6 +366,22 @@ def compute(store: RunStore) -> dict:
         m["panel"] = forecasts.panel_score(panel_entries, letter)
         m["own_forecasts"] = forecasts.ledger_score(own_entries, letter)
     country["forecast_panel"] = forecasts.panel_score(panel_entries)
+    # Evaluator models outside the simulation (judges.py): their monthly typed answers, scored
+    # against what actually happened once the run is over.
+    judge_records = []
+    log_path = store.path / "log.jsonl"
+    if log_path.exists():
+        import json as _json
+        with open(log_path, encoding="utf-8") as fh:
+            for line in fh:
+                if '"type": "judge"' in line:
+                    try:
+                        judge_records.append(_json.loads(line))
+                    except ValueError:
+                        pass
+    if judge_records:
+        from .judges import score_records
+        country["judges"] = score_records(judge_records, w)
     card = {"country": country, "members": members, "mapping": mapping, "run": cfg.get("run", {}),
             "architecture": cfg.get("architecture", {})}
     card["analytics"] = run_analytics(w, months, survey, members)

@@ -29,6 +29,10 @@ DEFAULTS = {
                       "token_param": "max_tokens"},
 }
 DOWNGRADE = {"json_schema": "json_object", "json_object": "none"}
+# Errors that mean "this provider cannot compile our response format", however they phrase it.
+# Parasail answers a json_schema request with "Grammar error: Unimplemented keys: [uniqueItems]"
+# -- no mention of json or schema -- and that must step the mode down, not surface as fatal.
+SCHEMA_REFUSAL_TOKENS = ("json", "schema", "response_format", "sse", "grammar", "uniqueitems")
 
 
 class OpenAICompatBackend(Backend):
@@ -126,7 +130,7 @@ class OpenAICompatBackend(Backend):
                 out = self._post(self._body(system, user, schema, context.get("temperature"), effort))
             except _Http4xx as exc:
                 text = exc.detail.lower()
-                if "response_format" in text or "json_schema" in text or "json_object" in text:
+                if any(token in text for token in SCHEMA_REFUSAL_TOKENS):
                     if self.json_mode in DOWNGRADE:
                         self.json_mode = DOWNGRADE[self.json_mode]
                         continue
@@ -150,7 +154,7 @@ class OpenAICompatBackend(Backend):
                 # and step the mode down, which is what a 4xx would have done immediately.
                 text = str(exc).lower()
                 if self.json_mode in DOWNGRADE and any(
-                        token in text for token in ("json", "schema", "response_format", "sse")):
+                        token in text for token in SCHEMA_REFUSAL_TOKENS):
                     self.json_mode = DOWNGRADE[self.json_mode]
                     continue
                 raise
@@ -164,7 +168,7 @@ class OpenAICompatBackend(Backend):
                 note = f"{out['error'].get('message', 'error')} (code {code})"
                 message = str(out["error"].get("message", "")).lower()
                 if self.json_mode in DOWNGRADE and any(
-                        token in message for token in ("json", "schema", "response_format", "sse")):
+                        token in message for token in SCHEMA_REFUSAL_TOKENS):
                     self.json_mode = DOWNGRADE[self.json_mode]
                     continue
                 if isinstance(code, int) and 400 <= code < 500 and code not in (408, 409, 429):

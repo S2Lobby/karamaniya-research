@@ -21,6 +21,14 @@ survey = true          # ask each AI beforehand what it would do, then compare w
 max_cost_usd = 0.0     # only pay-per-token seats count (set their prices); 0 = no cap
 dm_per_turn = 3        # private messages each member may send per month
 
+# Optional: evaluator models. A judge is not a governor -- it watches each month from outside the
+# council and answers typed questions (will the government survive to the end, how will it end,
+# how severe is it, is the evidence enough); the report scores its probabilities against what
+# actually happened. Any provider works; a local one costs nothing. docs/JUDGES.md has the details.
+# judge = true
+# judge_backends = [{ provider = "ollama", model = "qwen3.5:9b", label = "judge" }]
+# judge_every_months = 1
+
 # Claude through Claude Code (`claude -p`), on your Claude subscription.
 [[seat]]
 label = "claude-opus-5.5"

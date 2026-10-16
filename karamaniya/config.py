@@ -26,6 +26,7 @@ RUN_DEFAULTS = {
     "revision_round": "",          # "" follows tuning (auto) | auto | always | off
     "tuning": {},                  # overrides of karamaniya/tuning.py, e.g. {agenda = {major_motions = 3}}
     "foreign_cabinets": True,      # two monthly strategic calls, reusing configured council backends
+    "judge": False,                # evaluator models observing the run from outside it (judges.py)
     "foreign_cabinet_seats": {},  # optional actor -> existing seat label; otherwise first two configured seats
 }
 
@@ -80,6 +81,28 @@ def normalize_config(raw: dict, source: str = "") -> dict:
         run["foreign_cabinet_backend"] = token_saving.validate_foreign_backend(run["foreign_cabinet_backend"])
     elif "foreign_cabinet_backend" in run:
         del run["foreign_cabinet_backend"]
+
+    if run.get("judge"):
+        if run["judge"] is not True:
+            raise ValueError("judge must be true or false")
+        backs = run.get("judge_backends")
+        if not isinstance(backs, list) or not 1 <= len(backs) <= 3:
+            raise ValueError("judge = true needs judge_backends: a list of 1 to 3 evaluator models")
+        judges = []
+        for i, b in enumerate(backs):
+            if not isinstance(b, dict) or not b.get("provider"):
+                raise ValueError(f"judge {i + 1} needs at least a provider")
+            j = dict(b)
+            j["label"] = str(j.get("label") or j.get("model") or j["provider"]).strip()
+            judges.append(j)
+        run["judge_backends"] = judges
+        every = run.get("judge_every_months", 1)
+        if not isinstance(every, int) or isinstance(every, bool) or not 1 <= every <= 12:
+            raise ValueError("judge_every_months must be a whole number from 1 to 12")
+        run["judge_every_months"] = every
+    else:
+        for key in ("judge_backends", "judge_every_months", "judge_questions"):
+            run.pop(key, None)
     for s in seats:
         if "effort_by_phase" in s:
             s["effort_by_phase"] = token_saving.validate_effort_by_phase(s["effort_by_phase"], f"{where}: seat {s['label']}")

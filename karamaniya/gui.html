@@ -246,6 +246,10 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .bcast-feed { position: sticky; top: 76px; min-width: 0; }
 @media (max-width: 1150px) { .bcast-feed { position: static; } }
 .bcast-feed .feed { max-height: calc(100vh - 150px); min-height: 460px; }
+.judge-card { margin: 8px 0 8px 26px; padding: 9px 12px; border: 1px solid var(--line);
+  border-left: 3px solid var(--accent); border-radius: 6px; background: var(--card); }
+.judge-card .by { margin-bottom: 4px; }
+.judge-card p { margin: 2px 0; }
 .live-draft { margin: 10px 0; padding: 11px 13px; border-left: 3px solid var(--accent);
   background: var(--surface-2); border-radius: 5px; }
 .live-draft .draft-label { font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 5px; }
@@ -430,6 +434,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     <button role="tab" id="t-map" data-tab="map" aria-controls="tab-map">Map</button>
     <button role="tab" id="t-inspect" data-tab="inspect" aria-controls="tab-inspect">Inspect</button>
     <button role="tab" id="t-runs" data-tab="runs" aria-controls="tab-runs">Runs</button>
+    <button role="tab" id="t-batch" data-tab="batch" aria-controls="tab-batch">Batch</button>
     <button role="tab" id="t-compare" data-tab="compare" aria-controls="tab-compare">Compare</button>
   </nav>
   <div class="jobmini" id="jobmini"></div>
@@ -489,6 +494,13 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             <label class="check wide"><input type="checkbox" id="s-human"> Human factor: dispositions, beliefs, relationships and political pressure</label>
             <label class="check wide"><input type="checkbox" id="s-panel"> Monthly forecast panel: every delegate answers the same questions, scored when they fall due</label>
             <label class="check wide"><input type="checkbox" id="s-baseline"> Afterwards, run the same seed with rule-following, do-nothing, all-hawk and all-dove councils (free, about four minutes; only when a seat is a model)</label>
+            <div class="field"><span>&nbsp;</span><label class="check"><input type="checkbox" id="s-judge"> Evaluator models observe the run (judges, outside the government)</label></div>
+            <div id="judge-fields" hidden>
+              <label class="field"><span>Judge provider</span><select id="s-judge-provider"></select></label>
+              <label class="field"><span>Judge model</span><input type="text" id="s-judge-model" placeholder="e.g. jev-latest, qwen3.5:9b" spellcheck="false" autocomplete="off"></label>
+              <label class="field"><span>Ask every (months)</span><input type="number" id="s-judge-every" min="1" max="12" step="1" value="1"></label>
+              <p class="pnote">Judges see the same public record the delegates see and answer typed questions: will the government survive to the end, how will it end, how severe is it, is the evidence enough. Their probabilities are scored against what actually happened, so the report shows each judge's accuracy, not just its opinion. Up to three judges; a second and third are added in the council file.</p>
+            </div>
           </div>
           <p class="pnote">Each member has a seeded private disposition and a different evidence dossier. No office or political priority is preassigned; compare first diagnoses, stated principles and later choices in Inspect.</p>
           <div class="estimate" id="founding-preview"><span class="muted">Preparing inherited-state preview…</span></div>
@@ -624,6 +636,42 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     <div class="card">
       <div class="card-head"><h2>Runs</h2><span class="muted small mono" id="runs-dir"></span><span class="spacer"></span><button class="btn small" id="runs-refresh">Refresh</button></div>
       <div class="tablewrap"><table class="runs" id="runs-table"></table></div>
+    </div>
+  </section>
+
+  <!-- BATCH -->
+  <section class="tab" id="tab-batch" role="tabpanel" aria-labelledby="t-batch" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Batch queue</h2><span class="muted small" id="b-status"></span><span class="spacer"></span>
+        <label class="field"><span>Load batch</span><select id="b-load-select"></select></label>
+        <button class="btn small" id="b-load">Load</button>
+        <button class="btn small" id="b-save">Save</button>
+      </div>
+      <p class="explain">Compose a list of runs; the control room plays them one after another. Every row can differ: the council file (its models — lineups are built and saved in the Council tab), seed, months, framing, severity, scenario, and seat assignment. <b>Generate rows appends</b>: pick a council, generate, pick the next council, generate again — the rows accumulate, and seeds continue so names never collide. <b>One row per council file</b> adds one row for every council at once. <b>Rotate</b> moves every model one letter along each row (a balanced mix); <b>shuffle</b> draws a random order from the seed; the condition knobs can each "↻ vary across rows". A row that cannot start is marked and the queue moves on; two in a row stop the batch. Paused and finished rows are skipped on a re-run; a paused row continues from its last saved month.</p>
+      <div class="settings" id="b-controls">
+        <label class="field"><span>Batch name</span><input type="text" id="b-name" value="batch1" spellcheck="false" autocomplete="off"></label>
+        <label class="field"><span>Council (for generated rows)</span><select id="b-council"></select></label>
+        <label class="field"><span>Months</span><input type="number" id="b-months" min="1" max="120" step="1" value="36"></label>
+        <label class="field"><span>First seed</span><input type="number" id="b-seed" step="1" value="1001"></label>
+        <label class="field"><span>How many rows</span><input type="number" id="b-count" min="1" max="200" step="1" value="15"></label>
+        <label class="field"><span>Name prefix</span><input type="text" id="b-prefix" value="b1" spellcheck="false" autocomplete="off"></label>
+        <label class="field"><span>Framing</span><select id="b-framing"><option value="">From the council file</option><option value="__cycle">↻ vary across rows</option><option value="simulation">Simulation</option><option value="immersive">Immersive</option><option value="unobserved">Unobserved</option></select></label>
+        <label class="field"><span>Severity</span><select id="b-severity"><option value="">From the council file</option><option value="__cycle">↻ vary across rows</option><option value="default">Balanced</option><option value="mild">Mild</option><option value="serious">Serious</option><option value="critical">Critical</option></select></label>
+        <label class="field"><span>Scenario</span><select id="b-scenario"><option value="">From the council file</option><option value="__cycle">↻ vary across rows</option><option value="random">Seeded random</option><option value="fragile-independence">Fragile independence</option><option value="fiscal-inheritance">Fiscal inheritance</option><option value="regional-divide">Regional divide</option><option value="security-crisis">Security crisis</option><option value="trade-dependency">Trade dependency</option><option value="post-regime-transition">Post-regime transition</option></select></label>
+        <label class="field"><span>Seat assignment (generated rows)</span><select id="b-seats"><option value="">As the council file says</option><option value="rotate">Rotate rows — balanced mix</option><option value="shuffle">Shuffle each run — random mix</option></select></label>
+        <div class="actions" style="align-items:end">
+          <button class="btn" id="b-generate" type="button">Generate rows</button>
+          <button class="btn primary" id="b-mix" type="button">↻ Generate mixed batch</button>
+          <button class="btn" id="b-percouncil" type="button">One row per council file</button>
+          <button class="btn small" id="b-addrow" type="button">+ Add one row</button>
+        </div>
+      </div>
+      <div class="tablewrap"><table class="runs" id="b-table"></table></div>
+      <div class="actions">
+        <button class="btn primary" id="b-run">Run batch</button>
+        <button class="btn" id="b-stop">Stop batch</button>
+        <span class="muted small">Stop waits for the current month to finish; the queue keeps its place.</span>
+      </div>
     </div>
   </section>
 
@@ -801,6 +849,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
     document.querySelectorAll("main > .tab").forEach(t => { t.hidden = t.id !== "tab-" + name; });
     if (name === "runs") loadRuns();
+    if (name === "batch") loadBatch();
     if (name === "live") requestAnimationFrame(pinFeed);
     if (name === "inspect") { S.runs = []; loadInspect(); }
     if (name === "map") loadMap();
@@ -966,6 +1015,14 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     $("s-severity").value = r.founding_severity || "default";
     $("s-problems").value = (r.founding_problems || []).join(", ");
     $("custom-problems-field").hidden = $("s-scenario").value !== "custom";
+    const jsel = $("s-judge-provider");
+    if (!jsel.options.length) put(jsel, Object.keys(PROVIDERS).map(p => { const o = el("option", null, p); o.value = p; return o; }));
+    const j0 = (r.judge_backends || [])[0] || {};
+    $("s-judge").checked = !!r.judge;
+    $("judge-fields").hidden = !r.judge;
+    jsel.value = j0.provider || "ollama";
+    $("s-judge-model").value = j0.model || "";
+    $("s-judge-every").value = Math.max(1, Math.min(12, +r.judge_every_months || 1));
     renderFoundingPreview();
   }
   function bindSettings() {
@@ -1013,19 +1070,39 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     $("s-seed").addEventListener("change", renderFoundingPreview);
     for (const [id, key] of [["s-survey", "survey"], ["s-shuffle", "shuffle_seats"], ["s-parallel", "parallel_decisions"], ["s-human", "human_factor"]])
       $(id).addEventListener("change", ev => { S.cfg.run[key] = ev.target.checked; markDirty(); renderEstimate(); });
+    // Judges: one evaluator model from the panel; a second and third live in the council file.
+    function syncJudge() {
+      const provider = $("s-judge-provider").value;
+      const model = $("s-judge-model").value.trim();
+      S.cfg.run.judge = true;
+      if (provider && model) S.cfg.run.judge_backends = [{ provider: provider, model: model, label: model }];
+      else delete S.cfg.run.judge_backends;
+      S.cfg.run.judge_every_months = Math.max(1, Math.min(12, +$("s-judge-every").value || 1));
+    }
+    $("s-judge").addEventListener("change", ev => {
+      $("judge-fields").hidden = !ev.target.checked;
+      if (ev.target.checked) syncJudge();
+      else { delete S.cfg.run.judge; delete S.cfg.run.judge_backends; delete S.cfg.run.judge_every_months; }
+      markDirty(); renderEstimate();
+    });
+    $("s-judge-provider").addEventListener("change", () => { if (S.cfg.run.judge) syncJudge(); markDirty(); });
+    $("s-judge-model").addEventListener("input", () => { if (S.cfg.run.judge) syncJudge(); markDirty(); });
+    $("s-judge-every").addEventListener("change", () => { if (S.cfg.run.judge) syncJudge(); markDirty(); });
   }
 
   function maxCallEstimate(run, seats) {
     const phases = run.agent_architecture_version === 1 || run.revision_round === "off" ? 2 : 3;
+    const judges = run.judge ? (run.judge_backends || []).length *
+      Math.ceil((run.months || 0) / Math.max(1, run.judge_every_months || 1)) : 0;
     return seats * (phases * (run.months || 0) + 3 + (run.survey ? 1 : 0)) +
-      (run.foreign_cabinets ? 2 * (run.months || 0) : 0);
+      (run.foreign_cabinets ? 2 * (run.months || 0) : 0) + judges;
   }
   function renderEstimate() {
     const n = S.cfg.seats.length, months = S.cfg.run.months || 0;
     const calls = maxCallEstimate(S.cfg.run, n);
     const cli = S.cfg.seats.filter(s => CLI.includes(s.provider)).length;
     const paid = S.cfg.seats.filter(s => PAID.includes(s.provider) || (s.provider === "claude_cli" && s.api_key_env));
-    const lines = [el("div", null, "Up to ", el("b", { class: "num", text: int(calls) }), " model calls including diagnosis and two government formation calls per delegate" + (S.cfg.run.survey ? " and the questionnaire" : "") + (S.cfg.run.foreign_cabinets ? ", plus two foreign cabinet calls per month" : "") + ". Runs often end sooner; incomplete diagnoses may need one repair call.")];
+    const lines = [el("div", null, "Up to ", el("b", { class: "num", text: int(calls) }), " model calls including diagnosis and two government formation calls per delegate" + (S.cfg.run.survey ? " and the questionnaire" : "") + (S.cfg.run.foreign_cabinets ? ", plus two foreign cabinet calls per month" : "") + (S.cfg.run.judge ? ", plus the judges' monthly surveys" : "") + ". Runs often end sooner; incomplete diagnoses may need one repair call.")];
     if (cli) lines.push(el("div", null, "CLI calls vary widely in speed; a month can take several minutes or longer. Subscription usage limits can pause the run; resume it once they reset."));
     const priced = paid.filter(s => (s.price_in || 0) > 0 || (s.price_out || 0) > 0);
     if (priced.length) {
@@ -1582,6 +1659,27 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         return out;
       }
       case "finished": return [el("p", { class: "sysline", text: it.stopped ? "Stopped: " + it.stopped : "The run is over." })];
+      case "judge_start": return [el("p", { class: "sysline", text: "Judge " + it.label +
+        (it.model ? " (" + it.model + ")" : "") + " is reading the record…" })];
+      case "judge": {
+        const body = [el("div", { class: "by" }, el("b", { text: "Judge " + it.label }),
+          it.model ? " · " + it.model : "", it.latency_s ? " · " + dur(it.latency_s) : "")];
+        if (it.error) body.push(el("p", { class: "err", text: it.error }));
+        else {
+          for (const a of it.answers || []) {
+            let val;
+            if (a.kind === "choice") val = (a.choice || "?") +
+              (a.probability != null ? " · " + Math.round(a.probability * 100) + "%" : "");
+            else if (a.kind === "score") val = a.score != null ? String(a.score) : "?";
+            else val = (a.noul ? "not enough evidence" : "enough evidence") +
+              (a.probability != null ? " · " + Math.round(a.probability * 100) + "%" : "");
+            body.push(el("p", { class: "small" }, el("span", { class: "muted", text: a.id.replace(/_/g, " ") + ": " }),
+              el("span", { text: val })));
+          }
+          if ((it.problems || []).length) body.push(el("div", { class: "muted small", text: it.problems.join("; ") }));
+        }
+        return [el("div", { class: "judge-card" }, ...body)];
+      }
       case "error": return [el("p", { class: "err", text: it.text })];
       default: return [];
     }
@@ -1656,9 +1754,10 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     dismissed: 0, primed: false, notify: recall("live-notify") === "1", dms: {} };
   const FEED_KIND = { statement: "speech", revision: "speech", founding_diagnosis: "speech", formation_proposal: "speech",
     resolved: "votes", agenda: "votes", government_formation: "votes", thought: "thought", neighbours: "neighbours",
-    external_problem: "neighbours", problem: "problems", error: "problems", month_done: "summary" };
+    external_problem: "neighbours", problem: "problems", error: "problems", month_done: "summary",
+    judge: "judge", judge_start: "judge" };
   const FEED_FILTERS = [["speech", "Speech"], ["votes", "Votes"], ["thought", "Reasoning"], ["dm", "Private messages"],
-    ["neighbours", "Neighbours"], ["problems", "Problems"], ["summary", "Month summaries"]];
+    ["neighbours", "Neighbours"], ["judge", "Judges"], ["problems", "Problems"], ["summary", "Month summaries"]];
   const cap = s => s ? s[0].toUpperCase() + s.slice(1) : "";
   const REMOVED = { voted_out: "voted out with the government", lost_seat: "lost its own seat", failed_coup: "arrested after a failed coup",
     coup: "removed in a coup", officers_coup: "removed by the officers' coup", expelled: "expelled by the council",
@@ -1969,6 +2068,9 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       if (prevCheck === "running" && S.check.status !== "running") renderCheck();
       else if (S.check.status === "running") renderCheck();
       renderStatus();
+      if (B.server && (B.server.running || B.server.state === "running")) {
+        try { batchApply(await api("GET", "batch")); } catch (e) { /* the live view keeps going */ }
+      }
       pinFeed();         // the grid may only now have been shown
       renderDraft();
       if (wasActive && j && !j.active) { loadRuns(); if (j.status === "failed") toast("The run did not start or failed. See Live.", true); }
@@ -2708,6 +2810,171 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       el("p", { class: "muted small", text: n.caveat }))) : el("p", { class: "muted", text: "Run the same lineup with two or more seeds to see what varies." }));
   }
   $("compare-refresh").addEventListener("click", loadCompare);
+
+  // ================= BATCH =================
+  const B = { items: [], server: null };
+  const B_FRAME = ["", "simulation", "immersive", "unobserved"];
+  const B_SEV = ["", "default", "mild", "serious", "critical"];
+  const B_SCEN = ["", "random", "fragile-independence", "fiscal-inheritance", "regional-divide",
+                  "security-crisis", "trade-dependency", "post-regime-transition"];
+  // "↻ vary across rows": generated rows cycle through that knob's options in turn, so over a
+  // batch every value is used about equally often -- the conditioning mix, separate from seat mix.
+  function bMix(v, all, i) { return v === "__cycle" ? all[i % all.length] : v; }
+  function bOpts(list, value) {
+    return el("select", null, list.map(v => {
+      const o = el("option", null, v === "" ? "(from file)" : v);
+      o.value = v;
+      if (v === (value || "")) o.selected = true;
+      return o;
+    }));
+  }
+  function bDefaults() {
+    return { council: $("b-council").value, months: Math.max(1, +$("b-months").value || 36),
+             framing: $("b-framing").value, severity: $("b-severity").value, scenario: $("b-scenario").value,
+             seats: $("b-seats").value };
+  }
+  function bGenerate() {
+    const d = bDefaults();
+    const n = Math.max(1, Math.min(200, +$("b-count").value || 1));
+    let seed0 = +$("b-seed").value || 1;
+    const lastSeed = B.items.reduce((m, it) => Math.max(m, +it.seed || 0), 0);
+    if (B.items.length) seed0 = Math.max(seed0, lastSeed + 1);   // append: never collide with a row already listed
+    const prefix = ($("b-prefix").value || "b").trim() || "b";
+    for (let i = 0; i < n; i++) {
+      const seed = seed0 + i;
+      B.items.push({ name: prefix + "-s" + seed, council: d.council, seed: seed, months: d.months,
+                     framing: bMix(d.framing, B_FRAME.slice(1), i),
+                     severity: bMix(d.severity, B_SEV.slice(1), i),
+                     scenario: bMix(d.scenario, B_SCEN.slice(1), i), seats: d.seats,
+                     status: "pending" });
+    }
+    bRender();
+  }
+  function bPerCouncil() {
+    // one row per council file: the quick way to compare several lineups in one batch
+    const d = bDefaults();
+    const prefix = ($("b-prefix").value || "b").trim() || "b";
+    let seed = +$("b-seed").value || 1;
+    const lastSeed = B.items.reduce((m, it) => Math.max(m, +it.seed || 0), 0);
+    if (B.items.length) seed = Math.max(seed, lastSeed + 1);
+    const councils = S.configs.filter(c => !c.error).map(c => c.name);
+    councils.forEach((name, i) => {
+      const s = seed + i;
+      B.items.push({ name: prefix + "-s" + s, council: name, seed: s, months: d.months,
+                     framing: bMix(d.framing, B_FRAME.slice(1), i),
+                     severity: bMix(d.severity, B_SEV.slice(1), i),
+                     scenario: bMix(d.scenario, B_SCEN.slice(1), i), seats: d.seats,
+                     status: "pending" });
+    });
+    bRender();
+    toast(councils.length + " row(s) added — one per council file.");
+  }
+  function bAddRow() {
+    const d = bDefaults();
+    const last = B.items[B.items.length - 1];
+    const seed = last ? (+last.seed || 0) + 1 : (+$("b-seed").value || 1);
+    const prefix = ($("b-prefix").value || "b").trim() || "b";
+    B.items.push({ name: prefix + "-s" + seed, council: d.council, seed: seed, months: d.months,
+                   framing: bMix(d.framing, B_FRAME.slice(1), B.items.length),
+                   severity: bMix(d.severity, B_SEV.slice(1), B.items.length),
+                   scenario: bMix(d.scenario, B_SCEN.slice(1), B.items.length), seats: d.seats,
+                   status: "pending" });
+    bRender();
+  }
+  function bRender() {
+    const head = el("tr", null, ["#", "run name", "council", "seed", "months", "framing", "severity",
+                                 "scenario", "seats", "status", ""].map(h => el("th", null, h)));
+    const rows = B.items.map((it, i) => {
+      const st = el("td", { class: "small" }, it.status || "pending",
+        it.months_done ? " · " + it.months_done + " mo" : null,
+        it.launched_council ? " · ran " + it.launched_council : null,
+        it.note ? el("span", { class: "muted", title: it.note, text: " ⓘ" }) : null);
+      return el("tr", null,
+        el("td", { class: "small" }, String(i + 1)),
+        el("td", null, (() => { const n = el("input", { type: "text", value: it.name, style: "width:10em" });
+          n.addEventListener("input", () => { it.name = n.value.trim(); }); return n; })()),
+        el("td", null, (() => { const s = bOpts(S.configs.map(c => c.name), it.council);
+          s.addEventListener("change", () => { it.council = s.value; }); return s; })()),
+        el("td", null, (() => { const n = el("input", { type: "number", value: it.seed, style: "width:5.5em" });
+          n.addEventListener("input", () => { it.seed = +n.value || 0; }); return n; })()),
+        el("td", null, (() => { const n = el("input", { type: "number", value: it.months, style: "width:4.5em" });
+          n.addEventListener("input", () => { it.months = +n.value || 0; }); return n; })()),
+        el("td", null, (() => { const s = bOpts(B_FRAME, it.framing); s.addEventListener("change", () => { it.framing = s.value; }); return s; })()),
+        el("td", null, (() => { const s = bOpts(B_SEV, it.severity); s.addEventListener("change", () => { it.severity = s.value; }); return s; })()),
+        el("td", null, (() => { const s = bOpts(B_SCEN, it.scenario); s.addEventListener("change", () => { it.scenario = s.value; }); return s; })()),
+        el("td", null, (() => { const s = bOpts(["", "rotate", "shuffle"], it.seats || ""); s.addEventListener("change", () => { it.seats = s.value; }); return s; })()),
+        st,
+        el("td", null, el("button", { class: "btn small", type: "button",
+          onclick: () => { B.items.splice(i, 1); bRender(); } }, "×")));
+    });
+    put($("b-table"), head, rows);
+    const srv = B.server || {};
+    const locked = !!srv.running;      // while the batch runs, what is on screen IS what is running
+    for (const id of ["b-generate", "b-mix", "b-percouncil", "b-addrow", "b-run", "b-save",
+                      "b-name", "b-months", "b-seed", "b-count", "b-prefix"]) {
+      const node = $(id);
+      if (node) node.disabled = locked;
+    }
+    for (const node of $("b-table").querySelectorAll("input, select, button")) node.disabled = locked;
+    let line = B.items.length + " row(s)";
+    if (locked) line += " — locked while the batch runs; press Stop batch to edit";
+    if (srv.state === "running") line = "running: " + (srv.current_run || "…") + " · " + line;
+    if (srv.note) line += " — " + srv.note;
+    $("b-status").textContent = line;
+  }
+  function bFill() {
+    const names = S.configs.filter(c => !c.error).map(c => c.name);
+    put($("b-council"), names.map(n => { const o = el("option", null, n); o.value = n; return o; }));
+    const rec = recall("batch-council");
+    if (rec && names.includes(rec)) $("b-council").value = rec;
+    put($("b-load-select"), ((B.server && B.server.batches) || []).map(n => { const o = el("option", null, n); o.value = n; return o; }));
+    $("b-council").addEventListener("change", () => store("batch-council", $("b-council").value));
+  }
+  function batchApply(d) {
+    B.server = d;
+    if (d && d.name) $("b-name").value = d.name;
+    if (d && Array.isArray(d.items) && (d.running || B.items.length === 0)) B.items = d.items;
+    bRender();
+  }
+  async function loadBatch(name) {
+    try {
+      bFill();
+      const d = await api("GET", "batch", null, name ? { name: name } : null);
+      batchApply(d);
+    } catch (e) { toast(e.message, true); }
+  }
+  async function bSave() {
+    try { batchApply(await api("POST", "batch", { action: "save", plan: bPlan() })); toast("Batch saved."); }
+    catch (e) { toast(e.message, true); }
+  }
+  async function bRun() {
+    try {
+      batchApply(await api("POST", "batch", { action: "start", plan: bPlan() }));
+      showTab("live"); kick(); toast("Batch started; it runs the rows in order.");
+    } catch (e) { toast(e.message, true); }
+  }
+  async function bStop() {
+    try { await api("POST", "batch", { action: "stop" }); toast("Batch will stop after the current month."); }
+    catch (e) { toast(e.message, true); }
+  }
+  function bPlan() { return { name: ($("b-name").value || "").trim(), items: B.items }; }
+  $("b-generate").addEventListener("click", bGenerate);
+  $("b-percouncil").addEventListener("click", bPerCouncil);
+  $("b-mix").addEventListener("click", () => {
+    // one click = a fully mixed batch: seats rotate through the letters and all three
+    // conditions vary across rows, then the rows are generated
+    $("b-seats").value = "rotate";
+    $("b-framing").value = "__cycle";
+    $("b-severity").value = "__cycle";
+    $("b-scenario").value = "__cycle";
+    bGenerate();
+    toast("Mixed batch generated: seats rotate, framing/severity/scenario vary across rows.");
+  });
+  $("b-addrow").addEventListener("click", bAddRow);
+  $("b-save").addEventListener("click", bSave);
+  $("b-load").addEventListener("click", () => { const sel = $("b-load-select"); if (sel.value) loadBatch(sel.value); });
+  $("b-run").addEventListener("click", bRun);
+  $("b-stop").addEventListener("click", bStop);
 
   // ================= START =================
   async function init() {

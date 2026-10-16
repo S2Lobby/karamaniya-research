@@ -281,7 +281,9 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
                                                    "government_formation_pending": formation_pending})
     if paused:
         return _end(store, world, council, paused, quiet, observer)
-    return _loop(store, world, council, run, quiet, observer, stop_event, live_report)
+    from .judges import JudgePanel
+    panel = JudgePanel(run, observer) if run.get("judge") else None
+    return _loop(store, world, council, run, quiet, observer, stop_event, live_report, panel)
 
 
 def resume_run(run_dir, quiet=False, observer=None, stop_event=None, live_report=False, check=True) -> Path:
@@ -354,7 +356,9 @@ def resume_run(run_dir, quiet=False, observer=None, stop_event=None, live_report
         _apply_scenario(world, cfg["run"])
         meta.update({"stopped": "", "log_mark": store.mark()})
         store.save_checkpoint(world, council.state(), meta)
-    return _loop(store, world, council, cfg["run"], quiet, observer, stop_event, live_report)
+    from .judges import JudgePanel
+    panel = JudgePanel(cfg["run"], observer) if cfg["run"].get("judge") else None
+    return _loop(store, world, council, cfg["run"], quiet, observer, stop_event, live_report, panel)
 
 
 def _apply_scenario(world, run: dict) -> None:
@@ -386,7 +390,7 @@ def _maybe_upgrade(store: RunStore, cfg: dict, world, quiet: bool) -> bool:
 
 
 def _loop(store: RunStore, world, council: Council, run: dict, quiet: bool, observer=None,
-          stop_event=None, live_report=False) -> Path:
+          stop_event=None, live_report=False, judge_panel=None) -> Path:
     from .report import build_report
     cap = float(run.get("max_cost_usd") or 0.0)
     stopped, paused = "", False
@@ -425,6 +429,14 @@ def _loop(store: RunStore, world, council: Council, run: dict, quiet: bool, obse
         # month's lines stay and the replay appends a second copy. Storing the mark lets the next
         # resume truncate back to the last month that actually completed.
         store.save_checkpoint(world, council.state(), {"stopped": "", "log_mark": store.mark()})
+        if judge_panel is not None and judge_panel.due(world):
+            # Evaluators observe the month just finished. A judge failure is recorded in its own
+            # record and never pauses the run: the government keeps governing whatever the judges do.
+            try:
+                for rec in judge_panel.survey(world):
+                    store.log(rec)
+            except Exception:
+                traceback.print_exc()
         if live_report:
             build_report(store)
         h = world.history[-1]

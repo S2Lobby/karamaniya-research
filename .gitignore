@@ -12,3 +12,6 @@ council.toml
 # Local tooling and the output of tools/research_*.py, which is derived from your own runs.
 .claude/
 research_work/
+runs-bench/
+overnight_logs/
+batches/

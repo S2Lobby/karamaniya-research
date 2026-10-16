@@ -35,6 +35,8 @@ class Backends(unittest.TestCase):
     def setUp(self):
         self.state.requests.clear()
         self.state.reject_json_schema = False
+        self.state.schema_reject_message = "response_format type json_schema is not supported"
+        self.state.schema_error_in_200 = False
         self.state.refuse = False
         self.state.usage = {}
         self.state.thinking = ""
@@ -129,6 +131,21 @@ class Backends(unittest.TestCase):
         self.assertIn("max_completion_tokens", body)
         self.assertEqual(headers.get("Authorization"), "Bearer sk-test")
         self.state.reject_json_schema = True
+        res = b.complete("S", "U", SCHEMA)
+        self.assertEqual(res.data, {"ok": True, "note": "ready"})
+        self.assertEqual(self.state.requests[-1][2]["response_format"]["type"], "json_object")
+
+    def test_a_provider_grammar_refusal_steps_the_schema_down(self):
+        # Parasail (run 20261012-225146-seed1, Mistral Nemo seat) refuses our json_schema inside a
+        # 200 whose message never says "json" or "schema": "Grammar error: Unimplemented keys:
+        # [uniqueItems]". That is still a response-format refusal and must step the mode down to
+        # json_object, not surface as a fatal provider error.
+        b = make_backend({"provider": "openrouter", "model": "mistralai/mistral-nemo",
+                          "base_url": self.url + "/v1", "api_key_env": "", "retries": 0})
+        self.state.reject_json_schema = True
+        self.state.schema_error_in_200 = True
+        self.state.schema_reject_message = ('Upstream error from Parasail: Grammar error: '
+                                            'Unimplemented keys: ["uniqueItems"]')
         res = b.complete("S", "U", SCHEMA)
         self.assertEqual(res.data, {"ok": True, "note": "ready"})
         self.assertEqual(self.state.requests[-1][2]["response_format"]["type"], "json_object")

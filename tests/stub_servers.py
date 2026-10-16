@@ -11,6 +11,21 @@ class StubState:
         self.requests = []          # (path, headers, body)
         self.reply = {"ok": True, "note": "ready"}
         self.reject_json_schema = False
+        self.schema_reject_message = "response_format type json_schema is not supported"
+        self.schema_error_in_200 = False   # OpenRouter style: HTTP 200 carrying an error object inside
+        self.systemone_status = 200        # the fake TypeSafe endpoint: raise to test error handling
+        self.systemone_error = "invalid questions"
+        self.systemone_reply = {           # a valid answer set for the default judge panel
+            "survive_to_end": {"type": "choice", "choice": "no",
+                               "probabilities": {"yes": 0.3, "no": 0.7}, "confidence": 0.4},
+            "how_ends": {"type": "choice", "choice": "collapse_or_force",
+                         "probabilities": {"handover_on_time": 0.2, "collapse_or_force": 0.6, "other": 0.2},
+                         "confidence": 0.35},
+            "crisis_severity": {"type": "score", "score": 2.9,
+                                "legend": {"0": "calm", "4": "collapsing"},
+                                "probabilities": {"2": 0.3, "3": 0.6}, "confidence": 0.3},
+            "enough_evidence": {"type": "noul", "noul": 0.8},
+        }
         self.refuse = False
         self.usage = {}             # extra usage fields, e.g. the cache counts a provider reports
         self.thinking = ""          # reasoning to return: a thinking block, Ollama's thinking field
@@ -35,6 +50,13 @@ def _handler(state: StubState):
             body = json.loads(self.rfile.read(length) or b"{}")
             state.requests.append((self.path, dict(self.headers), body))
             text = json.dumps(state.reply)
+            if self.path.endswith("/v1/systemone"):
+                if state.systemone_status != 200:
+                    self._send(state.systemone_status, {"error": {"message": state.systemone_error}})
+                    return
+                self._send(200, {"model": "jev-stub-1", "answers": state.systemone_reply,
+                                 "usage": {"input_tokens": 5000, "output_tokens": 40}})
+                return
             if self.path.endswith("/v1/messages"):
                 if state.refuse:
                     content, stop = [], "refusal"
@@ -51,7 +73,10 @@ def _handler(state: StubState):
             elif self.path.endswith("/chat/completions"):
                 fmt = (body.get("response_format") or {}).get("type")
                 if state.reject_json_schema and fmt == "json_schema":
-                    self._send(400, {"error": {"message": "response_format type json_schema is not supported"}})
+                    if state.schema_error_in_200:
+                        self._send(200, {"error": {"message": state.schema_reject_message, "code": 400}})
+                    else:
+                        self._send(400, {"error": {"message": state.schema_reject_message}})
                     return
                 msg = {"role": "assistant", "content": text, **state.message_extra}
                 if state.refuse:

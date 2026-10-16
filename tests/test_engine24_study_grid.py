@@ -111,7 +111,7 @@ class PlanShapeTests(TempDirTests):
 
     def test_configs_carry_the_study_keys(self):
         plan_dir = self.tmp / "plan"
-        study_grid.plan_study(self.study(seeds=(7,), rotations=2, protocols=["fixed_precedence"], months=9), plan_dir)
+        study_grid.plan_study(self.study(seeds=(7,), rotations=1, protocols=["fixed_precedence"], months=9), plan_dir)
         (row,) = study_grid.load_plan(plan_dir / "plan.json")
         raw = tomllib.loads((plan_dir / row["config"]).read_text(encoding="utf-8"))["run"]
         self.assertEqual(raw["office_assignment"], "by_letter")
@@ -210,7 +210,7 @@ class DryRunConfigTests(TempDirTests):
         self.assertEqual(dry["run"]["months"], study_grid.DRY_MONTHS)
         self.assertEqual([s["label"] for s in dry["seats"]], [s["label"] for s in cfg["seats"]])
         self.assertEqual({s["provider"] for s in dry["seats"]}, {"scripted"})
-        self.assertEqual([s["persona"] for s in dry["seats"]], study_grid.DRY_PERSONAS)
+        self.assertEqual([s["persona"] for s in dry["seats"]], list(study_grid.DRY_PERSONAS))
         self.assertEqual(dry["run"]["foreign_cabinet_backend"]["provider"], "scripted")
         self.assertIs(dry["run"]["judge"], False)
         self.assertNotIn("judge_backends", dry["run"])
@@ -400,6 +400,73 @@ class CommandLineTests(TempDirTests):
             code = study_grid.main(["run", str(plan_dir / "plan.json"), "--dry-run", "--workers", "1",
                                     "--runs-dir", str(self.tmp / "runs")])
         self.assertEqual(code, 0)
+
+
+class RealEngineTests(TempDirTests):
+    """The real engine, with scripted seats and no model calls: a non-dry run from the config file, and a resume of
+    a finished or a mismatched run folder."""
+
+    def grid(self, seeds, months=1, no_study_options=True):
+        plan_dir = self.tmp / "plan"
+        study_grid.plan_study(self.study(seeds=seeds, rotations=2, protocols=["seeded_shuffle"], months=months),
+                              plan_dir, no_study_options=no_study_options)
+        return plan_dir / "plan.json"
+
+    def dry(self, plan, runs):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return study_grid.run_plan(plan, workers=2, max_resumes=3, runs_dir=runs, dry_run=True,
+                                       out=lambda s: None)
+
+    def test_a_finished_row_resumed_by_hand_stays_done_and_counts_the_resume(self):
+        plan, runs = self.grid((41,)), self.tmp / "runs"
+        name = next(iter(self.dry(plan, runs)))
+        status_file = plan.parent / "status-dry-run.json"
+        status = json.loads(status_file.read_text(encoding="utf-8"))
+        status[name]["state"] = "paused"
+        status_file.write_text(json.dumps(status), encoding="utf-8")
+        again = self.dry(plan, runs)
+        self.assertEqual((again[name]["state"], again[name]["resumes"]), ("done", 1))
+        self.assertEqual(again[name]["months_done"], 1)
+
+    def test_a_folder_that_is_not_the_rows_own_is_failed_not_resumed(self):
+        plan, runs = self.grid((42,)), self.tmp / "runs"
+        name = next(iter(self.dry(plan, runs)))
+        rows = json.loads(plan.read_text(encoding="utf-8"))
+        row = next(r for r in rows if r["name"] == name)
+        row["seat_map"]["A"], row["seat_map"]["B"] = row["seat_map"]["B"], row["seat_map"]["A"]
+        plan.write_text(json.dumps(rows), encoding="utf-8")
+        status_file = plan.parent / "status-dry-run.json"
+        status = json.loads(status_file.read_text(encoding="utf-8"))
+        status[name]["state"] = "paused"
+        status_file.write_text(json.dumps(status), encoding="utf-8")
+        after = self.dry(plan, runs)
+        self.assertEqual(after[name]["state"], "failed")
+        self.assertIn("not this row's run", after[name]["reason"])
+
+    def test_a_real_run_of_scripted_seats_starts_from_the_config_file(self):
+        plan = self.grid((43,), months=1, no_study_options=False)
+        runs = self.tmp / "runs"
+        known = dict(RUN_DEFAULTS, office_assignment="formation", action_order="seeded_shuffle")
+        with mock.patch.object(study_grid, "RUN_DEFAULTS", known),                 contextlib.redirect_stdout(io.StringIO()):
+            status = study_grid.run_plan(plan, workers=2, max_resumes=3, runs_dir=runs, dry_run=False,
+                                         out=lambda s: None)
+        self.assertEqual({rec["state"] for rec in status.values()}, {"done"})
+        name = next(iter(status))
+        self.assertTrue((plan.parent / "status.json").is_file())
+        self.assertFalse((plan.parent / "status-dry-run.json").exists())
+        self.assertTrue((runs / name / "checkpoint.json").is_file(), "a real run keeps the row's own name")
+
+    def test_the_command_line_refuses_a_study_the_engine_would_ignore(self):
+        plan_dir = self.tmp / "refused"
+        study_grid.plan_study(self.study(seeds=(44,), rotations=1, protocols=["seeded_shuffle"], months=1), plan_dir)
+        today = {k: v for k, v in RUN_DEFAULTS.items() if k not in study_grid.STUDY_OPTIONS}
+        err = io.StringIO()
+        with mock.patch.object(study_grid, "RUN_DEFAULTS", today), contextlib.redirect_stderr(err),                 contextlib.redirect_stdout(io.StringIO()):
+            code = study_grid.main(["run", str(plan_dir / "plan.json"), "--dry-run", "--runs-dir",
+                                    str(self.tmp / "runs")])
+        self.assertEqual(code, 2)
+        self.assertIn("office_assignment", err.getvalue())
+        self.assertFalse((plan_dir / "status-dry-run.json").exists(), "nothing starts when the plan is refused")
 
 
 if __name__ == "__main__":

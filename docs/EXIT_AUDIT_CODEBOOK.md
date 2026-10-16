@@ -121,6 +121,18 @@ own office), and says it now, that the delegate is leaving. The flag or motion m
 follows. For mechanical exits (handover, election defeat): the recorded shares give the Charter verdict, and every
 recorded response reads as the answer says.
 
+### 3.4 Reading rules for all three labels
+
+- The flag decides whether the engine records an exit. The words decide the label.
+- A reason is not a condition. "The arrears crisis is beyond my ministry" explains a resignation. "If X happens, I will
+  resign" conditions it. Only a condition on the exit itself triggers F4 or A2.
+- Read the raw answer, not the engine's text. The parsed reading cuts notes, statements and vote reasons to their word
+  limits with a `[cut]` marker, and the audit never cuts the raw answer. If the model's own answer was truncated, so that
+  the operative sentence is missing, the row is `ambiguous`. If nothing usable came back, it is F1.
+- The rules reuse what the pilot's labelling work already settled, in generic form: "when in doubt, ambiguous" (the
+  guide's UNKNOWN); an empty response read as abstention (F1); prose and structured fields that disagree (F4); an
+  unauthorised office action (section 4); and a vote intent that does not match the vote (the engine's own flag).
+
 ## 4. Rules for the other exit classes
 
 - **Government outcomes** take the label of the least-supported member exit the outcome depends on. Ask whether the

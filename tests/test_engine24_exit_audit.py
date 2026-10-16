@@ -395,7 +395,7 @@ class AgreementTests(unittest.TestCase):
         write_labels(b, "annotator_2", pairs_b)
         return a, b
 
-    def test_two_by_two_textbook_table(self):
+    def test_two_by_two_hand_computed_table(self):
         # 50 items, labels 'supported' (yes) and 'ambiguous' (no):
         #   both yes 20, A yes/B no 5, A no/B yes 10, both no 15.
         #   p_o = (20+15)/50 = 0.70. Marginals A: yes 25/50, B: yes 30/50.

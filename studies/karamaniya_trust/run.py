@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -54,8 +55,14 @@ def _shown(path: Path) -> str:
         return path.name
 
 
+def _write_text(path: Path, text: str) -> None:
+    """Write with LF line endings. Path.write_text would write CRLF on Windows; the repository is LF."""
+    with path.open("w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+
+
 def _json(path: Path, data) -> None:
-    path.write_text(json.dumps(data, indent=1, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
+    _write_text(path, json.dumps(data, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
 
 
 def _legacy_run(config: Path, months: int, seed: int, out: Path):
@@ -94,7 +101,7 @@ def _parity(config: Path, months: int, seed: int, out: Path, seam) -> dict:
 
 def _report(path: Path, title: str, lines: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join([f"# {title}", "", *lines]) + "\n", encoding="utf-8")
+    _write_text(path, "\n".join([f"# {title}", "", *lines]) + "\n")
 
 
 def run_cell(*, config: Path, months: int, seed: int, name: str, out: Path, report_dir: Path, check: bool,
@@ -108,6 +115,10 @@ def run_cell(*, config: Path, months: int, seed: int, name: str, out: Path, repo
     from studies.karamaniya_trust.adapter.providers import build_karamaniya_simulator
 
     out.mkdir(parents=True, exist_ok=True)
+    if dry_run:
+        # A dry run regenerates its own run folders. A real run never overwrites one: the legacy refuses that too.
+        for stale in ("wrapped_run", "legacy_run"):
+            shutil.rmtree(out / stale, ignore_errors=True)
     sim, seam = build_karamaniya_simulator(config=config, runs_dir=out, name="wrapped_run", months=months,
                                            seed=seed, trajectory_dir=out, check=check)
     status, history = "finished", None
@@ -200,11 +211,10 @@ def materialize() -> int:
         provider_args={"config": _shown(DRY_COUNCIL), "seed": DRY_SEED},
         materialized_count=len(personas),
     )
-    (STUDY / "population" / "population.json").write_text(
-        json.dumps(bundle.model_dump(mode="json"), indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-    with (STUDY / "population" / "roster.jsonl").open("w", encoding="utf-8", newline="\n") as f:
-        for row in rows:
-            f.write(json.dumps(row.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    _write_text(STUDY / "population" / "population.json",
+                json.dumps(bundle.model_dump(mode="json"), indent=1, ensure_ascii=False) + "\n")
+    _write_text(STUDY / "population" / "roster.jsonl",
+                "".join(json.dumps(row.model_dump(mode="json"), ensure_ascii=False) + "\n" for row in rows))
     print(f"wrote population/population.json ({len(personas)} delegates) and population/roster.jsonl")
     return 0
 

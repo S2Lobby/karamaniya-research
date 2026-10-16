@@ -359,6 +359,18 @@ def read_answer(normalise, w: World, mid: str, data, *args) -> tuple:
         return empty, [problem]
 
 
+def _dm_recipient(dm: dict):
+    """The recipient a message names: its "to". One that names it under "recipient" is read the same way (run
+    20261011-211521-seed1, Month 9: three messages named their recipient under "recipient" and were all refused as
+    "bad private message recipient 'None'"). "to" wins when both are given."""
+    return dm["to"] if "to" in dm else dm.get("recipient")
+
+
+def _dm_target(dm: dict) -> str:
+    raw = _dm_recipient(dm)
+    return str("" if raw is None else raw).strip().upper().replace("DELEGATE ", "")
+
+
 def _dms(w: World, mid: str, raw, quota: int, problems: list) -> list:
     out = []
     ids = {m.id for m in w.active_members()}
@@ -368,10 +380,10 @@ def _dms(w: World, mid: str, raw, quota: int, problems: list) -> list:
             break
         if not isinstance(dm, dict):
             continue
-        to = str(dm.get("to", "")).strip().upper().replace("DELEGATE ", "")
+        to = _dm_target(dm)
         text = words(dm.get("text", ""), DM_WORDS)
         if to not in ids:
-            problems.append(f"bad private message recipient '{dm.get('to')}'")
+            problems.append(f"bad private message recipient '{_dm_recipient(dm)}'")
             continue
         if to == mid:
             problems.append(f"private message cannot be sent to self ('{to}')")
@@ -391,7 +403,10 @@ def cap_refusal(mid: str, mo: dict) -> dict:
                             "table it again next month if it still matters")}
 
 
-def normalize_session(w: World, mid: str, data, dm_quota: int) -> tuple:
+def normalize_session(w: World, mid: str, data, dm_quota: int, defer_to_v2: bool = False) -> tuple:
+    """`defer_to_v2` is set by normalize_session_v2, which reads the messages itself. Without it the messages were read
+    twice and each refusal was reported twice (run 20261011-211521-seed1, Month 9: 3 refused messages, 6 problems). The
+    list is still read, so its "not a list" problem is kept."""
     problems = []
     if not isinstance(data, dict):
         return {"private_position": "", "statement": "", "motions": [], "promises": [],
@@ -426,7 +441,8 @@ def normalize_session(w: World, mid: str, data, dm_quota: int) -> tuple:
             promises.append({"to": to.lower() if to.lower() == "public" else to,
                              "text": text, "condition": words(item.get("condition", ""), CONDITION_WORDS)})
     private_position = words(data.get("private_position", ""), 45)
-    dms = _dms(w, mid, _listed(data.get("private_messages"), "private_messages", problems), dm_quota, problems)
+    raw_dms = _listed(data.get("private_messages"), "private_messages", problems)
+    dms = [] if defer_to_v2 else _dms(w, mid, raw_dms, dm_quota, problems)
     principles = words(data.get("principles", ""), PRINCIPLES_WORDS) if w.human_factor else ""
     return {"private_position": private_position, "statement": statement, "motions": motions,
             "promises": promises, "private_messages": dms,
@@ -769,8 +785,7 @@ def _v2_dms(w: World, mid: str, raw, quota: int, problems: list) -> list:
     kinds = {}
     for dm in raw if isinstance(raw, list) else []:
         if isinstance(dm, dict):
-            kinds.setdefault(str(dm.get("to", "")).strip().upper().replace("DELEGATE ", ""), []).append(
-                str(dm.get("kind", "")).strip().lower())
+            kinds.setdefault(_dm_target(dm), []).append(str(dm.get("kind", "")).strip().lower())
     for dm in out:
         given = (kinds.get(dm["to"]) or [""]).pop(0) if kinds.get(dm["to"]) else ""
         dm["kind"] = given if given in DM_KINDS else infer_kind(dm["text"])
@@ -1016,7 +1031,7 @@ def _shares(raw, problems: list | None = None) -> list:
 
 
 def normalize_session_v2(w: World, mid: str, data, dm_quota: int) -> tuple:
-    base, problems = normalize_session(w, mid, data, dm_quota)
+    base, problems = normalize_session(w, mid, data, dm_quota, defer_to_v2=True)
     if not isinstance(data, dict):
         base.update(private_position={k: "" for k in POSITION_FIELDS}, communications=[], information_requests=[],
                     share_reports=[], agenda_priorities=[], strategy={})

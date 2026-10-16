@@ -1535,12 +1535,25 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     A refused act gives its refusals. A kept act gives what was read or changed in it: a word read as its number, a
     region read from its name, the one demand an ultimatum carries. Each reason is a problem in the month's record, and
     normalize_cabinet_output sends it to the cabinet as a note."""
+    # Runs 20261008-130316-seed1 and 20261011-211521-seed1: eight acts that were valid types were written under "action"
+    # instead of "type", and each was refused as an unsupported act. The act is read as the type it names. "type" wins
+    # when both are given, and a value that is no act of this cabinet is still refused.
+    named = None
+    if isinstance(raw, dict) and "type" not in raw and isinstance(raw.get("action"), str) and raw["action"] in allowed:
+        named = raw["action"]
+        raw = {**raw, "type": named}
     if not isinstance(raw, dict) or not isinstance(raw.get("type"), str) or raw.get("type") not in allowed:
         # Audit CO2-f: a type that is not text (a list, say) is an unsupported action, not an error in the set test.
         return None, ["unsupported cabinet action"]
     kind = raw["type"]
     action, changes = {"type": kind}, []
-    magnitude = raw.get("magnitude", .5)
+    if named is not None:
+        changes.append(f"type '{named}' was read from the key 'action'")
+    # A null magnitude is read as absent, as the reader reads its other optional fields. Runs 20261010-002051-seed1 and
+    # 20261010-070501-seed1: schema-filled answers had "magnitude": null, and each such act was refused.
+    magnitude = raw.get("magnitude")
+    if magnitude is None:
+        magnitude = .5
     if isinstance(magnitude, str) and _spaced_lower(magnitude) in MAGNITUDE_WORDS:
         magnitude_read = MAGNITUDE_WORDS[_spaced_lower(magnitude)]
         changes.append(f"magnitude '{magnitude.strip()}' was read as {magnitude_read:g}")
@@ -1548,7 +1561,9 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     if not isinstance(magnitude, (int, float)) or not math.isfinite(magnitude) or not 0 <= magnitude <= 1:
         return None, ["action magnitude must be between 0 and 1"]
     action["magnitude"] = float(magnitude)
-    if "troops" in raw:
+    # A null troops is absent, as the reader reads a null magnitude (runs 20261010-002051-seed1 and 20261010-070501-seed1).
+    # A force act with no troops is then refused by foreign_force.check, which names the troops it needs.
+    if raw.get("troops") is not None:
         if isinstance(raw["troops"], int) and not isinstance(raw["troops"], bool) and raw["troops"] >= 0:
             action["troops"] = raw["troops"]
         else:
@@ -1614,7 +1629,8 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
 #: A name or a word the reader read as the id or the number it means. The act went ahead as the cabinet meant it, so the
 #: reading is kept in the month's record and not sent to the cabinet as a refusal (engine 23: engine 22 listed every
 #: "Kessel Valley" under your_acts_refused_last_month, which told a cabinet its covert support had failed when it had not).
-_READING = re.compile(r"^(?:magnitude|region) '.*' was read as \S+$")
+#: A type written under "action" is read the same way (engine 24).
+_READING = re.compile(r"^(?:magnitude|region) '.*' was read as \S+$|^type '\S+' was read from the key 'action'$")
 #: An answer's own key that holds acts it chose not to take this month ("actions_held"), or plans for later. Its acts are
 #: not this month's, so no note is sent for them.
 _NOT_THIS_MONTH = ("held", "hold", "next", "plan", "later", "reserve", "defer", "consider")
@@ -1670,6 +1686,8 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
         raw_actions = []
     for index, raw in enumerate(raw_actions):
         kind = raw.get("type") if isinstance(raw, dict) and isinstance(raw.get("type"), str) else None
+        if kind is None and isinstance(raw, dict) and "type" not in raw and isinstance(raw.get("action"), str):
+            kind = raw["action"]  # the name the act was written under, for its note (see _read_act)
         if index >= 4:
             # A cabinet acts on four things a month (cabinet_schema's maxItems): the rest are not read, and say so.
             problems.append("only the first 4 acts of a month are read")

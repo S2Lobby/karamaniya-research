@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from pathlib import Path
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -46,6 +47,10 @@ def write_config(path, option=None, seats=5, months=2):
 def read_jsonl(path):
     with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+class Crash(BaseException):
+    """Stands in for a process that dies mid-run: a BaseException, so no handler in the engine catches it."""
 
 
 def scripted_seats(count):
@@ -191,6 +196,30 @@ class ByLetterRunTests(unittest.TestCase):
 
     def test_every_office_gets_the_same_loyalty_reset_the_vote_gives_it(self):
         self.assertLessEqual(set(OFFICES), set(self.reset_offices))
+
+    def test_a_run_that_dies_at_the_formation_resumes_with_the_offices_assigned_once(self):
+        tmp = tempfile.mkdtemp(prefix="karamaniya-s1-crash-")
+        try:
+            def die_at_formation(event):
+                if event.get("type") == "government_formation":
+                    raise Crash()
+
+            with self.assertRaises(Crash):
+                new_run(self.config, runs_dir=tmp, name="crashed", months=2, quiet=True, check=False,
+                        observer=die_at_formation)
+            path = Path(tmp) / "crashed"
+            _, _, meta = RunStore(path).load_checkpoint()
+            self.assertTrue(meta.get("government_formation_pending"))
+            resumed = resume_run(path, quiet=True, check=False)
+            after, _, _ = RunStore(resumed).load_checkpoint()
+            self.assertEqual(len(after.history), 2)
+            self.assertEqual(after.history[1]["offices"], OFFICE_LETTER)
+            self.assertEqual(after.founding["formation"]["assignment"], "by_letter")
+            self.assertEqual(len(RunStore(resumed).read_log("government_formation")), 1)
+            calls = RunStore(resumed).read_log("call")
+            self.assertEqual([c for c in calls if c.get("phase") in FORMATION_CALLS], [])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_a_run_stopped_before_month_one_resumes_with_the_same_offices_and_no_formation_call(self):
         tmp = tempfile.mkdtemp(prefix="karamaniya-s1-resume-")

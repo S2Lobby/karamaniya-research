@@ -28,6 +28,7 @@ RUN_DEFAULTS = {
     "foreign_cabinets": True,      # two monthly strategic calls, reusing configured council backends
     "judge": False,                # evaluator models observing the run from outside it (judges.py)
     "foreign_cabinet_seats": {},  # optional actor -> existing seat label; otherwise first two configured seats
+    "action_order": "seeded_shuffle",  # seeded_shuffle | fixed_precedence: the speaking order (council.speaking_order)
 }
 
 
@@ -144,6 +145,12 @@ def normalize_config(raw: dict, source: str = "") -> dict:
             raise ValueError("ballot must be 'open' or 'secret'")
         if run["ballot"] == "open":
             del run["ballot"]
+    # The action-order arm (brief 9.S3). It is always recorded, unlike the arms above, because the study compares the
+    # two protocols on the same seeds and each run's config.json must say which one it used. "seeded_shuffle" is the
+    # order the council has always drawn each month; "fixed_precedence" speaks the office holders first, in the order
+    # of world.OFFICES, and the other active members in letter order.
+    if run["action_order"] not in ("seeded_shuffle", "fixed_precedence"):
+        raise ValueError("action_order must be 'seeded_shuffle' or 'fixed_precedence'")
     from .founding import SCENARIOS, TEMPLATES
     if run["founding_scenario"] not in ({"random", "custom"} | set(SCENARIOS)):
         raise ValueError("founding_scenario must be random, custom, or a named scenario")

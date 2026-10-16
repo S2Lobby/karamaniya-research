@@ -170,6 +170,8 @@ def build(world: World, cfg: dict, council_state: dict | None = None, store=None
             "derivation": "rng_for(run_seed, month, tag) -> sha256, one stream per tag",
             "streams": SEEDED_STREAMS,
         },
+        # The speaking order each month (council.speaking_order). An older run has no key and used the seeded shuffle.
+        "action_order": run.get("action_order", "seeded_shuffle"),
         "structural_parameters": causality.ensure(world),
         "sampling": sampling(cfg),
         "seats": seat_rows,
@@ -213,6 +215,8 @@ def divergences(a: dict, b: dict) -> list:
         out.append("structural_parameters")
     if a.get("sampling") != b.get("sampling"):
         out.append("sampling_settings")
+    if (a.get("action_order") or "seeded_shuffle") != (b.get("action_order") or "seeded_shuffle"):
+        out.append("action_order")
     sa = {(s["seat"], s.get("label")) for s in a.get("seats", [])}
     sb = {(s["seat"], s.get("label")) for s in b.get("seats", [])}
     if sa != sb:

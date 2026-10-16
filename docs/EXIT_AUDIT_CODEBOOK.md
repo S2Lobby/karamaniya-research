@@ -71,8 +71,9 @@ this list when it appears.
 - `parsed`: the engine's reading: the resign flag, the election response, the coup action, or the motion's fields.
 - `state_change`: the holder before the resolution, the checkpoint status, the offices vacated.
 - `engine_flags`: what the engine recorded for this member and month: problems, errors, format retries, rejected
-  motions, mismatches, and cut limits. `cut_unstated_limit` means the engine cut a field to a length no prompt states
-  (the engine's scorecard calls these "unstated_limit").
+  motions, mismatches, and cut limits. `cut_unstated_limit` means the engine's own check (actions.py:110-122) found that
+  the cut length does not match its table entry for that field. The scorecard calls these "unstated_limit". The audit
+  does not judge whether the prompt states that limit.
 - `parser_checks`: the tool's comparison of the raw answer with the engine's reading (section 2.1).
 - `raw_reading`: the tool's own reading of the raw answer: `plain_json`, `resign_tokens`,
   `election_response_tokens`, `coup_action_tokens`, `placeholder_fields`, `resign_sentences` (every sentence in the

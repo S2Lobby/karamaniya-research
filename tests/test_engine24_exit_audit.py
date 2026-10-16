@@ -526,7 +526,8 @@ class CodebookTests(unittest.TestCase):
     def test_codebook_names_the_labels_and_cites_six_real_examples(self):
         path = os.path.join(ROOT, "docs", "EXIT_AUDIT_CODEBOOK.md")
         self.assertTrue(os.path.exists(path), path)
-        text = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
         for label in (SUP, AMB, FMT):
             self.assertIn(label, text)
         cited = [line for line in text.splitlines()

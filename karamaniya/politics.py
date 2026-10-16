@@ -154,10 +154,25 @@ def parse_bool(raw) -> bool | None:
     return None
 
 
+_BRACKETED = re.compile(r"\s*(?:\{(?P<brace>[^{}]*)\}|\[(?P<bracket>[^\[\]]*)\])\s*")
+
+
+def _inner(raw) -> str:
+    """A value as written, with one matched pair of braces or brackets taken off: '{0.35}' is read as 0.35 (engine 24,
+    F3: the census refused it as a bad value). A placeholder inside them ('{calculated_for_deficit}') and a fragment
+    ('], set_policy') are left as written, so they stay refusals."""
+    s = str(raw).strip()
+    found = _BRACKETED.fullmatch(s)
+    if found is None:
+        return s
+    inner = found.group("brace") if found.group("brace") is not None else found.group("bracket")
+    return inner.strip()
+
+
 def _written_share(raw) -> float | None:
     """The number a share is written as, before any percent sign is read ('0.8', '0,8%' -> 0.8). None if it is
     not a finite number: "nan" and "inf" parse as floats, and a NaN passes every bound unchanged (audit CO1)."""
-    s = str(raw).strip().lower().replace(",", ".").rstrip("%").strip()
+    s = _inner(raw).lower().replace(",", ".").rstrip("%").strip()
     try:
         x = float(s)
     except ValueError:
@@ -170,7 +185,7 @@ def _share_value(raw) -> float | None:
     x = _written_share(raw)
     if x is None:
         return None
-    return x / 100.0 if str(raw).strip().endswith("%") or x > 1.0 else x
+    return x / 100.0 if _inner(raw).endswith("%") or x > 1.0 else x
 
 
 def parse_share(raw, lo: float, hi: float) -> float | None:
@@ -188,7 +203,7 @@ IMPORT_CAP_BOUNDS = (0.0, 1e11)
 def _number(raw) -> float | None:
     """A plain number as written ('31,000', 31000, '3e4'). None if it is not a finite number (audit CO1)."""
     try:
-        x = float(str(raw).replace(",", "").strip())
+        x = float(_inner(raw).replace(",", "").strip())
     except ValueError:
         return None
     return x if math.isfinite(x) else None
@@ -274,7 +289,7 @@ def policy_value(lever: str, raw, text: str = ""):
     """
     if lever in SHARES or lever.startswith("deploy_"):
         written = _written_share(raw)
-        if (written is not None and not str(raw).strip().endswith("%") and 0 < written <= 1
+        if (written is not None and not _inner(raw).endswith("%") and 0 < written <= 1
                 and _text_writes_percent(written, text)):
             return written / 100.0, f"read as {written:g}%, which the text writes with a percent sign"
         return _share_value(raw), ""
@@ -735,6 +750,17 @@ def patronage_subject(subj) -> str:
     return str(subj).strip()
 
 
+def _constitution_field_for(subj: str) -> str | None:
+    """The constitution setting a lever name is, or nearly is (engine 24, E5). An exact name is moved to a constitution
+    motion at intake (actions.normalize_motion_v2); a near miss is only refused, so the refusal must say where that
+    setting is changed."""
+    key = re.sub(r"[\s\-]+", "_", str(subj).strip().lower())
+    if key in CONSTITUTION_FIELDS:
+        return key
+    near = get_close_matches(key, list(CONSTITUTION_FIELDS), n=1, cutoff=0.8)
+    return near[0] if near else None
+
+
 def _unknown_lever(subj: str) -> str:
     """Say what would have worked: the delegate sees this note, and so does everyone else."""
     text = f"unknown policy lever '{subj}'"
@@ -746,6 +772,13 @@ def _unknown_lever(subj: str) -> str:
         return (text + ": how hard the army trains is the council setting training_intensity "
                 "(neglect, standard, intense). What it trains for (readiness, border works, civil "
                 "support) is an operational order for the Army office holder, not a council directive.")
+    field = _constitution_field_for(subj)
+    if field is not None:
+        # Engine 24 (E5): a constitution setting is changed by a constitution motion, and the refusal says which.
+        allowed = CONSTITUTION_FIELDS[field]
+        values = "/".join(allowed) if allowed else ("a month number or none" if field == "election_month" else "text")
+        return (text + f": {field} is a constitution setting, changed by a constitution motion "
+                f"(constitution {field} = {values}), not by a policy motion")
     near = get_close_matches(re.sub(r"[\s-]+", "_", subj.lower()), list(LEVER_OFFICE), n=3, cutoff=.5)
     return text + (f" (did you mean {', '.join(near)}?)" if near else "; settings the council can direct: "
                    + ", ".join(sorted(LEVER_OFFICE)))
@@ -898,12 +931,10 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
         return _reject("UNKNOWN_DIPLOMACY", f"unknown diplomatic proposal '{subj}'", allowed=list(DIPLOMACY))
     if t == "diplomacy":
         if subj == "loan":
-            action = mo.get("action") if isinstance(mo.get("action"), dict) else {}
-            amount = parse_loan_amount(val)
+            # Engine 24 (E6): the amount may be written in the text too. The refusal says what is missing.
+            amount, why = loan_amount_of(mo)
             if amount is None:
-                amount = parse_loan_amount(action.get("amount"))
-            if amount is None:
-                return _reject("BAD_LOAN_AMOUNT", "a loan needs a positive amount in millions of gold")
+                return _reject("BAD_LOAN_AMOUNT", why)
             mo["value"] = format(amount, ".12g")
         # A standing treaty is one agreement, whoever it is addressed to (Veleria signs the pact for
         # the Union). Proposing it while it is in force sent a fresh proposal every time: in the first
@@ -1617,31 +1648,110 @@ def _num(val) -> bool:
         return False
 
 
-def parse_loan_amount(value) -> float | None:
-    """Read a positive loan request as millions of gold, the unit used by diplomacy motions.
+# Engine 24 (E6). A loan's amount is read from its value and from its text. The value's unit is millions of gold (the
+# prompt says so), so a bare number there is millions. A text states its own unit: a figure in it is an amount only with
+# M, million, k, thousand, bn or billion after it, or with "gold" after it. "50,000,000 gold" is a count of gold, so 50.
+_GROUPED = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?")
+_LOAN_VALUE = re.compile(
+    r"(?P<number>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?)"
+    r"\s*(?P<unit>million|mn|m|billion|bn|thousand|k)?(?P<gold>\s+gold)?", re.I)
+_LOAN_FIGURE = re.compile(
+    r"(?<![\w.,])(?P<sign>[-+]?)(?P<number>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?)"
+    r"(?:(?P<short>[mk])(?!\w)|\s*(?P<word>million|mn|billion|bn|thousand)(?!\w))?"
+    r"(?P<gold>\s*gold(?!\w))?", re.I)
 
-    Accept a bare number (the prompt's default unit), or explicit million/billion/thousand units.
-    Structured providers sometimes serialize the amount as a one-item list; the brackets and
-    quotes are harmless, while a target enum such as ``[MARITIME_LEAGUE]`` is not a number.
+
+def _figure(number: str) -> float:
+    """A figure as written. A comma is a thousands separator only in groups of three ('50,000,000' is fifty million,
+    '1,5' is one and a half), as parse_money reads it. Before engine 24 every comma was dropped, so '1,5 million' was
+    read as 15 million."""
+    if _GROUPED.fullmatch(number):
+        return float(number.replace(",", ""))
+    return float(number.replace(",", "."))
+
+
+def _loan_millions(number: str, unit: str | None, gold: bool) -> float:
+    """A figure as millions of gold: a unit scales it (the arithmetic is the one the value reader always used), a
+    comma-grouped count of gold is divided down, and a bare figure is already millions."""
+    amount = _figure(number)
+    unit = (unit or "").lower()
+    if unit in ("billion", "bn"):
+        return amount * 1000
+    if unit in ("thousand", "k"):
+        return amount / 1000
+    if not unit and gold and _GROUPED.fullmatch(number):
+        return amount / 1e6
+    return amount
+
+
+def parse_loan_amount(value) -> float | None:
+    """Read a positive loan request's value as millions of gold, the unit used by diplomacy motions.
+
+    Accept a bare number (the prompt's default unit), or explicit million/billion/thousand units, or a count of gold
+    such as "50,000,000 gold". Structured providers sometimes serialize the amount as a one-item list; the brackets and
+    quotes are harmless, while a target enum such as ``[MARITIME_LEAGUE]`` is not a number. A figure that is not finite
+    is no amount (engine 24).
     """
     text = str(value or "").strip().strip("[](){}'\" ")
-    match = re.fullmatch(
-        r"(?P<number>\d[\d,]*(?:\.\d+)?)\s*(?P<unit>million|mn|m|billion|bn|thousand|k)?"
-        r"(?:\s+gold)?", text, re.I)
+    match = _LOAN_VALUE.fullmatch(text)
     if not match:
         return None
-    try:
-        amount = float(match.group("number").replace(",", ""))
-    except (TypeError, ValueError):
-        return None
-    unit = (match.group("unit") or "million").lower()
-    if unit in ("billion", "bn"):
-        amount *= 1000
-    elif unit in ("thousand", "k"):
-        amount /= 1000
-    if not amount > 0:
-        return None
-    return amount
+    amount = _loan_millions(match.group("number"), match.group("unit"), bool(match.group("gold")))
+    return amount if math.isfinite(amount) and amount > 0 else None
+
+
+def loan_figures(text) -> list[tuple[str, float | None]]:
+    """The loan figures a text names, as (the words each is written in, its amount in millions of gold).
+
+    A figure with no unit and no "gold" after it is not a sum and is not listed. A figure with "gold" and no unit ("50
+    gold") is listed with no amount: the text does not say whether it means millions, so the engine does not guess.
+    """
+    found = []
+    for match in _LOAN_FIGURE.finditer(str(text or "")):
+        unit = match.group("short") or match.group("word") or ""
+        gold = bool(match.group("gold"))
+        if not unit and not gold:
+            continue
+        written = match.group(0).strip()
+        if not unit and not _GROUPED.fullmatch(match.group("number")):
+            found.append((written, None))
+            continue
+        amount = _loan_millions(match.group("number"), unit, gold)
+        found.append((written, -amount if match.group("sign") == "-" else amount))
+    return found
+
+
+def loan_amount_of(motion: dict) -> tuple[float | None, str]:
+    """The amount a loan motion asks for, in millions of gold, and what is missing when there is none (engine 24, E6).
+
+    The value and the action's amount are read as they always were, and the first of them that gives an amount is
+    taken. Only when neither does, the figures the value, the action's amount and the text name are read together: an
+    amount is taken only when they name exactly one, with its unit. Nothing is guessed, and the refusal says what is
+    missing.
+    """
+    value = _bare(motion.get("value", ""))
+    action = motion.get("action") if isinstance(motion.get("action"), dict) else {}
+    amount = parse_loan_amount(value)
+    if amount is None:
+        amount = parse_loan_amount(action.get("amount"))
+    if amount is not None:
+        return amount, ""
+    found = []
+    for source in (value, action.get("amount"), motion.get("text")):
+        found.extend(loan_figures(source))
+    if not found:
+        return None, "the loan names no amount: write it as a figure in millions of gold, such as 50M gold"
+    unitless = [written for written, figure in found if figure is None]
+    if unitless:
+        return None, f"'{unitless[0]}' names no unit: write the loan's amount in millions of gold, such as 50M gold"
+    amounts = sorted({figure for _, figure in found})
+    if len(amounts) > 1:
+        names = ", ".join(dict.fromkeys(written for written, _ in found))
+        return None, (f"the loan names several amounts ({names}): write the one it asks for in millions of gold, "
+                      "such as 50M gold")
+    if not (math.isfinite(amounts[0]) and amounts[0] > 0):
+        return None, "a loan needs a positive amount in millions of gold"
+    return amounts[0], ""
 
 
 def payment_floor(mo: dict) -> float:

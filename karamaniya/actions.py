@@ -12,7 +12,8 @@ import re
 from .motion_actions import ACTION_TO_SUBJECT, DIPLOMATIC_ACTIONS as DIPLOMATIC_ACTION_TYPES
 from .politics import (BOOLS, CONSTITUTION_FIELDS, DIPLOMACY, ENUMS, LEVER_OFFICE, MOTION_TYPES,
                        SHARES, V2_MOTION_TYPES, _bare, canonical_diplomacy_subject, canonical_funding,
-                       canonical_lever, canonical_office, label, parse_loan_amount, patronage_subject, policy_value)
+                       canonical_lever, canonical_office, label, loan_amount_of, parse_loan_amount,
+                       patronage_subject, policy_value)
 from .world import ARMED_OFFICES, OFFICES, World
 
 STATEMENT_WORDS = 150
@@ -856,9 +857,9 @@ def normalize_motion_v2(w: World, raw: dict, problems: list | None = None) -> di
     elif mo["type"] == "diplomacy":
         mo["subject"] = canonical_diplomacy_subject(mo["subject"])
         if mo["subject"] == "loan":
-            amount = parse_loan_amount(mo["value"])
-            if amount is None:
-                amount = parse_loan_amount(mo["action"].get("amount"))
+            # Engine 24 (E6): the amount may be written in the text. It is written back to the value once, so every
+            # later reader sees the same figure.
+            amount, _ = loan_amount_of(mo)
             if amount is not None:
                 mo["value"] = format(amount, ".12g")
     elif mo["type"] == "settle_arrears":

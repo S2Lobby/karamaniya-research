@@ -75,6 +75,6 @@ teaches: "how to wrap a legacy multi-agent engine whose one step is a whole deli
 reference: false
 requires: null
 rerunnable: true
-created_by: "haiku-04 (Path C wrap, brief item S8)"
+created_by: "Path C wrap, studies/karamaniya_trust"
 run_note:
   en: "The full study runs locally, with the Karamaniya engine, not in the SocioVerse2 workbench. The dry run needs no model and no key: python studies/karamaniya_trust/run.py --dry-run. A real run calls the models of a council file, so it costs money and the user starts it: python studies/karamaniya_trust/run.py COUNCIL.toml. See README.md."

@@ -53,18 +53,18 @@
     },
     {
       "id": "a-foreign-cabinets",
-      "claim": "The foreign cabinets (Veleria and Dorsania) are played by the configured seats unless a dedicated model is set. The study will set a dedicated model; which model is open (Q1).",
+      "claim": "The foreign cabinets (Veleria and Dorsania) are played by the configured seats unless a dedicated model is set. The study will set a dedicated model; which model is still open.",
       "rationale": "The default borrows the first two seats, so the models under study would also write the moves they then answer. The dry run has no model to borrow."
     },
     {
       "id": "a-horizon",
-      "claim": "The default horizon is 36 months, the Charter's month for the next election. The study's real horizon is the user's decision (Q4).",
+      "claim": "The default horizon is 36 months, the Charter's month for the next election. The study's real horizon is for the study owner to decide.",
       "rationale": "No election happens before Month 36 by design, and 36 months is the council file's default. The horizon is recorded here so that the choice is visible."
     },
     {
       "id": "a-metrics-from-engine-records",
       "claim": "Every metric is read from the engine's own records. invalid_action_rate uses the refused motions; execution_mismatch_rate uses the engine's condition_execution_mismatch flag. The whole-run audit (karamaniya/integrity.py) is not run per step.",
-      "rationale": "The per-step metrics use only what the month already records. The full execution audit is a separate task (brief item S5 and S6)."
+      "rationale": "The per-step metrics use only what the month already records. The full execution audit is a separate task."
     },
     {
       "id": "a-no-external-data",

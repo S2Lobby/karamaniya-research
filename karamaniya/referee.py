@@ -234,9 +234,10 @@ No election may be scheduled before Month 36.
 
 Every effect must use one of the channels below, with one of its listed targets. Do not invent a channel, a
 target or a state variable. An effect's value is the change to that state in one month; a negative value moves it
-down. The cost is in millions of crowns: one_off is spent once, monthly for its months. The act's budget states
-the most it funds a month and for how many months; the ruling's cost must fit inside it. An act with no budget
-has no cost.
+down. The cost is in millions of crowns: one_off is spent once, monthly for its months, none of the three is
+negative, and the cost's months is a whole number from 0 to 24. The act's budget funds at most its amount a month for its months: the ruling's monthly cost may not
+exceed that amount, its months may not exceed the budget's months, and one_off plus monthly times months may not
+exceed the amount times the budget's months. An act with no budget has no cost.
 
 The public report is what the public would see and hear: plain, in the country's own words, with no figure the
 public does not know. The public does not know exact reserves, office capacity or the government's private
@@ -281,8 +282,9 @@ Do not invent a channel, a target or a state variable. An effect's value is the 
 month; a negative value moves it down.
 
 A cabinet's act costs its own government. The cost is a share of the cabinet's budget room: one_off is spent
-once, monthly for its months, and the whole cost cannot exceed {cost_cap:g}, the cost of the largest act a cabinet
-can already take. An act that would cost more must be refused or made smaller.
+once, monthly for its months, none of the three is negative, its months is a whole number from 0 to 24, and
+one_off plus monthly times months cannot exceed {cost_cap:g}, the cost of the largest act a cabinet can already
+take. An act that would cost more must be refused or made smaller.
 
 The public report is what people would see and hear: plain, in-world, with no figure the public does not know.
 A covert act is carried out but not reported; say public false for it. Never mention this role, the machinery,

@@ -170,7 +170,7 @@ class ReadingTests(unittest.TestCase):
 
     def test_a_region_named_in_words_is_read_as_its_id(self):
         out, problems = read("veleria", open_act(target="Kessel Valley"))
-        self.assertEqual(problems, [])
+        self.assertTrue(any("was read as kessel" in problem for problem in problems), problems)
         self.assertEqual(out["actions"][0]["target"], "kessel")
         # A plain reading is not sent back as a refusal.
         self.assertEqual(out["act_notes"], [])
@@ -239,6 +239,14 @@ class ReadingTests(unittest.TestCase):
         self.assertNotIn("open_act", [a["type"] for a in out["actions"]])
         self.assertTrue(any("only the first 4" in problem for problem in problems))
         self.assertTrue(any("only the first 4" in note["reason"] for note in out["act_notes"]))
+
+    def test_validate_action_accepts_the_kind_only_under_the_open_arm(self):
+        act = {"type": "open_act", "text": "Fund friendly newspapers in the Vell Highlands.",
+               "target": "highlands"}
+        self.assertIsNone(foreign.validate_action("veleria", dict(act), {}, world(harness="open")))
+        self.assertIn("Unsupported", foreign.validate_action("veleria", dict(act), {}, world(harness="menu")))
+        self.assertIn("target", foreign.validate_action("veleria", dict(act, target="dorsania"), {},
+                                                        world(harness="open")))
 
     def test_the_open_act_is_not_read_under_menu_or_language(self):
         for harness in ("menu", "language"):
@@ -401,7 +409,9 @@ class CarryOutTests(unittest.TestCase):
         self.assertAlmostEqual(w.foreign["actors"]["veleria"]["domestic"]["fiscal_stress"], .182,
                                places=6)
         self.assertEqual(effects.state(w), [])
-        self.assertFalse(any(ev.get("kind") == "cabinet_open_act" for ev in w.events))
+        # A public act that failed is still announced; the report says it did not work.
+        self.assertTrue(any(ev.get("kind") == "cabinet_open_act" and ev.get("public")
+                            and ev.get("text") == referee.FAILED_REPORT for ev in w.events))
         self.assertIn("did not work", entry["result"])
         self.assertIn("did not work", notes_next_month(w)[0]["reason"])
 
@@ -525,6 +535,17 @@ class VisibilityTests(unittest.TestCase):
             process(w, {"veleria": out_v, "dorsania": out_d}, [covert()])
         self.assertEqual(seen.count("covert_exposure"), 2)
 
+    def test_the_exposure_chance_combines_the_interior_surveillance_and_capacity(self):
+        w = world()
+        # surveillance low, Interior capacity 1.0, focus public_order: .04 + .05.
+        self.assertAlmostEqual(foreign.covert_exposure_chance(w), .09, places=6)
+        w.policy.surveillance = "high"
+        self.assertAlmostEqual(foreign.covert_exposure_chance(w), .25, places=6)
+        w.institutions["operations"] = {"interior": {"focus": "smuggling"}}
+        self.assertAlmostEqual(foreign.covert_exposure_chance(w), .29, places=6)
+        w.institutions["capacity"] = {"interior": 0.5}
+        self.assertAlmostEqual(foreign.covert_exposure_chance(w), .265, places=6)
+
     def test_an_exposed_act_becomes_public_with_an_event_and_a_relations_cost(self):
         w = world()
         w.month = month_where(w, True)
@@ -608,7 +629,9 @@ class DefaultsTests(unittest.TestCase):
                 self.assertEqual(out, default)
                 self.assertEqual(problems, default_problems)
         self.assertEqual(len(default["actions"]), 2)
-        self.assertEqual(default_problems, [])
+        # A display-name target is read to its id in every arm, so the plain reading is in `problems` as it
+        # is for a menu propaganda act today; that is the engine-29 behaviour the open arm must preserve.
+        self.assertTrue(any("was read as kessel" in problem for problem in default_problems))
 
     def test_the_prompt_freeze_still_reports_prompts_unchanged(self):
         import importlib.util

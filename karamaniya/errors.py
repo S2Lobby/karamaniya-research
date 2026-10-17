@@ -135,6 +135,9 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "OPEN_ACT_UNFUNDED": ("motion", "info", "An open act with a budget has no valid funding."),
     "OPEN_ACT_LIMIT": ("motion", "info", "A delegate tabled more than one open act in a month."),
     "OPEN_ACT_BAD_TARGET": ("foreign", "info", "A cabinet's open act names a target outside Karamaniya, its regions and its own country."),
+    # Wave A W8 (plan 4.4): the neighbours' open acts and their visibility.
+    "OPEN_ACT_FORBIDDEN": ("foreign", "info", "A cabinet's open act is about war, an election, the constitution, a change of government or another subject its own acts own."),
+    "OPEN_ACT_NOT_APPLIED": ("foreign", "warning", "A cabinet's open act was ruled feasible but the effect bus could not schedule all its effects."),
     # -- the referee (Wave A W4) -------------------------------------------------------------
     # The referee rules an approved open act. Its rulings are validated before anything is scheduled; an invalid
     # ruling is re-asked once and only a second invalid one fails the act. Every code below travels with the

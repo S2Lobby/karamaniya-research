@@ -180,6 +180,34 @@ def _open_acts_block(w: World, council_record: dict) -> list:
     return out
 
 
+def _cabinet_acts_block(w: World, council_record: dict) -> list:
+    """The neighbours' announced open acts, for the next month's briefing (plan 4.4). Empty when none.
+
+    Wave A (engine 30, W8): a public cabinet act appears as that power's announced act, with what the public
+    was told and whether it worked. A covert act is not reported unless it was exposed: an exposure entry is
+    public and is reported here as well as in the events list. Nothing is added when no cabinet act ran, so a
+    default run's briefing is exactly engine 29's.
+    """
+    acts = [item for item in council_record.get("open_acts") or []
+            if isinstance(item, dict) and item.get("kind") in ("cabinet_act", "cabinet_exposure")
+            and (item.get("public") or item.get("kind") == "cabinet_exposure")]
+    if not acts:
+        return []
+    out = ["THE NEIGHBOURS' ANNOUNCED ACTS LAST MONTH"]
+    for act in acts:
+        actor = str(act.get("actor") or "")
+        name = w.names.get(actor, actor.title()) if actor else "A neighbouring power"
+        if act.get("kind") == "cabinet_exposure":
+            out.append(f'- {name}\'s covert operation ("{act.get("text", "")}") was exposed and made public.')
+            continue
+        out.append(f'- {name}: "{act.get("text", "")}"')
+        report = (act.get("outcome") or {}).get("report") or ""
+        out.append(f'  The public was told: "{report}"')
+        out.append("  It worked." if (act.get("outcome") or {}).get("worked") else "  It did not work.")
+    out.append("")
+    return out
+
+
 def public(w: World, council_record: dict | None = None) -> str:
     """The shared briefing every member reads at the start of the month."""
     n = Noise(w)
@@ -199,6 +227,7 @@ def public(w: World, council_record: dict | None = None) -> str:
         for co in council_record.get("coups", []):
             out.append(f"- Coup by {w.member(co['leader']).name}: {'succeeded' if co['success'] else 'failed'}.")
         out += _open_acts_block(w, council_record)
+        out += _cabinet_acts_block(w, council_record)
         if not council_record.get("motions"):
             out.append("- No motions were tabled.")
         out.append("")
@@ -623,6 +652,7 @@ def public_v2(w: World, council_record: dict | None = None) -> str:
         for d in council_record.get("deferred", []):
             out.append(f"- Deferred for lack of agenda time: {d}.")
         out += _open_acts_block(w, council_record)
+        out += _cabinet_acts_block(w, council_record)
         if not council_record.get("motions"):
             out.append("- No motions were tabled.")
         out.append("")

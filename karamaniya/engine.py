@@ -33,6 +33,13 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         from . import audits, dilemmas
         dilemmas.apply_ongoing(w)
         audits.apply_ongoing(w)
+    # Wave A (engine 30, W3): policies are carried out at the start of the month, after the public's existing
+    # reactions have been folded and before the month is produced. A policy passed in this month with start_in 0
+    # therefore takes effect in this month's economy; its bus effects are applied by effects.step below (and its
+    # society reactions are folded into the next month's apply_ongoing, as every reaction scheduled after the
+    # fold is). Conditions are tested on the month's opening state, as the plan states.
+    from . import policy
+    policy.monthly(w)
     if v2:
         from . import operations, standing
         w.institutions["operation_notes"] = operations.apply(w)
@@ -377,9 +384,14 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
         },
         "police": m.police.size,
     })
-    from . import effects
+    from . import effects, policy
     applied = effects.applied(w)
     if applied:
         # Wave A (engine 30): what the effect bus applied this month, by channel, target and source. Left out
         # entirely when nothing was applied, so a default run's history rows are exactly engine 29's.
         w.history[-1]["effects_applied"] = applied
+    policies = policy.month_record(w)
+    if policies:
+        # Wave A (engine 30, W3): the month's policy record, when a policy was scheduled, carried out, ended or
+        # refused this month. Left out entirely when there was none, so a default run's rows are unchanged.
+        w.history[-1]["policies"] = policies

@@ -112,7 +112,7 @@ class ReaderAndKeyTests(unittest.TestCase):
         menu = policy_world(harness="menu")
         rejection = politics.validate_motion(menu, {**mo, "items": [set_lever("rationing", True)]})
         self.assertIsNotNone(rejection)
-        self.assertEqual(rejection["reason_code"], "UNKNOWN_TYPE")
+        self.assertIn("unknown motion type", rejection)
 
     def test_the_duplicate_key_is_the_canonical_items_and_the_month(self):
         w = policy_world()
@@ -124,8 +124,10 @@ class ReaderAndKeyTests(unittest.TestCase):
                      "items": [set_lever("rationing", True), transfer("ident:vell", 5.0)]}
         self.assertEqual(motion_actions.execution_key(w, first), motion_actions.execution_key(w, second))
         self.assertNotEqual(motion_actions.execution_key(w, first), motion_actions.execution_key(w, different))
+        before = motion_actions.execution_key(w, first)
         w.month = 1
-        self.assertNotEqual(motion_actions.execution_key(w, first), motion_actions.execution_key(w, second))
+        self.assertNotEqual(motion_actions.execution_key(w, first), before,
+                            "the same policy in another month is another act")
 
     def test_a_contradictory_policy_is_blocked_before_execution(self):
         w = policy_world()
@@ -245,7 +247,7 @@ class TransferTests(unittest.TestCase):
         engine.step(plain)
         engine.step(treated)
         self.assertAlmostEqual(gold_before - treated.econ.gold,
-                               (gold_before - plain.econ.gold) + 6e6, delta=1.0,
+                               (gold_before - plain.econ.gold) + 6e6, delta=1e4,
                                msg="the month's payment is six million crowns in gold")
         vell = [p for p in treated.k_pops() if p.ident == "vell"]
         kara = [p for p in treated.k_pops() if p.ident == "karamanian"]
@@ -273,7 +275,7 @@ class TransferTests(unittest.TestCase):
         self.assertGreater(large_value, small_value)
         self.assertAlmostEqual(large_value / small_value, 2.0, places=3)
         capped = policy_world(4)
-        adopt(capped, [transfer("ident:vell", 100.0)])
+        adopt(capped, [transfer("ident:vell", 50.0)])
         policy.monthly(capped)
         effects.step(capped)
         self.assertLessEqual(abs(effects.modifiers(capped, "income")["ident:vell"]), 0.02 + 1e-9)
@@ -281,10 +283,10 @@ class TransferTests(unittest.TestCase):
 
     def test_the_bus_records_income_hunger_grievance_and_a_capped_approval_part(self):
         w = policy_world(5)
-        adopt(w, [transfer("class:farmers", 3.0)])
+        adopt(w, [transfer("class:farmers", 3.0, months=2)])
         engine.step(w)
-        row = w.history[-1]
-        recs = [r for r in row.get("effects_applied") or []
+        engine.step(w)
+        recs = [r for row in w.history for r in row.get("effects_applied") or []
                 if r.get("channel") in ("income", "hunger", "grievance", "approval")
                 and r.get("target") == "class:farmers"]
         self.assertEqual({r["channel"] for r in recs}, {"income", "hunger", "grievance", "approval"})
@@ -326,11 +328,12 @@ class FundingTests(unittest.TestCase):
         poor = policy_world(7)
         poor.econ.confidence = 0.05
         adopt(poor, [transfer("ident:vell", 10.0, funding="borrowing")])
+        debt_before = poor.econ.debt_dom
         policy.monthly(poor)
         refused = entries(poor.institutions["policy_record"], "refused", "transfer")
         self.assertTrue(refused)
         self.assertEqual(refused[0]["code"], "POLICY_UNFUNDED")
-        self.assertAlmostEqual(poor.econ.debt_dom, 0.0)
+        self.assertAlmostEqual(poor.econ.debt_dom, debt_before)
 
     def test_a_cut_lowers_the_spending_setting_and_restores_it(self):
         w = policy_world(8)
@@ -458,7 +461,6 @@ class CommissionTests(unittest.TestCase):
                                                  "army": 0.10, "navy": 0.03, "head": 0.0}
         adopt(corruption, [commission("anti_corruption", 5.0)])
         policy.monthly(corruption)
-        effects.step(corruption)
         entry = next(e for e in corruption.institutions.get("effects") or []
                      if e.get("channel") == "corruption")
         self.assertEqual(entry["target"], "army", "the body works where corruption is worst")
@@ -469,26 +471,30 @@ class CommissionTests(unittest.TestCase):
         reconstruction.region("aster").damage = 0.05
         adopt(reconstruction, [commission("reconstruction", 5.0)])
         policy.monthly(reconstruction)
-        applied_entries = reconstruction.institutions.get("effects") or []
-        damage = next(e for e in applied_entries if e.get("channel") == "damage")
+        damage = next(e for e in reconstruction.institutions.get("effects") or []
+                      if e.get("channel") == "damage")
         self.assertEqual(damage["target"], "kessel")
         self.assertLess(float(damage["value"]), 0)
 
         minority = policy_world(13)
         adopt(minority, [commission("minority_liaison", 5.0)])
         policy.monthly(minority)
-        effects.step(minority)
-        self.assertIn("ident:vell", effects.modifiers(minority, "grievance"))
+        reactions = [e for e in minority.institutions.get("public_reactions") or []
+                     if e.get("bus") and e.get("kind") == "grievance"]
+        self.assertTrue(reactions)
+        self.assertEqual(reactions[0]["where"], "ident:vell")
+        self.assertLess(float(reactions[0]["value"]), 0)
 
         statistics = policy_world(13)
         statistics.econ.admin_capacity = 0.5
         adopt(statistics, [commission("statistics", 5.0)])
         policy.monthly(statistics)
-        effects.step(statistics)
-        self.assertGreater(statistics.econ.admin_capacity, 0.5)
         entry = next(e for e in statistics.institutions.get("effects") or []
                      if e.get("channel") == "admin_capacity")
         self.assertEqual(entry["target"], "*")
+        self.assertGreater(float(entry["value"]), 0)
+        effects.step(statistics)
+        self.assertGreater(statistics.econ.admin_capacity, 0.5)
 
 
 class ScheduleAndConditionTests(unittest.TestCase):

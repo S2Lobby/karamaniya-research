@@ -173,6 +173,14 @@ class ReaderKeepsEachRefusal(unittest.TestCase):
         self.assertEqual([r["reason"] for r in out["refused_messages"]],
                          ["only one public communication is read in the response round; this one came after it"])
 
+    def test_a_third_communication_of_a_response_round_gives_the_response_round_reason(self):
+        # The reader's cap of two is applied first; the response round's limit of one must still be the reason given.
+        item = {"kind": "endorse", "target": "public", "about": "x"}
+        out, _ = actions.normalize_revision(world(), "A", {"communications": [item, item, item]}, [], 3)
+        self.assertEqual(len(out["communications"]), 1)
+        self.assertEqual([r["reason"] for r in out["refused_messages"]],
+                         ["only one public communication is read in the response round; this one came after it"] * 2)
+
     def test_messages_past_the_quota_are_each_refused_and_one_problem_is_recorded(self):
         messages = [{"to": "B", "text": f"message {i}", "kind": "message"} for i in range(4)]
         out, problems = actions.normalize_session_v2(world(), "A", {"private_messages": messages}, 3)

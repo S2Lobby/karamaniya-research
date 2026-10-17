@@ -2263,11 +2263,19 @@ def _policy_conflict(items: list) -> dict | None:
         return {"code": "POLICY_LIMIT",
                 "detail": (f"the policy sets {', '.join(clash)} and also funds spending by cutting it; "
                            "one policy may not both set a setting and cut it")}
-    missing = [entry for entry in items if entry.get("instrument") in actions.POLICY_SPENDING
-               and (not entry.get("amount") or not entry.get("funding"))]
+    missing = []
+    for entry in items:
+        if entry.get("instrument") not in actions.POLICY_SPENDING:
+            continue
+        try:
+            amount = float(entry.get("amount"))
+        except (TypeError, ValueError):
+            amount = 0.0
+        if amount <= 0 or not entry.get("funding"):
+            missing.append(entry)
     if missing:
         return {"code": "POLICY_UNFUNDED",
-                "detail": "a spending item reached the council without an amount or a funding source"}
+                "detail": "a spending item reached the council without a positive amount or a funding source"}
     return None
 
 

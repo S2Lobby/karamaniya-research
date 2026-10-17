@@ -1,4 +1,4 @@
-"""Two execution bugs found by the detector audit (docs/DETECTOR_PRECISION.md, D4).
+"""Execution and record bugs found by the detector audit (docs/DETECTOR_PRECISION.md, D4).
 
 T136: the duplicate-action key ignored a programme's measures, so a second programme passed in the same month was
 refused as a duplicate of the first. Run 20261011-211521-seed1, month index 4: programme M3 (deploy north 0.3, east
@@ -6,6 +6,10 @@ refused as a duplicate of the first. Run 20261011-211521-seed1, month index 4: p
 
 T137: the patronage compliance row was written before the order was applied, so it recorded the value the order
 replaced. Run b1-s1005, month index 4: the row said actual True, while the order had set False.
+
+T147: a deployment share lives in w.mil.deploy, not on the policy, so the compliance row looked in the wrong place and
+recorded null for every deploy order (run 20261011-211521-seed1, month index 1). The shares are normalised after an answer
+sets them, so the row must record the share the state holds after that, as the office order does.
 """
 import os
 import sys
@@ -151,6 +155,66 @@ class PatronageRowIsTheAppliedOrder(unittest.TestCase):
         self.assertEqual(len(compliance), 1)
         self.assertIs(compliance[0]["actual_executed_value"], True)
         self.assertEqual(compliance[0]["compliance_status"], politics.COMPLIANT)
+
+
+class DeployRowIsTheAppliedShare(unittest.TestCase):
+    """The row classifies the order as written against the directive, as before; the share it records is the one the
+    state holds once the answer's shares are normalised."""
+
+    def test_an_order_against_a_directive_records_the_share_after_normalisation(self):
+        w = world()
+        w.const.directives["deploy_north"] = 0.4
+        w.const.directive_bounds["deploy_north"] = {"min": 0.4, "max": 0.4}
+        compliance = []
+        defiance = politics.apply_orders(w, "B", {"army": {"deploy_north": 0.5}}, compliance=compliance)
+        self.assertEqual([d["lever"] for d in defiance], ["deploy_north"])
+        # 0.5 is normalised with the other shares, 0.25 and 0.40: the total is 1.15.
+        self.assertAlmostEqual(w.mil.deploy["north"], 0.5 / 1.15)
+        self.assertEqual(len(compliance), 1)
+        row = compliance[0]
+        self.assertIsNotNone(row["actual_executed_value"])
+        self.assertAlmostEqual(row["actual_executed_value"], w.mil.deploy["north"])      # 0.4348, not null, not 0.5
+        self.assertEqual(row["office_order_value"], 0.5)
+        self.assertEqual(row["directive_value"], 0.4)
+        self.assertEqual(row["code"], "DIRECTIVE_ORDER_MISMATCH")
+        self.assertEqual(row["compliance_status"], politics.EXPLICIT_VIOLATION)
+
+    def test_the_recorded_share_matches_the_office_order_in_a_full_month(self):
+        w = world()
+        w.const.directives["deploy_north"] = 0.4
+        w.const.directive_bounds["deploy_north"] = {"min": 0.4, "max": 0.4}
+        record = resolve(w, [TAX], dict.fromkeys("ABCDE", "yes"), {"B": {"army": {"deploy_north": 0.5}}})
+        row = next(r for r in record["compliance"] if r["lever"] == "deploy_north")
+        order = next(r for r in record["office_orders"] if r["lever"] == "deploy_north")
+        self.assertAlmostEqual(order["actual_value"], w.mil.deploy["north"])
+        self.assertIsNotNone(row["actual_executed_value"])
+        self.assertAlmostEqual(row["actual_executed_value"], order["actual_value"])
+        self.assertEqual(row["compliance_status"], politics.EXPLICIT_VIOLATION)
+
+    def test_a_full_set_of_deploy_orders_in_line_records_each_share(self):
+        w = world()
+        shares = {"deploy_north": 0.4, "deploy_east": 0.45, "deploy_capital": 0.15}     # sums to one: nothing moves
+        for lever, value in shares.items():
+            w.const.directives[lever] = value
+            w.const.directive_bounds[lever] = {"min": value, "max": value}
+        compliance = []
+        defiance = politics.apply_orders(w, "B", {"army": dict(shares)}, compliance=compliance)
+        self.assertEqual(defiance, [])
+        self.assertEqual(sorted(r["lever"] for r in compliance), sorted(shares))
+        for row in compliance:
+            self.assertEqual(row["compliance_status"], politics.COMPLIANT, row["lever"])
+            self.assertIsNotNone(row["actual_executed_value"], row["lever"])
+            self.assertAlmostEqual(row["actual_executed_value"], shares[row["lever"]], msg=row["lever"])
+
+    def test_a_deploy_directive_passed_this_month_records_the_share_it_left(self):
+        w = world()
+        motion = {"id": "M1", "proposer": "A", "type": "set_policy", "subject": "deploy_north", "value": "0.4",
+                  "text": "", "summary": "directive deploy_north = 0.4"}
+        record = resolve(w, [motion], dict.fromkeys("ABCDE", "yes"), {"B": {"army": {"deploy_north": 0.5}}})
+        row = next(r for r in record["compliance"] if r["lever"] == "deploy_north")
+        self.assertIsNotNone(row["actual_executed_value"])
+        self.assertAlmostEqual(row["actual_executed_value"], w.mil.deploy["north"])
+        self.assertEqual(row["compliance_status"], politics.SUPERSEDED_ORDER)
 
 
 if __name__ == "__main__":

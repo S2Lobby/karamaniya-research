@@ -7,11 +7,14 @@ has been measured (estimate.py --calibrate), so the tests check the model's arit
 not any real GPU.
 """
 import contextlib
+import http.server
 import io
 import json
 import os
 import re
 import sys
+import threading
+import time
 import tomllib
 import unittest
 
@@ -19,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools", "cluster"))
 
+import bench  # noqa: E402
 import estimate as est  # noqa: E402
 from karamaniya.backends import make_backend  # noqa: E402
 from karamaniya.config import normalize_config  # noqa: E402
@@ -172,6 +176,73 @@ class Cli(unittest.TestCase):
                              "--measured-decode-tps", "495"])
         self.assertEqual(rc, 0)
         self.assertIn("bw_eff", out)
+
+
+class _StubServer:
+    """An OpenAI-style chat endpoint on 127.0.0.1: 7 prompt tokens, and as many completion tokens as max_tokens asks."""
+
+    def __enter__(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                time.sleep(0.002 * body["max_tokens"])     # writing takes time, so the write pass runs longer
+                reply = {"choices": [{"message": {"role": "assistant", "content": '{"ok": true}',
+                                                  "reasoning": "hmm"}}],
+                         "usage": {"prompt_tokens": 7, "completion_tokens": body["max_tokens"]}}
+                data = json.dumps(reply).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        return f"http://127.0.0.1:{self.server.server_address[1]}/v1"
+
+    def __exit__(self, *exc):
+        self.server.shutdown()
+        self.server.server_close()
+        return False
+
+
+class Bench(unittest.TestCase):
+    """tools/cluster/bench.py: the rehearsal's measurements. Written after the tool, so the order differs from estimate.py."""
+
+    def test_prompt_has_the_requested_size_in_words(self):
+        prompt = bench.build_prompt(1000)
+        self.assertEqual(len(prompt.split()), int(1000 * bench.WORDS_PER_TOKEN))
+
+    def test_prefill_comes_from_the_read_pass_and_decode_from_the_difference(self):
+        read_only = {"wall": 2.0, "results": [{"prompt_tokens": 1000, "completion_tokens": 1}] * 4}
+        read_and_write = {"wall": 12.0, "results": [{"prompt_tokens": 1000, "completion_tokens": 500}] * 4}
+        s = bench.summarize(read_only, read_and_write, 4, 1000, 1000)
+        self.assertAlmostEqual(s["measured_prefill_tps"], 2000.0)     # 4000 prompt tokens in 2 s
+        self.assertAlmostEqual(s["measured_decode_tps"], 200.0)       # 2000 answer tokens in the 10 s of writing
+        self.assertIn("--measured-decode-tps 200.0", s["calibrate_command"])
+
+    def test_no_writing_time_is_refused(self):
+        same = {"wall": 5.0, "results": [{"prompt_tokens": 1, "completion_tokens": 1}]}
+        with self.assertRaises(ValueError):
+            bench.summarize(same, same, 1, 1000, 1000)
+
+    def test_a_full_run_against_a_stub_server_reports_the_answer_and_its_reasoning(self):
+        with _StubServer() as url:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = bench.main(["--url", url, "--model", "stub", "--input-tokens", "100", "--output-tokens", "50",
+                                 "--concurrency", "2", "--requests", "2"])
+        self.assertEqual(rc, 0)
+        out = json.loads(buf.getvalue())
+        self.assertEqual(out["concurrency"], 2)
+        self.assertEqual(out["prompt_tokens_per_call"], 7)
+        self.assertEqual(out["first_answer"]["content_head"], '{"ok": true}')
+        self.assertEqual(out["first_answer"]["reasoning_head"], "hmm")
+        self.assertFalse(out["first_answer"]["think_tags_in_content"])
+        self.assertIn("estimate.py --calibrate", out["calibrate_command"])
 
 
 class ClusterSeatConfig(unittest.TestCase):

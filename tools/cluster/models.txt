@@ -1,0 +1,22 @@
+# The study's models: one line per vLLM server on the rented box. tools/cluster/setup.sh reads this file.
+#
+# Eight fields, separated by spaces:
+#   name       the served model name; a seat's model = this name, and its base_url uses this row's port
+#   repo       the Hugging Face repository: open weights, not gated (a token would be a key on the box)
+#   revision   a full 40-character commit hash of that repository, pinned; never a branch such as main
+#   gpus       GPU indexes on the box, comma-separated; more than one means tensor parallelism
+#   port       the local port; each server listens on 127.0.0.1 only
+#   max_len    vLLM --max-model-len: the longest prompt plus the seat's max_tokens_cap must fit in it
+#   reasoning  vLLM --reasoning-parser for a thinking model (see the README), or "none"
+#   size_gb    the weights on disk, for the free-space check
+#
+# THESE ROWS ARE PLACEHOLDERS. The models are the user's choice (brief Q1), so setup.sh refuses any row with TBD.
+# Pin each repository's commit with: git ls-remote https://huggingface.co/<repo> HEAD
+#
+# name            repo       revision  gpus  port  max_len  reasoning  size_gb
+delegate-a        TBD/TBD    TBD       0     8001  49152    none       20
+delegate-b        TBD/TBD    TBD       1     8002  49152    none       20
+delegate-c        TBD/TBD    TBD       2     8003  49152    none       20
+delegate-d        TBD/TBD    TBD       3     8004  49152    none       20
+delegate-e        TBD/TBD    TBD       4     8005  49152    none       20
+neighbours        TBD/TBD    TBD       5     8006  49152    none       20

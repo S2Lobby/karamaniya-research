@@ -24,7 +24,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from karamaniya import actions, civil_war, errors, prompts  # noqa: E402
+from karamaniya import actions, civil_war, errors, prompts, society  # noqa: E402
 from karamaniya.backends import CallResult  # noqa: E402
 from karamaniya.backends.scripted import ScriptedBackend  # noqa: E402
 from karamaniya.config import load_config, normalize_config  # noqa: E402
@@ -164,6 +164,13 @@ class TheFactionCall(unittest.TestCase):
         w.member("A").removed_how = "coup"
         council.run_month()
         self.assertEqual([c["member"] for c in faction_calls(council)], ["C"])
+
+    def test_a_leader_without_a_seat_makes_no_call_and_the_month_is_recorded(self):
+        council, w = scripted_council(self.tmp)
+        council.seats.pop(LEADER)
+        council.run_month()
+        self.assertEqual(faction_calls(council), [])
+        self.assertIn("no seat", w.history[-1]["civil_war"]["problems"][0])
 
     def test_the_replay_key_is_month_phase_and_leader(self):
         council, _ = scripted_council(self.tmp)
@@ -519,6 +526,32 @@ class OffNeverReadsAPresentState(unittest.TestCase):
                          [(c["phase"], c["member"]) for c in calls(loaded)])
         self.assertEqual(json.loads(json.dumps(loaded_record)), json.loads(json.dumps(plain_record)))
         self.assertEqual(w.civil_war, before)
+
+    def test_a_loaded_state_does_not_stop_an_off_runs_militia_uprising(self):
+        """The militia path used to read the war state without the arm (Wave C, C2's stand-down)."""
+        class Always:
+            def random(self):
+                return 0.0
+
+            def uniform(self, low, high):
+                return low
+
+        w = new_world(1, 36)
+        region = w.region("kessel")
+        region.controller = "karamaniya"
+        region.unrest = 0.6
+        for pop in w.pops:
+            if pop.region == "kessel":
+                pop.ident = "imperial"
+        w.dip.arms_smuggling = True
+        w.mil.army.size = 0.0
+        w.mil.police.size = 0.0
+        donor = new_world(1, 36, civil_war_option="on")
+        donor.const.offices.update(OFFICES)
+        donor.mil.army.bond, donor.mil.army.loyalty = 0.95, 0.30
+        w.civil_war = json.loads(json.dumps(start_war(donor)))
+        society._rebel_regions(w, Always())
+        self.assertEqual(region.controller, "rebels")
 
     def test_an_old_checkpoint_without_a_war_loads(self):
         w = new_world(3, 36)

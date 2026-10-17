@@ -2,7 +2,8 @@
 
 Brief sections 9.S5 and 9.S6. Tool: `tools/exit_audit.py`. Each row of its `extract` output is one apparent exit, or one
 executed or refused motion (the pool the non-exit sample is drawn from). Annotators label each sampled row from the row
-alone: the raw answers, the engine's reading, the state change and the flags. The user adjudicates disagreements.
+alone: the raw answers, the state change and the flags. The first annotator also sees the engine's reading (`parsed`);
+the blind second annotator (`tools/jev_annotate.py`) leaves it out, as section 6 says. The user adjudicates disagreements.
 
 "Month N" is the label the engine prints. The month index in the log is N-1. Run names are the folder names under
 `research\runs`. The worked examples in section 5 were drafted by the tool's author to show the rules. They are not
@@ -111,12 +112,16 @@ Apply if any of these holds:
 - **F3** The words that would carry the exit are placeholders (`placeholder:<field>`), so the exit rests on a bare flag.
 - **F4** The answer times or conditions the exit differently from the reading: "if ... I will resign", a date later than
   the current month, or a statement that the delegate stays. The engine read it as an immediate exit.
+  The reviewer's decision (2026-10-17): a condition read as an immediate resignation is `formatting_or_parser` (F4), as
+  in E4. It is not `ambiguous`, because the answer says something the reading does not.
 
 ### 3.2 `ambiguous`
 
 Not F1-F4, and any of these holds:
 - **A1** The exit rests only on a clean flag or motion. The rest of the answer is ordinary text and says nothing about
-  leaving office.
+  leaving office. The reviewer's decision (2026-10-17): a bare `"resign": true` with ordinary notes is `ambiguous`
+  (A1), as in E2. It is `formatting_or_parser` only when the flag is not the JSON boolean, the answer is unusable, or
+  the notes are placeholders (F1-F3).
 - **A2** The answer hedges the exit in the same sentence: "may", "might", "considering", "would consider".
 - **A3** A mechanical exit depends on a recorded route whose outcome is not recorded (a recount, a court challenge, a
   coalition).
@@ -184,10 +189,19 @@ Each example cites its run and month.
 
 ## 6. Agreement and adjudication
 
+- The sample is pre-registered: seed 1, 60 non-exit events, and every exit included. Draw it with
+  `python tools/exit_audit.py sample events.jsonl --seed 1 --other 60 --out sample.csv`. Do not redraw it after
+  seeing labels; the seed and the size are fixed, and `sample` records them, with the hash of the events file, in
+  `sample.csv.meta.json`.
 - Each annotator fills their own copy of the sample: `annotator_1` in one, `annotator_2` in the other. Use one of the
-  three labels, or leave the cell blank.
+  three labels, or leave the cell blank. `tools/jev_annotate.py sample sample.csv --out sample.jev.csv` fills
+  `annotator_2` automatically.
+- `tools/jev_annotate.py` is blind. The state it sends to Jev holds the raw answers and the recorded row facts, but
+  leaves out the engine's own reading (`parsed`) and the first annotator's label. The protocol is in
+  `docs/JEV_ANNOTATOR.md`.
 - `python tools/exit_audit.py agreement sample_a.csv sample_b.csv` prints Cohen's kappa, Krippendorff's alpha
-  (nominal), the counts and the disagreement list. `--disagreements FILE` writes the list as CSV.
+  (nominal), the counts and the disagreement list. `--disagreements FILE` writes the list as CSV. The second sheet
+  can be the `jev_annotate.py` output, read with `--col-b annotator_2`.
 - The user settles each disagreement in the `adjudicated` column, and records why in `notes`.
 - The seed and the number of non-exit events come from the pre-registration. `sample` records them, and the hash of the
   events file, in `sample.csv.meta.json`.

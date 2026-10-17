@@ -5,7 +5,9 @@
 The run's own config and seed are used again. Every seat and both foreign cabinets are answered from the run's
 log.jsonl by karamaniya/backends/replay.py, so no model is called. The replay is written to a temporary folder, and
 its month records and its final checkpoint are compared with the original's. The first divergence is printed, or
-"identical". Exit status 0 when identical, 1 when not, 2 when the run cannot be read.
+"identical". A second line counts the prompts the replay sends differently from the run (information only: a run
+recorded on an older prompt version differs from the start of the first month whose prompt changed). Exit status 0
+when identical, 1 when not, 2 when the run cannot be read.
 
 Not compared, because they are not the engine's decisions:
   - latency_s (timing), call_id (numbered in the order the threads finish), the run id and log offsets (the checkpoint
@@ -16,7 +18,9 @@ Not compared, because they are not the engine's decisions:
 from __future__ import annotations
 
 import argparse
+import collections
 import copy
+import hashlib
 import json
 import math
 import os
@@ -158,8 +162,8 @@ def replay(run_dir: str, months: int | None = None, keep: bool = False) -> dict:
         replayed_log = _jsonl(os.path.join(replay_dir, "log.jsonl")) if os.path.exists(replay_dir) else []
         replayed_months = [r for r in replayed_log if r.get("type") == "month"]
         base.update(replayed_months=len(replayed_months))
-        verdict = _verdict(original_months, replayed_months, limit, error, run_dir, replay_dir, checkpoint, completed)
-        result = {**base, **verdict}
+        verdict = _verdict(original_months, replayed_months, limit, error, replay_dir, checkpoint, completed)
+        result = {**base, **verdict, "prompts": _prompts(run_dir, replay_dir, limit)}
         if keep:
             result["temp_dir"] = tmp
         return result
@@ -168,7 +172,42 @@ def replay(run_dir: str, months: int | None = None, keep: bool = False) -> dict:
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _verdict(original_months, replayed_months, limit, error, run_dir, replay_dir, checkpoint, completed) -> dict:
+def _prompts(run_dir: str, replay_dir: str, limit: int) -> dict:
+    """How many of the run's prompts for the replayed months the replay sent again unchanged. Information only: the
+    verdict is about the engine's outputs. A prompt differs when the code has changed what the models are told since
+    the run (a version bump in versions.py), or when the replay's state has already diverged."""
+    def digests(folder: str) -> dict:
+        out, counts = {}, collections.Counter()
+        path = os.path.join(folder, "prompts.jsonl")
+        if not os.path.exists(path):
+            return out
+        for r in _jsonl(path):
+            month = r.get("month")
+            if month is None or month >= limit:
+                continue
+            key = (month, r.get("phase"), r.get("member") or r.get("actor"))
+            counts[key] += 1
+            text = (r.get("system") or "") + "\n\n" + (r.get("prompt") or "")
+            out[key + (counts[key],)] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        return out
+
+    original, replayed = digests(run_dir), digests(replay_dir)
+    keys = sorted(set(original) | set(replayed), key=lambda k: (k[0], str(k[1]), str(k[2]), k[3]))
+    differing = [k for k in keys if original.get(k) != replayed.get(k)]
+    summary = {"total": len(original), "differ": len(differing), "first": None, "message": ""}
+    if not differing:
+        summary["message"] = f"prompts: all {len(original)} of the run's prompts for these months are sent again unchanged."
+        return summary
+    month, phase, who, n = differing[0]
+    summary["first"] = {"month": month, "phase": phase, "member": who, "call": n}
+    summary["message"] = (f"prompts: {len(differing)} of {len(keys)} differ from the run's; the first is "
+                          f"{month_label(int(month))}, phase {phase}, member {who}. The replay sends today's prompts "
+                          "with the run's recorded answers, so a difference is a change to what the models are told "
+                          "since the run, or an earlier divergence in the state.")
+    return summary
+
+
+def _verdict(original_months, replayed_months, limit, error, replay_dir, checkpoint, completed) -> dict:
     # 1. Month records, in order: the first month whose record differs is the divergence.
     for rec, orig in zip(replayed_months, original_months):
         found = first_difference(orig, rec)
@@ -236,6 +275,8 @@ def main(argv=None) -> int:
         print(f"replay_run: {exc}", file=sys.stderr)
         return 2
     print(result["message"])
+    if result.get("prompts", {}).get("message"):
+        print(result["prompts"]["message"])
     if result.get("temp_dir"):
         print(f"replay folder: {result['temp_dir']}")
     return 0 if result["identical"] else 1

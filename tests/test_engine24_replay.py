@@ -103,6 +103,12 @@ class AScriptedRunReplaysIdentically(unittest.TestCase):
         self.assertEqual(result["replayed_months"], 3)
         self.assertTrue(result["checkpoint_compared"])
 
+    def test_the_replay_sends_the_runs_own_prompts(self):
+        # The same engine and the same answers: every prompt of the run is sent again, byte for byte.
+        result = replay_run.replay(self.original)
+        self.assertGreater(result["prompts"]["total"], 0)
+        self.assertEqual(result["prompts"]["differ"], 0, result["prompts"]["message"])
+
     def test_the_order_of_the_recorded_lines_does_not_matter(self):
         # Shuffle the call records among the positions they hold, keeping the order of the calls of each
         # (month, phase, member): a repair's first call still comes before its repair. Month and other records

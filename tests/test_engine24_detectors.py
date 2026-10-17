@@ -73,8 +73,8 @@ class ReasonVerdicts(unittest.TestCase):
         self.assertEqual(self.flags("no", "I will vote no, because the cost is too high."), [])
 
     def test_support_and_opposition_phrases_are_not_read(self):
-        # "I support X" names X, which may not be the motion. Nine recorded ballots were flagged on such phrases, and
-        # all nine agreed with the vote (worker 25, T144).
+        # "I support X" names X, which may not be the motion. Nine recorded ballots were flagged on such phrases, and on
+        # worker 25's reading all nine agreed with the vote (T144).
         self.assertEqual(self.flags("yes", "I oppose this, because the cost is too high."), [])
         self.assertEqual(self.flags("no", "I support this motion."), [])
         self.assertEqual(self.flags("no", "I support equal protection, but cannot adopt incomplete language."), [])

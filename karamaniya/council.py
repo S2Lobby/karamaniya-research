@@ -230,8 +230,9 @@ def _vote_intent_clashes(staged: dict, decision: dict) -> list:
 
     This comparison now only decides which ballots are put to the delegate again (council's repair ask).
     It is NOT the recorded VOTE_INTENT_MISMATCH: that is _reason_contradictions. On the 36 labelled stance
-    flags (docs/detector_labels/D2_labelled_36.csv) the stance was the outlier in 34 cases, so the record
-    no longer uses it (worker 25, backlog T144). The ask is left as it was, pending the user's decision.
+    flags (docs/detector_labels/D2_labelled_36.csv) the reason agreed with the vote in 32 of the 34 false
+    positives, so the stance was the outlier, and the record no longer uses it (worker 25, backlog T144).
+    The ask is left as it was, pending the user's decision.
     """
     staged = staged or {}
     stances = staged.get("stances") or {}
@@ -261,7 +262,7 @@ def _vote_intent_clashes(staged: dict, decision: dict) -> list:
 # A verdict the vote reason states about its own motion, in plain words, and only two forms. The reason opens with the
 # verdict ("No. Raising taxes ...", "Yes, the pact ..."), or it says how the delegate votes ("I will vote no"). Support
 # and opposition phrases are not read ("I support X" names X, which may not be this motion; "I support X, but ..." is a
-# concession): on the recorded runs they flagged nine ballots, and all nine agreed with the vote (worker 25, T144).
+# concession): on the recorded runs they flagged nine ballots, and on worker 25's reading all nine agreed with the vote.
 # An argument that points the other way ("reducing surveillance is essential") is not read either: its direction depends
 # on the motion's wording, so it is a known miss (D2-013). A reason with a hedge or a contrast ("but", "however") states
 # no verdict. "No conditions are needed" is not a verdict: the word needs its punctuation.

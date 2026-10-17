@@ -761,6 +761,11 @@ PARTIES_PENALTY = {"multi_party": 0.0, "ban_opposition": 0.15, "one_party": 0.2}
 # costs 0.2 weight x 0.5 = 0.1). The index recovers when the broadcasts are reopened, because it reads the setting in
 # force rather than a stored penalty.
 BROADCAST_JAM_PENALTY = 0.05
+# Wave 3 (T141 hook): a state media line run at high intensity is media capture, the government using the
+# broadcaster as its own instrument. It weighs less than targeted arrests (0.05) or a coercive emergency
+# measure (0.05): a standing high-intensity line is a visible institutional change, but it is not by itself
+# the suspension of an election or an assembly.
+MEDIA_CAPTURE_PENALTY = 0.02
 
 
 def democracy_index(w: World) -> float:
@@ -769,7 +774,9 @@ def democracy_index(w: World) -> float:
     The seven constitutional terms are what the Charter sets; their weights sum to 1. Engine 24 (T141) takes off the
     repressive acts in force (the penalties above), so a government that represses lowers the index and it recovers when
     the acts end. Nothing repressive in force leaves the sum at exactly 1.0, as it was in every run before engine 24.
-    Wave 3 adds jamming foreign broadcasts (BROADCAST_JAM_PENALTY) to the same list: it is a media restriction in force.
+    Wave 3 adds jamming foreign broadcasts (BROADCAST_JAM_PENALTY) and media capture, a state media line carried out
+    at high intensity (MEDIA_CAPTURE_PENALTY; politics.media_month sets w.media["capture"]), to the same list: both
+    are media restrictions in force.
     """
     c = w.const
     if c.elected:
@@ -792,7 +799,8 @@ def democracy_index(w: World) -> float:
                   + sum(EMERGENCY_MEASURE_PENALTY.get(name, 0.0)
                         for name in (w.institutions.get("emergency_measures") or {}))
                   + PARTIES_PENALTY.get(c.parties, 0.0)
-                  + (BROADCAST_JAM_PENALTY if getattr(w.policy, "foreign_broadcasts", "open") == "jammed" else 0.0))
+                  + (BROADCAST_JAM_PENALTY if getattr(w.policy, "foreign_broadcasts", "open") == "jammed" else 0.0)
+                  + (MEDIA_CAPTURE_PENALTY if (w.media or {}).get("capture") else 0.0))
     return clamp(base - repression)
 
 

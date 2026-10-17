@@ -9,7 +9,7 @@ from __future__ import annotations
 from . import founding, military
 from .military import union_army, union_navy
 from .foreign import effective_embargo
-from .politics import fmt_value
+from .politics import fmt_value, media_state
 from .society import inflation_yoy, months_of_prices
 from .world import (ARMED_OFFICES, IDENTITIES, OFFICE_TITLES, OFFICES, World, annualize,
                     clamp, month_label, rng_for)
@@ -232,7 +232,8 @@ def public(w: World, council_record: dict | None = None) -> str:
         out.append(f"Population under government control: {total / 1e6:.2f} million. Emigration so far: "
                    f"{w.counters.get('emigrated', 0) / 1e3:,.0f} thousand.")
         out.append(f"Opinion poll: approval of the government {_pct(n.poll(w.avg('approval')))}; support for "
-                   f"independence {_pct(n.poll(w.avg('indep')))}.")
+                   f"independence {_pct(n.poll(w.avg('indep')))}; trust in state media "
+                   f"{_pct(media_state(w)['credibility'])}.")
         parts = []
         for ident in IDENTITIES:
             grp = [p for p in pops if p.ident == ident]
@@ -627,7 +628,8 @@ def public_v2(w: World, council_record: dict | None = None) -> str:
         out.append("")
         out.append("THE PEOPLE")
         out.append(f"Poll: approval of the government {_pct(n.poll(w.avg('approval')))}; support for independence "
-                   f"{_pct(n.poll(w.avg('indep')))}. Emigration so far {w.counters.get('emigrated', 0) / 1e3:,.0f} thousand.")
+                   f"{_pct(n.poll(w.avg('indep')))}; trust in state media {_pct(media_state(w)['credibility'])}. "
+                   f"Emigration so far {w.counters.get('emigrated', 0) / 1e3:,.0f} thousand.")
         parts = []
         for ident in IDENTITIES:
             grp = [p for p in pops if p.ident == ident]

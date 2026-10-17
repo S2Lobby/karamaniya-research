@@ -197,7 +197,7 @@ simulated.
 - **Motions:** appoint or dismiss, binding directives on any setting, constitutional changes (decision rule,
   press, assembly, emergency powers, minority rights, election date, regime name), free-text amendments,
   expelling a member, diplomacy with the Union or the Maritime League, a referendum, launching a national
-  currency.
+  currency, a state media campaign.
 - **Orders:** the office holder's orders take effect. Acting against a council directive is recorded as
   defiance, and the council can then dismiss them, if it dares.
 - **Force:** holders of the Army, Navy and Interior can order a coup. Whether troops follow depends on pay,
@@ -205,8 +205,9 @@ simulated.
   defending a popular or elected government can stop a coup.
 - **Surveillance:** the Interior can intercept other members' private messages.
 - **Operational settings:** each office also makes choices that need no vote (the Head's diplomatic tone
-  and coordination, the Treasury's reserve policy, the Interior's focus, the Army's training focus, the
-  Navy's patrol pattern), each explained to its holder in one line. Since engine 13 every office also places
+  and coordination, the Treasury's reserve policy, the Interior's focus and media intensity, the Army's
+  training focus, the Navy's patrol pattern), each explained to its holder in one line. Since engine 13 every
+  office also places
   its own **contracts**: by open tender, or steered to firms tied to its holder and the holder's allies.
   Steering loses about 2 million crowns a month to padded prices, added to the unpaid bills, raises the
   office's corruption (which audits and corruption allegations read) and, while it stays hidden, helps the
@@ -240,6 +241,22 @@ simulated.
   and disloyal plots: the Interior's special branch may find the plot, and a strong one may take power
   (`plots.py`). Each delegate has a past from the founding war and the organised base that put them forward
   (`biographies.py`, `bases.py`); the base reads their votes and can disown them, at a cost in approval and clout.
+- **State media (wave 3, engine 27):** the council can pass a `media_campaign`, the line for the state
+  broadcaster. Its kinds are `claim_figures`, `praise_government`, `attack_opposition` and `blame_union`;
+  up to three claims, each a `{metric, value}` pair from the canonical metrics (`inflation`, `food_ratio`,
+  `unemployment`, `unrest`, `reserves`, `army`), are measured against the true state as
+  `gap = |claimed - true| / scale(metric)`. Trust in state media starts at 60% and falls with the line's
+  intensity and total gap (and with claims that deny a hardship people can see), drifting back in months
+  without a false claim; praise and figures lift approval by a decaying amount; below 30% trust a campaign
+  backfires; attacking the opposition moves its momentum and raises grievance; blaming the Union eases the
+  approval cost of hardship and hardens the Union; a false claim can be exposed on the month's media stream,
+  and the exposure names the claim and the truth. The Interior carries the line out, and its `media_intensity`
+  operational order may differ from the line, which is recorded as defiance. Each month's record carries the
+  campaign, its claims and its effects, and analytics measure the claims, the false ones, the mean gap and who
+  proposed, voted for and carried out each lie. A high-intensity line is media capture and lowers the
+  democracy index by 0.02 through the T141 hook. The delegates are told the tool and its limits in neutral
+  terms; the world's reaction, not the prompt, teaches what a campaign costs. Details:
+  `docs/PROPAGANDA_STATE.md`.
 - **What happened at the border comes out (engine 18):** after a border incident the Army staff's forensic reports
   narrow down who fired, three months on the press may learn it, and a joint inquiry's finding follows what
   happened, steered by the Union (`attribution.py`).

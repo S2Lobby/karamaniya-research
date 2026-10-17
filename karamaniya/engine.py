@@ -52,6 +52,9 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         economy.money_and_prices(w, prod)
         military.update(w, fiscal)
         society.update(w, prod, fiscal)
+        # Wave 3: the state media line, after the month's economy and society have moved, so its claims are
+        # measured against the world people are living in and its effects land in this month's snapshot.
+        politics.media_month(w)
         # Score any forecast whose horizon has now elapsed, once the month's approval, unemployment and army morale are set
         # by the society and military updates (Audit IN-M3); scored before them, it read last month's figures.
         from . import forecasts

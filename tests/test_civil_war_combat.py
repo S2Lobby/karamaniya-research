@@ -53,6 +53,9 @@ def dominant_government(w):
 
 def fingerprint(w):
     """Everything combat is allowed to touch, so 'changes nothing' is checkable exactly."""
+    state = copy.deepcopy(getattr(w, "civil_war", None))
+    if isinstance(state, dict):
+        state.pop("last_combat", None)   # the record itself, written on every call
     return {
         "month": w.month,
         "controllers": tuple(r.controller for r in w.regions),
@@ -64,7 +67,7 @@ def fingerprint(w):
         "pops": tuple((p.region, p.cls, p.ident, round(p.size, 6)) for p in w.pops),
         "counters": dict(w.counters),
         "events": tuple((e["kind"], e["text"]) for e in w.events),
-        "state": copy.deepcopy(getattr(w, "civil_war", None)),
+        "state": state,
     }
 
 
@@ -83,6 +86,20 @@ class NoWarIsInert(unittest.TestCase):
         self.assertIsNone(cwc.combat(w))
         self.assertEqual(before, fingerprint(w))
         self.assertFalse(hasattr(w, "civil_war") and w.civil_war)
+
+    def test_empty_state_changes_nothing(self):
+        w = new_world(5, 36)
+        w.civil_war = {}
+        before = fingerprint(w)
+        self.assertIsNone(cwc.combat(w))
+        self.assertEqual(before, fingerprint(w))
+
+    def test_a_finished_war_fights_no_more(self):
+        w = world()
+        w.civil_war["outcome"] = {"type": "partitioned", "month": 5}
+        before = fingerprint(w)
+        self.assertIsNone(cwc.combat(w))
+        self.assertEqual(before, fingerprint(w))
 
 
 class TheModel(unittest.TestCase):
@@ -136,6 +153,34 @@ class TheModel(unittest.TestCase):
         self.assertLessEqual(w.mil.army.size, army_before)
         self.assertGreaterEqual(w.mil.army.size, 0.0)
 
+    def test_losses_reduce_the_force_and_both_sides_shares(self):
+        w = world()
+        army_before = w.mil.army.size
+        government_share = w.civil_war["forces"]["army"]["government"]
+        rec = cwc.combat(w, rng=random.Random(5))
+        army_losses = (rec["losses_by_office"]["army"]["government"]
+                       + rec["losses_by_office"]["army"]["rebels"])
+        self.assertLess(w.mil.army.size, army_before)
+        self.assertAlmostEqual(w.mil.army.size, army_before - army_losses, places=2)
+        self.assertNotEqual(w.civil_war["forces"]["army"]["government"], government_share)
+        self.assertAlmostEqual(sum(w.civil_war["forces"]["army"].values()), 1.0, places=9)
+
+    def test_the_record_is_stored_for_the_month(self):
+        w = world()
+        rec = cwc.combat(w)
+        self.assertEqual(w.civil_war["last_combat"], rec)
+        self.assertEqual(rec["month"], w.month)
+
+    def test_zero_intensity_pauses_the_fighting(self):
+        w = world()
+        w.civil_war["intensity"] = 0.0
+        before_damage = w.region("kessel").damage
+        rec = cwc.combat(w)
+        self.assertEqual(rec["fronts"], {})
+        self.assertEqual(w.region("kessel").damage, before_damage)
+        self.assertEqual(rec["losses"]["civilians"], 0.0)
+        self.assertIn("army", rec["defections"])
+
     def test_casualties_are_counted(self):
         w = world()
         cwc.combat(w, rng=random.Random(5))
@@ -159,9 +204,9 @@ class Territory(unittest.TestCase):
         self.assertNotIn("kessel", w.civil_war["contested"])
         self.assertIn("kessel", w.civil_war["factions"]["government"]["territory"])
         self.assertNotIn("kessel", w.civil_war["factions"]["rebels"]["territory"])
-        self.assertTrue(any(c["region"] == "kessel" and c["to"] == "government"
+        self.assertTrue(any(c["region"] == "kessel" and c["to"] == "karamaniya"
                             for c in record["control_changes"]))
-        self.assertGreaterEqual(record["progress"], 1.0)
+        self.assertGreaterEqual(record["fronts"]["kessel"]["progress"], 1.0)
 
     def test_a_dominant_rebel_side_takes_a_government_region(self):
         w = dominant_government(world())
@@ -196,7 +241,8 @@ class Territory(unittest.TestCase):
         w.civil_war["orders"] = {"government": {"kessel": "defend"}}
         before = fingerprint(w)
         rec = cwc.combat(w)
-        self.assertEqual(rec["fronts"], {})
+        self.assertEqual(rec["fronts"]["kessel"]["note"], "attacker held")
+        self.assertEqual(rec["fronts"]["kessel"]["ratio"], 0.0)
         self.assertEqual(rec["losses"]["civilians"], 0.0)
         self.assertEqual(w.region("kessel").controller, "rebels")
         # The only state change is the monthly defection update.
@@ -206,19 +252,22 @@ class Territory(unittest.TestCase):
     def test_a_falling_region_sends_refugees(self):
         w = dominant_government(world())
         pop_before_fall = None
+        civilians = 0.0
         for _ in range(8):
             if w.region("kessel").controller == "karamaniya":
                 break
             pop_before_fall = sum(p.size for p in w.pops if p.region == "kessel")
-            cwc.combat(w)
+            record = cwc.combat(w)
+            civilians = record["losses"]["civilians"] if record["control_changes"] else 0.0
             w.month += 1
         self.assertEqual(w.region("kessel").controller, "karamaniya")
         moved = w.counters.get("refugees", 0.0)
         self.assertGreater(moved, 0.0)
         self.assertGreaterEqual(moved, cwc.REFUGEE_MIN * pop_before_fall * 0.97)
         self.assertLessEqual(moved, cwc.REFUGEE_MAX * pop_before_fall * 1.03)
+        # The civilians killed in the falling month are gone before the refugees are counted.
         self.assertAlmostEqual(sum(p.size for p in w.pops if p.region == "kessel"),
-                               pop_before_fall - moved, delta=2.0)
+                               pop_before_fall - moved - civilians, delta=2.0)
 
     def test_refugees_go_to_a_region_held_by_the_other_side(self):
         w = dominant_government(world())
@@ -294,7 +343,8 @@ class Defections(unittest.TestCase):
         entry = rec["defections"]["army"]
         self.assertLessEqual(abs(entry["after"]["rebels"] - before["rebels"]), cwc.DEFECTION_CAP + 1e-9)
         self.assertGreater(entry["after"]["rebels"], before["rebels"])
-        self.assertEqual(w.civil_war["forces"]["army"], entry["after"])
+        for key in ("government", "rebels", "neutral"):
+            self.assertAlmostEqual(w.civil_war["forces"]["army"][key], entry["after"][key], places=6)
         total = sum(w.civil_war["forces"]["army"].values())
         self.assertAlmostEqual(total, 1.0, places=9)
 

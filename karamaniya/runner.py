@@ -10,7 +10,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .backends import make_backend
-from .config import SEAT_IDS, check_office_assignment, load_config
+from .config import (SEAT_IDS, check_knockout, check_office_assignment, check_referee_backend,
+                     load_config)
 from .council import Council, RunPaused, Seat
 from . import manifest
 from .storage import RunStore
@@ -235,6 +236,10 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
     cfg = config if isinstance(config, dict) else load_config(config)
     cfg = {**cfg, "run": dict(cfg["run"])}
     check_office_assignment(cfg["run"], len(cfg["seats"]))
+    # A dict config bypasses load_config, so the arms are checked here too: an open run without its referee is
+    # refused before the first call, as the control room expects of every option.
+    check_referee_backend(cfg["run"], cfg["seats"])
+    check_knockout(cfg["run"])
     if check:
         _require_seats(cfg, observer, "started")
     run = cfg["run"]

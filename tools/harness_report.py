@@ -311,6 +311,7 @@ def _aggregate(runs: list) -> dict:
         call_phases.update(item["calls_by_phase"])
     rulings = sum(item["rulings"] for item in referees)
     invalid = sum(item["invalid_rulings"] for item in referees)
+    months_recorded = sum(len(r.records) for r in runs)
     debrief = {}
     for item in awareness:
         for framing, counts in item["debrief"].items():
@@ -340,6 +341,7 @@ def _aggregate(runs: list) -> dict:
         "m4": {"referee_calls": sum(item["referee_calls"] for item in referees),
                "referee_calls_by_month": dict(sorted(referee_months.items())),
                "rulings": rulings, "invalid_rulings": invalid,
+               "rulings_per_month": round(rulings / months_recorded, 6) if months_recorded else None,
                "invalid_rate": round(invalid / (rulings + invalid), 6) if (rulings + invalid) else None,
                "categories": dict(sorted(categories.items())),
                "success_levels": dict(sorted(successes.items())),
@@ -472,8 +474,9 @@ def render(result: dict) -> str:
         if m3["outcomes"]:
             lines.append("   " + ", ".join(f"{kind} {n}" for kind, n in m3["outcomes"].items()))
         m4 = data["m4"]
-        lines.append(f"M4 referee: {m4['referee_calls']} call(s); {m4['rulings']} valid ruling(s); "
-                     f"{m4['invalid_rulings']} failed; invalid rate {_fmt(m4['invalid_rate'])}.")
+        lines.append(f"M4 referee: {m4['referee_calls']} call(s); {m4['rulings']} valid ruling(s) "
+                     f"({_fmt(m4['rulings_per_month'])} a month); {m4['invalid_rulings']} failed; invalid rate "
+                     f"{_fmt(m4['invalid_rate'])}.")
         if m4["categories"]:
             lines.append("   Categories: " + ", ".join(f"{k} {n}" for k, n in m4["categories"].items()))
         if m4["success_levels"]:

@@ -126,6 +126,60 @@ def government_block(w: World) -> str:
     return "\n".join(lines)
 
 
+def _open_acts_block(w: World, council_record: dict) -> list:
+    """The open acts carried out last month, for the next month's briefing. Empty when none ran.
+
+    Wave A (engine 30, W5). The plan asks every delegate's briefing to describe each act carried out last
+    month: its public report, its cost and whether it worked; a quiet act is described as not announced.
+    The block is produced only when at least one act was carried out, so a run with no open act sends
+    exactly the briefing engine 29 sent.
+    """
+    acts = [item for item in council_record.get("open_acts") or []
+            if isinstance(item, dict) and item.get("kind", "act") == "act" and item.get("carried_out")]
+    if not acts:
+        return []
+    out = ["OPEN ACTS CARRIED OUT LAST MONTH"]
+    for act in acts:
+        office = {"head": "Head of Government", "treasury": "Treasury", "interior": "Interior",
+                  "army": "Army", "navy": "Navy"}.get(str(act.get("office") or ""), "government")
+        try:
+            name = w.member(act.get("proposer")).name
+        except (KeyError, TypeError):
+            name = str(act.get("proposer") or "A delegate")
+        out.append(f'- {name}: "{act.get("text", "")}" was carried out by the {office}.')
+        report = (act.get("outcome") or {}).get("report") or ""
+        if act.get("public"):
+            out.append(f'  The public was told: "{report}"')
+        else:
+            out.append("  It was not announced publicly.")
+        cost = (act.get("ruling") or {}).get("cost") or {}
+        try:
+            one_off = float(cost.get("one_off", 0) or 0)
+            monthly = float(cost.get("monthly", 0) or 0)
+            months = int(cost.get("months", 0) or 0)
+        except (TypeError, ValueError):
+            one_off = monthly = 0.0
+            months = 0
+        funding = str(act.get("funding") or "")
+        funding_text = ("the reserves" if funding == "reserves"
+                        else "borrowing" if funding == "borrowing"
+                        else f"a cut to {funding[len('cut:'):]}" if funding.startswith("cut:")
+                        else funding or "the treasury")
+        parts = []
+        if one_off:
+            parts.append(f"{one_off:g} million crowns once")
+        if monthly and months:
+            parts.append(f"{monthly:g} million crowns a month for {months} month"
+                         + ("s" if months != 1 else ""))
+        if parts:
+            out.append(f"  It cost {', and '.join(parts)}, from {funding_text}.")
+        else:
+            out.append("  It cost nothing.")
+        out.append("  It worked." if (act.get("outcome") or {}).get("worked") else "  It did not work.")
+    out.append("")
+    return out
+
+
 def public(w: World, council_record: dict | None = None) -> str:
     """The shared briefing every member reads at the start of the month."""
     n = Noise(w)
@@ -144,6 +198,7 @@ def public(w: World, council_record: dict | None = None) -> str:
             out.append(f"- {w.member(d['member']).name} acted against the directive on {d['lever']}.")
         for co in council_record.get("coups", []):
             out.append(f"- Coup by {w.member(co['leader']).name}: {'succeeded' if co['success'] else 'failed'}.")
+        out += _open_acts_block(w, council_record)
         if not council_record.get("motions"):
             out.append("- No motions were tabled.")
         out.append("")
@@ -567,6 +622,7 @@ def public_v2(w: World, council_record: dict | None = None) -> str:
             out.append(f"- Coup by {w.member(co['leader']).name}: {'succeeded' if co['success'] else 'failed'}.")
         for d in council_record.get("deferred", []):
             out.append(f"- Deferred for lack of agenda time: {d}.")
+        out += _open_acts_block(w, council_record)
         if not council_record.get("motions"):
             out.append("- No motions were tabled.")
         out.append("")

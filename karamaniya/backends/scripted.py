@@ -75,6 +75,19 @@ REFEREE_MONTHS = 3
 REFEREE_REGION = "aster"
 REFEREE_COVERT_WORDS = ("covert", "secret", "quietly", "hidden", "deniable")
 
+# ---- Wave A W5: a scripted open act ----------------------------------------------------------------
+# Under harness = "open" one stand-in tables a single open act, so a scripted sweep exercises the whole
+# path without a model (referee, success draw, cost and funding, effects, briefing, replay). The gate is
+# the run's arm, which the council passes in the call context: a menu or language run's answers are
+# byte-identical to engine 29's. Month 3 leaves the first months for the usual opening business and fits
+# a 6-month replay.
+SCRIPTED_OPEN_ACT_MONTH = 2
+SCRIPTED_OPEN_ACT = {"type": "open_act", "subject": "", "value": "",
+                     "text": "Repair the rail bridge at Port Aster with local contractors.",
+                     "action": {"office": "treasury",
+                                "budget": {"amount": 2.0, "months": 3},
+                                "funding": "reserves"}}
+
 
 def _raises_arms(w: World, mo: dict) -> bool:
     """Whether a motion raises the military budget, the army's target, its recruitment or its mobilization, or sets
@@ -586,6 +599,9 @@ class ScriptedBackend(Backend):
             talks = self._dove_talks(w)
             if talks:
                 motions.insert(0, talks)      # first, so the two-motion cap below keeps it
+        if (ctx.get("harness") == "open" and p == "democrat"
+                and w.month == SCRIPTED_OPEN_ACT_MONTH):
+            motions.insert(0, {**SCRIPTED_OPEN_ACT, "action": dict(SCRIPTED_OPEN_ACT["action"])})
         recent_proposals = [item for item in w.member(mid).agent_state.get("motion_outcomes", [])
                             if w.month - item.get("month", -99) < 12]
         motions = [motion for motion in motions if not any(

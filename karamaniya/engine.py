@@ -384,7 +384,7 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
         },
         "police": m.police.size,
     })
-    from . import effects, policy
+    from . import effects, open_acts, policy
     applied = effects.applied(w)
     if applied:
         # Wave A (engine 30): what the effect bus applied this month, by channel, target and source. Left out
@@ -395,3 +395,8 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
         # Wave A (engine 30, W3): the month's policy record, when a policy was scheduled, carried out, ended or
         # refused this month. Left out entirely when there was none, so a default run's rows are unchanged.
         w.history[-1]["policies"] = policies
+    open_record = open_acts.month_record(w)
+    if open_record:
+        # Wave A (engine 30, W5): delegates' open acts carried out or refused this month, with their rulings,
+        # costs and effects. Left out entirely when there was none, so a default run's rows are unchanged.
+        w.history[-1]["open_acts"] = open_record["open_acts"]

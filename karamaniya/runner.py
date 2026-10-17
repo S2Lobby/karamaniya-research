@@ -256,7 +256,11 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
                       founding_severity=run.get("founding_severity", "default"),
                       founding_problems=run.get("founding_problems"),
                       agent_architecture_version=architecture, tuning=run.get("tuning"),
-                      trait_baselines=baselines, ballot=run.get("ballot", "open"))
+                      trait_baselines=baselines, ballot=run.get("ballot", "open"),
+                      # Wave C: the war arm. Absent from RUN_DEFAULTS, so a config that does not
+                      # name it normalizes and manifests exactly as before; the replay reads it
+                      # from the recorded config.
+                      civil_war_option=run.get("civil_war", "off"))
     # The manifest is written before the first call, so a run that dies early is still readable.
     store._write_json("manifest.json", manifest.build(world, {**cfg, "mapping": mapping}))
     council = Council(world, _seats(cfg, mapping), run, store, observer=observer)

@@ -13,12 +13,12 @@ import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (actions, agendas, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors, forecasts,
+from . import (actions, agendas, agents, analytics, beliefs, briefing, civil_war, commitments, convergence, decision_context, deliberation, errors, forecasts,
                freshness, director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations,
                politics, prompts, provenance, psychology, slate as slate_rules, standing, token_saving, tuning)
 from .backends import CallResult
 from .config import OFFICES_BY_LETTER
-from .world import OFFICES, World, month_label, rng_for
+from .world import ARMED_OFFICES, OFFICES, World, month_label, rng_for
 
 
 def _group(items: list, key: str) -> dict:
@@ -780,6 +780,71 @@ def speaking_order(w: World, active: list, rng, action_order: str = "seeded_shuf
     return held + sorted(mid for mid in active if mid not in held)
 
 
+# ---- the civil war's month (Wave C, C3) ----------------------------------------------------
+def _war_state(w: World) -> dict | None:
+    """The war state while one is running; None under the default and after any outcome.
+
+    The arm is read first, so an off run never reads a civil-war state loaded from an on run's
+    checkpoint. C4's `running` is the authority when this base carries it (the cw/c4 branch defines
+    it); before that merge the same rule is read from the state itself.
+    """
+    if not civil_war.enabled(w):
+        return None
+    running = getattr(civil_war, "running", None)
+    if callable(running) and not running(w):
+        return None
+    state = civil_war.state(w)
+    if not isinstance(state, dict) or not state or state.get("outcome"):
+        return None
+    return state
+
+
+def _c4_call(name: str, *args):
+    """Call a C4 civil-war API when this base carries it (running, ceasefire, offer,
+    orders_break_ceasefire); None when it does not, so the faction month still records the answer."""
+    function = getattr(civil_war, name, None)
+    return function(*args) if callable(function) else None
+
+
+def _faction_rebels(state: dict) -> set:
+    return {str(mid) for mid in ((state.get("factions") or {}).get("rebels") or {}).get("members") or []}
+
+
+def _session_members(w: World, state: dict | None) -> list:
+    """The members the government's sessions call: every active member, or in a war everyone not in rebellion.
+
+    Rebels keep their seats, offices and status. Only the session lists are filtered; `active_members`
+    and every world-level rule (quorum, vacancies, appointments) are left as they were.
+    """
+    active = [m.id for m in w.active_members()]
+    if state is None:
+        return active
+    rebels = _faction_rebels(state)
+    return [mid for mid in active if mid not in rebels]
+
+
+def _member_rank(w: World, mid: str) -> tuple:
+    """The highest office a rebel holds, then the armed power behind it (highest first), then the id."""
+    from .politics import _power
+    offices = w.offices_of(mid)
+    ranks = [OFFICES.index(office) for office in offices if office in OFFICES]
+    power = sum(_power(w, office) for office in offices if office in ARMED_OFFICES)
+    return (min(ranks) if ranks else len(OFFICES), -power, mid)
+
+
+def _faction_leader(w: World, state: dict) -> str | None:
+    """The rebel leader: the state's own choice while it is active, else the highest office, ties by power."""
+    rebels = (state.get("factions") or {}).get("rebels") or {}
+    active = {m.id for m in w.active_members()}
+    members = [mid for mid in rebels.get("members") or [] if mid in active]
+    if not members:
+        return None
+    leader = rebels.get("leader")
+    if leader in members:
+        return leader
+    return min(members, key=lambda mid: _member_rank(w, mid))
+
+
 class RunPaused(Exception):
     """A seat could not take its turn. The month is abandoned (nothing of it is saved) and replayed
     when the run is resumed, so no member silently abstains for a whole month."""
@@ -1282,6 +1347,70 @@ class Council:
             return self._run_month_v2()
         return self._run_month_v1()
 
+    def _faction_phase(self, brief: str, inbox: dict, intercepted: dict, can_read=None) -> dict | None:
+        """The rebels' month: one call by their leader, through the delegate call path.
+
+        The phase name and the member id key the call, so replay finds it unchanged by (month,
+        phase, member). The answer's fronts become the rebels' orders; an offer goes to C4's own API
+        when this base carries it; an attack breaks a ceasefire before combat reads it. Returns the
+        record the month's history row carries, or None when no war is running.
+        """
+        w = self.w
+        state = _war_state(w)
+        if state is None or w.ended():
+            return None
+        leader = _faction_leader(w, state)
+        if leader is None or leader not in self.seats:
+            return {"month": w.month, "leader": leader, "spoke": [], "answer": None, "orders": {},
+                    "refused": [],
+                    "problems": ["no active rebel leader can be called"] if leader is None
+                    else [f"the rebel leader {leader} has no seat in this council"]}
+        fronts = actions.faction_fronts(w, state)
+        others = [mid for mid in (m.id for m in w.active_members()) if mid != leader] or [leader]
+        schema = actions.faction_schema(w, fronts, others)
+        prompt, meta = decision_context.build(
+            w, leader, "faction", public_brief=brief, motions=[],
+            messages=prompts.messages_v2(w, inbox.get(leader, []), intercepted.get(leader)),
+            instructions=prompts.faction_instructions(w, leader, fronts, state),
+            schema_text=self._schema_text(leader, schema), budget=self._budget(leader),
+            extra=(can_read(leader) if can_read else []), layout=self.tokens["layout"])
+        res = self._call(leader, "faction", prompt, schema,
+                         {"motions": [], "statements": [], "fronts": fronts, "prompt_meta": meta})
+        out, problems = actions.read_answer(actions.normalize_faction, w, leader, res.data, fronts, others)
+        cuts = actions.text_cuts(out, res.data)
+        for entry in out["refused"]:
+            errors.record(w, entry["code"], entry["reason"], member=leader, phase="faction")
+        # The orders are the answer's own keys: a front it did not name keeps no order. C2's combat
+        # reads a front name or a region id, so the government's key is not ours to fill.
+        orders = dict(state.get("orders") or {})
+        orders["rebels"] = dict(out["fronts"])
+        state["orders"] = orders
+        # C4 owns negotiation and the war's end: the phase hands it the answer and records its reply.
+        ceasefire_result = (_c4_call("ceasefire", w, "rebels")
+                            if out["offer"] == {"ceasefire": True} else None)
+        offer_result = (_c4_call("offer", w, "rebels", out["offer"]["terms"])
+                        if isinstance(out["offer"], dict) and "terms" in out["offer"] else None)
+        breach = _c4_call("orders_break_ceasefire", w)
+        for dm in out["messages"]:
+            sent = {**dm, "when": "last month, rebel leadership", "month": w.month, "phase": "faction"}
+            self.pending_dms.append(sent)
+            self.store.log({"type": "dm", **sent})
+        record = {"month": w.month, "leader": leader, "spoke": [leader],
+                  "answer": {key: out[key] for key in ("fronts", "offer", "statement", "messages", "appeal")},
+                  "refused": out["refused"], "problems": list(problems),
+                  "orders": dict(out["fronts"]),
+                  "call": self._call_summary(leader, "faction", res, problems, cuts)}
+        if ceasefire_result is not None:
+            record["ceasefire"] = ceasefire_result
+            record["problems"] += list((ceasefire_result or {}).get("problems") or [])
+        if offer_result is not None:
+            record["offer"] = offer_result
+            record["problems"] += list((offer_result or {}).get("problems") or [])
+        if breach is not None:
+            record["ceasefire_breach"] = breach
+        state["last_faction"] = record
+        return record
+
     def _run_month_v1(self) -> dict:
         w = self.w
         if w.month == 0 and w.founding and not w.founding.get("formation"):
@@ -1292,8 +1421,11 @@ class Council:
         self._emit(type="month_start", month=w.month)
         rng = rng_for(w.seed, w.month, "council")
         active = [m.id for m in w.active_members()]
+        # Wave C: while a war runs the rebels keep their seats but sit out the government's sessions.
+        war = _war_state(w)
+        session_members = _session_members(w, war)
         brief = briefing.public(w, self.last_record)
-        order = speaking_order(w, active, rng, self.settings.get("action_order", "seeded_shuffle"))
+        order = speaking_order(w, session_members, rng, self.settings.get("action_order", "seeded_shuffle"))
         quota = int(self.settings.get("dm_per_turn", 3))
         inbox = {mid: [] for mid in active}
         intercepted = {mid: [] for mid in active}
@@ -1405,9 +1537,9 @@ class Council:
             out, problems = actions.read_answer(actions.normalize_decision, w, mid, res.data, motion_ids, left)
             return mid, res, out, problems
 
-        workers = len(active) if self.settings.get("parallel_decisions", True) else 1
+        workers = len(session_members) if self.settings.get("parallel_decisions", True) else 1
         with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
-            results = list(ex.map(decide, active))
+            results = list(ex.map(decide, session_members))
         decisions = {}
         for mid, res, out, problems in results:
             decisions[mid] = out
@@ -1440,8 +1572,12 @@ class Council:
             contexts = director.prepare_external(w)
             cabinet_decisions, foreign_calls = self._foreign_cabinets(contexts)
             record["foreign_calls"] = foreign_calls
+        # Wave C: the rebels' month, after the council's decision and before the month's fighting.
+        faction_record = self._faction_phase(brief, inbox, intercepted)
         acted_month = w.month
         engine.step(w, cabinet_decisions, foreign_prepared=self.foreign_enabled)
+        if faction_record is not None and w.history and w.history[-1].get("month") == acted_month:
+            w.history[-1]["civil_war"] = faction_record
         self._emit(type="neighbours", month=acted_month, actors=_neighbours_live(w, acted_month, cabinet_decisions))
         if w.human_factor and w.agent_architecture_version >= 1:
             record["social"] = _post_month_social(w)
@@ -1519,6 +1655,9 @@ class Council:
         self._emit(type="month_start", month=w.month)
         rng = rng_for(w.seed, w.month, "council")
         active = [m.id for m in w.active_members()]
+        # Wave C: while a war runs the rebels keep their seats but sit out the government's sessions.
+        war = _war_state(w)
+        session_members = _session_members(w, war)
         # Phase 0/1: consequences of last month are in the state; distribute information.
         capacity = standing.update_capacity(w)
         intelligence.generate(w)
@@ -1536,7 +1675,7 @@ class Council:
                 return []
             _, own = token_saving.briefing_for(full_brief, (w.member(mid).agent_state or {}).get("read_requests"))
             return [decision_context.Section("briefing_requested", 3, own)] if own else []
-        order = speaking_order(w, active, rng, self.settings.get("action_order", "seeded_shuffle"))
+        order = speaking_order(w, session_members, rng, self.settings.get("action_order", "seeded_shuffle"))
         quota = int(self.settings.get("dm_per_turn", 3))
         inbox = {mid: [] for mid in active}
         intercepted = {mid: [] for mid in active}
@@ -1933,9 +2072,9 @@ class Council:
                 out["read_next_month"] = token_saving.read_requests(res.data, read_options)
             return mid, res, out, problems, cuts
 
-        workers = len(active) if self.settings.get("parallel_decisions", True) else 1
+        workers = len(session_members) if self.settings.get("parallel_decisions", True) else 1
         with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
-            results = list(ex.map(decide, active))
+            results = list(ex.map(decide, session_members))
         decisions = {}
         for mid, res, out, problems, cuts in results:
             decisions[mid] = out
@@ -2061,7 +2200,11 @@ class Council:
             cabinet_decisions, foreign_calls = self._foreign_cabinets(contexts)
             record["foreign_calls"] = foreign_calls
         completed_month = record["month"]
+        # Wave C: the rebels' month, after the council's decision and before the month's fighting.
+        faction_record = self._faction_phase(brief, inbox, intercepted, own_brief)
         engine.step(w, cabinet_decisions, foreign_prepared=self.foreign_enabled)
+        if faction_record is not None and w.history and w.history[-1].get("month") == completed_month:
+            w.history[-1]["civil_war"] = faction_record
         self._emit(type="neighbours", month=completed_month,
                    actors=_neighbours_live(w, completed_month, cabinet_decisions))
         # Wave 3: the month record carries what the state media line did and what it cost.

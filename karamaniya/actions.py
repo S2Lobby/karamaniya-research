@@ -41,6 +41,21 @@ ACTION_ISSUE_WORDS = 20     # a motion action's issue at stake
 ACTION_TERMS_WORDS = 20     # each term a motion action demands; up to four are read
 MAX_MOTIONS = 2
 
+# Wave C (C3): the rebel leader's month. Every limit here is stated in prompts.faction_instructions.
+FACTION_STATEMENT_WORDS = STATEMENT_WORDS
+FACTION_MESSAGE_WORDS = DM_WORDS
+FACTION_MAX_MESSAGES = 3
+FACTION_STANCES = ("attack", "defend", "withdraw")
+# The deployments the design names, before the month's contested regions.
+FACTION_FRONTS = ("north", "east", "capital")
+# The closed settlement list, in C4's canonical shapes (civil_war.canonical_terms).
+FACTION_TERMS = ("amnesty", "power_sharing", "regional_autonomy", "forces", "election_date")
+FACTION_FORCE_MODES = ("integrate", "disarm")
+FACTION_APPEALS = ("union", "league")
+FACTION_FIELDS = ("fronts", "offer", "statement", "messages", "appeal")
+# The user's design rule: no settlement schedules an election before Month 36 (1-based, as prompts say it).
+FACTION_EARLIEST_ELECTION_MONTH = 36
+
 
 def public_statement_preview(raw: str) -> str:
     """Read only the public statement string from a possibly unfinished JSON reply."""
@@ -310,6 +325,9 @@ def example(schema: dict, indent: int = 0) -> str:
     """Render a schema as a readable JSON-like skeleton for the prompt."""
     pad = "  " * indent
     t = schema.get("type")
+    if isinstance(t, list):
+        # A field that may also be null is shown as its main type; the prompt says null is allowed.
+        t = next((x for x in t if x != "null"), "string")
     if t == "object":
         props = schema.get("properties", {})
         if not props:
@@ -319,8 +337,8 @@ def example(schema: dict, indent: int = 0) -> str:
     if t == "array":
         return "[" + example(schema["items"], indent) + ", ...]"
     if "enum" in schema:
-        return " | ".join(f'"{x}"' for x in schema["enum"])
-    return {"string": '"..."', "number": "number", "boolean": "true | false"}.get(t, '"..."')
+        return " | ".join("null" if x is None else f'"{x}"' for x in schema["enum"])
+    return {"string": '"..."', "number": "number", "integer": "number", "boolean": "true | false"}.get(t, '"..."')
 
 
 COMPACT_KEY = ("(the shape of the JSON object, written compactly: keys without quotes, a|b means one of, "
@@ -333,12 +351,14 @@ def compact_example(schema: dict) -> str:
     for seats whose connector makes the model's answer follow the schema anyway."""
     def render(s: dict) -> str:
         t = s.get("type")
+        if isinstance(t, list):
+            t = next((x for x in t if x != "null"), "string")
         if t == "object":
             return "{" + ", ".join(f"{k}: {render(v)}" for k, v in (s.get("properties") or {}).items()) + "}"
         if t == "array":
             return "[" + render(s["items"]) + ", ...]"
         if "enum" in s:
-            return "|".join(str(x) for x in s["enum"])
+            return "|".join("null" if x is None else str(x) for x in s["enum"])
         return {"string": "text", "number": "num", "integer": "num", "boolean": "bool"}.get(t, "text")
     return COMPACT_KEY + "\n" + render(schema)
 
@@ -675,6 +695,7 @@ POSITION_FIELDS = ("main_problem", "preferred_policy", "unacceptable_outcome", "
 # The limits the prompts state, by where the text sits in an answer. Since engine 15 that is every text of a
 # version-2 answer; a cut is recorded with whether its limit was stated (text_cuts).
 STATED_LIMITS = {"statement": STATEMENT_WORDS, "response": RESPONSE_WORDS, "private_messages.text": DM_WORDS,
+                 "messages.text": FACTION_MESSAGE_WORDS,
                  "notes": NOTE_WORDS, "principles": PRINCIPLES_WORDS, "vote_reasons": VOTE_REASON_WORDS,
                  **{f"private_position.{k}": POSITION_WORDS for k in POSITION_FIELDS},
                  "demands.demand": DEMAND_WORDS, "belief_updates.reason": BELIEF_REASON_WORDS,
@@ -844,6 +865,109 @@ def decision_schema_v2(w: World, mid: str, motion_ids: list, election_pending: b
     props["notes"] = {"type": "string"}
     props["decision_factors"] = _arr({"type": "string"}, 4)
     return _obj(props)
+
+
+def faction_fronts(w: World, state: dict | None) -> list:
+    """The fronts a rebel leader gives orders for: the two borders, the capital, then each contested region.
+
+    The list is stable: a set never makes a run depend on Python's hash seed. A contested entry may be
+    a region id or a dict naming its region, as civil_war_combat tolerates.
+    """
+    extras = set()
+    for entry in (state or {}).get("contested") or []:
+        if isinstance(entry, dict):
+            entry = entry.get("region") or entry.get("id")
+        if entry is not None:
+            extras.add(str(entry))
+    return list(FACTION_FRONTS) + [rid for rid in sorted(extras) if rid not in FACTION_FRONTS]
+
+
+def faction_schema(w: World, fronts: list, others: list) -> dict:
+    """The rebel leader's month: a stance per front, an offer, a statement, messages and an appeal."""
+    stance = {"type": "string", "enum": list(FACTION_STANCES)}
+    # C4's canonical shapes (civil_war.canonical_terms). Each term names its own details; an item may
+    # carry more than one, and the offer may carry several items.
+    term = _opt_obj({
+        "amnesty": {"type": "boolean"},
+        "power_sharing": _obj({office: {"type": "string", "enum": ["government", "rebels"]}
+                               for office in OFFICES}),
+        "regional_autonomy": {"type": "string",
+                              "enum": [r.id for r in w.regions if r.nation == "karamaniya"]},
+        "forces": {"type": "string", "enum": list(FACTION_FORCE_MODES)},
+        "election_date": {"type": "integer", "minimum": FACTION_EARLIEST_ELECTION_MONTH},
+    })
+    offer = {"type": ["object", "null"],
+             "properties": {"ceasefire": {"type": "boolean"},
+                            "terms": _arr(term, len(FACTION_TERMS))},
+             "additionalProperties": False}
+    return _obj({"fronts": _obj({key: stance for key in fronts}),
+                 "offer": offer,
+                 "statement": {"type": "string"},
+                 "messages": _arr(_obj({"to": {"type": "string", "enum": others},
+                                        "text": {"type": "string"}}), FACTION_MAX_MESSAGES),
+                 "appeal": {"type": ["string", "null"], "enum": [*FACTION_APPEALS, None]}})
+
+
+def _faction_term(w: World, key: str, value) -> tuple:
+    """One canonical settlement term, or (None, a reason in words). C4 validates the offer again."""
+    if key == "amnesty":
+        if value is True or (isinstance(value, str) and value.strip().lower() in ("true", "yes")):
+            return {"amnesty": True}, ""
+        return None, "amnesty takes true"
+    if key == "power_sharing":
+        if not isinstance(value, dict) or not value:
+            return None, "power sharing names offices and the side each one takes (government or rebels)"
+        assignments = {}
+        for office, side in value.items():
+            office, side = str(office).strip().lower(), str(side).strip().lower()
+            if office not in OFFICES:
+                return None, f"power sharing names an office that does not exist: '{office}'"
+            if side not in ("government", "rebels"):
+                return None, f"power sharing names a side that does not exist: '{side}'; use government or rebels"
+            assignments[office] = side
+        return {"power_sharing": assignments}, ""
+    if key == "regional_autonomy":
+        raw = ((value.get("region") or value.get("id")) if isinstance(value, dict) else value)
+        rid = str(raw).strip().lower() if raw is not None else ""
+        region = None
+        if rid:
+            try:
+                region = w.region(rid)
+            except KeyError:
+                region = next((r for r in w.regions if r.nation == "karamaniya"
+                               and r.name.strip().lower() == rid), None)
+        if region is None or region.nation != "karamaniya":
+            return None, f"regional autonomy names a region Karamaniya does not hold: '{raw}'"
+        return {"regional_autonomy": region.id}, ""
+    if key == "forces":
+        raw = ((value.get("mode") or value.get("forces") or value.get("value"))
+               if isinstance(value, dict) else value)
+        mode = str(raw).strip().lower() if raw is not None else ""
+        aliases = {"integrate": "integrate", "integration": "integrate",
+                   "disarm": "disarm", "disarmament": "disarm"}
+        if mode not in aliases:
+            return None, f"the forces term is integration (integrate) or disarmament (disarm), not '{raw}'"
+        return {"forces": aliases[mode]}, ""
+    if key == "election_date":
+        raw = ((value.get("month") or value.get("election_date") or value.get("value"))
+               if isinstance(value, dict) else value)
+        month = None
+        if isinstance(raw, bool):
+            month = None
+        elif isinstance(raw, (int, float)):
+            month = int(raw)
+        elif isinstance(raw, str):
+            digits = re.findall(r"\d+", raw)
+            month = int(digits[0]) if digits else None
+        if month is None:
+            return None, "the election date is a month number, such as 36 for Month 36"
+        if month < FACTION_EARLIEST_ELECTION_MONTH:
+            return None, (f"no election may be scheduled before Month {FACTION_EARLIEST_ELECTION_MONTH}; "
+                          f"the offer asks for Month {month}")
+        if month - 1 < w.month:
+            return None, f"the election date Month {month} has already passed"
+        return {"election_date": month}, ""
+    return None, f"the settlement terms are a closed list; '{key}' is not one of them"
 
 
 def _v2_dms(w: World, mid: str, raw, quota: int, problems: list, refused: list | None = None) -> list:
@@ -1313,3 +1437,130 @@ def normalize_decision_v2(w: World, mid: str, data, motion_ids: list, dm_quota: 
     if refused:
         base["refused_messages"] = refused
     return base, problems
+
+
+# =====================================================================================================
+# The rebel leader's month (Wave C, C3)
+# =====================================================================================================
+def normalize_faction(w: World, mid: str, data, fronts: list, others: list) -> tuple:
+    """Fold a rebel leader's answer into the canonical shape, refusing what the closed lists do not hold.
+
+    Every refusal is in words and carries a registered FACTION_* code in ``out["refused"]``; the rest
+    of the answer stands. The council records each refusal in the error ledger and on the month.
+    """
+    problems: list = []
+    empty = {"fronts": {}, "offer": None, "statement": "", "messages": [], "appeal": None, "refused": []}
+    if not isinstance(data, dict):
+        return empty, ["no answer"]
+    out = {**empty, "refused": []}
+    refused = out["refused"]
+
+    def refuse(code: str, reason: str) -> None:
+        problems.append(reason)
+        refused.append({"code": code, "reason": reason})
+
+    raw_fronts = data.get("fronts")
+    if raw_fronts is None:
+        raw_fronts = {}
+    elif not isinstance(raw_fronts, dict):
+        refuse("FACTION_UNKNOWN_FRONT", "fronts must name each front and its stance")
+        raw_fronts = {}
+    known = {str(front) for front in fronts}
+    for key, value in raw_fronts.items():
+        key = str(key).strip().lower()
+        if key not in known:
+            refuse("FACTION_UNKNOWN_FRONT",
+                   f"unknown front '{key}'; the fronts are {', '.join(fronts)}")
+            continue
+        stance = str(value).strip().lower()
+        if stance not in FACTION_STANCES:
+            refuse("FACTION_BAD_STANCE",
+                   f"bad stance '{value}' on {key}; use attack, defend or withdraw")
+            continue
+        out["fronts"][key] = stance
+
+    raw_offer = data.get("offer")
+    if raw_offer is not None:
+        if not isinstance(raw_offer, dict):
+            refuse("FACTION_BAD_OFFER", "an offer is null, a ceasefire, or settlement terms")
+        else:
+            for key in sorted(k for k in raw_offer if k not in ("ceasefire", "terms")):
+                refuse("FACTION_BAD_OFFER",
+                       f"unknown offer field '{key}'; an offer is a ceasefire or settlement terms")
+            ceasefire = raw_offer.get("ceasefire")
+            if ceasefire not in (None, True, False):
+                refuse("FACTION_BAD_OFFER", "ceasefire takes true or false")
+                ceasefire = None
+            raw_terms = raw_offer.get("terms")
+            terms = []
+            if raw_terms is not None:
+                if not isinstance(raw_terms, list):
+                    refuse("FACTION_BAD_OFFER", "terms is a list of settlement terms")
+                    raw_terms = []
+                elif not raw_terms:
+                    refuse("FACTION_BAD_OFFER", "an offer must name at least one settlement term")
+                for item in raw_terms:
+                    if not isinstance(item, dict):
+                        refuse("FACTION_UNKNOWN_TERM", "each settlement term names its term and details")
+                        continue
+                    for key, value in item.items():
+                        key = str(key).strip().lower().replace("-", "_").replace(" ", "_")
+                        if key not in FACTION_TERMS:
+                            refuse("FACTION_UNKNOWN_TERM",
+                                   f"unknown settlement term '{key}'; the terms are "
+                                   + ", ".join(FACTION_TERMS))
+                            continue
+                        settled, reason = _faction_term(w, key, value)
+                        if settled is None:
+                            refuse("FACTION_BAD_OFFER", reason)
+                            continue
+                        if any(key in prior for prior in terms):
+                            refuse("FACTION_BAD_OFFER", f"the term '{key}' was named twice")
+                            continue
+                        terms.append(settled)
+            if ceasefire is True and terms:
+                refuse("FACTION_BAD_OFFER", "an offer is either a ceasefire or settlement terms, not both")
+            elif ceasefire is True:
+                out["offer"] = {"ceasefire": True}
+            elif terms:
+                out["offer"] = {"terms": terms}
+
+    out["statement"] = words(data.get("statement", ""), FACTION_STATEMENT_WORDS)
+    if out["statement"].endswith(CUT_MARK):
+        refuse("FACTION_STATEMENT_TOO_LONG",
+               f"the statement is longer than {FACTION_STATEMENT_WORDS} words; it is kept cut at the limit")
+
+    ids = {m.id for m in w.active_members()}
+    allowed = {str(mid) for mid in others} & ids
+    raw_messages = _listed(data.get("messages"), "messages", problems)
+    for dm in raw_messages:
+        if not isinstance(dm, dict):
+            continue
+        if len(out["messages"]) >= FACTION_MAX_MESSAGES:
+            refuse("FACTION_BAD_MESSAGE", f"at most {FACTION_MAX_MESSAGES} private messages are read")
+            break
+        to = _dm_target(dm)
+        text = words(dm.get("text", ""), FACTION_MESSAGE_WORDS)
+        if to == mid or to not in allowed:
+            refuse("FACTION_BAD_MESSAGE", f"bad private message recipient '{_dm_recipient(dm)}'")
+            continue
+        if not text.strip():
+            refuse("FACTION_BAD_MESSAGE", f"the private message to {to} has an empty body")
+            continue
+        out["messages"].append({"from": mid, "to": to, "text": text})
+
+    raw_appeal = data.get("appeal")
+    if raw_appeal is None or (isinstance(raw_appeal, str)
+                              and raw_appeal.strip().lower() in ("", "none", "null")):
+        out["appeal"] = None
+    else:
+        appeal = str(raw_appeal).strip().lower()
+        if appeal in FACTION_APPEALS:
+            out["appeal"] = appeal
+        else:
+            refuse("FACTION_BAD_APPEAL", f"unknown appeal '{raw_appeal}'; use union, league or null")
+
+    for key in sorted(set(data) - set(FACTION_FIELDS)):
+        refuse("FACTION_UNKNOWN_FIELD",
+               f"unknown field '{key}'; the answer has fronts, offer, statement, messages and appeal")
+    return out, problems

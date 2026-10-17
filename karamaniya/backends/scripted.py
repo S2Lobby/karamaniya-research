@@ -274,6 +274,9 @@ class ScriptedBackend(Backend):
         elif phase == "debrief":
             # Engine 29 (backlog T178): a stand-in plays by fixed rules and holds no view of the situation.
             data = {"took_it_as": "unsure", "why": "A scripted stand-in plays by fixed rules."}
+        elif phase == "faction":
+            # Wave C (C3): the rebel leader's month, so a scripted sweep with a war runs and replays.
+            data = self._faction(context)
         else:
             data = self._decision(w, mid, {**context, "schema": schema})
         # The answer as the stand-in gave it, so the log holds what a replay feeds back (engine 24, replay.py).
@@ -681,6 +684,15 @@ class ScriptedBackend(Backend):
         return {"democrat": "concede", "technocrat": "request_recount" if narrow else "concede",
                 "hawk": "refuse", "loyalist": "legal_challenge", "opportunist": "negotiate_coalition",
                 PASSIVE: "concede"}.get(self.persona, "concede")
+
+    def _faction(self, ctx: dict) -> dict:
+        """The stand-in rebel leader holds every front and offers nothing.
+
+        Deterministic on purpose: a scripted sweep with a war must run and replay without a model, and
+        the stand-in has no view of the war to act on. The fronts are the ones the council lists.
+        """
+        return {"fronts": {str(front): "defend" for front in (ctx.get("fronts") or [])},
+                "offer": None, "statement": "", "messages": [], "appeal": None}
 
     # ---- phase 2 ----------------------------------------------------------------------
     def _passive_decision(self, w: World, mid: str, ctx: dict) -> dict:

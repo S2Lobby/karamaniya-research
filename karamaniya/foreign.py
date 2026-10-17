@@ -1253,18 +1253,33 @@ def _private_message(w, sender: str, office: str, text: str, channel: str | None
     w.dip.log.append(item)
 
 
+# Engine 27 (wave 3, D): Dorsania answers the three pairs the act-target table used to refuse it. The proposal
+# (docs/DIPLOMACY_TARGETS_PROPOSAL.md 4.1, 4.5, 4.6) left each widened pair's size open — "a Dorsanian branch would be
+# small", "small", and "a grain deal, yes" — so each moves one small, documented amount:
+#   - a status talk or a trade talk moves Dorsania's trust in Karamaniya by DORSANIA_TALKS_TRUST (.01): engagement,
+#     not an agreement. The grain agreement it can sign gives .08 trust, and a talk must be visibly smaller than a deal.
+#   - a trade deal is answered with the grain agreement Dorsania has, its only trade lever in the model.
+DORSANIA_TALKS_TRUST = .01
+# What a grain agreement does not carry (engine 22): troops, sovereignty, the ultimatum, citizens' rights, talks, verification
+# and the like. The grain trade itself (grain, deliveries, volume, price, payment, duration) is not in it. Run
+# 20261011-105713-seed1, Months 4 and 9: troop withdrawals and an end to the ultimatum were accepted with the grain, and
+# nobody was told they were not.
+_NOT_GRAIN = re.compile(r"\b(?:troops?|forces?|army|soldiers?|militar\w*|border|withdr\w*|pull[\s-]?back|drop\w*|"
+                        r"ultimatum\w*|intelligence|sovereign\w*|recogni[sz]\w*|guarantee\w*|citizens?|citizenship|"
+                        r"rights?|safety|minorit\w*|monitor\w*|observers?|inspect\w*|verif\w*|oversight|veto|"
+                        r"jurisdiction|interferen\w*|non[\s-]?aggression|pact|alliance|status|talks|negotiat\w*|"
+                        r"internal|separatis\w*|renounc\w*|subver\w*|cede|cession|territor\w*|courts?|law|laws|"
+                        r"reports?|compliance|surrender|foreign)\b", re.I)
+
+
 def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "", region: str = "", terms=None) -> None:
-    """Independent Dorsanian response to Karamaniya's bilateral trade proposal."""
-    # What a grain agreement does not carry (engine 22): troops, sovereignty, the ultimatum, citizens' rights, talks, verification
-    # and the like. The grain trade itself (grain, deliveries, volume, price, payment, duration) is not in it. Run
-    # 20261011-105713-seed1, Months 4 and 9: troop withdrawals and an end to the ultimatum were accepted with the grain, and
-    # nobody was told they were not.
-    not_grain = re.compile(r"\b(?:troops?|forces?|army|soldiers?|militar\w*|border|withdr\w*|pull[\s-]?back|drop\w*|"
-                           r"ultimatum\w*|intelligence|sovereign\w*|recogni[sz]\w*|guarantee\w*|citizens?|citizenship|"
-                           r"rights?|safety|minorit\w*|monitor\w*|observers?|inspect\w*|verif\w*|oversight|veto|"
-                           r"jurisdiction|interferen\w*|non[\s-]?aggression|pact|alliance|status|talks|negotiat\w*|"
-                           r"internal|separatis\w*|renounc\w*|subver\w*|cede|cession|territor\w*|courts?|law|laws|"
-                           r"reports?|compliance|surrender|foreign)\b", re.I)
+    """Independent Dorsanian response to Karamaniya's bilateral proposal.
+
+    Engine 27: the six wider-diplomacy pairs give Dorsania its own answer to status talks, trade talks and a trade
+    deal. Before, every one of them read "Dorsania has no standing to answer that proposal on behalf of the Union",
+    which was true only while Dorsania could not receive them (proposal 4.1, 4.5, 4.6).
+    """
+    not_grain = _NOT_GRAIN
     actor = w.foreign["actors"]["dorsania"]
     relation = actor["relations"]["karamaniya"]
     pressure = actor["political_pressures"].get("exporter_opposition", .2)
@@ -1275,7 +1290,31 @@ def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "", region: st
             _message(w, w.names["dorsania"],
                      "Karamaniya no longer holds the region the motion names, so nothing is handed over.")
         return
-    if kind != "grain_deal":
+    if kind == "status_talks":
+        # Status talks are about Karamaniya's place in the Union. Dorsania is a member and takes part, but it does not
+        # answer for the Union, and it does not judge a demand Veleria issued (that is ultimatum_reply's business).
+        relation["trust"] = round(clamp(relation["trust"] + DORSANIA_TALKS_TRUST), 3)
+        _message(w, w.names["dorsania"],
+                 "Dorsania will take part in discussions on Karamaniya's status, but the settlement is the Union's "
+                 "to make and Dorsania does not answer for it.")
+        _remember(w.foreign, "dorsania", "diplomacy", "Agreed to take part in status talks with Karamaniya.",
+                  w.month, action="status_talks")
+        return
+    if kind == "trade_talks":
+        # A talk is not a deal: it opens a channel and moves nothing real. Dorsania's grain lever is the agreement
+        # grain_deal makes; saying so is the world's rule, not an instruction to the delegate.
+        if w.dip.war or relation["trust"] < .30:
+            _message(w, w.names["dorsania"],
+                     "Dorsania declines trade talks while the border and political conditions remain unsettled.")
+            return
+        relation["trust"] = round(clamp(relation["trust"] + DORSANIA_TALKS_TRUST), 3)
+        _private_message(w, w.names["dorsania"], "treasury",
+                         "Dorsania agrees to discuss grain terms. Only a grain agreement binds Dorsania; talks "
+                         "change no deliveries.", channel="commercial channel")
+        _remember(w.foreign, "dorsania", "diplomacy", "Agreed to trade talks with Karamaniya.", w.month,
+                  action="trade_talks")
+        return
+    if kind not in ("grain_deal", "trade_deal"):
         _message(w, w.names["dorsania"], "Dorsania has no standing to answer that proposal on behalf of the Union.")
         return
     if w.dip.war or w.region("dorran").controller != "karamaniya" or relation["trust"] < .30:
@@ -1305,6 +1344,10 @@ def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "", region: st
     actor["diplomacy"]["strategy"] = "preserve Union membership while honoring profitable grain agreements"
     note = (f"Dorsania accepts a grain purchase arrangement through Month {until + 1} and will restore some exports "
             "to Karamaniya.")
+    if kind == "trade_deal":
+        # Engine 27: Dorsania's only trade lever in the model is the grain agreement (proposal 4.6), so a trade deal
+        # addressed to it is answered with that agreement, and the answer says so before the terms are read.
+        note = ("Dorsania answers a trade deal with the grain agreement it has. " + note)
     # The proposal's sentences that ask for more than grain, quoted as written. Its listed terms are used only when
     # the text itself names none of them.
     other = [s.strip() for s in re.split(r"(?<=[.!?;])\s+|\n+", str(text or "")) if s.strip()]

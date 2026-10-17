@@ -67,6 +67,16 @@ COHERENT_D3 = {"type": "diplomacy", "subject": "grain_deal", "value": "",
                "action": {"action_type": "grain_deal", "target": "DORSANIA", "issue": "Grain supply security",
                           "terms": ["extend current terms"]}, "conditions": []}
 
+# Engine 27 (wave 3, D) widens trade_deal to Dorsania, so the historical repaired D3 is now a valid pair and is
+# tabled. The act-target refusal is still tested on a pair the proposal keeps refused: a trade deal to Veleria.
+REFUSED_D3_TEXT = "Propose a trade deal with Veleria to secure coal supplies."
+REFUSED_D3 = {"type": "diplomacy", "subject": "trade_deal", "value": "VELERIA, coal for industry",
+              "text": REFUSED_D3_TEXT,
+              "action": {"action_type": "trade_deal", "target": "VELERIA", "issue": "Coal supply security",
+                         "terms": ["coal at current volume"]}, "conditions": []}
+VELERIA_ACCEPTS = ("diplomatic_protest, trade_talks, status_talks, non_aggression_pact, renounce, cede_region, "
+                   "ultimatum_reply")
+
 
 def world():
     return new_world(11)
@@ -151,16 +161,23 @@ class TheBriefsRegression(unittest.TestCase):
 
 
 class AnActThatTheTargetDoesNotReceive(unittest.TestCase):
-    def test_the_real_repaired_motion_is_refused_at_tabling_not_only_at_execution(self):
+    def test_the_repaired_d3_is_now_a_valid_dorsania_pair(self):
+        # Engine 27 widened trade_deal to Dorsania (proposal 4.6), so the historical repaired motion is no longer
+        # refused for its target; the words and the act agree, and it is tabled.
         w = world()
         fixed = actions.normalize_motion_v2(w, REPAIRED_D3)
-        clash = motion_actions.conflict(w, {**fixed, "proposer": "D"})
-        self.assertIsNotNone(clash, "the repaired D3 was still tabled and put to a vote")
+        self.assertIsNone(motion_actions.conflict(w, {**fixed, "proposer": "D"}))
+
+    def test_a_refused_pair_is_refused_at_tabling_not_only_at_execution(self):
+        w = world()
+        fixed = actions.normalize_motion_v2(w, REFUSED_D3)
+        clash = motion_actions.conflict(w, {**fixed, "proposer": "A"})
+        self.assertIsNotNone(clash, "a trade deal to Veleria was tabled and put to a vote")
         reason = next(r for r in clash["reasons"] if r["code"] == "ACTION_NOT_VALID_FOR_TARGET")
-        self.assertIn("can be addressed to Maritime League, not the Dorsania", reason["detail"])
+        self.assertIn("can be addressed to Dorsania, Maritime League, not the Veleria", reason["detail"])
         self.assertEqual(reason["expected_actor"], "MARITIME_LEAGUE")
         # The execution gate says the same thing in the same words: one rule, now applied earlier.
-        gate = motion_actions.validate_execution(w, {**fixed, "proposer": "D", "passed": True})
+        gate = motion_actions.validate_execution(w, {**fixed, "proposer": "A", "passed": True})
         self.assertEqual(gate["code"], "ACTION_NOT_VALID_FOR_TARGET")
         self.assertEqual(gate["detail"], reason["detail"])
 
@@ -180,11 +197,11 @@ class AnActThatTheTargetDoesNotReceive(unittest.TestCase):
 
     def test_the_repair_request_says_what_the_target_can_actually_receive(self):
         w = world()
-        fixed = actions.normalize_motion_v2(w, REPAIRED_D3)
-        message = motion_actions.repair_request(w, motion_actions.conflict(w, {**fixed, "proposer": "D"}))
+        fixed = actions.normalize_motion_v2(w, REFUSED_D3)
+        message = motion_actions.repair_request(w, motion_actions.conflict(w, {**fixed, "proposer": "A"}))
         self.assertIn("MOTION_ACTION_MISMATCH", message)
-        self.assertIn("grain_deal", message)
-        self.assertIn("Dorsania", message)
+        self.assertIn(f"Acts the engine can address to the Veleria: {VELERIA_ACCEPTS}.", message)
+        self.assertIn("trade_talks", message)
 
 
 class TheTitleFollowsTheStructuredTarget(unittest.TestCase):
@@ -253,8 +270,10 @@ class TheWholeTablingRoundTrip(unittest.TestCase):
         council.form_government()
         return council.run_month(), w, backend
 
-    def test_the_repair_the_delegate_actually_gave_is_held_not_executed(self):
-        record, w, backend = self.month(REPAIRED_D3)
+    def test_a_refused_repair_is_held_not_executed(self):
+        # The historical D3 repair is now a valid Dorsania pair (engine 27); this keeps the hold path tested with a
+        # pair the proposal keeps refused, a trade deal to Veleria.
+        record, w, backend = self.month(REFUSED_D3)
         self.assertEqual(backend.repair_calls, 1, "one targeted repair, which is the existing policy")
         self.assertEqual([m for m in record["motions"] if m["proposer"] == "A" and m["type"] == "diplomacy"], [],
                          "a motion that cannot execute as described must not reach the vote")

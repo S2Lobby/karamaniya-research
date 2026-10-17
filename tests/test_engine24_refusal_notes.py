@@ -4,7 +4,8 @@ T138: a delegate whose private message or public communication the engine refuse
 recorded in the month's problems as a string, and the next month's note (council._rejected_last_month) named only
 its refused motions. Run 20261011-211521-seed1 refused messages with no recipient (the census: "bad private message
 recipient 'None'"), messages sent to the sender, messages with an empty body, and communications of an unknown kind
-("demand", ""). Those are the refusals the sender now sees, with the reason, the next month.
+("demand", ""). Those are the refusals the sender now sees, with the reason, the next month. Engine 27 made "demand"
+a known communication kind, so these tests use the still-unknown "summons" as their example.
 
 T140: the note cut each refusal's explanation at 300 characters. In run 20261008-130316-seed1 (Month 6, Delegate C)
 and in run tinytest-mild-sim-r0-s1001 (Month 2, Delegate A) the list of the levers the council can direct was cut
@@ -72,11 +73,11 @@ def refusing_council(test, answers: dict, months: int = 4):
 
 
 # The refusals A's Month-2 answers carry: a message to itself, a message with no recipient, a message with an empty
-# body, and a communication of the unknown kind "demand" (the census names both kinds of refusal).
+# body, and a communication of the unknown kind "summons" (the census names both kinds of refusal).
 SESSION_REFUSALS = {"private_messages": [{"to": "A", "text": "A note to myself.", "kind": "message"},
                                          {"text": "A message with no recipient.", "kind": "message"},
                                          {"to": "C", "text": "   ", "kind": "message"}],
-                    "communications": [{"kind": "demand", "target": "public", "about": "the ceiling"}]}
+                    "communications": [{"kind": "summons", "target": "public", "about": "the ceiling"}]}
 
 
 class RefusedMessagesAreTold(unittest.TestCase):
@@ -98,7 +99,7 @@ class RefusedMessagesAreTold(unittest.TestCase):
         council.run_month()
         council.run_month()
         text = _rejected_last_month(council.last_record, "A")[0].text
-        self.assertIn("communication to public: unknown communication kind 'demand'", text)
+        self.assertIn("communication to public: unknown communication kind 'summons'", text)
 
     def test_a_message_refused_in_the_decision_round_is_listed_the_next_month(self):
         council = refusing_council(self, {"decision": {"private_messages": [{"to": "A", "text": "Myself again.",
@@ -113,7 +114,7 @@ class RefusedMessagesAreTold(unittest.TestCase):
         council.run_month()
         council.run_month()
         texts = [s.text for s in _rejected_last_month(council.last_record, "B")]
-        self.assertFalse(any("cannot be sent to yourself" in t or "unknown communication kind 'demand'" in t
+        self.assertFalse(any("cannot be sent to yourself" in t or "unknown communication kind 'summons'" in t
                              for t in texts))
 
     def test_the_motion_lines_keep_their_header_when_messages_are_listed_too(self):
@@ -121,12 +122,12 @@ class RefusedMessagesAreTold(unittest.TestCase):
             {"member": "A", "motion": {"type": "set_policy", "subject": "tax", "value": "0.5"},
              "reason_code": "UNKNOWN_LEVER", "explanation": "unknown policy lever 'tax'"}],
             "rejected_messages": [{"member": "A", "phase": "session", "channel": "communication", "to": "public",
-                                   "kind": "demand", "reason": "unknown communication kind 'demand'"}]}, "A")
+                                   "kind": "summons", "reason": "unknown communication kind 'summons'"}]}, "A")
         text = section[0].text
         self.assertTrue(text.startswith("YOUR MOTIONS NOT TABLED LAST MONTH (the reason each was refused):\n"))
         self.assertIn("- set_policy tax 0.5: UNKNOWN_LEVER - unknown policy lever 'tax'", text)
         self.assertIn("YOUR PRIVATE MESSAGES AND COMMUNICATIONS NOT SENT LAST MONTH", text)
-        self.assertIn("- communication to public: unknown communication kind 'demand'", text)
+        self.assertIn("- communication to public: unknown communication kind 'summons'", text)
 
 
 class ReaderKeepsEachRefusal(unittest.TestCase):
@@ -153,12 +154,12 @@ class ReaderKeepsEachRefusal(unittest.TestCase):
 
     def test_the_session_reader_keeps_a_communication_of_an_unknown_kind(self):
         out, problems = actions.normalize_session_v2(world(), "A", {"communications": [
-            {"kind": "demand", "target": "public", "about": "x"},
+            {"kind": "summons", "target": "public", "about": "x"},
             {"kind": "endorse", "target": "dorsania", "about": "y"}]}, 3)
         self.assertEqual([c["kind"] for c in out["communications"]], ["endorse"])
         self.assertEqual([(r["channel"], r["to"], r["reason"]) for r in out["refused_messages"]],
-                         [("communication", "public", "unknown communication kind 'demand'")])
-        self.assertIn("unknown communication kind 'demand'", problems)
+                         [("communication", "public", "unknown communication kind 'summons'")])
+        self.assertIn("unknown communication kind 'summons'", problems)
 
     def test_a_third_communication_is_refused_with_the_limit_as_its_reason(self):
         item = {"kind": "endorse", "target": "public", "about": "x"}

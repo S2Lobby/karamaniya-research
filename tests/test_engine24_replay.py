@@ -48,18 +48,18 @@ def copy_run(src, tmp, name):
     return dst
 
 
-def flip_a_vote(records, month):
-    """Change one recorded yes/no vote of a decision in `month`, the way a different answer would."""
+def change_a_statement(records, month):
+    """Change one public opening statement made in `month`, the way a different answer would. Statements reach the
+    month record, unlike a decision's notes, and a decision has no votes in a month with no motions."""
     for r in records:
-        if r.get("type") != "call" or r.get("month") != month or r.get("phase") != "decision":
+        if r.get("type") != "call" or r.get("month") != month or r.get("phase") != "session":
             continue
         data = json.loads(r["raw"])
-        for motion, vote in (data.get("votes") or {}).items():
-            if vote in ("yes", "no"):
-                data["votes"][motion] = "no" if vote == "yes" else "yes"
-                r["raw"] = json.dumps(data, ensure_ascii=False)
-                return r
-    raise AssertionError(f"no recorded decision in Month {month} has a yes or no vote")
+        if isinstance(data.get("statement"), str) and data["statement"]:
+            data["statement"] = data["statement"] + " (a different answer)"
+            r["raw"] = json.dumps(data, ensure_ascii=False)
+            return r
+    raise AssertionError(f"no recorded opening statement in Month {month + 1}")
 
 
 class _World:
@@ -73,14 +73,14 @@ class TheStandInsLogTheirAnswers(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix="karamaniya-replay-")
-        cls.run = new_run(CONFIG, runs_dir=cls.tmp, name="orig", months=3, quiet=True)
+        cls.original = new_run(CONFIG, runs_dir=cls.tmp, name="orig", months=3, quiet=True)
 
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def test_every_call_logs_the_answer_it_gave(self):
-        calls = [r for r in read_log(self.run) if r["type"] in ("call", "foreign_call")]
+        calls = [r for r in read_log(self.original) if r["type"] in ("call", "foreign_call")]
         self.assertTrue(calls)
         for r in calls:
             self.assertNotEqual(r["raw"], "(scripted)", r.get("phase"))
@@ -91,14 +91,14 @@ class AScriptedRunReplaysIdentically(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix="karamaniya-replay-")
-        cls.run = new_run(CONFIG, runs_dir=cls.tmp, name="orig", months=3, quiet=True)
+        cls.original = new_run(CONFIG, runs_dir=cls.tmp, name="orig", months=3, quiet=True)
 
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def test_the_replay_reproduces_every_month_and_the_checkpoint(self):
-        result = replay_run.replay(self.run)
+        result = replay_run.replay(self.original)
         self.assertTrue(result["identical"], result["message"])
         self.assertEqual(result["replayed_months"], 3)
         self.assertTrue(result["checkpoint_compared"])
@@ -107,7 +107,7 @@ class AScriptedRunReplaysIdentically(unittest.TestCase):
         # Shuffle the call records among the positions they hold, keeping the order of the calls of each
         # (month, phase, member): a repair's first call still comes before its repair. Month and other records
         # keep their places, since the month records are read in file order.
-        copy = copy_run(self.run, self.tmp, "shuffled")
+        copy = copy_run(self.original, self.tmp, "shuffled")
         records = read_log(copy)
         positions = [i for i, r in enumerate(records) if r["type"] in ("call", "foreign_call")]
         queues = {}
@@ -129,7 +129,7 @@ class AScriptedRunReplaysIdentically(unittest.TestCase):
         self.assertTrue(result["identical"], result["message"])
 
     def test_months_limits_the_replay_and_skips_the_checkpoint(self):
-        result = replay_run.replay(self.run, months=2)
+        result = replay_run.replay(self.original, months=2)
         self.assertTrue(result["identical"], result["message"])
         self.assertEqual(result["replayed_months"], 2)
         self.assertFalse(result["checkpoint_compared"])
@@ -139,16 +139,16 @@ class AChangedAnswerIsFoundInItsMonth(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix="karamaniya-replay-")
-        cls.run = new_run(CONFIG, runs_dir=cls.tmp, name="orig", months=3, quiet=True)
+        cls.original = new_run(CONFIG, runs_dir=cls.tmp, name="orig", months=3, quiet=True)
 
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
-    def test_a_different_vote_in_month_two_diverges_in_month_two(self):
-        copy = copy_run(self.run, self.tmp, "changed")
+    def test_a_different_statement_in_month_two_diverges_in_month_two(self):
+        copy = copy_run(self.original, self.tmp, "changed")
         records = read_log(copy)
-        flip_a_vote(records, month=1)           # the second month, month index 1
+        change_a_statement(records, month=1)    # the second month, month index 1
         write_log(copy, records)
         result = replay_run.replay(copy)
         self.assertFalse(result["identical"])
@@ -157,7 +157,7 @@ class AChangedAnswerIsFoundInItsMonth(unittest.TestCase):
         self.assertIn("Month 2", result["message"])
 
     def test_a_missing_answer_is_found_in_its_month(self):
-        copy = copy_run(self.run, self.tmp, "missing")
+        copy = copy_run(self.original, self.tmp, "missing")
         records = read_log(copy)
         # Drop the one decision of a member in the second month: the replay asks for it and finds nothing.
         drop = next(i for i, r in enumerate(records)
@@ -175,14 +175,14 @@ class ARunWithStandInAnswersIsRefused(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix="karamaniya-replay-")
-        cls.run = new_run(CONFIG, runs_dir=cls.tmp, name="orig", months=2, quiet=True)
+        cls.original = new_run(CONFIG, runs_dir=cls.tmp, name="orig", months=2, quiet=True)
 
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def test_answers_logged_as_a_placeholder_cannot_be_replayed(self):
-        copy = copy_run(self.run, self.tmp, "placeholder")
+        copy = copy_run(self.original, self.tmp, "placeholder")
         records = read_log(copy)
         for r in records:
             if r["type"] in ("call", "foreign_call"):
@@ -275,12 +275,22 @@ class TheReplayTraitsMatchTheConnectors(unittest.TestCase):
         from karamaniya.backends.codex_cli import CodexCLIBackend
         from karamaniya.backends.ollama import OllamaBackend
         from karamaniya.backends.openai_compat import OpenAICompatBackend
-        cases = [("anthropic", AnthropicBackend), ("claude_cli", ClaudeCLIBackend), ("codex_cli", CodexCLIBackend),
-                 ("ollama", OllamaBackend), ("openrouter", OpenAICompatBackend)]
-        for provider, cls in cases:
+        # Class attributes of the connectors.
+        for provider, cls in [("anthropic", AnthropicBackend), ("claude_cli", ClaudeCLIBackend),
+                              ("codex_cli", CodexCLIBackend), ("ollama", OllamaBackend)]:
             replay = ReplayBackend({"provider": "replay", "replay_log": "unused.jsonl", "replay_of": provider})
-            self.assertEqual(replay.enforces_schema, getattr(cls, "enforces_schema", False), provider)
-            self.assertEqual(replay.supports_temperature, getattr(cls, "supports_temperature", False), provider)
+            self.assertEqual(replay.enforces_schema, cls.enforces_schema, provider)
+            self.assertEqual(replay.supports_temperature, cls.supports_temperature, provider)
+        # The OpenAI-compatible family: enforces_schema is a property of the seat's json_mode, so compare
+        # with a connector built without a key (api_key_env = "" needs no environment variable).
+        for provider, extra in [("openrouter", {}), ("openai", {}), ("deepseek", {}), ("lmstudio", {}),
+                                ("llamacpp", {}), ("openai_compat", {}), ("openrouter", {"json_mode": "json_object"})]:
+            seat = {"provider": provider, "model": "m", "api_key_env": "", "base_url": "http://127.0.0.1:9", **extra}
+            real = OpenAICompatBackend(seat)
+            replay = ReplayBackend({"provider": "replay", "replay_log": "unused.jsonl", "replay_of": provider,
+                                    **extra})
+            self.assertEqual(replay.enforces_schema, real.enforces_schema, (provider, extra))
+            self.assertEqual(replay.supports_temperature, real.supports_temperature, provider)
 
     def test_the_ollama_prompt_budget_is_the_connectors(self):
         from karamaniya.backends.ollama import OllamaBackend

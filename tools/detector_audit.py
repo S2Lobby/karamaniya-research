@@ -173,6 +173,33 @@ def d1_rows() -> list:
     return rows
 
 
+# ---- D2: a final vote against the delegate's own stated position ----------------------------------------------------
+def d2_rows() -> list:
+    rows = []
+    for run, log in run_logs():
+        for rec in month_records(log):
+            motions = {str(mo.get("id")): mo for mo in rec.get("motions") or []}
+            decisions = rec.get("decisions") or {}
+            for v in rec.get("vote_intent_mismatches") or []:
+                mid, motion = v.get("member"), str(v.get("motion"))
+                dec = decisions.get(mid) or {}
+                mo = motions.get(motion) or {}
+                full = (dec.get("vote_reasons_full") or {}).get(motion) or (dec.get("vote_reasons") or {}).get(motion)
+                rows.append({
+                    "run": run, "month_no": rec.get("month") + 1, "month_name": rec.get("label", ""),
+                    "member": mid, "motion": motion, "motion_type": mo.get("type", ""),
+                    "motion_subject": mo.get("subject", ""), "motion_text": str(mo.get("text", ""))[:300],
+                    "passed": mo.get("passed", ""), "tally": str(mo.get("tally", ""))[:120],
+                    "stance": v.get("stance"), "vote": v.get("vote"), "source": v.get("source"),
+                    "statement": str(v.get("statement", ""))[:300],
+                    "vote_condition": str((dec.get("vote_conditions") or {}).get(motion, ""))[:200],
+                    "reason_full": str(full or v.get("reason", "")),
+                })
+    for i, row in enumerate(rows, 1):
+        row["flag_id"] = f"D2-{i:03d}"
+    return rows
+
+
 # ---- writing and scoring ------------------------------------------------------------------------------------------
 def write_csv(path: str, rows: list, fields: list) -> None:
     with open(path, "w", encoding="utf-8", newline="\n") as f:
@@ -205,6 +232,12 @@ def extract() -> int:
     print(f"D1 flags: {len(rows)}; sample of {SAMPLE} with seed {SEED}: "
           f"{', '.join(rows[i]['flag_id'] for i in sorted(chosen))}")
     print(f"D1 located: {located}; decision prompt found: {sum(r['prompt_found'] for r in rows)}")
+    d2 = d2_rows()
+    write_csv(os.path.join(OUT, "D2_evidence_36.csv"), d2,
+              ["flag_id", "run", "month_no", "month_name", "member", "motion", "motion_type", "motion_subject",
+               "motion_text", "passed", "tally", "stance", "vote", "source", "statement", "vote_condition",
+               "reason_full"])
+    print(f"D2 flags: {len(d2)}")
     return 0
 
 
@@ -223,21 +256,30 @@ def tally(labels: list, true_label: str, false_label: str) -> dict:
     return out
 
 
-def score() -> int:
-    evidence = {row["flag_id"]: row for row in read_csv(os.path.join(OUT, "D1_evidence_all137.csv"))}
-    labels = read_csv(os.path.join(OUT, "D1_labels_sample40.csv"))
+def join_labels(evidence_csv: str, labels_csv: str, out_csv: str, fields: list) -> list:
+    evidence = {row["flag_id"]: row for row in read_csv(evidence_csv)}
+    labels = read_csv(labels_csv)
     joined = []
     for lab in labels:
         ev = evidence.get(lab["flag_id"])
         if ev is None:
-            print(f"no evidence for {lab['flag_id']}", file=sys.stderr)
-            return 1
+            raise SystemExit(f"no evidence for {lab['flag_id']} in {evidence_csv}")
         joined.append({**ev, "label": lab["label"], "reason": lab["reason"]})
-    fields = ["flag_id", "run", "month_no", "member", "field", "metric", "claim_text", "claimed", "observed",
-              "sentence", "briefing", "label", "reason"]
-    write_csv(os.path.join(OUT, "D1_labelled_sample40.csv"), joined, fields)
-    result = tally(labels, "TRUE_ERROR", "FALSE_POSITIVE")
-    print("D1", result)
+    write_csv(out_csv, joined, fields)
+    return labels
+
+
+def score() -> int:
+    labels = join_labels(os.path.join(OUT, "D1_evidence_all137.csv"), os.path.join(OUT, "D1_labels_sample40.csv"),
+                         os.path.join(OUT, "D1_labelled_sample40.csv"),
+                         ["flag_id", "run", "month_no", "member", "field", "metric", "claim_text", "claimed",
+                          "observed", "sentence", "briefing", "label", "reason"])
+    print("D1 (precision: TRUE_ERROR of decided):", tally(labels, "TRUE_ERROR", "FALSE_POSITIVE"))
+    labels = join_labels(os.path.join(OUT, "D2_evidence_36.csv"), os.path.join(OUT, "D2_labels_36.csv"),
+                         os.path.join(OUT, "D2_labelled_36.csv"),
+                         ["flag_id", "run", "month_no", "member", "motion", "motion_type", "motion_subject",
+                          "stance", "vote", "statement", "reason_full", "label", "reason"])
+    print("D2 (precision: TRUE_MISMATCH of decided):", tally(labels, "TRUE_MISMATCH", "FALSE_POSITIVE"))
     return 0
 
 

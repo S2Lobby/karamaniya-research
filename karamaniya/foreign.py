@@ -1515,8 +1515,8 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
             f"Month {foreign_force.FIRST_WAR_MONTH + 1}, and an act that cannot happen is refused and reported back "
             "to you. Each act lists its costs and risks, and the engine charges them: a war costs soldiers' lives, "
             "money and support at home. "
-            f"You may take at most {ACTS_PER_MONTH} acts a month: the first {ACTS_PER_MONTH} in your list are read, "
-            "and an act after the fourth is not read. You are told the next month which acts were not read. "
+            f"You may take at most {ACTS_PER_MONTH} acts a month: only the first {ACTS_PER_MONTH} in your list are "
+            "read, and you are told the next month which acts were not read. "
             f"Your strategy is kept to {STRATEGY_CHARS} characters: a longer one is cut to that length. "
             "Keep statements and messages concise. Return only the required JSON object. "
             "Give a short assessment and concrete decision factors, never private chain-of-thought.")

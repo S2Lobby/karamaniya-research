@@ -4,6 +4,56 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 25
+
+`WORLD_ENGINE` 25, `AGENT_PROMPT` 22 (psychology 8 and error taxonomy 5 unchanged): the second wave of fixes from the
+census of the recorded runs and the detector audit (backlog T136-T145, T147). A default scripted run's council prompts
+are unchanged; its neighbours' system prompts change (`tools/prompt_freeze.py`).
+
+- **A second programme in a month is enacted.** The duplicate-action key did not read a programme's measures, so two
+  programmes in one month could be one act: in run 20261011-211521-seed1, Month 5, a programme setting the army's
+  deployment was refused as a duplicate of another, and the Army's orders for it were recorded as defiance. A
+  programme's key is now the measures it sets: two programmes that set different measures both execute, and two that set
+  the same measures execute once, whatever their wording.
+- **Compliance rows record the value left in force.** The patronage row was written before its order was applied, so it
+  kept the value the order replaced (run b1-s1005, Month 5: the row read true, the order had set false). A deployment row
+  looked for the share on the policy, where it is not kept, and recorded null in every run; it now records the share the
+  state holds once the answer's shares are normalised. The status still judges the order as written. Records of earlier
+  runs keep their null deployment rows.
+- **The democracy index moves.** It stood at 1.0 in every month of every recorded run, because arrests, emergency
+  measures and party bans did not reach it. It now takes off the repressive acts in force: targeted arrests 0.05, mass
+  arrests 0.10; curfew, police powers, movement restrictions and military aid to the civil power 0.05 each; ration
+  enforcement 0.03; fiscal authority 0.02; a ban on opposition parties 0.15; one-party rule 0.20. It recovers when they
+  end and stays within 0..1. An officers' coup sets the coup month, as a successful coup does. The index is a measure:
+  no engine rule and no prompt reads it.
+- **The neighbours are told their limits.** A cabinet's system prompt says that only the first four acts in its list are
+  read and that its strategy is kept to 180 characters, the numbers the reader enforces. In the recorded answers eight
+  acts past the fourth were not read, and a strategy was cut in 94 of 200 answers with no word to the cabinet.
+- **A neighbour's act with a null size is read.** A null size is read as the default 0.5, as a missing one always was, and
+  the cabinet is told the next month that the size was taken as 0.5 because none was given. Three runs had refused 31
+  such acts, 7 of them ultimatums; a replay of every recorded cabinet answer keeps 410 acts where it kept 379, and loses
+  none. A missing size is still read without a note.
+- **A delegate is told which messages were not sent.** The next-month briefing names each private message and public
+  communication the engine refused, and why: no valid recipient, the sender itself, no text, or past the month's limit;
+  an unknown kind, past two a month, or a second one in the response round, which reads one. Before, the sender was never
+  told. The briefing also shows every refusal whole: it cut each explanation at 300 characters, which split the list of
+  settings the council can direct, and listed four refusals. A replay of the 1,486 recorded answers accepts the same
+  messages and communications as before.
+- **Two research detectors are narrowed.** VOTE_INTENT_MISMATCH is recorded only when a vote's own reason states a plain
+  verdict the other way ("No." opening a yes vote, or "I will vote no"). The stance comparison it used flagged 34 false
+  positives among 36 labelled ballots; the new rule flags none of the 1,517 recorded yes or no ballots, and misses the
+  one labelled true mismatch. NUMERIC_GROUNDING_ERROR judges a figure only against the metric its own segment names, and
+  a troop figure only against the side that segment names; a figure it cannot tie is unverifiable, not an error. On the
+  137 recorded texts it flags none, and 121 have a figure it cannot tie. Both are diagnostics: no prompt reads them, and
+  `analyze` reports grounding flags apart from rejected intents. Their precision is not established: one annotator,
+  whose labels also guided the rules.
+- **Claude Code, Qoder and Antigravity seats replay exactly.** These connectors take the answer from the CLI's
+  structured output, which the log did not keep. They now log it (`structured`), and the replay seat returns it. Runs
+  recorded before this replay those seats from the raw text, as before.
+- **The control room counts a run done only when the engine has ended it.** A lost Charter election can owe a handover
+  past the planned months, and the engine then runs up to four more; the control room counted such a run done at its
+  planned months, so a batch restart skipped it instead of resuming it.
+
 ## World engine 24
 
 `WORLD_ENGINE` 24, `AGENT_PROMPT` 21 (psychology 8 and error taxonomy 5 unchanged): the controls the SocioVerse study

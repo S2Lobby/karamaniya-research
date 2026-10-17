@@ -70,7 +70,7 @@ class TheCabinetIsToldItsLimits(unittest.TestCase):
                 with self.subTest(actor=actor, temperament=temperament):
                     text = foreign.cabinet_system_prompt(actor, temperament)
                     self.assertIn(f"at most {kept} acts a month", text)
-                    self.assertIn("an act after the fourth is not read", text)
+                    self.assertIn(f"only the first {kept} in your list are read", text)
 
     def test_the_prompt_states_the_strategy_limit_the_reader_enforces(self):
         out, _ = foreign.normalize_cabinet_output("dorsania", cabinet_answer(strategy="s" * 400))

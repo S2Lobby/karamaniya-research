@@ -1828,6 +1828,7 @@ def _read_cabinet_open_act(raw: dict, actor_id: str | None, changes: list) -> tu
     government) is refused before the referee is asked.
     """
     from . import referee
+    from .actions import OPEN_ACT_WORDS
     refusals, code = [], ""
 
     def refuse(reason: str, problem_code: str) -> None:
@@ -1837,11 +1838,13 @@ def _read_cabinet_open_act(raw: dict, actor_id: str | None, changes: list) -> tu
 
     text = raw.get("text")
     if not isinstance(text, str) or not text.strip():
-        refuse("an open act needs its text: what your government does, at most 60 words", "OPEN_ACT_MISSING_TEXT")
+        refuse(f"an open act needs its text: what your government does, at most {OPEN_ACT_WORDS} words",
+               "OPEN_ACT_MISSING_TEXT")
     else:
         words = len(text.split())
-        if words > 60:
-            refuse(f"an open act's text is at most 60 words; this one is {words}", "OPEN_ACT_TOO_LONG")
+        if words > OPEN_ACT_WORDS:
+            refuse(f"an open act's text is at most {OPEN_ACT_WORDS} words; this one is {words}",
+                   "OPEN_ACT_TOO_LONG")
     topic = referee.forbidden_topic(str(text or ""))
     if topic is not None:
         refuse(_open_act_forbidden_reason(topic[0]), "OPEN_ACT_FORBIDDEN")

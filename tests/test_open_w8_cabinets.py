@@ -701,6 +701,13 @@ class ThroughTheCouncil(unittest.TestCase):
         self.assertIn("The cabinet of Dorsania acts.", cabinets[1])
         self.assertTrue(all(p.get("member") == "referee" for p in ref))
 
+    def test_the_next_month_briefing_reports_the_public_cabinet_acts(self):
+        later = [p for p in self.prompts if p.get("month") == 3]
+        self.assertTrue(later)
+        self.assertTrue(any("THE NEIGHBOURS' ANNOUNCED ACTS LAST MONTH" in (p.get("prompt") or "")
+                            for p in later))
+        self.assertTrue(any("Veleria" in (p.get("prompt") or "") for p in later))
+
     def test_the_recorded_run_replays_identically(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("replay_run", os.path.join(ROOT, "tools", "replay_run.py"))

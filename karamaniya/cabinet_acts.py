@@ -296,8 +296,11 @@ def _register_live(w, entry: dict, ruling: dict) -> None:
 
 def _roll_live(w) -> list:
     """Roll one exposure draw for each covert act still live this month; return the exposure entries."""
+    current = w.institutions.get(LIVE_KEY)
+    if not isinstance(current, list) or not current:
+        return []
     entries, keep = [], []
-    for item in _live_list(w):
+    for item in current:
         try:
             end = int(item.get("end_month", w.month))
         except (TypeError, ValueError):

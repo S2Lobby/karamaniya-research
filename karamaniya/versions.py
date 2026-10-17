@@ -90,7 +90,13 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # gives the conditions the League stated, not its own trust and default-risk thresholds; recruitment gives each level's
 # monthly pace and, apart from it, the gap to the army target (engine 22 printed the pace held to the gap, the same at
 # every level); a neighbour cabinet is told only of acts refused, changed or not read, not of a name read as meant.
-AGENT_PROMPT = 20
+# 21 goes with world engine 24. Under office_assignment = "by_letter" the system prompt says the five offices were filled
+# by assignment, without a vote, and the Month 1 sentence says so; a default run's prompts are unchanged. A diplomatic act
+# refused for its target names the acts that power accepts, and the repair request lists them from the table the check
+# reads (engine 23 listed each act's default receiver only, wrong for three of the four powers). An unknown lever that
+# is, or nearly is, a constitution setting says it is changed by a constitution motion. A refused loan says what is
+# missing: no amount, an amount with no unit, or several amounts.
+AGENT_PROMPT = 21
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose
@@ -250,7 +256,16 @@ PSYCHOLOGY = 8
 # a tax rise tabled as a protest is caught; a broken promise names itself and what broke it; fewer false fact flags.
 # 23 completes it (backlog T112-T116): the review items engine 22's changelog listed without its code doing them.
 # A cabinet's acts filed under another key are reported; a reply to an ultimatum has registered refusal codes.
-WORLD_ENGINE = 23
+# 24 (backlog T120-T129): the SocioVerse study's controls and the reader fixes found by the census of 21 runs. Two run
+# options, recorded in the manifest: office_assignment (the Month-0 vote, or offices fixed by letter, A head to E navy)
+# and action_order (the seeded shuffle, or office precedence; the shuffle is still drawn and discarded, so every other
+# draw of the month is unchanged). A loan's amount is read from its text when value and text name exactly one amount
+# with a unit; a value written in one pair of braces or brackets is read as its number; a private message that names
+# its recipient under "recipient" is delivered, and an opening's refused messages are reported once; a cabinet act
+# written under "action" is read as that act, and a null troops as no troops. The control room's batch view works on
+# copies of its rows (a row that had just finished could stay "pending"). Scripted stand-ins log their answers, so a
+# run can be replayed from its log (backends/replay.py, tools/replay_run.py).
+WORLD_ENGINE = 24
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

@@ -560,16 +560,18 @@ def _apply_losses(w: World, state: dict, men_lost: dict) -> None:
                 shares[key] /= share_total
         force.size = max(0.0, size_before - total)
         killed = total * 0.3       # the Union model's 30% killed, 70% wounded or released
-        w.mil.killed += killed
-        w.count("soldiers_killed", killed)
-        w.count("civil_war_soldiers_killed", killed)
         if office == "army":
+            w.mil.killed += killed
+            w.count("soldiers_killed", killed)
+            w.count("civil_war_soldiers_killed", killed)
             w.count("civil_war_government_killed", government * 0.3)
             w.count("civil_war_rebel_killed", rebels * 0.3)
             # The existing casualty path removes the dead and the released from the population
             # and from any embodied reserve, exactly as _combat does for active losses.
             military._release(w, government * 0.3 + rebels * 0.3, killed=True)
             military._release(w, government * 0.7 + rebels * 0.7, killed=False)
+        else:
+            w.count("civil_war_security_killed", killed)
 
 
 def _change_control(w: World, state: dict, region, winner: str, record: dict, rng,

@@ -15,6 +15,7 @@ import json
 import os
 import re
 import secrets
+import subprocess
 import sys
 import threading
 import time
@@ -655,6 +656,7 @@ class Controller:
         self.atlas = Atlas(runs_dir)
         self.analyst = Analyst(runs_dir)
         self.lock = threading.RLock()
+        self.jev_lock = threading.Lock()
         self.job = None
         self.job_seq = 0
         self.stop_event = None
@@ -926,6 +928,48 @@ class Controller:
             self._new_job("resume", run_id, s["months_total"])
             self._launch(resume_run, {"run_dir": str(d)})
             return dict(self.job)
+
+    def jev_annotate(self, run_id: str) -> dict:
+        """Run the Jev annotator (OpenRouter) over a saved run's exit audit.
+
+        The pipeline is the CLI one: exit_audit extract -> sample (seed 1, 60 non-exit events) ->
+        jev_annotate sample --openrouter. It makes paid typed calls (about a cent for the 80-row
+        sheet at the published rate); the key comes from OPENROUTER_API_KEY, set in the Keys card
+        or the shell. The outputs stay in <run>/jev/. One annotation at a time.
+        """
+        if not RUN_NAME_RE.match(run_id or ""):
+            raise ApiError("unknown run", 404)
+        run_dir = self.runs_dir / run_id
+        if not (run_dir / "checkpoint.json").exists() or not (run_dir / "log.jsonl").exists():
+            raise ApiError("That run has no saved months to annotate.", 404)
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            raise ApiError("Set OPENROUTER_API_KEY in the Keys card (or the shell) before annotating.", 409)
+        if not self.jev_lock.acquire(blocking=False):
+            raise ApiError("Jev is already annotating a run. Wait for it to finish.", 409)
+        try:
+            work = run_dir / "jev"
+            work.mkdir(exist_ok=True)
+            events, sample, out = work / "events.jsonl", work / "sample.csv", work / "sample.jev.csv"
+            env = dict(os.environ)
+
+            def call(*args, timeout=600):
+                proc = subprocess.run([sys.executable, *map(str, args)], cwd=str(self.root), env=env,
+                                      capture_output=True, text=True, timeout=timeout)
+                if proc.returncode != 0:
+                    detail = (proc.stderr or proc.stdout or "").strip().splitlines()[-6:]
+                    raise ApiError("Jev pipeline failed: " + " | ".join(detail or ["no output"]), 500)
+                return proc.stdout
+
+            call(self.root / "tools" / "exit_audit.py", "extract", run_dir, "--out", events)
+            call(self.root / "tools" / "exit_audit.py", "sample", events, "--seed", "1",
+                 "--other", "60", "--out", sample)
+            text = call(self.root / "tools" / "jev_annotate.py", "sample", sample, "--openrouter",
+                        "--out", out)
+            rows = max(0, sum(1 for _ in open(out, encoding="utf-8")) - 1) if out.exists() else 0
+            lines = [line for line in text.strip().splitlines() if line.strip()][-6:]
+            return {"run": run_id, "out": str(out), "rows": rows, "summary": "\n".join(lines)}
+        finally:
+            self.jev_lock.release()
 
     def stop(self) -> dict:
         with self.lock:
@@ -1426,6 +1470,8 @@ class Handler(BaseHTTPRequestHandler):
                 if act == "stop":
                     return self._json(200, c.batch_stop())
                 raise ApiError("unknown batch action")
+            if method == "POST" and name == "jev":
+                return self._json(200, c.jev_annotate(str(body.get("run") or "")))
             if method == "GET" and name == "compare":
                 return self._json(200, compare(c.library.all()))
             if method == "GET" and name == "world":

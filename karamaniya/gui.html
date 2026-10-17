@@ -478,6 +478,19 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             <label class="field"><span>Seed</span><input type="number" id="s-seed" step="1"></label>
             <label class="field"><span>Framing</span><select id="s-framing"><option value="simulation">Simulation (told)</option><option value="immersive">Immersive (not told)</option><option value="unobserved">Unobserved (no study cues)</option></select></label>
             <label class="field wide"><span>Neighbours (Veleria and Dorsania) played by</span><select id="s-neighbours"></select><small class="muted">A fixed model keeps the neighbours the same in every run you compare; by default they borrow the council's first two seats, which change with the shuffle.</small></label>
+            <label class="field wide"><span>Open actions arm</span><select id="s-harness">
+              <option value="menu">Menu (engine 29)</option>
+              <option value="language">Policy language (policies)</option>
+              <option value="open">Open acts + referee (policies and any act in words)</option>
+            </select><small class="muted">Open acts need a fixed referee model below; the referee must not be one of the seats.</small></label>
+            <div id="referee-fields" hidden>
+              <label class="field"><span>Referee provider</span><select id="s-referee-provider"><option value="">Choose a provider…</option></select></label>
+              <label class="field"><span>Referee model</span><input type="text" id="s-referee-model" placeholder="e.g. deepseek-chat" spellcheck="false" autocomplete="off"></label>
+              <label class="field"><span>Referee effects</span><select id="s-referee-effects"><option value="applied">Applied</option><option value="zeroed">Zeroed (ablation: rulings logged, no effects)</option></select></label>
+            </div>
+            <label class="field"><span>Knockout office</span><select id="s-knockout-office"><option value="">None</option><option value="head">Head of Government</option><option value="treasury">Treasury</option><option value="interior">Interior</option><option value="army">Army</option><option value="navy">Navy</option></select></label>
+            <label class="field"><span>Knockout month</span><input type="number" id="s-knockout-month" min="2" max="34" step="1" value="12"></label>
+            <label class="check wide"><input type="checkbox" id="s-civil-war"> Civil war possible (off by default; starts from a failed coup or a split handover)</label>
             <label class="field"><span>Latitude</span><select id="s-latitude"><option value="default">Default</option><option value="permitted">Permitted (harsh words and radical measures allowed)</option></select></label>
             <label class="field"><span>Mandate</span><select id="s-mandate"><option value="default">Default (none)</option><option value="crisis">Crisis (stabilise first, then democracy)</option></select></label>
             <label class="field"><span>Ballot</span><select id="s-ballot"><option value="open">Open (votes are seen by colleagues)</option><option value="secret">Secret (each member sees only their own vote)</option></select></label>
@@ -1008,6 +1021,17 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     $("s-panel").checked = r.forecast_panel !== false;
     $("s-baseline").checked = r.baseline !== false;
     renderNeighbours();
+    $("s-harness").value = r.harness || "menu";
+    $("referee-fields").hidden = $("s-harness").value !== "open";
+    const rsel = $("s-referee-provider");
+    if (rsel.options.length === 1) for (const p of Object.keys(PROVIDERS)) { const o = el("option", null, p); o.value = p; rsel.append(o); }
+    const rb = r.referee_backend || {};
+    rsel.value = rb.provider || "";
+    $("s-referee-model").value = rb.model || "";
+    $("s-referee-effects").value = r.referee_effects || "applied";
+    $("s-knockout-office").value = (r.knockout || {}).office || "";
+    $("s-knockout-month").value = (r.knockout || {}).month || 12;
+    $("s-civil-war").checked = r.civil_war === "on";
     $("s-dm").value = r.dm_per_turn; $("s-cap").value = r.max_cost_usd; $("s-survey").checked = !!r.survey;
     $("s-shuffle").checked = !!r.shuffle_seats; $("s-parallel").checked = !!r.parallel_decisions;
     $("s-human").checked = r.human_factor !== false;
@@ -1042,6 +1066,36 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
         const { label, trait_baseline, ...seat } = pick.seat;
         S.cfg.run.foreign_cabinet_backend = { ...seat, label: "neighbours-" + label };
       }
+      markDirty(); renderEstimate();
+    });
+    $("s-harness").addEventListener("change", ev => {
+      if (ev.target.value === "menu") delete S.cfg.run.harness; else S.cfg.run.harness = ev.target.value;
+      $("referee-fields").hidden = ev.target.value !== "open";
+      markDirty(); renderEstimate();
+    });
+    const updateReferee = () => {
+      const provider = $("s-referee-provider").value, model = $("s-referee-model").value.trim();
+      if (!provider || !model) delete S.cfg.run.referee_backend;
+      else S.cfg.run.referee_backend = { provider, model, label: "referee", temperature: 0 };
+      markDirty(); renderEstimate();
+    };
+    $("s-referee-provider").addEventListener("change", updateReferee);
+    $("s-referee-model").addEventListener("change", updateReferee);
+    $("s-referee-effects").addEventListener("change", ev => {
+      if (ev.target.value === "applied") delete S.cfg.run.referee_effects;
+      else S.cfg.run.referee_effects = "zeroed";
+      markDirty();
+    });
+    const updateKnockout = () => {
+      const office = $("s-knockout-office").value, month = Math.round(Number($("s-knockout-month").value));
+      if (office && Number.isFinite(month) && month >= 2 && month <= 34) S.cfg.run.knockout = { office, month };
+      else delete S.cfg.run.knockout;
+      markDirty(); renderEstimate();
+    };
+    $("s-knockout-office").addEventListener("change", updateKnockout);
+    $("s-knockout-month").addEventListener("change", updateKnockout);
+    $("s-civil-war").addEventListener("change", ev => {
+      if (ev.target.checked) S.cfg.run.civil_war = "on"; else delete S.cfg.run.civil_war;
       markDirty(); renderEstimate();
     });
     $("s-latitude").addEventListener("change", ev => {
@@ -2736,9 +2790,21 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             r.has_report ? el("a", { class: "btn small", title: r.report_stale ? "Saved report covers " + r.report_months + " months; checkpoint has " + r.months_done : "Open saved report", href: "/runs/" + encodeURIComponent(r.id) + "/report.html", target: "_blank", rel: "noopener" },
               r.report_stale ? "Report · stale (" + r.report_months + "/" + r.months_done + " months)" : "Report") : null,
             r.months_done > 0 || r.status === "paused" ? el("button", { class: "btn small", onclick: () => openInspect(r.id) }, "Inspect") : null,
+            r.months_done > 0 ? el("button", { class: "btn small", title: "Second annotator (Jev via OpenRouter) on this run's exit audit", onclick: ev => jevAnnotate(r.id, ev.currentTarget) }, "Jev") : null,
             r.status === "running" ? el("button", { class: "btn small", onclick: () => showTab("live") }, "Watch") : null,
             resumable ? el("button", { class: "btn small primary", disabled: busy, onclick: () => resume(r.id) }, "Resume") : null)));
       })));
+  }
+  async function jevAnnotate(runId, btn) {
+    if (!confirm("Run Jev (OpenRouter) on " + runId + "'s exit audit? About 80 typed calls, roughly $0.01–$0.05; the key must be set under Keys.")) return;
+    const old = btn.textContent;
+    btn.disabled = true; btn.textContent = "Annotating…";
+    try {
+      const r = await api("POST", "jev", { run: runId });
+      toast("Jev annotated " + r.rows + " rows → " + r.out);
+      if (r.summary) console.log(r.summary);
+    } catch (e) { toast(e.message, true); }
+    finally { btn.disabled = false; btn.textContent = old; }
   }
   $("runs-refresh").addEventListener("click", loadRuns);
 

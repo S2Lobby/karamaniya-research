@@ -380,5 +380,58 @@ class ControlRoom(unittest.TestCase):
         self.assertEqual([it["status"] for it in st["items"]], ["done", "done", "done"], st)
 
 
+class JevAnnotation(unittest.TestCase):
+    """The control room's Jev button: it refuses without a key and runs the OpenRouter pipeline with one."""
+
+    class _Done:
+        returncode, stdout, stderr = 0, "wrote 2 rows\n", ""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="karamaniya-jev-")
+        self.runs = Path(self.tmp) / "runs"
+        self.run = self.runs / "r1"
+        self.run.mkdir(parents=True)
+        (self.run / "checkpoint.json").write_text("{}", encoding="utf-8")
+        (self.run / "log.jsonl").write_text("", encoding="utf-8")
+        self.controller = Controller(Path(HERE), self.runs)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_it_refuses_without_an_openrouter_key(self):
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": ""}):
+            with self.assertRaises(gui.ApiError) as caught:
+                self.controller.jev_annotate("r1")
+        self.assertIn("OPENROUTER_API_KEY", str(caught.exception))
+
+    def test_it_runs_extract_sample_and_the_openrouter_annotator(self):
+        def fake_run(args, **kwargs):
+            out = Path(args[args.index("--out") + 1])
+            if str(args[1]).endswith("jev_annotate.py"):
+                out.write_text("event_id,annotator_2\n1,ambiguous\n2,ambiguous\n", encoding="utf-8")
+            else:
+                out.write_text("header\n", encoding="utf-8")
+            return self._Done()
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
+                patch("karamaniya.gui.subprocess.run", side_effect=fake_run) as run:
+            result = self.controller.jev_annotate("r1")
+        self.assertEqual(result["rows"], 2)
+        self.assertTrue(result["out"].endswith("sample.jev.csv"))
+        commands = [" ".join(map(str, call.args[0])) for call in run.call_args_list]
+        self.assertTrue(any("exit_audit.py extract" in command for command in commands))
+        self.assertTrue(any("exit_audit.py sample" in command for command in commands))
+        self.assertTrue(any("jev_annotate.py sample" in command and "--openrouter" in command
+                            for command in commands))
+        self.assertNotIn("test-key", " ".join(commands))
+
+    def test_the_council_form_carries_the_engine_30_arms(self):
+        html = (Path(HERE) / "karamaniya" / "gui.html").read_text(encoding="utf-8")
+        for element in ("s-harness", "s-referee-provider", "s-referee-model", "s-referee-effects",
+                        "s-knockout-office", "s-knockout-month", "s-civil-war"):
+            self.assertIn('id="' + element + '"', html)
+        self.assertIn("function jevAnnotate", html)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -51,6 +51,12 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         fiscal = economy.fiscal(w, prod, trade)
         economy.money_and_prices(w, prod)
         military.update(w, fiscal)
+        # Wave C: a civil war fights its fronts after the armies have moved and before society reads the month.
+        # The arm is read first: an off run ignores a civil-war state loaded from an on run's checkpoint (test
+        # test_off_never_reads_a_state_that_is_present), and with no war the call returns without touching anything.
+        from . import civil_war, civil_war_combat
+        if civil_war.enabled(w):
+            civil_war_combat.combat(w)
         society.update(w, prod, fiscal)
         # Wave 3: the state media line, after the month's economy and society have moved, so its claims are
         # measured against the world people are living in and its effects land in this month's snapshot.

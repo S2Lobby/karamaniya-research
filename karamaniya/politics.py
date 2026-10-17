@@ -2083,7 +2083,8 @@ PENDING = "PENDING"                         # ordered, not yet observable
 def _compliance(w: World, office: str, lever: str, mid: str, ordered, note: str, status: str) -> dict:
     """One lever's directive, the order given, the value actually in force, and which of them won."""
     directive = w.const.directives.get(lever)
-    actual = getattr(w.policy, lever, None)
+    # T147: a deployment share is read where the office orders read it (w.mil.deploy); it is not on the policy.
+    actual = _current_order_value(w, office, lever) if lever.startswith("deploy_") else getattr(w.policy, lever, None)
     if actual is None:
         actual = (w.policy.patronage or {}).get(office) if lever.startswith("patronage_") else None
     return {"code": "DIRECTIVE_ORDER_MISMATCH" if status != COMPLIANT else "",
@@ -2110,6 +2111,7 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
     prior_directives = prior_directives or {}
     prior_bounds = prior_bounds or {}
     first_row = len(order_history) if order_history is not None else 0
+    first_compliance = len(compliance) if compliance is not None else 0
     deploy_set = False                  # whether this answer set a deployment share (normalised once, below)
 
     def track_order(office: str, lever: str, ordered, status: str, *, directive_key: str | None = None,
@@ -2249,6 +2251,10 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
         for row in (order_history or [])[first_row:]:
             if row["lever"].startswith("deploy_"):
                 row["actual_value"] = _current_order_value(w, row["office"], row["lever"])
+        # T147: the compliance rows of this answer record the shares as normalised, as the office orders above do.
+        for row in (compliance or [])[first_compliance:]:
+            if row["lever"].startswith("deploy_"):
+                row["actual_executed_value"] = _current_order_value(w, row["office"], row["lever"])
     for d in defiance:
         w.event("defiance", f"{w.member(mid).name} ({OFFICE_TITLES[d['office']]}) acted against the "
                 f"council directive on {d['lever']}: directive {fmt_value(d['directive'])}, "

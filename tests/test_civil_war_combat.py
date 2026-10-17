@@ -270,6 +270,7 @@ class Territory(unittest.TestCase):
         self.assertEqual(w.region("kessel").controller, "karamaniya")
         moved = w.counters.get("refugees", 0.0)
         self.assertGreater(moved, 0.0)
+        self.assertAlmostEqual(w.counters.get("civil_war_refugees", 0.0), moved, places=6)
         self.assertGreaterEqual(moved, cwc.REFUGEE_MIN * pop_before_fall * 0.97)
         self.assertLessEqual(moved, cwc.REFUGEE_MAX * pop_before_fall * 1.03)
         # The civilians killed in the falling month are gone before the refugees are counted.

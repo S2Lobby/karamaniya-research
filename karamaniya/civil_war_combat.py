@@ -629,6 +629,7 @@ def _flee(w: World, region, winner: str, rng) -> float:
         moved += flee
     if moved > 0.0:
         w.count("refugees", moved)
+        w.count("civil_war_refugees", moved)
     return moved
 
 

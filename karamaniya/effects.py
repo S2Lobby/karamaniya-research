@@ -421,6 +421,8 @@ def step(w: World) -> None:
         if "effects_applied" in w.institutions:
             w.institutions["effects_applied"] = []
         w.institutions.pop("effects_society_applied", None)
+        if "effects_step_month" in w.institutions:
+            w.institutions["effects_step_month"] = w.month
         return
     w.institutions["effects_step_month"] = w.month
 

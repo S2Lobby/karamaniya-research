@@ -298,8 +298,8 @@ only on the month its outcome was recorded; later rows are engine 29's again.
 
 ## 8. Measures (`tools/civil_war_report.py`)
 
-Reads run folders (config, checkpoint, month records; no model calls; deterministic; read-only).
-Per run and per arm it reports:
+Reads run folders (config, manifest, checkpoint, log month records; no model calls;
+deterministic; read-only). Per run and per arm it reports:
 
 - whether a war started, its start month and cause, duration in months, and how it ended
   (government victory, rebel victory, settlement, partition, collapse, still running);

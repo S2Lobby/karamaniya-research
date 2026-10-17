@@ -112,6 +112,8 @@ class Run:
         self.source = str(self.config.get("source") or "")
         self.arm = self.source.split(":")[1] if self.source.startswith("cw-sweep:") else self.option
         self.twin = run.get("twin")
+        manifest = self.path / "manifest.json"
+        self.manifest = _read_json(manifest) if manifest.is_file() else {}
         self.state = self.world.get("civil_war") if isinstance(self.world.get("civil_war"), dict) else None
         self.outcome = self.world.get("outcome") if isinstance(self.world.get("outcome"), dict) else {}
         self.counters = self.world.get("counters") if isinstance(self.world.get("counters"), dict) else {}
@@ -131,6 +133,13 @@ class Run:
         return self.state is not None or bool(self.months)
 
     @property
+    def run_outcome(self):
+        """The run's own outcome type: the checkpoint first, the manifest as the fallback for a
+        checkpoint written before the outcome was final."""
+        return ((self.outcome or {}).get("type")
+                or (self.manifest.get("outcome") or {}).get("type", ""))
+
+    @property
     def war_since(self):
         if isinstance(self.state, dict) and isinstance(self.state.get("since"), int):
             return self.state["since"]
@@ -142,8 +151,9 @@ class Run:
             return self.state["outcome"]
         # A checkpoint recorded before C4 kept the war's outcome only in the run's own outcome,
         # and only for the terminal cases. Read it back rather than call such a war "running".
-        if (self.outcome or {}).get("type") in END_LABELS:
-            return self.outcome
+        for source in (self.outcome, self.manifest.get("outcome")):
+            if isinstance(source, dict) and source.get("type") in END_LABELS:
+                return source
         return None
 
     @property
@@ -290,7 +300,9 @@ def war_measure(run: Run) -> dict:
         "since_label": None if run.war_since is None else month_label(run.war_since),
         "duration": run.war_duration, "end": run.war_end_label,
         "cause": state.get("cause"),
-        "war_outcome": run.war_outcome, "run_outcome": (run.outcome or {}).get("type", ""),
+        "war_outcome": run.war_outcome, "run_outcome": run.run_outcome,
+        "manifest_outcome": (run.manifest.get("outcome") or {}).get("type", ""),
+        "manifest_months": run.manifest.get("months_simulated"),
         "month_records": len(run.months), "combat_records": len(combat_rows),
         "month_records_note": ("" if combat_rows or not run.war_started else
                                "no combat data in the month records: the run predates the C5 record "

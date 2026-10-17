@@ -1241,6 +1241,14 @@ def validate_motion_detail(w: World, mo: dict) -> dict | None:
     t, subj, val = mo.get("type"), str(mo.get("subject", "")).strip(), _bare(mo.get("value", ""))
     if t in MOTION_TYPE_ALIASES:
         t = mo["type"] = MOTION_TYPE_ALIASES[t]
+    # Wave A (engine 30, W3): the motion types an arm adds are read by W2's reader, at tabling and here at
+    # resolution. The council re-validates every carried motion before executing it, and this function's own
+    # type list is engine 29's, so without this a `policy` that passed its tabling check would lapse at
+    # resolution. Under `menu` nothing is offered and the type stays unknown, as engine 29 had it.
+    from . import actions
+    harness = actions.harness_of(w)
+    if t in actions.offered_motion_types(harness):
+        return actions.validate_new_motion(w, mo, harness)
     # Resolve the words a delegate used for an office, a foreign act, or a funding source to the
     # engine's own id, and write it back so validation and execution agree on the same target. This
     # is understanding intent, not guessing it: an ambiguous phrase is left as written and rejected
@@ -1940,6 +1948,11 @@ def apply_motion(w: World, mo: dict) -> str:
         return _apply_deferral(w, mo, subj, val)
     if t == "media_campaign":
         return _apply_media_campaign(w, mo)
+    if t == "policy":
+        # Wave A (engine 30, W3): the policy language's instruments are scheduled here and carried out
+        # deterministically at the start of each month by policy.monthly.
+        from . import policy
+        return policy.adopt(w, mo)
     return "no effect"
 
 
@@ -2437,6 +2450,32 @@ def _arrears_funding_capacity(w: World, source: str, floor: float = 0.0) -> floa
         already = issued.get("amount", 0.0) if issued.get("month") == w.month else 0.0
         return max(0.0, .02 * e.gdp_nominal * e.confidence - already)
     return 0.0
+
+
+def borrowing_capacity(w: World) -> float:
+    """Crowns the domestic market can take in new bonds this month, beyond what it has already lent.
+
+    Wave A (engine 30, W3). This mirrors `economy.fiscal`'s capacity calculation line for line — the gross
+    ceiling scaled by confidence and payment reliability, less the part of the refinancing calendar that
+    strains the market — because economy.py is not W3's file. A policy's borrowing is registered in the
+    same same-month issuance table `economy.fiscal` reads (`w.institutions["arrears_bonds"]`), so the
+    budget and the policy compete for one market rather than each borrowing against the full ceiling.
+    Any change to the fiscal formula must be mirrored here.
+    """
+    from .economy import GROSS_BORROWING_CAPACITY, ROLLOVER_STRAIN_TOLERANCE
+    e = w.econ
+    gdp = max(1.0, e.gdp_nominal)
+    issued = w.institutions.get("arrears_bonds") or {}
+    already = float(issued.get("amount", 0.0)) if issued.get("month") == w.month else 0.0
+    arrears_load = max(0.0, e.arrears) / gdp
+    reliability = clamp(1.0 - 0.5 * (1.0 - clamp(e.paid_share, 0.0, 1.0))
+                        - 0.4 * max(0.0, arrears_load - 1.0), 0.05, 1.0)
+    gross = GROSS_BORROWING_CAPACITY * gdp * e.confidence * reliability
+    rollover = float(getattr(e, "rollover_need", 0.0) or 0.0)
+    strain = rollover / max(1.0, GROSS_BORROWING_CAPACITY * gdp)
+    crowd = rollover * clamp((strain - ROLLOVER_STRAIN_TOLERANCE) / (1.0 - ROLLOVER_STRAIN_TOLERANCE),
+                             0.0, 1.0)
+    return max(0.0, gross - crowd - already)
 
 
 def _constitution(w: World, field: str, raw: str, proposer: str) -> str:

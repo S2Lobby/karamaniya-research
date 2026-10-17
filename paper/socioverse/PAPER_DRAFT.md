@@ -186,14 +186,14 @@ The design can show whether a contrast survives the three controls, what each co
 
 ## References
 
-[1] Zhang X, Lin J, Mou X, et al. SocioVerse: A World Model for Social Simulation Powered by LLM Agents and A Pool of 10 Million Real-World Users. arXiv:2504.10157, 2025. *From the brief's challenge reference list; no local copy found. UNVERIFIED locally.*
+[1] Zhang X, Lin J, Mou X, et al. SocioVerse: A World Model for Social Simulation Powered by LLM Agents and A Pool of 10 Million Real-World Users. arXiv:2504.10157, 2025. *Verified at arxiv.org/abs/2504.10157 (2026-10-17).*
 
-[2] Zhang et al. (2026). SocioVerse2: A Longitudinal Dynamic Social Simulation Framework under a Human-AI Co-evolutionary Paradigm. arXiv:2609.24911. *Named in the accepted proposal.*
+[2] Zhang X, Lin J, Wang J, et al. SocioVerse2: A Longitudinal Dynamic Social Simulation Framework under a Human-AI Co-evolutionary Paradigm. arXiv:2609.24911, 2026. *Verified at arxiv.org/abs/2609.24911 (2026-10-17).*
 
-[3] Wang J, Zhao Z, Ni T, Wei Z. SocioBench. EMNLP 2025. *From the brief's challenge reference list. UNVERIFIED locally.*
+[3] Wang J, Zhao Z, Ni T, Wei Z. SocioBench: Modeling Human Behavior in Sociological Surveys with Large Language Models. Proceedings of EMNLP 2025. doi:10.18653/v1/2025.emnlp-main.1335. *Verified via Crossref (2026-10-17).*
 
-[4] Argyle LP, Busby EC, Fulda N, et al. Out of One, Many: Using Language Models to Simulate Human Samples. Political Analysis 31(3), 2023. *From the brief's challenge reference list. UNVERIFIED locally.*
+[4] Argyle LP, Busby EC, Fulda N, et al. Out of One, Many: Using Language Models to Simulate Human Samples. Political Analysis 31(3), 2023. doi:10.1017/pan.2023.2. *Verified via Crossref (2026-10-17).*
 
-[5] Li N, Gao C, Li M, et al. EconAgent. ACL 2024. *From the brief's challenge reference list. UNVERIFIED locally.*
+[5] Li N, Gao C, Li M, et al. EconAgent: Large Language Model-Empowered Agents for Simulating Macroeconomic Activities. Proceedings of ACL 2024 (Volume 1: Long Papers). doi:10.18653/v1/2024.acl-long.829. *Verified via Crossref (2026-10-17).*
 
 Open citation markers in the text: SocioVerse2 package specification; SocioBench and EconAgent content; agent-evaluation methods; trace-level auditing; Kaplan-Meier; restricted mean survival time; cluster-robust inference with few clusters; kappa and alpha; evaluation awareness.

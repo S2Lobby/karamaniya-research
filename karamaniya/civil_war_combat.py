@@ -301,7 +301,8 @@ def _fort(w: World, state: dict, region) -> float:
         except (TypeError, ValueError):
             pass
     try:
-        return max(0.0, float((w.mil.fort or {}).get(region.front, 0.0))) if region.front else 0.0
+        forts = getattr(w.mil, "fort", None) or {}
+        return max(0.0, float(forts.get(region.front, 0.0))) if region.front else 0.0
     except (TypeError, ValueError):
         return 0.0
 

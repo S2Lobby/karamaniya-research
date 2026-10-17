@@ -101,6 +101,13 @@ class NoWarIsInert(unittest.TestCase):
         self.assertIsNone(cwc.combat(w))
         self.assertEqual(before, fingerprint(w))
 
+    def test_an_ended_run_fights_no_more(self):
+        w = world()
+        w.outcome = {"type": "survived", "month": 5}
+        before = fingerprint(w)
+        self.assertIsNone(cwc.combat(w))
+        self.assertEqual(before, fingerprint(w))
+
 
 class TheModel(unittest.TestCase):
     def test_combat_follows_the_model(self):

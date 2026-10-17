@@ -64,12 +64,12 @@ It runs the engine's five scripted seats for one month, calls no model, and writ
 6. passes when the exit code is 0 and a run checkpoint exists.
 
 Measured on 2026-10-17 from `C:\Users\litle\Karamaniya\karamaniya-test\wave3-merge` with Python 3.12.10, on the
-engine-27 release commit `85128a22`:
+engine-27 release commit `949854bd`:
 
 ```
-built dist\karamaniya-trust-submission-85128a22.zip (1,179,375 bytes, 143 files, commit 85128a22, versions
+built dist\karamaniya-trust-submission-949854bd.zip (1,179,412 bytes, 143 files, commit 949854bd, versions
       {'world_engine': 27, 'agent_prompt': 24, 'error_taxonomy': 5, 'psychology': 8, 'agent_architecture': 2})
-clean-machine smoke: exit 0, 144 files, 6.0s, checkpoints ['runs\\package-smoke-seed1\\checkpoint.json']
+clean-machine smoke: exit 0, 144 files, 4.5s, checkpoints ['runs\\package-smoke-seed1\\checkpoint.json']
 command: <temp>\.venv-smoke\Scripts\python.exe -m karamaniya simulate council.scripted.toml --runs 1 --months 1
          --prefix package-smoke
 ```

@@ -133,7 +133,8 @@ class TheCabinetIsToldTheSizeWasNotChosen(unittest.TestCase):
         self.assertIn("the size was taken as 0.5 because none was given", shown[0]["reason"])
 
     def test_a_missing_size_is_still_read_without_a_note_pending_the_users_decision(self):
-        # Recorded runs: 142 acts with no "magnitude" key, against 31 with a null one. They are read as 0.5 with no note,
+        # Recorded runs: 139 acts the reader reads have no "magnitude" key (142 are written), in 10 runs, against 31 with a
+        # null one. They are read as 0.5 with no note,
         # as they always were. Whether the cabinet is told of them is for the user (report 23-cabinet-prompt).
         out, _ = read("dorsania", {"type": "offer_talks"})
         self.assertEqual(out["act_notes"], [])

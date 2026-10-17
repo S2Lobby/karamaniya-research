@@ -7,8 +7,8 @@ Private messages (F2):
 Cabinet answers (F4):
 - an act named under "action" instead of "type" (runs 20261008-130316-seed1 and 20261011-211521-seed1);
 - a null troops read as absent, as the reader already reads its other optional fields (runs 20261010-002051-seed1,
-  20261010-070501-seed1 and 20261011-094417-seed1). A null magnitude is read as 0.5 and the cabinet is told so (backlog
-  T142; test_engine24_cabinet_limits.py).
+  20261010-070501-seed1 and 20261011-094417-seed1: 31 acts with a valid magnitude). A null magnitude is read as 0.5 and
+  the cabinet is told so (backlog T142; test_engine24_cabinet_limits.py).
 
 The classes at the end pin what stays refused, and the two "terms" shapes that main already reads. Nothing here calls
 a model.

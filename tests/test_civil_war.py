@@ -82,10 +82,18 @@ def attempt_remove(w: World, targets=("A", "B"), stances=None):
             w, {"D": {"action": "remove", "members": list(targets)}}, stances)
 
 
-def handover_world(**kwargs) -> World:
-    """The handover month: the government lost the vote and a coup tries to keep it in office. The
-    army follows its minister, but a large loyal police and navy keep a share of the armed power."""
+def loyal_handover_world(**kwargs) -> World:
+    """The handover month with the army (and a joining navy) obeying their commanders: a total
+    takeover, as the scripted hawk's handover coup is."""
     w = loyal_plotter_world(**kwargs)
+    w.const.handover_month = w.month
+    return w
+
+
+def split_handover_world(**kwargs) -> World:
+    """The handover month with the army minister plotting while the army itself mostly stays with
+    the government: the plotters' own command is split, so the war starts."""
+    w = world(**kwargs)
     w.const.handover_month = w.month
     return w
 
@@ -141,7 +149,7 @@ class NoTriggerInMonthOne(unittest.TestCase):
         self.assertNotIn("civil_war", res[0])
 
     def test_a_split_handover_takes_the_old_outcome_in_month_one(self):
-        w = handover_world(month=0)
+        w = split_handover_world(month=0)
         self.assertEqual(w.const.handover_month, 0)
         res = attempt_handover(w)
         self.assertTrue(res[0]["success"])
@@ -232,44 +240,60 @@ class FailedCoupTrigger(unittest.TestCase):
 
 
 class HandoverTrigger(unittest.TestCase):
-    def test_a_split_handover_starts_the_war(self):
-        w = handover_world()
-        res = attempt_handover(w)
+    def test_a_split_handover_starts_the_war_and_spares_the_targets(self):
+        w = split_handover_world()
+        res = attempt_handover(w, members=("A", "B"))
         coup = res[0]
         self.assertTrue(coup["success"])
         self.assertTrue(coup["handover"])
+        # The plotters' own army command mostly stays with the government.
+        army = division(w, "army")
+        self.assertGreaterEqual(army["obey_government"] + 0.5 * army["split"], 0.25)
         self.assertIsNotNone(civil_war.state(w))
         state = civil_war.state(w)
         self.assertEqual(state["cause"], "handover_coup")
         self.assertEqual(state["factions"]["rebels"]["members"], ["D"])
+        # The trigger ran before the removals: the government side is still in being.
+        for mid in "ABCE":
+            self.assertEqual(w.member(mid).status, "active", mid)
+        self.assertEqual(state["factions"]["government"]["members"], ["A", "B", "C", "E"])
         self.assertEqual(w.const.handover_month, -1)
         self.assertEqual(w.const.election_month, -1)
         self.assertNotIn("handover_blocked_month", w.counters)
         self.assertEqual(coup["civil_war"], {"started": True, "cause": "handover_coup"})
 
     def test_a_total_takeover_keeps_the_old_outcome(self):
-        w = handover_world()
-        m = w.mil
-        # Every other office holder joins the plot and the army follows its commander almost
-        # wholly: the government keeps less than a quarter of the armed power.
-        m.army.size, m.army.bond, m.army.loyalty, m.army.morale = 70000, 0.95, 0.1, 0.9
-        m.deploy = {"north": 0.05, "east": 0.05, "capital": 0.9}
-        stances = {mid: "join" for mid in "ABCE"}
-        res = attempt_handover(w, stances=stances)
+        # The scripted hawk's handover shape: the army follows its minister, the opportunist's
+        # navy joins and follows its own, and the loyal police stays with the government. No
+        # plotter-held command splits, so the government-held police share does not count.
+        w = loyal_handover_world()
+        w.mil.navy.bond, w.mil.navy.loyalty = 0.90, 0.20
+        res = attempt_handover(w, action="take_over", stances={"E": "join"})
         self.assertTrue(res[0]["success"])
         self.assertIsNone(civil_war.state(w))
         self.assertEqual(w.counters.get("handover_blocked_month"), float(w.month))
         self.assertNotIn("civil_war", res[0])
+        # The kept-by-force path still removes the targets.
+        for mid in ("A", "B", "C"):
+            self.assertEqual(w.member(mid).status, "removed", mid)
+            self.assertEqual(w.member(mid).removed_how, "coup", mid)
 
-    def test_the_government_must_keep_a_quarter_of_the_armed_power(self):
+    def test_the_plotters_own_command_must_split(self):
         w = world()
-        rec = {"divisions": {office: {"holder": w.holder(office).id if w.holder(office) else None,
-                                      "power": 1.0, "obey_commander": 0.5, "obey_government": 0.24,
-                                      "neutral": 0.26, "split": 0.0}
-                             for office in ARMED_OFFICES}}
+        rec = {"plotters": ["D"], "armed": ["D"], "divisions": {
+            "army": {"holder": "D", "power": 1.0, "obey_commander": 0.70, "obey_government": 0.24,
+                     "neutral": 0.06, "split": 0.0},
+            "interior": {"holder": "C", "power": 1.0, "obey_commander": 0.0, "obey_government": 0.90,
+                         "neutral": 0.10, "split": 0.0},
+            "navy": {"holder": "E", "power": 1.0, "obey_commander": 0.0, "obey_government": 0.90,
+                     "neutral": 0.10, "split": 0.0}}}
+        # The government-held police and navy staying loyal does not count: only a plotter-held
+        # office is judged.
         self.assertFalse(civil_war.handover_starts(w, rec))
-        for d in rec["divisions"].values():
-            d["obey_government"] = 0.25
+        rec["divisions"]["army"]["obey_government"] = 0.25
+        self.assertTrue(civil_war.handover_starts(w, rec))
+        # Half of a split counts on the government side, as it does in resolve_coups.
+        rec["divisions"]["army"]["obey_government"], rec["divisions"]["army"]["split"] = 0.20, 0.10
         self.assertTrue(civil_war.handover_starts(w, rec))
 
 
@@ -300,34 +324,47 @@ class FactionsForcesAndTerritory(unittest.TestCase):
         # B (treasury) outranks C (interior) and E (navy) in the government.
         self.assertEqual(state["factions"]["government"]["leader"], "B")
 
-    def test_forces_are_the_anticipated_shares_weighted_by_power(self):
+    def test_forces_use_the_same_split_for_every_office(self):
         w = loyal_plotter_world()
         state = self.start(w, plotters=("D",), stances={"A": "join"})
         rebels, government = state["factions"]["rebels"]["forces"], state["factions"]["government"]["forces"]
-        army = division(w, "army")
-        # The army's holder is a rebel: the rebel share is obey_commander.
-        self.assertIn("army", rebels)
-        self.assertAlmostEqual(rebels["army"]["share"], army["obey_commander"], places=4)
-        self.assertEqual(rebels["army"]["holder"], "D")
-        self.assertAlmostEqual(rebels["army"]["size"], w.mil.army.size * army["obey_commander"], places=0)
-        # The police and the navy are held by the government: their share is
-        # obey_government + 0.5 * split.
-        for office, force in (("interior", w.mil.police), ("navy", w.mil.navy)):
+        rebels_set = {"A", "D"}
+        weighted = {"government": 0.0, "rebels": 0.0, "unaligned": 0.0}
+        total = sum(division(w, office)["power"] for office in ARMED_OFFICES)
+        for office, force in (("army", w.mil.army), ("interior", w.mil.police), ("navy", w.mil.navy)):
             d = division(w, office)
+            holder = w.holder(office)
+            rebel_share = d["obey_commander"] if holder and holder.id in rebels_set else 0.0
+            government_share = d["obey_government"] + 0.5 * d["split"]
+            # Every office is on both sides, with the same rule resolve_coups uses.
+            self.assertIn(office, rebels)
             self.assertIn(office, government)
-            self.assertAlmostEqual(government[office]["share"],
-                                   d["obey_government"] + 0.5 * d["split"], places=4)
-            self.assertAlmostEqual(government[office]["size"],
-                                   force.size * (d["obey_government"] + 0.5 * d["split"]), places=0)
-            self.assertNotIn(office, rebels)
-        # No unit joins both sides.
-        for office in ARMED_OFFICES:
-            self.assertFalse(office in rebels and office in government, office)
-        # Neutral joins neither: the stored neutral share is reported, not assigned.
-        self.assertTrue(all("neutral_share" in d for d in list(rebels.values()) + list(government.values())))
+            self.assertAlmostEqual(rebels[office]["share"], rebel_share, places=4)
+            self.assertAlmostEqual(government[office]["share"], government_share, places=4)
+            self.assertAlmostEqual(rebels[office]["size"], force.size * rebel_share, places=0)
+            self.assertAlmostEqual(government[office]["size"], force.size * government_share, places=0)
+            unaligned_share = 1.0 - rebel_share - government_share
+            self.assertAlmostEqual(rebels[office]["unaligned_share"], unaligned_share, places=4)
+            weighted["rebels"] += d["power"] * rebel_share
+            weighted["government"] += d["power"] * government_share
+            weighted["unaligned"] += d["power"] * unaligned_share
+        # Q3: the plotter-held army's government portion joins the government faction too.
+        army = division(w, "army")
+        self.assertAlmostEqual(rebels["army"]["share"], army["obey_commander"], places=4)
+        self.assertAlmostEqual(government["army"]["share"],
+                               army["obey_government"] + 0.5 * army["split"], places=4)
+        self.assertGreater(government["army"]["share"], 0.0)
+        # The government-held police and navy contribute no rebel share.
+        for office in ("interior", "navy"):
+            self.assertEqual(rebels[office]["share"], 0.0)
+        # The weighted shares are the factions' stored power shares; the rest is unaligned.
+        for side in ("rebels", "government"):
+            self.assertAlmostEqual(state["factions"][side]["power_share"],
+                                   weighted[side] / total, places=3)
         self.assertLessEqual(state["factions"]["rebels"]["power_share"]
                              + state["factions"]["government"]["power_share"]
-                             + state["neutral_power_share"], 1.0001)
+                             + state["unaligned_power_share"], 1.0001)
+        self.assertAlmostEqual(state["unaligned_power_share"], weighted["unaligned"] / total, places=3)
 
     def test_territory_follows_the_army_share_and_existing_rebel_regions(self):
         w = loyal_plotter_world()

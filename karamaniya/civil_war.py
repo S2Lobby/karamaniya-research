@@ -26,9 +26,11 @@ The design is ``notes/CIVIL_WAR-design.md``; the lead's decisions are
   are listed here, not removed. Each faction's leader is the highest office in ``OFFICES`` order
   (head, treasury, interior, army, navy), ties broken by ``politics._power``.
 - **Forces.** For each armed office (army, navy, interior/police), ``military.anticipated_response``
-  splits the force. A force whose holder is a rebel contributes its ``obey_commander`` share to the
-  rebels; one whose holder is not contributes ``obey_government + 0.5 * split`` to the government;
-  ``neutral`` units join neither. Shares are weighted by ``politics._power``.
+  splits the force under its current holder's order. Every office uses the same rule, mirroring
+  ``resolve_coups``: the rebels take ``obey_commander`` when the holder is a rebel, the government
+  takes ``obey_government + 0.5 * split`` whether or not the holder is one, and the rest (neutral,
+  the other half of a split, and the commander share of a government-held force) is unaligned.
+  Shares are weighted by ``politics._power``.
 - **Territory.** Regions the engine already lists as ``controller == "rebels"`` join the rebels. The
   other government regions stay government, except that the capital and the two front deployments
   are *contested* when the rebel army share is at least one half. ``controller`` keeps its two
@@ -160,7 +162,11 @@ def commander_share(rec: dict) -> float:
 
 
 def government_share(divisions: dict) -> float:
-    """The government side's share of the armed power: ``obey_government + 0.5 * split``."""
+    """The whole armed power's government share: ``obey_government + 0.5 * split``.
+
+    A diagnostic for reports; the handover trigger does not use it, because the loyal police and
+    navy count in it even when the plotters' own commands stayed whole (see ``handover_starts``).
+    """
     keeping = sum(d.get("power", 0.0) * (d.get("obey_government", 0.0) + 0.5 * d.get("split", 0.0))
                   for d in divisions.values())
     return keeping / _total_power(divisions)
@@ -194,11 +200,26 @@ def maybe_start_from_failed_coup(w, rec: dict):
 
 
 def handover_starts(w, rec: dict) -> bool:
-    """Whether the government keeps enough armed power for a split handover coup to start the war."""
+    """Whether a handover coup splits a command the plotters actually hold.
+
+    Only armed offices held by a plotter are judged. A total takeover — the plotter's own force
+    obeys its commander, so its ``obey_government + 0.5 * split`` stays below the threshold —
+    keeps the kept-power-by-force outcome even when the government-held police or navy remain
+    loyal; a loyal police share alone must not turn every quiet handover coup into a war. The war
+    starts when one of the plotters' own commands keeps at least ``HANDOVER_GOVERNMENT_SHARE`` of
+    itself with the government.
+    """
     if not enabled(w) or state(w) is not None or w.month < FIRST_TRIGGER_MONTH:
         return False
     divisions = rec.get("divisions") or armed_divisions(w)
-    return government_share(divisions) >= HANDOVER_GOVERNMENT_SHARE
+    plotters = set(rec.get("plotters") or rec.get("armed") or [])
+    for division in divisions.values():
+        if division.get("holder") not in plotters:
+            continue
+        if (division.get("obey_government", 0.0) + 0.5 * division.get("split", 0.0)
+                >= HANDOVER_GOVERNMENT_SHARE):
+            return True
+    return False
 
 
 def maybe_start_from_handover(w, rec: dict):
@@ -273,23 +294,31 @@ def start(w, cause: str, plotters=None, stances=None, divisions=None):
 
     forces = {"government": {}, "rebels": {}}
     power = {"government": 0.0, "rebels": 0.0}
-    neutral = 0.0
+    unaligned = 0.0
     for office in ARMED_OFFICES:
         division = divisions[office]
         holder = division.get("holder")
-        if holder in rebel_set:
-            share, side = division["obey_commander"], "rebels"
-        else:
-            share, side = division["obey_government"] + 0.5 * division["split"], "government"
-        power[side] += division["power"] * share
-        neutral += division["power"] * division["neutral"]
-        forces[side][office] = {
-            "holder": holder,
-            "power": division["power"],
-            "share": round(share, 4),
-            "size": round(_force(w, office).size * share, 1),
-            "neutral_share": round(division["neutral"], 4),
-        }
+        # The same rule as resolve_coups' attack and defend, applied to every office: the rebels
+        # get obey_commander when the holder is a rebel; the government gets
+        # obey_government + 0.5 * split whether or not the holder is one. What is left is
+        # unaligned: neutral plus the other half of any split, and (for a government-held force)
+        # the share that would follow a coup order from its own commander.
+        rebel_share = division["obey_commander"] if holder in rebel_set else 0.0
+        government_share_ = division["obey_government"] + 0.5 * division["split"]
+        unaligned_share = max(0.0, 1.0 - rebel_share - government_share_)
+        power["rebels"] += division["power"] * rebel_share
+        power["government"] += division["power"] * government_share_
+        unaligned += division["power"] * unaligned_share
+        size = _force(w, office).size
+        for side, share in (("rebels", rebel_share), ("government", government_share_)):
+            forces[side][office] = {
+                "holder": holder,
+                "power": division["power"],
+                "share": round(share, 4),
+                "size": round(size * share, 1),
+                "neutral_share": round(division["neutral"], 4),
+                "unaligned_share": round(unaligned_share, 4),
+            }
     total = _total_power(divisions)
 
     rebel_territory = [r.id for r in w.regions
@@ -329,7 +358,7 @@ def start(w, cause: str, plotters=None, stances=None, divisions=None):
             },
         },
         "contested": contested,
-        "neutral_power_share": round(neutral / total, 4),
+        "unaligned_power_share": round(unaligned / total, 4),
         "ceasefire": False,
         "offers": [],
         "outcome": None,

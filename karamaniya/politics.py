@@ -2867,20 +2867,23 @@ def resolve_coups(w: World, coups: dict, stances: dict) -> list:
                "divisions": divisions}
         if success:
             w.count("coups_succeeded", 1)
-            for t in targets:
-                remove_member(w, t, "coup")
+            # Wave C: the handover trigger is judged before the targets are removed, so a war keeps
+            # its government side in being. A coup that keeps power by force still removes them.
+            war = None
+            if handover:
+                from . import civil_war
+                war = civil_war.maybe_start_from_handover(w, rec)
+            if war is None:
+                for t in targets:
+                    remove_member(w, t, "coup")
             w.const.coup_month = w.month
             w.const.emergency = True
             if handover:
                 w.const.handover_month = -1
                 w.const.election_month = -1
                 w.const.elected = False
-                # The government lost the election and kept power by force: the run's outcome says so.
-                # Wave C: if the forces split and the government side keeps a quarter of the armed
-                # power, the kept-by-force outcome becomes a civil war instead.
-                from . import civil_war
-                war = civil_war.maybe_start_from_handover(w, rec)
                 if war is None:
+                    # The government lost the election and kept power by force: the outcome says so.
                     w.counters["handover_blocked_month"] = float(w.month)
                 else:
                     rec["civil_war"] = {"started": True, "cause": "handover_coup"}

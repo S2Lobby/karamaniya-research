@@ -129,6 +129,20 @@ class ReaderAndKeyTests(unittest.TestCase):
         self.assertNotEqual(motion_actions.execution_key(w, first), before,
                             "the same policy in another month is another act")
 
+    def test_an_open_act_is_keyed_by_its_words_office_and_budget(self):
+        w = policy_world(harness="open")
+        first = {"id": "O-1", "type": "open_act", "proposer": "A", "text": "Repair the Kessel road.",
+                 "action": {"office": "treasury", "budget": {"amount": 3.0, "months": 2},
+                            "funding": "reserves"}}
+        second = {"id": "O-2", "type": "open_act", "proposer": "B", "text": "Repair the Kessel road.",
+                  "action": {"office": "treasury", "budget": {"amount": 3.0, "months": 2},
+                             "funding": "reserves"}}
+        different = {"id": "O-3", "type": "open_act", "proposer": "C", "text": "Repair the Dorran road.",
+                     "action": {"office": "treasury", "budget": {"amount": 3.0, "months": 2},
+                                "funding": "reserves"}}
+        self.assertEqual(motion_actions.execution_key(w, first), motion_actions.execution_key(w, second))
+        self.assertNotEqual(motion_actions.execution_key(w, first), motion_actions.execution_key(w, different))
+
     def test_a_contradictory_policy_is_blocked_before_execution(self):
         w = policy_world()
         two_values = {"id": "P-1", "type": "policy", "proposer": "A", "text": "x",
@@ -140,6 +154,11 @@ class ReaderAndKeyTests(unittest.TestCase):
                                  transfer("ident:vell", 4.0, funding="cut:welfare")]}
         self.assertEqual(motion_actions.validate_execution(w, {**set_and_cut, "passed": True})["code"],
                          "POLICY_LIMIT")
+        # A direct call (a scripted stand-in) reaches the same verdict instead of adopting it.
+        direct = policy_world()
+        result = adopt(direct, [set_lever("welfare", 0.05), set_lever("welfare", 0.06)])
+        self.assertIn("not adopted", result)
+        self.assertEqual(policy.active(direct), [])
 
     def test_a_spending_item_without_funding_is_refused_at_tabling(self):
         w = policy_world()
@@ -417,6 +436,15 @@ class PublicWorksTests(unittest.TestCase):
             quiet_month(self.w)
         channels = {r.get("channel") for r in self.w.institutions.get("effects_applied") or []}
         self.assertNotIn("unemployment", channels)
+
+    def test_a_works_budget_in_a_lost_region_is_refused(self):
+        self.w.region("kessel").controller = "union"
+        adopt(self.w, [public_works("kessel", 10.0, funding="reserves", months=1)])
+        policy.monthly(self.w)
+        refused = entries(self.w.institutions["policy_record"], "refused", "public_works")
+        self.assertTrue(refused)
+        self.assertEqual(refused[0]["code"], "POLICY_BAD_TARGET")
+        self.assertAlmostEqual(self.w.econ.gold, 80e6, delta=1.0, msg="nothing is paid")
 
     def test_a_works_budget_without_capacity_is_refused_and_nothing_is_queued(self):
         self.w.econ.gold = 0.0

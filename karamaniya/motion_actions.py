@@ -2220,11 +2220,17 @@ def execution_key(w, motion: dict) -> str:
                    "intensity": str(action.get("intensity") or "")}
     # Wave A (engine 30, W3): a policy is the canonical items it carries, so its label and wording do not
     # change its key, and re-tabling the same items in another order is the same motion (W2's key beside
-    # the month, the programme branch's shape).
+    # the month, the programme branch's shape). An open act is its words, office, budget and funding (W2's
+    # key): without this branch every open act in a month shared the empty subject/value fallback and the
+    # second one was refused as a duplicate of the first.
     if action["kind"] == "policy":
         from .deliberation import _policy_measure_key
         payload = {"action_type": "policy", "month": payload["month"],
                    "items": list(_policy_measure_key(w, motion))}
+    if action["kind"] == "open_act":
+        from .deliberation import _open_act_key
+        payload = {"action_type": "open_act", "month": payload["month"],
+                   "act": list(_open_act_key(w, motion))}
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 

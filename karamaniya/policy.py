@@ -11,7 +11,9 @@ programme path exactly (`politics.set_lever` plus `c.directives` and `c.directiv
 bound), so an office order against it is recorded as defiance by `politics.apply_orders`. The value from
 before the hold is kept; when the hold ends (the schedule runs out, or the condition stops holding, or a
 later decision changes the setting) the prior value and the prior directive are put back, unless the
-directive is no longer the one the hold wrote, which is recorded as superseded.
+directive is no longer the one the hold wrote, which is recorded as superseded. A later decision that
+writes exactly the same value cannot be told apart from the hold's own directive; the hold treats it as
+its own, and the setting ends where either of them would have left it.
 
 `transfer` pays a group each month. The money is charged through the engine's funding paths (reserves,
 borrowing, or a cut to a spending setting) and reaches the people through the effect bus's `income` and
@@ -448,6 +450,9 @@ def _transfer_effects(w, item: dict) -> tuple:
 def _works_effects(w, item: dict) -> tuple:
     """The repairs one month's public-works payment buys: (flat effects, queued work, problem)."""
     region = w.region(str(item.get("target") or ""))
+    if region.controller != "karamaniya":
+        return None, None, (f"{region.name} is not under the government's control, so its works cannot "
+                            "be carried out")
     amount = float(item.get("amount") or 0.0) * 1e6
     output = max(1.0, w.econ.gdp_nominal) * politics._region_output_share(w, region)
     base = amount / output

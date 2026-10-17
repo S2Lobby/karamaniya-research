@@ -582,8 +582,11 @@ def _apply_losses(w: World, state: dict, men_lost: dict) -> None:
             # and from any embodied reserve, exactly as _combat does for active losses.
             military._release(w, government * 0.3 + rebels * 0.3, killed=True)
             military._release(w, government * 0.7 + rebels * 0.7, killed=False)
-        else:
+        elif office == "interior":
             w.count("civil_war_security_killed", killed)
+        else:
+            # `size` is ships; the naval battle in military.py counts 250 sailors to a ship.
+            w.count("civil_war_sailors_killed", killed * 250.0)
 
 
 def _change_control(w: World, state: dict, region, winner: str, record: dict, rng,

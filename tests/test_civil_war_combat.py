@@ -196,6 +196,21 @@ class TheModel(unittest.TestCase):
         self.assertGreater(w.counters.get("deaths_war_civilian", 0.0), 0.0)
         self.assertGreater(w.counters.get("soldiers_killed", 0.0), 0.0)
 
+    def test_a_coastal_front_counts_sailors_not_ships(self):
+        w = world()
+        w.region("kessel").controller = "karamaniya"
+        w.region("kessel").rebels = 0.0
+        w.region("lissen").controller = "rebels"
+        w.civil_war["contested"] = ["lissen"]
+        rec = cwc.combat(w)
+        navy_losses = (rec["losses_by_office"]["navy"]["government"]
+                       + rec["losses_by_office"]["navy"]["rebels"])
+        self.assertGreater(navy_losses, 0.0)     # ships lost on a coastal front
+        self.assertAlmostEqual(w.counters.get("civil_war_sailors_killed", 0.0),
+                               navy_losses * 0.3 * 250.0, delta=2.0)
+        self.assertGreater(w.counters.get("civil_war_security_killed", 0.0), 0.0)
+        self.assertGreater(w.counters.get("civil_war_soldiers_killed", 0.0), 0.0)
+
 
 class Territory(unittest.TestCase):
     def test_a_dominant_government_takes_a_rebel_region(self):

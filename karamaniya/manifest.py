@@ -24,6 +24,7 @@ import hashlib
 from pathlib import Path
 
 from . import causality, errors, token_saving, versions
+from .config import OFFICES_BY_LETTER
 from .world import World
 
 MANIFEST_VERSION = 2
@@ -133,6 +134,18 @@ def served_from_log(store) -> dict:
     return {k: sorted(v) for k, v in out.items()}
 
 
+def office_assignment(cfg: dict) -> dict:
+    """How the five offices were filled (engine 24, S1): by the Month-0 vote, or by letter with no vote."""
+    if (cfg.get("run") or {}).get("office_assignment") == "by_letter":
+        return {"option": "by_letter", "formation_vote": False, "letters": dict(OFFICES_BY_LETTER)}
+    return {"option": "formation", "formation_vote": True}
+
+
+def _office_option(manifest: dict) -> str:
+    """The option a manifest records; a manifest written before engine 24 filled its offices by the vote."""
+    return (manifest.get("office_assignment") or {}).get("option") or "formation"
+
+
 def build(world: World, cfg: dict, council_state: dict | None = None, store=None) -> dict:
     """The manifest for a run, as it stands."""
     run = cfg.get("run") or {}
@@ -170,6 +183,8 @@ def build(world: World, cfg: dict, council_state: dict | None = None, store=None
             "derivation": "rng_for(run_seed, month, tag) -> sha256, one stream per tag",
             "streams": SEEDED_STREAMS,
         },
+        # The speaking order each month (council.speaking_order). An older run has no key and used the seeded shuffle.
+        "action_order": run.get("action_order", "seeded_shuffle"),
         "structural_parameters": causality.ensure(world),
         "sampling": sampling(cfg),
         "seats": seat_rows,
@@ -179,6 +194,7 @@ def build(world: World, cfg: dict, council_state: dict | None = None, store=None
         "founding": {"scenario": run.get("founding_scenario"),
                      "severity": run.get("founding_severity"),
                      "problems": run.get("founding_problems") or []},
+        "office_assignment": office_assignment(cfg),
         **({"token_saving": token_saving.describe(cfg)} if token_saving.describe(cfg) else {}),
         "determinism_note": (
             "The world is fully determined by run_seed: world generation, structural parameters, "
@@ -213,12 +229,16 @@ def divergences(a: dict, b: dict) -> list:
         out.append("structural_parameters")
     if a.get("sampling") != b.get("sampling"):
         out.append("sampling_settings")
+    if (a.get("action_order") or "seeded_shuffle") != (b.get("action_order") or "seeded_shuffle"):
+        out.append("action_order")
     sa = {(s["seat"], s.get("label")) for s in a.get("seats", [])}
     sb = {(s["seat"], s.get("label")) for s in b.get("seats", [])}
     if sa != sb:
         out.append("seat_lineup")
     if a.get("founding") != b.get("founding"):
         out.append("founding_conditions")
+    if _office_option(a) != _office_option(b):
+        out.append("office_assignment")
     if (a.get("token_saving") or {}) != (b.get("token_saving") or {}):
         out.append("token_saving")
     return out

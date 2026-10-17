@@ -586,6 +586,14 @@ speaking states, offices and influence come from the run, not from the photograp
 
 - The AIs see their delegate letter (A–L), their current offices (in the government formation too since agent prompt 17; the questionnaire and the founding diagnosis are anonymous) and the information available to them. Model-to-letter assignment can be held fixed, shuffled or rotated between seeded runs.
 - Speaking order is shuffled reproducibly each month. Statements, messages and notes have word caps.
+- `office_assignment = "by_letter"` (engine 24) skips the Month-0 formation vote and fixes the offices by letter: A is
+  head of government, B treasury, C interior, D army, E navy. With the models rotated between letters, each model holds
+  each office once per seed. The system prompt and the Month 1 sentence say the offices were filled by assignment,
+  without a vote; the default keeps the vote and its prompts. A vacancy later in the run is filled as in any run.
+- `action_order = "fixed_precedence"` (engine 24) has the office holders open and respond in office order every month,
+  head first, and any other member after them in letter order. The month's shuffle is still drawn and discarded, so
+  every other draw of the month is the same under either order; an interception draw then falls on the messages in
+  their new order. Both options are in the manifest.
 - Refusals count as data: the member abstains and the refusal is logged. Server-side fallback to another
   model is off by default for the same reason.
 - The briefing is flat and neutral. It lists harsh options (lethal force, internment, rigged elections)
@@ -618,6 +626,32 @@ speaking states, offices and influence come from the run, not from the photograp
   9-12% alike; if unanimity falls under a secret ballot, it was conformity. `python tools/matrix.py` writes council
   files for model lineups by seeds and arms, for you to run, and compares finished runs by lineup and arm.
 - One run is a story, not data. Run each lineup several times, with different seeds too.
+
+## Studies
+
+Engine 24 adds the tools of a controlled study. None of them changes a run.
+
+- `tools/study_grid.py plan <study.toml> <out>` writes one council file per row of the grid: five models rotated over
+  the five letters, each seed and each speaking order, with `office_assignment = "by_letter"` and a dedicated model for
+  the neighbours (`foreign_cabinet_backend`), so the cabinets do not change with the rotation. `run <plan.json> --workers
+  N --max-resumes K` runs the rows in separate processes, resumes paused ones, and keeps `status.json`; `--dry-run`
+  swaps every seat for a scripted one. `tools/study_example.toml` is the template.
+- `studies/karamaniya_trust/` is the study in SocioVerse2's `studies/<study>/` format: an adapter that wraps the
+  unchanged engine (SocioVerse2's path C) and `run.py`, whose `--dry-run` runs a scripted study and checks it against
+  the engine's own loop. A run that reaches the Month-36 election can go on for up to 4 more months while the handover
+  is settled, so the wrap allows 40 steps.
+- `tools/exit_audit.py` lists every exit (a resignation, an expulsion, a lost seat, the government's end) with the raw
+  answer behind it, the reading and the state change; draws the predefined sample for two annotators; and reports
+  Cohen's kappa and Krippendorff's alpha. The labels are defined in `docs/EXIT_AUDIT_CODEBOOK.md`.
+- `tools/study_analysis.py` reads a grid's runs and labels: time to exit with censoring (Kaplan-Meier), persistence by
+  model, office and both, with bootstrap intervals over seeds, invalid-action and mismatch rates, the paired difference
+  between the speaking orders, and the ablations. It uses the standard library only and leaves scripted runs out.
+- `tools/replay_run.py <run>` runs a recorded run again with every seat answered from its log and reports the first
+  difference. A run of seats that return structured output through a CLI (Claude Code, Qoder, Antigravity) cannot be
+  replayed exactly, since that output is not logged.
+- `tools/cluster/` sets up a rented GPU machine with one vLLM server per model, launches the grid, copies the run folders
+  home every 30 minutes, and estimates time and cost (`estimate.py`).
+- `docs/DETECTOR_PRECISION.md` measures two research detectors against hand labels; both are diagnostics, not measures.
 
 ## Cost and time
 

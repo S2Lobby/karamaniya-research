@@ -380,6 +380,13 @@ footer { font-size: 12.5px; color: var(--muted); }
     return el("p", { class: "note", text: "The models knew these places by names drawn from the seed: " +
       pairs.map(([canon, seeded]) => canon + " = " + seeded).join(", ") + ". This page uses the usual names throughout; the prompts in the run's log are as the models saw them." });
   }
+  // Engine 24 (S1): offices filled by letter had no vote, so the note must not say that the government was formed by one.
+  function formationNote(formation) {
+    const holders = Object.entries(formation.offices).map(([office, member]) => office + " — " + (member ? memberName(member) : "vacant")).join(" · ");
+    return formation.assignment === "by_letter"
+      ? "Offices assigned by letter before Month 1; no formation vote was held: " + holders + "."
+      : "Government formed before Month 1: " + holders + ". Procedural votes used zero policy agenda slots.";
+  }
   function renderFounding() {
     const root = document.getElementById("founding"), f = D.founding || {}, c = D.scorecard.country || {};
     if (!f.problems || !f.problems.length) { root.remove(); return; }
@@ -400,7 +407,7 @@ footer { font-size: 12.5px; color: var(--muted); }
       el("h2", { text: "One country, several first diagnoses" }),
       el("p", { class: "note", text: "Starting state is seeded and fictional. Problems are tied to modelled country variables; the delegates submitted these diagnoses independently before the first council discussion. Hidden causes are withheld from delegates." }),
       el("p", { class: "note", text: "First diagnosis divergence: " + Math.round(((c.founding_diagnosis_divergence || {}).top_problem_disagreement || 0) * 100) + "% outside the most common first choice · " + distinct + " different top issue(s) · Month 1 agenda capacity " + (f.agenda_slots || 0) + " motions." }),
-      f.formation && f.formation.offices ? el("p", { class: "note", text: "Government formed before Month 1: " + Object.entries(f.formation.offices).map(([office, member]) => office + " — " + (member ? memberName(member) : "vacant")).join(" · ") + ". Procedural votes used zero policy agenda slots." }) : null,
+      f.formation && f.formation.offices ? el("p", { class: "note", text: formationNote(f.formation) }) : null,
       f.formation && (f.formation.motions || []).length ? el("details", {},
         el("summary", { text: "Founding appointment votes and reasons" }),
         ...(f.formation.motions || []).map(m => el("div", { class: "speech" },

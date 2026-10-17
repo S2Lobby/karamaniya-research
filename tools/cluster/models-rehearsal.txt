@@ -1,0 +1,12 @@
+# The one-hour rehearsal: one model on one cheap GPU, to check the plumbing and measure the speed.
+# Use with: bash tools/cluster/setup.sh --commit <hash> --models tools/cluster/models-rehearsal.txt --yes
+#
+# Qwen3-8B: Apache-2.0, not gated. Its config (checked 2026-10-17): 36 layers, 8 KV heads, head dim 128, bf16,
+# max_position_embeddings 40960, and 8.19 billion parameters. Its 16.4 GB of weights leave a 24 GB RTX 4090 room for
+# about one sequence of 12-14k tokens. So max_len is 16384: vLLM will not start with a max_len that its KV cache
+# cannot hold (the message says so). The rehearsal measures single-stream speed, not the 50-way load of the study.
+#
+# The fields are as in models.txt. The seat in the rehearsal must use the name rehearsal-qwen3-8b.
+#
+# name                repo            revision                                    gpus  port  max_len  reasoning  size_gb
+rehearsal-qwen3-8b    Qwen/Qwen3-8B   b968826d9c46dd6066d109eabc6255188de91218    0     8001  16384    qwen3      17

@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .backends import make_backend
-from .config import SEAT_IDS, load_config
+from .config import SEAT_IDS, check_office_assignment, load_config
 from .council import Council, RunPaused, Seat
 from . import manifest
 from .storage import RunStore
@@ -140,7 +140,10 @@ def _diagnose(store: RunStore, council: Council, observer, quiet: bool) -> str:
 
 
 def _form_government(store: RunStore, council: Council, observer, quiet: bool) -> str:
-    _emit(observer, type="formation_start", month=0)
+    # Engine 24 (S1): with office_assignment = "by_letter" there is no vote, so no formation phase starts.
+    by_letter = council.settings.get("office_assignment") == "by_letter"
+    if not by_letter:
+        _emit(observer, type="formation_start", month=0)
     mark = store.mark()
     try:
         council.form_government()
@@ -148,7 +151,7 @@ def _form_government(store: RunStore, council: Council, observer, quiet: bool) -
         store.rollback(mark)
         return f"paused before Month 1 government formation: {exc}. Resume when the limit resets."
     if not quiet:
-        print("Procedural government formation voted.")
+        print("Offices assigned by letter; no formation vote." if by_letter else "Procedural government formation voted.")
     return ""
 
 
@@ -199,6 +202,7 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
     """Start a run. `config` is a path to a TOML file or an already loaded config dict."""
     cfg = config if isinstance(config, dict) else load_config(config)
     cfg = {**cfg, "run": dict(cfg["run"])}
+    check_office_assignment(cfg["run"], len(cfg["seats"]))
     if check:
         _require_seats(cfg, observer, "started")
     run = cfg["run"]
@@ -344,7 +348,10 @@ def resume_run(run_dir, quiet=False, observer=None, stop_event=None, live_report
             return _end(store, world, council, paused, quiet, observer)
         meta.update({"founding_diagnosis_pending": False, "stopped": "", "log_mark": store.mark()})
         store.save_checkpoint(world, council.state(), meta)
-    if world.month == 0 and world.founding and (meta.get("government_formation_pending") or not world.founding.get("formation")):
+    # By letter the offices are assigned even with no founding record (engine 24), so the resume must not skip them.
+    by_letter = cfg["run"].get("office_assignment") == "by_letter"
+    if world.month == 0 and (world.founding or by_letter) and (meta.get("government_formation_pending")
+                                                               or not (world.founding or {}).get("formation")):
         paused = _form_government(store, council, observer, quiet)
         if paused:
             meta.update({"stopped": paused, "government_formation_pending": True})

@@ -4,6 +4,48 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 24
+
+`WORLD_ENGINE` 24, `AGENT_PROMPT` 21 (psychology 8 and error taxonomy 5 unchanged): the controls the SocioVerse study
+needs, and fixes found by a census of the 21 recorded runs (backlog T120-T129, T146), with the study's tools (T130-T135). A
+default run sends the same prompts as before (`tools/prompt_freeze.py`).
+
+- **Offices can be fixed by letter.** `office_assignment = "by_letter"` skips the Month-0 formation vote: A is head of
+  government, B treasury, C interior, D army, E navy. A model moved to another letter moves to another office, so five
+  models rotated over the five letters hold each office once. Such a run's system prompt and Month 1 sentence say the
+  offices were filled by assignment, without a vote. The default keeps the vote.
+- **The speaking order can be fixed.** `action_order = "fixed_precedence"` has the office holders open and respond in
+  office order every month, head first. The month's shuffle is still drawn and thrown away, so every other draw of the
+  month is the same under both orders. Both options are written to the manifest.
+- **A loan's amount can be in its words.** "Request emergency loan from Maritime League: 50M gold" was refused as
+  having no amount (5 refusals in the recorded runs). When the value gives no amount, the value and the text are read,
+  and an amount is taken only when they name exactly one, with its unit; otherwise the refusal says what is missing. A
+  value written in one pair of braces or brackets ("{0.35}") is read as its number.
+- **Refusals say what would work.** An act refused for its target names the acts that power accepts, and the repair
+  request lists them from the table the check reads. Engine 23 listed each act's default receiver only, which was wrong
+  for three of the four powers. An unknown lever that is, or nearly is, a constitution setting says it is changed by a
+  constitution motion.
+- **More answers are read.** A private message that names its recipient under "recipient" is delivered (such messages
+  were refused as "recipient 'None'"), and an opening's refused messages are reported once, not twice. A neighbour's act
+  written under "action" instead of "type" is read as that act (12 were refused as unsupported), and a null troop count
+  as none.
+- **A deeply nested answer no longer stops a run.** In batch rows `b1-s1005` (Month 6) and `b1-s1007` (Month 11) an
+  answer nested past Python's recursion limit raised RecursionError where only malformed JSON was caught, and the run
+  paused as fatal. Every parse of model or provider text now treats it as an unreadable answer, asked again.
+- **A finished batch row no longer stays "pending".** The control room's batch view wrote into the rows the batch worker
+  was filling in, so a poll that landed as a row finished could leave it marked as running, and then pending. The view
+  works on copies. The intermittent failure of `test_batch_runs_rows_in_order_and_skips_finished_ones` showed the
+  same symptom.
+- **A run can be replayed from its log.** Scripted stand-ins log the answers they give (they logged "(scripted)"), and
+  `tools/replay_run.py` runs a recorded run again with every seat answered from its log, comparing each month and the
+  final checkpoint. Run `b1-s1003`, recorded on engine 22, replays on engine 24 identically until Month 4, where the
+  only difference is a refusal's new wording: it now names the acts Dorsania accepts.
+- **Tools for the study**, none of which changes a run: `tools/study_grid.py` plans the grid of rotations, seeds and
+  speaking orders and runs it in parallel processes, resumably, with a dry run on scripted seats;
+  `studies/karamaniya_trust/` is the SocioVerse2 study package, a wrap of the unchanged engine that matches the
+  engine's own loop month by month; `tools/exit_audit.py` with `docs/EXIT_AUDIT_CODEBOOK.md`, `tools/study_analysis.py`,
+  `tools/cluster/` (a day on rented GPUs) and `docs/DETECTOR_PRECISION.md`.
+
 ## World engine 23
 
 `WORLD_ENGINE` 23, `AGENT_PROMPT` 20, `ERROR_TAXONOMY` 5 (psychology 8 unchanged): the review items of engine 22 that

@@ -17,6 +17,7 @@ from . import (actions, agendas, agents, analytics, beliefs, briefing, commitmen
                freshness, director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations,
                politics, prompts, provenance, psychology, slate as slate_rules, standing, token_saving, tuning)
 from .backends import CallResult
+from .config import OFFICES_BY_LETTER
 from .world import OFFICES, World, month_label, rng_for
 
 
@@ -664,6 +665,30 @@ def _audit_state(snapshot: dict, approval: float | None = None) -> dict:
 INTERCEPT = {"low": 0.0, "medium": 0.12, "high": 0.3}
 
 
+def speaking_order(w: World, active: list, rng, action_order: str = "seeded_shuffle") -> list:
+    """The order the council speaks in this month: the publication order of the openings, and the order of the
+    response round (brief 9.S3).
+
+    The shuffle is drawn under either protocol; fixed_precedence then throws its copy away. So the month's stream is
+    advanced exactly as it always was, and every later draw of the month (the interception draws in Council._deliver
+    above all) is the same whichever protocol runs. Only the order differs.
+    """
+    order = list(active)
+    rng.shuffle(order)
+    if action_order == "seeded_shuffle":
+        return order
+    if action_order != "fixed_precedence":
+        raise ValueError(f"action_order must be 'seeded_shuffle' or 'fixed_precedence', not {action_order!r}")
+    # The office holders first, in OFFICES order; a member who holds two offices speaks once, at the first. A holder
+    # who has left is not in `active` and is skipped. The rest follow in letter order.
+    held = []
+    for office in OFFICES:
+        holder = w.const.offices.get(office)
+        if holder in active and holder not in held:
+            held.append(holder)
+    return held + sorted(mid for mid in active if mid not in held)
+
+
 class RunPaused(Exception):
     """A seat could not take its turn. The month is abandoned (nothing of it is saved) and replayed
     when the run is resumed, so no member silently abstains for a whole month."""
@@ -707,7 +732,8 @@ class Council:
                                             political_agendas=any((m.agent_state or {}).get("agenda")
                                                                   for m in world.members),
                                             mandate=self.settings.get("mandate", "default"),
-                                            secret_ballot=world.ballot == "secret")
+                                            secret_ballot=world.ballot == "secret",
+                                            offices_by_letter=self.settings.get("office_assignment") == "by_letter")
         configured = self.settings.get("foreign_cabinet_seats") or {}
         by_label = {seat.label: seat for seat in seats.values()}
         ordered_seats = list(seats.values())
@@ -945,6 +971,8 @@ class Council:
     def form_government(self) -> dict:
         """Vote on appointments before Month 1; this phase has no policy agenda cap."""
         w = self.w
+        if self.settings.get("office_assignment") == "by_letter":
+            return self._assign_by_letter()
         if not w.founding or w.founding.get("formation"):
             return dict((w.founding or {}).get("formation", {}))
         ids = [m.id for m in w.active_members()]
@@ -1116,6 +1144,29 @@ class Council:
         self._emit(type="government_formation", formation=formation)
         return formation
 
+    def _assign_by_letter(self) -> dict:
+        """Engine 24 (S1): office_assignment = "by_letter" fills the five offices without the vote. A is head of
+        government, B the treasury, C the interior, D the army and E the navy, in every run, so a model moved to
+        another letter moves to another office. No proposal is made and no formation call is sent. The record keeps
+        the shape the vote keeps (the readers of the formation record still work) and says it was assigned by letter."""
+        w = self.w
+        if w.founding and w.founding.get("formation"):
+            return dict(w.founding["formation"])
+        if sorted(m.id for m in w.members) != sorted(OFFICES_BY_LETTER):
+            raise ValueError("office_assignment = 'by_letter' needs members A to E, found "
+                             + ", ".join(m.id for m in w.members))
+        for letter, office in OFFICES_BY_LETTER.items():
+            w.const.offices[office] = letter
+            politics.reset_bond(w, office)
+        formation = {"month": -1, "assignment": "by_letter", "proposals": {}, "motions": [],
+                     "offices": dict(w.const.offices), "agenda_slots_used": 0,
+                     "note": "Offices were assigned by letter (office_assignment = by_letter): no formation vote was held."}
+        if w.founding:
+            w.founding["formation"] = formation
+        self.store.log({"type": "government_formation", **formation})
+        self._emit(type="government_formation", formation=formation)
+        return formation
+
     # ---- the month ------------------------------------------------------------------
     def run_month(self) -> dict:
         if self.w.human_factor and self.w.agent_architecture_version >= 2:
@@ -1133,8 +1184,7 @@ class Council:
         rng = rng_for(w.seed, w.month, "council")
         active = [m.id for m in w.active_members()]
         brief = briefing.public(w, self.last_record)
-        order = active[:]
-        rng.shuffle(order)
+        order = speaking_order(w, active, rng, self.settings.get("action_order", "seeded_shuffle"))
         quota = int(self.settings.get("dm_per_turn", 3))
         inbox = {mid: [] for mid in active}
         intercepted = {mid: [] for mid in active}
@@ -1375,8 +1425,7 @@ class Council:
                 return []
             _, own = token_saving.briefing_for(full_brief, (w.member(mid).agent_state or {}).get("read_requests"))
             return [decision_context.Section("briefing_requested", 3, own)] if own else []
-        order = active[:]
-        rng.shuffle(order)
+        order = speaking_order(w, active, rng, self.settings.get("action_order", "seeded_shuffle"))
         quota = int(self.settings.get("dm_per_turn", 3))
         inbox = {mid: [] for mid in active}
         intercepted = {mid: [] for mid in active}

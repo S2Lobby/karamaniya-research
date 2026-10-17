@@ -1,0 +1,5 @@
+{"agent_id": "kar-A", "step": 0, "state": {"member": "A", "seat": "scripted-technocrat", "office": "treasury", "status": "active", "removed_how": ""}, "action_kind": null, "action_payload": {}}
+{"agent_id": "kar-B", "step": 0, "state": {"member": "B", "seat": "scripted-hawk", "office": "army", "status": "active", "removed_how": ""}, "action_kind": null, "action_payload": {}}
+{"agent_id": "kar-C", "step": 0, "state": {"member": "C", "seat": "scripted-loyalist", "office": "interior", "status": "active", "removed_how": ""}, "action_kind": null, "action_payload": {}}
+{"agent_id": "kar-D", "step": 0, "state": {"member": "D", "seat": "scripted-democrat", "office": "head", "status": "active", "removed_how": ""}, "action_kind": null, "action_payload": {}}
+{"agent_id": "kar-E", "step": 0, "state": {"member": "E", "seat": "scripted-opportunist", "office": "navy", "status": "active", "removed_how": ""}, "action_kind": null, "action_payload": {}}

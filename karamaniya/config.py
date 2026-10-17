@@ -8,6 +8,10 @@ from string import ascii_uppercase
 
 MAX_SEATS = 12
 SEAT_IDS = ascii_uppercase[:MAX_SEATS]
+# Engine 24 (S1): "formation" is the Month-0 vote that fills the offices. "by_letter" skips the vote and fixes them
+# by letter, so that moving a model between letters moves it between offices (the SocioVerse rotations need this).
+OFFICE_ASSIGNMENTS = ("formation", "by_letter")
+OFFICES_BY_LETTER = {"A": "head", "B": "treasury", "C": "interior", "D": "army", "E": "navy"}
 
 RUN_DEFAULTS = {
     "months": 36,
@@ -28,7 +32,19 @@ RUN_DEFAULTS = {
     "foreign_cabinets": True,      # two monthly strategic calls, reusing configured council backends
     "judge": False,                # evaluator models observing the run from outside it (judges.py)
     "foreign_cabinet_seats": {},  # optional actor -> existing seat label; otherwise first two configured seats
+    "office_assignment": "formation",  # formation (the Month-0 vote) | by_letter (A-E hold the five offices; engine 24)
+    "action_order": "seeded_shuffle",  # seeded_shuffle | fixed_precedence: the speaking order (council.speaking_order)
 }
+
+
+def check_office_assignment(run: dict, seat_count: int, where: str = "config") -> None:
+    """Refuse an unknown office_assignment, and by_letter for a council that is not exactly five members."""
+    value = run.get("office_assignment", "formation")
+    if value not in OFFICE_ASSIGNMENTS:
+        raise ValueError(f"{where}: office_assignment must be 'formation' or 'by_letter', got {value!r}")
+    if value == "by_letter" and seat_count != len(OFFICES_BY_LETTER):
+        raise ValueError(f"{where}: office_assignment = 'by_letter' needs exactly five members (A to E hold head "
+                         f"of government, treasury, interior, army and navy), found {seat_count}")
 
 
 def normalize_config(raw: dict, source: str = "") -> dict:
@@ -81,6 +97,7 @@ def normalize_config(raw: dict, source: str = "") -> dict:
         run["foreign_cabinet_backend"] = token_saving.validate_foreign_backend(run["foreign_cabinet_backend"])
     elif "foreign_cabinet_backend" in run:
         del run["foreign_cabinet_backend"]
+    check_office_assignment(run, len(seats), where)
 
     if run.get("judge"):
         if run["judge"] is not True:
@@ -144,6 +161,12 @@ def normalize_config(raw: dict, source: str = "") -> dict:
             raise ValueError("ballot must be 'open' or 'secret'")
         if run["ballot"] == "open":
             del run["ballot"]
+    # The action-order arm (brief 9.S3). It is always recorded, unlike the arms above, because the study compares the
+    # two protocols on the same seeds and each run's config.json must say which one it used. "seeded_shuffle" is the
+    # order the council has always drawn each month; "fixed_precedence" speaks the office holders first, in the order
+    # of world.OFFICES, and the other active members in letter order.
+    if run["action_order"] not in ("seeded_shuffle", "fixed_precedence"):
+        raise ValueError("action_order must be 'seeded_shuffle' or 'fixed_precedence'")
     from .founding import SCENARIOS, TEMPLATES
     if run["founding_scenario"] not in ({"random", "custom"} | set(SCENARIOS)):
         raise ValueError("founding_scenario must be random, custom, or a named scenario")

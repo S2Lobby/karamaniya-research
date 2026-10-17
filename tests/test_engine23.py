@@ -38,8 +38,8 @@ def dorsania_ultimatum(w):
 
 class Versions(unittest.TestCase):
     def test_the_bump(self):
-        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY, versions.ERROR_TAXONOMY),
-                                (23, 20, 8, 5))
+        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY,
+                                 versions.ERROR_TAXONOMY), (23, 20, 8, 5))
 
 
 class TheReplysRefusalsAreRegistered(unittest.TestCase):

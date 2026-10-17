@@ -903,6 +903,24 @@ def party_of(actor: str | None) -> str | None:
             VELERIA: "veleria"}.get(actor)
 
 
+def _accepted_acts(actor: str) -> list:
+    """The acts the table lets this actor receive, in DIPLOMATIC_ACTIONS order: what a refusal tells a delegate it can
+    address to that actor (engine 24). It reads the table the check reads, DIPLOMATIC_TARGETS, not each act's default
+    receiver, which named only cede_region for Veleria and only grain_deal for Dorsania."""
+    return [act for act in DIPLOMATIC_ACTIONS if actor in DIPLOMATIC_TARGETS.get(act, {DIPLOMATIC_ACTIONS[act]})]
+
+
+def _not_valid_for_target(action_type: str, target: str) -> str:
+    """Why an act cannot go to this target: the actors it can go to, and the acts this target accepts (engine 24). A
+    delegate that wrote the wrong act for its target reads the act it can send here. Run 20261011-105713-seed1 (status
+    talks to Dorsania, Month 9) and run 20261011-211521-seed1 (status talks to Veleria, Month 2) were refused with only
+    the actors named, so the delegate had nothing to put in its place."""
+    allowed = DIPLOMATIC_TARGETS.get(action_type, {DIPLOMATIC_ACTIONS.get(action_type)})
+    names = ", ".join(ACTOR_NAMES[a] for a in sorted(allowed))
+    return (f"a {action_type} can be addressed to {names}, not the {ACTOR_NAMES[target]}. "
+            f"{ACTOR_NAMES[target]} accepts: {', '.join(_accepted_acts(target))}")
+
+
 def validate_diplomatic_action(w, motion: dict) -> dict | None:
     """Check diplomatic text/action agreement and statically valid targets before a vote."""
     action = structured_action(w, motion)
@@ -928,10 +946,8 @@ def validate_diplomatic_action(w, motion: dict) -> dict | None:
         return {"code": "UNKNOWN_ACTION_TYPE", "detail": f"unknown diplomatic action {action['action_type']!r}"}
     allowed = DIPLOMATIC_TARGETS.get(action["action_type"], {expected})
     if action["target"] not in allowed:
-        names = ", ".join(ACTOR_NAMES[a] for a in sorted(allowed))
         return {"code": "ACTION_NOT_VALID_FOR_TARGET",
-                "detail": f"a {action['action_type']} can be addressed to {names}, "
-                          f"not the {ACTOR_NAMES[action['target']]}"}
+                "detail": _not_valid_for_target(action["action_type"], action["target"])}
     if action["action_type"] == "ultimatum_reply":
         return _ultimatum_reply_problem(w, action)
     if action["action_type"] == "cede_region":
@@ -1124,11 +1140,9 @@ def conflict(w, motion: dict) -> dict | None:
     expected = DIPLOMATIC_ACTIONS.get(action["action_type"])
     allowed = DIPLOMATIC_TARGETS.get(action["action_type"], {expected}) if expected else None
     if allowed and action.get("target") in ACTORS and action["target"] not in allowed:
-        names = ", ".join(ACTOR_NAMES[a] for a in sorted(allowed))
         reasons.append({"code": "ACTION_NOT_VALID_FOR_TARGET", "action_type": action["action_type"],
                         "action_actor": action["target"], "expected_actor": expected,
-                        "detail": f"a {action['action_type']} can be addressed to {names}, "
-                                  f"not the {ACTOR_NAMES[action['target']]}"})
+                        "detail": _not_valid_for_target(action["action_type"], action["target"])})
     declared = motion.get("declared_subject")
     if declared and motion.get("subject"):
         # Only a subject that names a *different act* contradicts the payload. A subject that is a
@@ -1325,7 +1339,7 @@ def repair_request(w, c: dict) -> str:
     # conflict itself names are listed, and only from the engine's own action vocabulary.
     for actor in dict.fromkeys(r.get(key) for r in c["reasons"] for key in ("prose_actor", "action_actor")
                                if r.get(key) in ACTORS):
-        acts = [act for act, receiver in DIPLOMATIC_ACTIONS.items() if receiver == actor]
+        acts = _accepted_acts(actor)
         if acts:
             lines.append(f"Acts the engine can address to the {ACTOR_NAMES[actor]}: {', '.join(acts)}.")
     lines.append("Correct either the structured action or the motion text so they describe the same motion, "

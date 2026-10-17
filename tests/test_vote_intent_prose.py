@@ -380,18 +380,20 @@ class EndToEndThroughARealCouncilMonth(unittest.TestCase):
         self.assertEqual(record["vote_intent_mismatches"], [])
         self.assertNotEqual(w.policy.army_target, 3100)
 
-    def test_the_delegate_confirms_the_contradiction_bare_and_it_is_recorded(self):
+    def test_the_bare_no_that_agrees_with_its_reason_is_asked_about_but_not_recorded(self):
+        # Worker 25, backlog T144: the record holds only a vote that its own reason contradicts. Here the reason is
+        # "No.", the vote is no, so the stance (support) was the outlier. The stance still puts the ballot to the
+        # delegate again (the repair ask is unchanged), and nothing is recorded.
         council, w = self.build(second_vote="no", second_reason="No.")
         record = self.month_with_an_askback(council)
         decision = record["decisions"][self.target]
         first = next(c for c in self.calls if c[0] == "first")
         motion = first[1]
         self.assertEqual(decision["votes"][motion], "no")
-        # Asked, and confirmed without a word of explanation: the mismatch stands and is surfaced.
         self.assertEqual([(c["motion"], c["source"]) for c in decision["vote_intent_clashes"]], [(motion, "stance")])
-        self.assertEqual([(f["member"], f["motion"]) for f in record["vote_intent_mismatches"]],
-                         [(self.target, motion)])
-        self.assertEqual(len([e for e in errors.since(w, record["month"]) if e["code"] == "VOTE_INTENT_MISMATCH"]), 1)
+        self.assertEqual(decision["vote_reason_contradictions"], [])
+        self.assertEqual(record["vote_intent_mismatches"], [])
+        self.assertEqual(len([e for e in errors.since(w, record["month"]) if e["code"] == "VOTE_INTENT_MISMATCH"]), 0)
         # ...and confirming a vote does not license the regenerated army order.
         self.assertEqual(decision["orders"]["army"]["army_target"], first[2])
 
@@ -420,7 +422,7 @@ class TheFindingIsSurfacedNotJustComputed(unittest.TestCase):
     def test_the_code_is_in_the_taxonomy(self):
         self.assertTrue(errors.is_registered("VOTE_INTENT_MISMATCH"))
 
-    def test_resolution_lifts_the_clash_into_the_month_record_and_the_ledger(self):
+    def resolve(self, **per_member):
         import threading
         from karamaniya.council import Council
         from karamaniya.world import new_world
@@ -428,18 +430,33 @@ class TheFindingIsSurfacedNotJustComputed(unittest.TestCase):
         council = Council.__new__(Council)
         council.w, council.pending_dms, council.observer, council._lock, council.spend = \
             w, [], None, threading.Lock(), 0.0
-        clash = {"code": "VOTE_INTENT_MISMATCH", "motion": "D2", "stance": "support", "vote": "no",
-                 "reason": "No.", "source": "statement", "statement": "I endorse the audit (D2)"}
         decisions = {mid: {"votes": {}, "vote_reasons": {}, "vote_conditions": {}, "resign": False, "coup": None,
                            "coup_stance": "resist", "orders": {}, "operations": {}, "private_messages": [],
                            "notes": "", "belief_updates": [], "decision_factors": [],
-                           "vote_intent_clashes": [clash] if mid == "D" else []} for mid in "ABCDE"}
+                           "vote_intent_clashes": [], "vote_reason_contradictions": []} for mid in "ABCDE"}
+        for mid, fields in per_member.items():
+            decisions[mid].update(fields)
         record = council._resolve_v2(decisions, [], [], [], list("ABCDE"), [], {}, {}, [], False)
+        return w, record
+
+    def test_resolution_lifts_the_contradiction_into_the_month_record_and_the_ledger(self):
+        # Worker 25, backlog T144: the record holds the reason-based contradiction (its own source is "reason").
+        contradiction = {"code": "VOTE_INTENT_MISMATCH", "motion": "D2", "stance": "no", "vote": "yes",
+                         "reason": "No. The audit is unnecessary.", "source": "reason"}
+        w, record = self.resolve(D={"vote_reason_contradictions": [contradiction]})
         self.assertEqual([(f["member"], f["motion"], f["source"]) for f in record["vote_intent_mismatches"]],
-                         [("D", "D2", "statement")])
+                         [("D", "D2", "reason")])
         ledger = [e for e in errors.since(w, w.month) if e["code"] == "VOTE_INTENT_MISMATCH"]
         self.assertEqual(len(ledger), 1)
         self.assertEqual(ledger[0]["details"]["member"], "D")
+
+    def test_a_stance_clash_alone_is_asked_about_but_not_recorded(self):
+        # The stance clash still drives the repair ask (vote_intent_clashes), but nothing reads it into the record.
+        stance = {"code": "VOTE_INTENT_MISMATCH", "motion": "D2", "stance": "support", "vote": "no",
+                  "reason": "No.", "source": "statement", "statement": "I endorse the audit (D2)"}
+        w, record = self.resolve(D={"vote_intent_clashes": [stance]})
+        self.assertEqual(record["vote_intent_mismatches"], [])
+        self.assertEqual([e for e in errors.since(w, w.month) if e["code"] == "VOTE_INTENT_MISMATCH"], [])
 
 
 if __name__ == "__main__":

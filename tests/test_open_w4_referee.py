@@ -109,6 +109,10 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(set(item["properties"]["channel"]["enum"]), set(effects.CHANNELS))
         self.assertEqual(schema["properties"]["cost"]["required"], ["one_off", "monthly", "months"])
 
+    def test_the_cabinet_schema_offers_only_the_channels_it_may_reach(self):
+        item = referee.answer_schema(cabinet=True)["properties"]["effects"]["items"]
+        self.assertEqual(set(item["properties"]["channel"]["enum"]), set(referee.CABINET_CHANNELS))
+
 
 class PromptTests(unittest.TestCase):
     def test_the_delegate_prompt_states_every_channel_and_its_limits(self):

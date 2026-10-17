@@ -132,11 +132,15 @@ them they this to was were will with without we our us no not new government sta
 
 # ---- the answer contract -------------------------------------------------------------------------
 
-def answer_schema() -> dict:
-    """The one JSON object the referee answers with (plan 4.3). Every field required, no extras."""
+def answer_schema(cabinet: bool = False) -> dict:
+    """The one JSON object the referee answers with (plan 4.3). Every field required, no extras.
+
+    A cabinet's schema offers only the channels it may reach; the delegate's offers the whole registry.
+    """
+    channels = list(CABINET_CHANNELS if cabinet else effects.CHANNELS)
     effect = {"type": "object", "additionalProperties": False,
               "required": ["channel", "target", "value", "months"],
-              "properties": {"channel": {"type": "string", "enum": list(effects.CHANNELS)},
+              "properties": {"channel": {"type": "string", "enum": channels},
                              "target": {"type": "string"},
                              "value": {"type": "number"},
                              "months": {"type": "integer", "minimum": 1,
@@ -346,7 +350,7 @@ def true_state(w, act: dict | None = None, *, cabinet: bool = False, actor: str 
     The referee is machinery, so it sees the true state (not the public one); the report it writes is held to what
     the public knows by the prompt's rule. `act` may be None for a bare block.
     """
-    act = act or {}
+    act = dict(act) if isinstance(act, dict) else {}
     e = w.econ
     lines = [f"Month {w.month + 1} of {w.months_total}."]
     lines.append(f"Treasury: reserves {e.gold / 1e6:,.0f} million crowns; unpaid bills "
@@ -416,7 +420,7 @@ def _precedent_line(item: dict) -> str:
 def user_prompt(w, act: dict, *, cabinet: bool = False, actor: str | None = None,
                 precedents: list | None = None) -> str:
     """The act, its office and funding, the true state, and the most similar earlier rulings."""
-    act = dict(act or {})
+    act = dict(act) if isinstance(act, dict) else {}
     lines = ["=== THE ACT ==="]
     if cabinet:
         title = str(actor or act.get("actor") or "the cabinet").title()
@@ -610,7 +614,7 @@ def validate(w, data, act: dict, *, cabinet: bool = False, actor: str | None = N
     must fit; a cabinet may reach only its channels and targets; and a feasible ruling for an act that belongs to
     another kind of decision is refused.
     """
-    act = dict(act or {})
+    act = dict(act) if isinstance(act, dict) else {}
     problems: list = []
     if not isinstance(data, dict):
         return None, [_problem("REFEREE_BAD_ANSWER", -1,
@@ -701,8 +705,11 @@ def _tokens(text) -> set:
 def similar_rulings(w, text: str, limit: int = MAX_PRECEDENTS) -> list:
     """Up to `limit` earlier rulings whose acts share the most words with this one, newest first on a tie."""
     query = _tokens(text)
+    store = w.institutions.get("referee_precedents")
     scored = []
-    for item in w.institutions.get("referee_precedents") or []:
+    for item in store if isinstance(store, list) else []:
+        if not isinstance(item, dict):
+            continue
         other = _tokens(item.get("text", ""))
         score = len(query & other) / max(1, len(query | other))
         if score > 0:
@@ -714,6 +721,8 @@ def similar_rulings(w, text: str, limit: int = MAX_PRECEDENTS) -> list:
 def remember_ruling(w, act: dict, ruling: dict, *, cabinet: bool = False,
                     actor: str | None = None) -> dict:
     """Keep a valid ruling as a precedent for later acts in this run (the last PRECEDENT_MEMORY are kept)."""
+    act = act if isinstance(act, dict) else {}
+    ruling = ruling or {}
     entry = {"month": w.month,
              "text": str((act or {}).get("text") or "")[:240],
              "category": ruling.get("category"),
@@ -724,7 +733,10 @@ def remember_ruling(w, act: dict, ruling: dict, *, cabinet: bool = False,
                          for e in ruling.get("effects") or []],
              "cabinet": bool(cabinet),
              "actor": actor}
-    store = w.institutions.setdefault("referee_precedents", [])
+    store = w.institutions.get("referee_precedents")
+    if not isinstance(store, list):
+        store = []
+        w.institutions["referee_precedents"] = store
     store.append(entry)
     del store[:-PRECEDENT_MEMORY]
     return entry
@@ -755,7 +767,9 @@ def next_index(w) -> int:
     """
     key = "open_act_draws"
     month = str(int(w.month))
-    counters = w.institutions.get(key) or {}
+    counters = w.institutions.get(key)
+    if not isinstance(counters, dict):
+        counters = {}
     index = int(counters.get(month, 0))
     w.institutions[key] = {month: index + 1}
     return index
@@ -859,11 +873,11 @@ class Referee:
 
     def ask(self, w, act: dict, *, cabinet: bool = False, actor: str | None = None, names=None,
             remember: bool = True) -> RefereeResult:
-        act = dict(act or {})
+        act = dict(act) if isinstance(act, dict) else {}
         if cabinet and actor is None:
             actor = act.get("actor")
         system = system_prompt(cabinet=cabinet)
-        schema = answer_schema()
+        schema = answer_schema(cabinet=cabinet)
         precedents = similar_rulings(w, str(act.get("text") or ""))
         user = user_prompt(w, act, cabinet=cabinet, actor=actor, precedents=precedents)
         sent_system, sent_user, sent_schema = system, user, schema

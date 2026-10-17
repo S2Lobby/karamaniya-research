@@ -185,7 +185,8 @@ class _StubServer:
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
-                time.sleep(0.002 * body["max_tokens"])     # writing takes time, so the write pass runs longer
+                # A base delay keeps both passes above the Windows clock tick (about 16 ms); writing adds more.
+                time.sleep(0.05 + 0.002 * body["max_tokens"])
                 reply = {"choices": [{"message": {"role": "assistant", "content": '{"ok": true}',
                                                   "reasoning": "hmm"}}],
                          "usage": {"prompt_tokens": 7, "completion_tokens": body["max_tokens"]}}
@@ -228,6 +229,14 @@ class Bench(unittest.TestCase):
         same = {"wall": 5.0, "results": [{"prompt_tokens": 1, "completion_tokens": 1}]}
         with self.assertRaises(ValueError):
             bench.summarize(same, same, 1, 1000, 1000)
+
+    def test_a_read_pass_that_measured_zero_seconds_is_refused(self):
+        # Windows clocks tick about every 16 ms, so a fast read pass can measure 0.0 s. That must be a clear refusal,
+        # not a division by zero (the full suite hit this on 2026-10-17).
+        read_only = {"wall": 0.0, "results": [{"prompt_tokens": 1000, "completion_tokens": 1}]}
+        read_and_write = {"wall": 5.0, "results": [{"prompt_tokens": 1000, "completion_tokens": 500}]}
+        with self.assertRaises(ValueError):
+            bench.summarize(read_only, read_and_write, 1, 1000, 1000)
 
     def test_a_full_run_against_a_stub_server_reports_the_answer_and_its_reasoning(self):
         with _StubServer() as url:

@@ -61,6 +61,8 @@ def summarize(read_only: dict, read_and_write: dict, concurrency: int, input_tok
     """The rates the calibration needs. Prefill from the one-token pass; decode from the difference of the two."""
     prompt_total = sum(r["prompt_tokens"] for r in read_only["results"])
     completion_total = sum(r["completion_tokens"] for r in read_and_write["results"])
+    if read_only["wall"] <= 0:
+        raise ValueError("the read pass took no measurable time; use a longer --input-tokens or more --requests")
     writing_wall = read_and_write["wall"] - read_only["wall"]
     if writing_wall <= 0:
         raise ValueError("the write pass was not longer than the read pass; raise --output-tokens")

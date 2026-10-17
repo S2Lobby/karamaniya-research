@@ -1157,11 +1157,15 @@ class Controller:
         cur["batches"] = self.batch_list()
         running = bool(self.batch and self.batch.get("state") == "running")
         cur["running"] = running
-        for it in cur.get("items", []):
-            if running and it.get("name") == (self.batch or {}).get("current_run"):
-                it["status"] = "running"
-                continue
-            if it.get("status") == "running":
+        # The rows shown are copies. The worker writes its results into the batch's own rows, so a view that
+        # edited them could turn a row that had just finished into "running": a poll that landed as the last
+        # row ended did exactly that, and the row stayed "pending" once the batch was idle (E4).
+        cur["items"] = [dict(it) for it in cur.get("items", [])]
+        current = (self.batch or {}).get("current_run")
+        for it in cur["items"]:
+            # A row shows the status the worker stored. "running" is stored only for the row being run; any
+            # other "running" row is one the room was killed in, so it is pending again.
+            if it.get("status") == "running" and not (running and it.get("name") == current):
                 it["status"] = "pending"
         return cur
 

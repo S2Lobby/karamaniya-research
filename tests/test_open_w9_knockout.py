@@ -372,6 +372,8 @@ def synthetic_pair(root):
         history_row(6, approval=0.50, unrest=0.20, food=0.90, decision="two_thirds"),
         history_row(7, approval=0.50, unrest=0.20, food=0.90, decision="two_thirds"),
     ]
+    ko_after[0]["events"] = [{"kind": "incapacitated", "office": "head", "member": "A",
+                              "text": HEAD_EVENT, "public": True}]
     ko_history = copy.deepcopy(before) + ko_after
     twin_records = [
         {"type": "month", "month": 0, "motions": [{"passed": True, "execution_status": "EXECUTED"}],
@@ -481,6 +483,23 @@ class TheReportComputesItsMeasures(unittest.TestCase):
         self.assertEqual(self.pair["recovery"]["months"], 2)
         self.assertEqual(self.pair["recovery"]["month_label"], "Month 6")
         self.assertTrue(self.pair["recovery"]["stable_after"])
+
+    def test_the_knockout_is_read_from_the_public_event_when_no_state_is_recorded(self):
+        # The checkpoint's state is the primary record; the month row's event is the fallback for a run
+        # saved before that key existed. Same run, state removed, and the event in the knockout month.
+        folder = os.path.join(self.tmp, "event-only")
+        os.makedirs(folder)
+        with open(os.path.join(self.knocked, "checkpoint.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        data["world"]["institutions"] = {}
+        with open(os.path.join(folder, "checkpoint.json"), "w", encoding="utf-8", newline="\n") as f:
+            json.dump(data, f)
+        for name in ("config.json", "log.jsonl"):
+            shutil.copyfile(os.path.join(self.knocked, name), os.path.join(folder, name))
+        pair = report.analyse_pair(folder, self.twin, band=0.02, window=3)
+        self.assertEqual(pair["knockout"]["source"], "history event")
+        self.assertEqual(pair["knockout"]["engine_month"], 3)
+        self.assertEqual(pair["fill"]["months"], 2)
 
     def test_the_command_writes_its_report(self):
         out = os.path.join(self.tmp, "out")

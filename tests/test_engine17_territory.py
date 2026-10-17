@@ -103,7 +103,9 @@ class TheDemand(unittest.TestCase):
         w = world()
         out, problems = foreign.normalize_cabinet_output("veleria", {"actions": [
             {"type": "ultimatum", "terms": "cede_region", "region": "kessel", "deadline_months": 2}]})
-        self.assertEqual(problems, [])
+        # Engine 30 (T151): the act gave no size, so the reader reports that it read 0.5.
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("the size was taken as 0.5", problems[0])
         self.assertEqual(out["actions"], [{"type": "ultimatum", "magnitude": .5, "terms": "cede_region",
                                            "region": "kessel", "deadline_months": 2}])
         self.assertIsNone(foreign.validate_action("veleria", dict(out["actions"][0]), {}, w))

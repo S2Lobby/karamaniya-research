@@ -17,6 +17,7 @@ when the effect itself is under test.
 import os
 import sys
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -87,10 +88,12 @@ class ThePropagandaActBelongsToBothCabinet(unittest.TestCase):
     def test_a_region_written_by_its_name_is_read(self):
         out, problems = read("veleria", {"type": "propaganda", "target": "Kessel Valley",
                                          "message": "government_failing"})
-        self.assertEqual(out["act_notes"], [], "a name read as the region it means is not a refusal")
+        # Engine 30 (T151): the act gave no size, so the size reading is a note. The region name is not a refusal.
+        self.assertEqual([note["type"] for note in out["act_notes"]], ["propaganda"], out["act_notes"])
+        self.assertIn("the size was taken as 0.5", out["act_notes"][0]["reason"])
         self.assertEqual(out["actions"][0]["target"], "kessel")
         self.assertEqual(out["actions"][0]["magnitude"], .5)
-        self.assertEqual(problems, ["target 'Kessel Valley' was read as kessel"])
+        self.assertIn("target 'Kessel Valley' was read as kessel", problems)
 
     def test_a_missing_target_is_the_whole_country_with_a_note(self):
         out, problems = read("veleria", {"type": "propaganda", "message": "government_failing"})
@@ -194,8 +197,11 @@ class PropagandaLandsWithTrustAndHardship(unittest.TestCase):
 class TheCampaignIsRecorded(unittest.TestCase):
     def test_one_foreign_record_with_its_source_and_its_effects(self):
         w = world(month=3, credibility=.4)
-        answer_month(w, "dorsania", {"type": "propaganda", "target": "dorran",
-                                     "message": "blame_government", "magnitude": .7})
+        # Engine 30 (T170): a campaign can now be caught, which is not this test's subject; the draw is held high.
+        with mock.patch("karamaniya.foreign.rng_for") as seeded:
+            seeded.return_value.random.return_value = .99
+            answer_month(w, "dorsania", {"type": "propaganda", "target": "dorran",
+                                         "message": "blame_government", "magnitude": .7})
         records = w.media.get("campaigns") or []
         self.assertEqual(len(records), 1)
         record = records[0]

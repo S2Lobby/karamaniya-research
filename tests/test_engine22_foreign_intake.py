@@ -116,10 +116,12 @@ class OneDemandPerUltimatum(unittest.TestCase):
         self.assertEqual(out["actions"], [])
         self.assertTrue(any(p.startswith("terms must be one of") for p in problems), problems)
 
-    def test_a_single_term_is_read_as_before_with_nothing_to_report(self):
+    def test_a_single_term_is_read_and_its_missing_size_reported(self):
         out, problems = read("veleria", {"type": "ultimatum", "terms": "status_talks", "deadline_months": 2})
         self.assertEqual(out["actions"][0]["terms"], "status_talks")
-        self.assertEqual(problems, [])
+        # Engine 30 (T151): the act gave no size, so the reader read 0.5 and says so.
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("the size was taken as 0.5", problems[0])
 
 
 class MagnitudeWords(unittest.TestCase):
@@ -171,8 +173,14 @@ class TheCabinetIsToldTheNextMonth(unittest.TestCase):
         answer_month(w, "veleria", {"type": "ultimatum", "terms": ["status_talks", "protect_imperial_citizens"],
                                     "deadline_months": 2})
         w.month += 1
-        # Engine 23: the act went ahead, so its note says so.
-        self.assertEqual(refused_next_month(w), [{"action": "ultimatum", "reason": "carried out; " + ONE_DEMAND}])
+        # Engine 30 (T151): the act gave no size, so its note also says the size was taken as 0.5; engine 23's note
+        # for the dropped terms is still there.
+        shown = refused_next_month(w)
+        self.assertEqual(len(shown), 1, shown)
+        self.assertEqual(shown[0]["action"], "ultimatum")
+        self.assertTrue(shown[0]["reason"].startswith("carried out; "), shown)
+        self.assertIn(ONE_DEMAND, shown[0]["reason"])
+        self.assertIn("the size was taken as 0.5 because none was given", shown[0]["reason"])
 
     def test_a_name_or_a_word_read_as_meant_is_not_shown_as_a_refusal(self):
         # Engine 23: engine 22 sent "region 'Kessel Valley' was read as kessel" to the cabinet under

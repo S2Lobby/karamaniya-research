@@ -10,7 +10,9 @@ import math
 import re
 
 from . import fine_print, foreign_force, operations, resolve
-from .world import KARAMANIYA_REGIONS, clamp, rng_for
+from .world import (ARREST_PENALTY, ASSEMBLY_FACTORS, ASSEMBLY_WEIGHT, COLLECTIVE_WEIGHT, COUP_WEIGHT,
+                    EMERGENCY_WEIGHT, KARAMANIYA_REGIONS, PRESS_FACTORS, PRESS_WEIGHT, clamp, in_force_penalties,
+                    rng_for)
 
 
 # ---- red lines, leadership confidence and domestic constituencies -------------------------------
@@ -988,6 +990,36 @@ PROPAGANDA_TARGET_CHOICES = PROPAGANDA_TARGETS + tuple(name for _, name, *_ in K
 BROADCAST_JAM_EFFECT = .25
 BROADCAST_JAM_CREDIBILITY = .02
 
+# B6 (T170): a foreign propaganda campaign can be caught in the month it airs. The chance is set by the Interior's
+# surveillance setting and drawn on a stream of its own, rng_for(seed, month, "foreign_exposure"), so the state media's
+# own exposure draws (stream "media") do not move. Low is the default setting, and a campaign caught in its first month
+# is the rare case; high surveillance makes it expected rather than exceptional. A caught campaign is named publicly,
+# and this share of its effect on the groups it reached is undone: exposure says the line was foreign, while word of
+# mouth keeps some of it.
+PROPAGANDA_EXPOSURE_CHANCE = {"low": .05, "medium": .15, "high": .30}
+PROPAGANDA_EXPOSURE_REVERSAL = .5
+
+
+def propaganda_exposure_chance(w) -> float:
+    """The chance this month's foreign propaganda campaign is caught, from the Interior's surveillance setting."""
+    return PROPAGANDA_EXPOSURE_CHANCE.get(getattr(w.policy, "surveillance", "low"),
+                                          PROPAGANDA_EXPOSURE_CHANCE["low"])
+
+
+def exposure_roll(w, tag: str, chance: float, index: int = 0) -> bool:
+    """One exposure draw for this month on the stream rng_for(seed, month, tag).
+
+    `index` is the place of this act among the month's acts on the same stream (0 for the first). The stream is opened
+    for each act and advanced by the index, so two campaigns in one month are judged by different numbers while every
+    draw still comes only from its own stream. Wave A's covert cabinet acts reuse this helper with the tag
+    "covert_exposure".
+    """
+    rng = rng_for(w.seed, w.month, tag)
+    draw = rng.random()
+    for _ in range(index):
+        draw = rng.random()
+    return draw < chance
+
 
 def state_media_credibility(w) -> float:
     """The public's trust in state media, 0..1, as worker A keeps it in w.media. Read-only: a missing or malformed
@@ -1008,7 +1040,11 @@ def _propaganda_hardship(p) -> float:
 
 def _apply_propaganda(w, actor_id: str, action: dict) -> dict:
     """Apply one foreign broadcast campaign and record it in w.media["campaigns"]. Returns the applied average
-    deltas for the foreign ledger. Reads state media credibility; writes no state media field."""
+    deltas for the foreign ledger. Reads state media credibility; writes no state media field.
+
+    Engine 30 (T170): the record keeps the per-group deltas the campaign applied, and the campaign is caught in the
+    month it airs on the foreign exposure stream. A caught one is a public event naming the power, sets the record's
+    `exposed`, and has PROPAGANDA_EXPOSURE_REVERSAL of its effect on the groups it reached undone."""
     target = action.get("target", "country")
     message = action["message"]
     magnitude = float(action.get("magnitude", .5))
@@ -1020,6 +1056,7 @@ def _apply_propaganda(w, actor_id: str, action: dict) -> dict:
     pops = [p for p in w.k_pops() if target == "country" or p.region == target]
     total = sum(p.size for p in pops) or 1.0
     d_approval = d_grievance = hardship = 0.0
+    reached = []                       # (group, approval before, grievance before, applied delta, applied delta)
     for p in pops:
         factor = clamp(PROPAGANDA_HARDSHIP_FLOOR + PROPAGANDA_HARDSHIP_WEIGHT * _propaganda_hardship(p),
                        0.0, PROPAGANDA_HARDSHIP_CEIL)
@@ -1030,6 +1067,8 @@ def _apply_propaganda(w, actor_id: str, action: dict) -> dict:
         d_approval += (p.approval - before_approval) * p.size
         d_grievance += (p.grievance - before_grievance) * p.size
         hardship += _propaganda_hardship(p) * p.size
+        reached.append((p, before_approval, before_grievance,
+                        p.approval - before_approval, p.grievance - before_grievance))
     # The long-standing Union propaganda level other mechanics read (society.propaganda_reach, referendums, intelligence
     # deception, army loyalty). Wave 3 keeps it and scales the increment by the counter; the targeted effect above is the
     # new channel the spec describes.
@@ -1038,8 +1077,30 @@ def _apply_propaganda(w, actor_id: str, action: dict) -> dict:
     record = {"month": w.month, "source": actor_id, "kinds": ["propaganda"], "claims": [],
               "intensity": magnitude, "target": target, "message": message,
               "executed_by": "cabinet", "defied": False, "exposed": False,
+              # Engine 30 (T170): what this campaign applied to each group it reached, so a caught campaign can be
+              # reversed exactly (the averages above cannot be).
+              "applied": [{"region": p.region, "cls": p.cls, "ident": p.ident,
+                           "approval": round(da, 6), "grievance": round(dg, 6)}
+                          for p, _before_a, _before_g, da, dg in reached],
               "effects": {**effects, "credibility": round(credibility, 4),
                           "hardship": round(hardship / total, 4), "jammed": jammed}}
+    foreign_this_month = sum(1 for c in (w.media.get("campaigns") or [])
+                             if c.get("month") == w.month and c.get("source") != "state")
+    if exposure_roll(w, "foreign_exposure", propaganda_exposure_chance(w), index=foreign_this_month):
+        for p, _before_a, _before_g, da, dg in reached:
+            p.approval = clamp(p.approval - PROPAGANDA_EXPOSURE_REVERSAL * da, .01, .99)
+            p.grievance = max(0.0, p.grievance - PROPAGANDA_EXPOSURE_REVERSAL * dg)
+        record["exposed"] = True
+        net_approval = sum((p.approval - before_a) * p.size for p, before_a, _before_g, _da, _dg in reached)
+        net_grievance = sum((p.grievance - before_g) * p.size for p, _before_a, before_g, _da, _dg in reached)
+        record["effects_net"] = {"approval": round(net_approval / total, 6),
+                                 "grievance": round(net_grievance / total, 6)}
+        where = "the country" if target == "country" else next(
+            (r.name for r in w.regions if r.id == target), target)
+        w.event("scandal", f"Karamaniya announced that it had uncovered a "
+                           f"{w.names.get(actor_id, actor_id)} propaganda campaign aimed at {where}.",
+                importance=2, actor=actor_id)
+        effects["exposed"] = True
     w.media.setdefault("campaigns", []).append(record)
     return effects
 
@@ -1476,14 +1537,39 @@ def dorsania_reply(w, kind: str, amount: float = 0.0, text: str = "", region: st
             importance=2)
 
 
+def league_democratic_score(w) -> float:
+    """The League's democratic score for Karamaniya, before its credibility and the victim bonus (engine 30, T154).
+
+    The League keeps its own terms: whether an election has been won or is scheduled, the minority's status, mass
+    arrests and a recent scandal at home. It also loses what world.democracy_index loses for everything else, at the
+    index's own weights and factors: the press, the assembly, a declared emergency and each measure under it, a head
+    who decides alone, a coup within twelve months, party bans, targeted arrests, jamming and media capture. Mass
+    arrests are the League's own .10 term already and are not counted twice. With none of these in force the score is
+    what it was before this function existed.
+    """
+    c = w.const
+    democratic = .35 + .35 * (1 if c.elected else .5 if c.election_month >= 0 else .15)
+    democratic -= .20 if c.minority != "equal" else 0
+    democratic -= .10 if w.policy.arrests == "mass" else 0
+    democratic -= .10 if w.month - w.econ.scandal_month < 12 else 0
+    democratic -= PRESS_WEIGHT * (1.0 - PRESS_FACTORS.get(c.press, 1.0))
+    democratic -= ASSEMBLY_WEIGHT * (1.0 - ASSEMBLY_FACTORS.get(c.assembly, 1.0))
+    democratic -= EMERGENCY_WEIGHT if c.emergency else 0.0
+    democratic -= COLLECTIVE_WEIGHT if c.decision_rule == "head_decides" else 0.0
+    democratic -= COUP_WEIGHT if w.month - c.coup_month < 12 else 0.0
+    democratic -= in_force_penalties(w)
+    if w.policy.arrests == "mass":
+        # The League already loses .10 for mass arrests above; in_force_penalties counts the same .10, so take that
+        # copy back rather than double-counting it.
+        democratic += ARREST_PENALTY["mass"]
+    return democratic
+
+
 def league_month(w) -> None:
     """Interest-sensitive League policy. Routine months do not need another model call."""
     state, dip, e = w.foreign["league"], w.dip, w.econ
     victim = (dip.war and dip.aggressor == "union") or dip.blockade
-    democratic = .35 + .35 * (1 if w.const.elected else .5 if w.const.election_month >= 0 else .15)
-    democratic -= .20 if w.const.minority != "equal" else 0
-    democratic -= .10 if w.policy.arrests == "mass" else 0
-    democratic -= .10 if w.month - e.scandal_month < 12 else 0
+    democratic = league_democratic_score(w)
     credible = .50 if w.policy.debt_service == "suspend" else 1.0
     target = clamp(democratic * credible + (.10 if victim else 0))
     w.set_league_trust(.88*state["trust_in_karamaniya"]+.12*target)
@@ -1709,8 +1795,8 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     """Read one act a cabinet wrote. Returns the act to carry out, or None when it is refused, and the reasons.
 
     A refused act gives its refusals. A kept act gives what was read or changed in it: a word read as its number, a
-    region read from its name, the one demand an ultimatum carries, a null size taken as 0.5. Each reason is a problem
-    in the month's record, and normalize_cabinet_output sends it to the cabinet as a note."""
+    region read from its name, the one demand an ultimatum carries, a missing or null size taken as 0.5. Each reason
+    is a problem in the month's record, and normalize_cabinet_output sends it to the cabinet as a note."""
     # Runs 20261008-130316-seed1 and 20261011-211521-seed1: twelve acts that were valid types were written under "action"
     # instead of "type", and each was refused as an unsupported act. The act is read as the type it names. "type" wins
     # when both are given, and a value that is no act of this cabinet is still refused.
@@ -1728,10 +1814,11 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     # A null size is read as the default size, as a missing one always was (backlog T142). Runs 20261010-002051-seed1,
     # 20261010-070501-seed1 and 20261011-094417-seed1 refused 31 such acts, 7 of them ultimatums. The cabinet did not
     # choose 0.5, so the reading is a change the next month's note carries (normalize_cabinet_output; _READING does not
-    # match it). A missing size is still read without a note, as before: whether to tell the cabinet of those is the
-    # user's decision.
+    # match it). Engine 30 (T151): a missing size is read the same way and told the same way. 139 acts in 10 recorded
+    # runs had no "magnitude" key and were read silently; the user chose to tell the cabinet, as for a null one.
+    missing = "magnitude" not in raw or raw["magnitude"] is None
     magnitude = raw.get("magnitude", .5)
-    if magnitude is None:
+    if missing:
         magnitude = .5
         changes.append("the size was taken as 0.5 because none was given; give a magnitude between 0 and 1 to choose it")
     if isinstance(magnitude, str) and _spaced_lower(magnitude) in MAGNITUDE_WORDS:

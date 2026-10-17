@@ -3049,6 +3049,8 @@ def _election(w: World, rng) -> None:
         c.elected = True
         c.provisional = False
         c.election_month = w.month + 48
+        # Engine 30 (T153): the next vote is due 48 months from the win; democracy_index reads a delay against it.
+        c.election_due_month = c.election_month
         for p in w.k_pops():
             p.approval = clamp(p.approval + 0.05, 0.01, 0.99)
         w.event("mandate", "The Council List won the election. The government now holds an elected mandate.",

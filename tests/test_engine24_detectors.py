@@ -1,4 +1,4 @@
-"""The two research detectors, measured on the hand labels in docs/detector_labels (worker 25, backlog T144).
+"""The two research detectors, measured on the hand labels in docs/detector_labels (backlog T144).
 
 - VOTE_INTENT_MISMATCH is recorded only where the vote's own stated reason contradicts the vote. The labelled rows
   (D2_labelled_36.csv) are the test set: none of the 34 false positives may be flagged. The one true mismatch (D2-013)
@@ -74,7 +74,7 @@ class ReasonVerdicts(unittest.TestCase):
 
     def test_support_and_opposition_phrases_are_not_read(self):
         # "I support X" names X, which may not be the motion. Nine recorded ballots were flagged on such phrases, and on
-        # worker 25's reading all nine agreed with the vote (T144).
+        # one reading all nine agreed with the vote (T144).
         self.assertEqual(self.flags("yes", "I oppose this, because the cost is too high."), [])
         self.assertEqual(self.flags("no", "I support this motion."), [])
         self.assertEqual(self.flags("no", "I support equal protection, but cannot adopt incomplete language."), [])

@@ -381,7 +381,7 @@ class EndToEndThroughARealCouncilMonth(unittest.TestCase):
         self.assertNotEqual(w.policy.army_target, 3100)
 
     def test_the_bare_no_that_agrees_with_its_reason_is_asked_about_but_not_recorded(self):
-        # Worker 25, backlog T144: the record holds only a vote that its own reason contradicts. Here the reason is
+        # Backlog T144: the record holds only a vote that its own reason contradicts. Here the reason is
         # "No.", the vote is no, so the stance (support) was the outlier. The stance still puts the ballot to the
         # delegate again (the repair ask is unchanged), and nothing is recorded.
         council, w = self.build(second_vote="no", second_reason="No.")
@@ -440,7 +440,7 @@ class TheFindingIsSurfacedNotJustComputed(unittest.TestCase):
         return w, record
 
     def test_resolution_lifts_the_contradiction_into_the_month_record_and_the_ledger(self):
-        # Worker 25, backlog T144: the record holds the reason-based contradiction (its own source is "reason").
+        # Backlog T144: the record holds the reason-based contradiction (its own source is "reason").
         contradiction = {"code": "VOTE_INTENT_MISMATCH", "motion": "D2", "stance": "no", "vote": "yes",
                          "reason": "No. The audit is unnecessary.", "source": "reason"}
         w, record = self.resolve(D={"vote_reason_contradictions": [contradiction]})

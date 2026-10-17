@@ -315,7 +315,7 @@ def replay_d1() -> list:
             prompt = row["_prompt"]
             ma._grounding_truth = truth_for(row["metric"], observed)
             ma.information_available_to = lambda w, mid, _p=prompt: [{"label": "decision prompt", "text": _p}]
-            untied = []                       # figures the check could not tie to a metric (engine 25): unverifiable
+            untied = []                       # figures the check could not tie to a metric (T144): unverifiable
             try:
                 claim = ma.check_numeric_grounding(Stub(), row["member"], row["_text"], untied)
                 if claim:
@@ -416,7 +416,7 @@ def score() -> int:
                           "observed", "sentence", "briefing", "label", "reason"])
     print("D1 (precision: TRUE_ERROR of decided):", tally(labels, "TRUE_ERROR", "FALSE_POSITIVE"))
     # The same question for the current code: the texts it would still flag on the recorded metric (replay).
-    # Engine 25 (T144) changed which texts are still flagged, so the same labels are tallied only for the flags that
+    # T144 changed which texts are still flagged, so the same labels are tallied only for the flags that
     # remain. A flag with no label is counted, not guessed: it needs a second annotator.
     flagged_now = {r["flag_id"] for r in read_csv(os.path.join(OUT, "D1_replay_current_main.csv"))
                    if r["replay"] == "flagged"}
@@ -488,7 +488,7 @@ def r4_index() -> int:
 
 
 def reason_check() -> int:
-    """VOTE_INTENT_MISMATCH on the current code (engine 25, T144): the reason-based rule over every yes or no ballot in the
+    """VOTE_INTENT_MISMATCH on the current code (T144): the reason-based rule over every yes or no ballot in the
     recorded runs, joined to the 36 labelled stance flags (D2_labelled_36.csv) by run, month, member and motion."""
     sys.path.insert(0, ROOT)
     from karamaniya import council as C

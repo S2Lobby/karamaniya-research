@@ -50,7 +50,7 @@ class CallResult:
     # another delegate.
     reasoning_text: str = ""
     # The answer as the connector handed it to the council, where that answer is a structured field the raw text does
-    # not carry: claude_cli, qoder_cli and antigravity_cli (engine 24, backlog T145). A replay returns it, not a reading
+    # not carry: claude_cli, qoder_cli and antigravity_cli (backlog T145). A replay returns it, not a reading
     # of raw. structured_read says the connector read one, even when it was null; logs without it replay from raw.
     structured: object = None
     structured_read: bool = False

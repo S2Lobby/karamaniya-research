@@ -11,7 +11,7 @@ for a key, the replay gives the k-th answer the run logged for it. A format retr
 
 The answer is the JSON in raw (extract_json), except where the log holds the answer the connector used:
   - claude_cli, qoder_cli and antigravity_cli take the answer from the CLI's structured_output field, not from raw. They
-    log it as `structured` (with `structured_read`), and the replay returns that (engine 24, T145). A log recorded
+    log it as `structured` (with `structured_read`), and the replay returns that (T145). A log recorded
     before that has no such field, and its three seats replay from raw as before, which is exact only when raw is that
     same JSON.
   - codex_cli also drops the optional nulls that its strict schema adds (drop_optional_nulls), for raw.

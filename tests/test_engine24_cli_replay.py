@@ -1,4 +1,4 @@
-"""The three CLI seats whose answer is a structured field, not the raw text (worker 25, backlog T145).
+"""The three CLI seats whose answer is a structured field, not the raw text (backlog T145).
 
 claude_cli, qoder_cli and antigravity_cli read `structured_output` (antigravity also undoes its schema rewrite). The
 raw text is something else, so a replay that re-reads raw cannot reproduce the answer the council used. The fix logs
@@ -130,7 +130,7 @@ def seat(kind, provider, **extra):
 
 class ARunWithAClaudeSeatReplaysIdentically(unittest.TestCase):
     """One Claude Code stand-in seat in a whole council run, whose `result` text is not its JSON answer. The replay
-    tool must reproduce the run, which takes the structured answer the log now keeps (engine 24, T145)."""
+    tool must reproduce the run, which takes the structured answer the log now keeps (T145)."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="karamaniya-claude-replay-")

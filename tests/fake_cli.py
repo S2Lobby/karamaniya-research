@@ -216,7 +216,7 @@ def main():
                 {"type": "thinking", "thinking": shown, "signature": "x"},
                 {"type": "text", "text": json.dumps(data)}]}}), file=out)
         # FAKE_CLI_RESULT: the text the real CLI may report in `result` beside its structured answer, which is not the
-        # JSON of that answer (worker 25, T145). Unset, `result` is the JSON, as before.
+        # JSON of that answer (T145). Unset, `result` is the JSON, as before.
         print(json.dumps({"type": "result", "is_error": False,
                           "result": os.environ.get("FAKE_CLI_RESULT") or json.dumps(data), "structured_output": data,
                           "stop_reason": "end_turn", "usage": {"input_tokens": 120, "output_tokens": 12, **extra_usage()},

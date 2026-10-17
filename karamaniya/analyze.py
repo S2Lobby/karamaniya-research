@@ -143,7 +143,7 @@ def analyze_run(run_dir: str, detail: bool = False) -> dict:
     """Everything one run's own files say about engine health and harness friction."""
     out = {"id": os.path.basename(run_dir.rstrip("/\\")), "months": 0, "dynamics": [],
            "anomalies": [], "friction": {"gap": 0, "guard": 0, "procedural": 0, "other": 0},
-           # Research records, not rejected intents (worker 25, T144): counted apart from the friction above.
+           # Research records, not rejected intents (T144): counted apart from the friction above.
            "diagnostic": {"numeric_grounding_flags": 0},
            "codes": {}, "gap_examples": [], "calls": {"total": 0, "refusals": 0, "errors": 0,
                                                        "format_retries": 0, "quota": 0}}
@@ -202,7 +202,7 @@ def analyze_run(run_dir: str, detail: bool = False) -> dict:
                 v = rec.get(key)
                 if isinstance(v, list):
                     out["friction"]["guard"] += len(v)
-            # NUMERIC_GROUNDING_ERROR is a diagnostic (worker 25, T144): it is not a rejected intent, so it is not friction.
+            # NUMERIC_GROUNDING_ERROR is a diagnostic (T144): it is not a rejected intent, so it is not friction.
             if isinstance(rec.get("grounding"), list):
                 out["diagnostic"]["numeric_grounding_flags"] += len(rec["grounding"])
     return out

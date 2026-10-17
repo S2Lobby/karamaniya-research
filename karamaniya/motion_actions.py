@@ -1619,7 +1619,7 @@ def _side_of(marks: list, text: str, start: int, end: int) -> str:
 
 
 def _claim_side(marks: list, text: str, start: int, end: int, figures=()) -> str | None:
-    """Whose force a claimed figure is (engine 25, T144): the side named nearest to it in its own segment (see
+    """Whose force a claimed figure is (T144): the side named nearest to it in its own segment (see
     _segment_span). A segment that names no side takes ours, unless its sentence names another side: then the figure's
     side is not tied, and it is not judged. "Union 14 warships, ~106k troops vs our 59k": the 106k is not tied to a side.
     Source figures keep _side_of, the sentence reading."""
@@ -1638,13 +1638,13 @@ def _claim_side(marks: list, text: str, start: int, end: int, figures=()) -> str
     return None if named - {"ours"} else "ours"
 
 
-#: Units that make a figure an amount of money, never a count of troops: "9-10M" beside "soldiers" is pay (engine 25).
+#: Units that make a figure an amount of money, never a count of troops: "9-10M" beside "soldiers" is pay.
 _MONEY_UNITS = ("million", "m", "billion", "bn")
 
 
 def _is_troop_figure(text: str, claim: dict) -> bool:
     """A figure that counts troops: it has a troop noun, or no other noun while its sentence speaks of the army.
-    "2,000,000 gold" beside "28,000 soldiers" is not one (Audit MO4). A figure in money units is never one (engine 25)."""
+    "2,000,000 gold" beside "28,000 soldiers" is not one (Audit MO4). A figure in money units is never one."""
     if claim["unit"] in _MONEY_UNITS:
         return False
     if claim["noun"]:
@@ -1732,12 +1732,12 @@ def _clause_span(text: str, start: int, end: int) -> tuple:
 
 
 #: The breaks a figure's metric cannot be tied across: a clause break, or a comparison that sets two figures against
-#: each other. In "Fleet readiness 53-65/100 vs 13-16 Union warships" the 13-16 is not the readiness figure (engine 25).
+#: each other. In "Fleet readiness 53-65/100 vs 13-16 Union warships" the 13-16 is not the readiness figure (T144).
 _SEGMENT_BREAK = re.compile(_CLAUSE_BREAK.pattern + r"|\b(?:vs\.?|versus|against|compared\s+(?:with|to))\b", re.I)
 
 
 def _segment_span(text: str, start: int, end: int, figures=()) -> tuple:
-    """The text a figure at [start, end) may be tied to (engine 25): from the nearest clause break or comparison, or
+    """The text a figure at [start, end) may be tied to (T144): from the nearest clause break or comparison, or
     the neighbouring figure, on each side. A metric outside it is not this figure's metric."""
     lo, hi = 0, len(text)
     for stop in _SEGMENT_BREAK.finditer(text):
@@ -1755,7 +1755,7 @@ def _segment_span(text: str, start: int, end: int, figures=()) -> tuple:
 
 
 def _owners(text: str, claim: dict, sentence_keys: frozenset, figures=()) -> frozenset:
-    """The metric a figure is judged against (engine 19, tied locally in engine 25): the metric its own segment names,
+    """The metric a figure is judged against (engine 19, tied locally for T144): the metric its own segment names,
     the nearest before it, else the nearest after it. A segment that names none ties the figure to nothing, and the figure
     is unverifiable, not judged. The sentence does not decide it: "Economy: output 82, unemployment 10%" does not make the
     82 an unemployment figure, and "Army actual 36.5k vs Union 98k" does not tie the 36.5k to the Union's force (T144)."""
@@ -1989,7 +1989,7 @@ def _figure_clause(before: str) -> str:
     return before
 
 
-#: Engine 25 (T144): a threshold, a projection or an accrual next to a figure. See _states_a_fact.
+#: T144: a threshold, a projection or an accrual next to a figure. See _states_a_fact.
 _THRESHOLD_WORD = re.compile(r"\b(?:floors?|ceilings?|minimums?|maximums?|caps?|limits?|thresholds?|triggers?)\b", re.I)
 _PROJECTED_BEFORE = re.compile(r"(?:->|→|=>)\s*~?\s*$")
 _ACCRUAL_AFTER = re.compile(r"^\s*(?:still\s+|also\s+|further\s+|additional\s+)?"
@@ -2037,7 +2037,7 @@ def _states_a_fact(text: str, claim: dict) -> bool:
 def check_numeric_grounding(w, mid: str, text: str, unverifiable: list | None = None) -> dict | None:
     """A precise statistic with no available source is sent back, not silently kept.
 
-    Engine 25 (T144): a figure is judged only when its own segment ties it to one metric, and to one side for a troop
+    T144: a figure is judged only when its own segment ties it to one metric, and to one side for a troop
     figure. A figure that cannot be tied is unverifiable, not an error: it is not flagged, and it is appended to
     `unverifiable` when the caller passes a list (the replay audit counts those; the month record keeps flags only)."""
     if not text or not text.strip():

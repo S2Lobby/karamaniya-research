@@ -218,8 +218,8 @@ the Charter defaults (`world.py:344-375`). Each term reads a field of `w.const`:
 - A successful coup sets `coup_month` and `emergency = True` (`politics.py:2253-2254`), and when the handover is blocked
   it sets `election_month = -1` (`politics.py:2257`). A second success path, the officers' coup (`politics.py:2685-2690`),
   ends the run and sets neither field.
-- Elections: a won election sets `elected` and moves the date by 48 months (`politics.py:2440-2442`). The challenge
-  routes do the same (`council.py:2244`, `_election_responses`, lines 2275-2300).
+- Elections: an election verdict that keeps the government sets `elected` and moves the date by 48 months
+  (`politics.py:2440-2442`). The challenge routes do the same (`council.py:2244`, `_election_responses`, lines 2275-2300).
 - Arrests (`set_policy arrests`, `politics.py:28`, `65`) write only `w.policy.arrests`. The index does not read them.
 - Emergency measures (curfew, police powers, movement restrictions, military aid, ration enforcement, fiscal authority) are
   written by `set_emergency_measure` (`karamaniya/dilemmas.py:943-963`) into `institutions["emergency_measures"]`. They never
@@ -252,7 +252,7 @@ So the 1.0 comes from nothing in these runs reaching the indexed fields. It is n
 ## Recommendations
 
 1. **D1: not a primary measure.** Keep it only as a diagnostic list, with its precision stated. Before it is used again, fix the
-   four causes in section D1a: (a) a figure is judged by its own clause, not by the nearest metric word (`_owners`,
+   causes listed in section D1a: (a) a figure is judged by its own clause, not by the nearest metric word (`_owners`,
    `motion_actions.py:1694`); (b) do not turn a bare count, index or setting into a percentage (`_as_percent_points`,
    `motion_actions.py:1706`); (c) exclude flows ("per month", "deficit", "spent", "accrues") and thresholds ("floor",
    "at or above", "trigger", "ceiling", "fall below"), proposal amounts ("loan of", "relief", "facility") and projections
@@ -293,18 +293,19 @@ So the 1.0 comes from nothing in these runs reaching the indexed fields. It is n
    `versions["world_engine_version"]` and `versions["agent_prompt_version"]`, but the manifests keep the world engine under
    `engine.world_engine_version`, and the prompt version under `versions.agent_prompt`. Verified by reading the manifest of
    run 20261011-211521. The census script is not in this worktree and was not edited.
-4. **Figures are judged without their direction.** `_as_percent_points` and `_owners` (item D1a) make the grounding check
-   flag figures that are counts, flows and thresholds. The current rules fix much of this (section D1b), but not the
-   counts-as-percentages or the cross-metric attribution.
+4. **The attribution and percentage rules cause most of the grounding misses.** `_owners` and `_as_percent_points` (section
+   D1a) produce the cross-metric flags and the counts read as percentages. The current rules fix many of the threshold, flow
+   and amount misreads (section D1b), but not these two rules.
 
 ## Limitations and what is UNVERIFIED
 
 - One annotator. No agreement check. The labels are judgements and the precision intervals are for this annotator's readings.
 - The D1 sample is 40 of 137 flags. The recall of the detector (true errors it did not flag) was not measured: the sample had
   no true error, so no recall can be estimated from these data.
-- The replay (D1b) uses the recorded truth and the whole decision prompt as sources. It is not the live check. It
-  reproduces the 8 sampled flags that the current code still raises, and it does not evaluate 7 texts that would be flagged on a
-  different metric (no truth recorded for that metric).
+- The replay (D1b) uses the recorded truth and the whole decision prompt as sources. It is not the live check. On the current
+  code it flags 8 of the 40 sampled texts, and all 8 are labelled. It evaluates only the recorded metric of each text: a first
+  version also flagged 7 texts on another metric, but those comparisons used the wrong truth, so the other metrics were not
+  evaluated and their flags are not reported.
 - D4's "real" label relies on the decision prompt's `Current directives` line and the raw answers. It was not re-simulated.
 - R4 reads the index at 92f2cfa. The runs used engines 11 to 22, and the formula may have differed then (the 20261008 run
   has `charter_election_month` set to `None`, which the current formula cannot read). The table of values is from the

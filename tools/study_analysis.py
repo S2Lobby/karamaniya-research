@@ -102,8 +102,7 @@ class Run:
         self.elections = []
         self.outcome = {}
         self.stopped = ""
-        self.foreign_calls = []
-        self.log_records = []
+        self.engine = ""                   # the engine versions the run recorded, for the caveats
 
     @property
     def last_month(self):
@@ -137,6 +136,9 @@ def load_run(path):
     if set(run.seats) != set(LETTERS):
         raise StudyError(f"{folder}: the manifest does not name the seats A to E")
     seeds = manifest.get("seeds") or {}
+    engine = manifest.get("engine") or {}
+    prompt = (manifest.get("versions") or {}).get("agent_prompt")
+    run.engine = f"world {engine.get('world_engine_version', '?')}, prompt {prompt if prompt is not None else '?'}"
     run_cfg = config.get("run") or {}
     run.seed = seeds.get("run_seed", run_cfg.get("seed"))
     run.horizon = run_cfg.get("months", seeds.get("months_total"))
@@ -353,23 +355,25 @@ class Labels:
         self.path = path
         self.has_class = False
         self.has_type = False
+        self.has_motion = False
         self.labels = {}                   # key -> label, or None for a blank cell
         self.exit_rows = []
         self.counts = Counter()
 
-    def key(self, run, month, exit_class, member, event_type):
+    def key(self, run, month, exit_class, member, event_type, motion_id=""):
+        # The motion id tells apart two refused motions of one member in one month (the audit keys rows the same way).
         return (run, month, exit_class if self.has_class else "", member or "",
-                event_type if self.has_type else "")
+                event_type if self.has_type else "", (motion_id or "") if self.has_motion else "")
 
-    def find(self, run, month, exit_class, member, event_type):
+    def find(self, run, month, exit_class, member, event_type, motion_id=""):
         """(present, label): present is whether the sample has a row for this exit, label its adjudicated value."""
-        k = self.key(run, month, exit_class, member, event_type)
+        k = self.key(run, month, exit_class, member, event_type, motion_id)
         if k in self.labels:
             return True, self.labels[k]
         return False, None
 
-    def lookup(self, run, month, exit_class, member, event_type):
-        return self.find(run, month, exit_class, member, event_type)[1]
+    def lookup(self, run, month, exit_class, member, event_type, motion_id=""):
+        return self.find(run, month, exit_class, member, event_type, motion_id)[1]
 
 
 def load_labels(path):
@@ -383,6 +387,7 @@ def load_labels(path):
                     raise StudyError(f"{path}: no {needed} column")
             labels.has_class = "exit_class" in fields
             labels.has_type = "event_type" in fields
+            labels.has_motion = "motion_id" in fields
             for row in reader:
                 try:
                     month = int(str(row["month"]).strip())
@@ -393,18 +398,27 @@ def load_labels(path):
                 if raw_label and raw_label not in LABEL_NAMES:
                     raise StudyError(f"{path}: adjudicated {raw_label!r} is not supported, ambiguous or parser")
                 exit_class = (row.get("exit_class") or "").strip()
-                is_exit = str(row.get("is_exit", "True")).strip().lower() in ("true", "1", "yes")
+                flag = str(row.get("is_exit") or "").strip().lower()
+                # A blank flag in the brief's shorter format means an exit, unless the row is a sampled motion.
+                is_exit = flag in ("true", "1", "yes") or (
+                    flag == "" and exit_class not in ("motion_executed", "motion_refused"))
+                labels.counts["rows"] += 1
+                label = LABEL_NAMES.get(raw_label)
+                if not is_exit or (exit_class and exit_class not in EXIT_CLASSES):
+                    # Motion rows are sampled, not looked up, and their keys are not unique in the audit's sheet
+                    # (a refused motion has no id there), so they are only counted.
+                    labels.counts["non_exit_rows"] += 1
+                    continue
                 member = (row.get("member") or "").strip()
                 event_type = (row.get("event_type") or "").strip()
-                k = labels.key(row["run"].strip(), month, exit_class, member, event_type)
+                motion_id = (row.get("motion_id") or "").strip()
+                k = labels.key(row["run"].strip(), month, exit_class, member, event_type, motion_id)
                 if k in labels.labels:
                     raise StudyError(f"{path}: the row {k} appears twice")
-                label = LABEL_NAMES.get(raw_label)
                 labels.labels[k] = label
-                if is_exit and (not exit_class or exit_class in EXIT_CLASSES):
-                    labels.exit_rows.append({"run": row["run"].strip(), "month": month, "exit_class": exit_class,
-                                             "member": member, "event_type": event_type, "label": label})
-                labels.counts["rows"] += 1
+                labels.exit_rows.append({"run": row["run"].strip(), "month": month, "exit_class": exit_class,
+                                         "member": member, "event_type": event_type, "motion_id": motion_id,
+                                         "label": label})
                 labels.counts["labelled" if label else "blank"] += 1
     except OSError as exc:
         raise StudyError(f"{path}: cannot read ({exc})") from exc
@@ -619,12 +633,15 @@ def _prefix(variant):
     return "raw" if variant == "raw" else "val"
 
 
+MIN_SEATS = 5    # a group with fewer seats is shown, but flagged: one or two runs do not estimate a persistence
+
+
 def _group_stats(observations, prefix, tau):
     durations = [o[f"{prefix}_time"] for o in observations]
     events = [o[f"{prefix}_event"] for o in observations]
     steps = km_steps(durations, events)
     return {"n": len(observations), "events": sum(events), "rmst": rmst(steps, tau),
-            "s_tau": km_survival_at(steps, tau)}
+            "s_tau": km_survival_at(steps, tau), "max_time": max(durations)}
 
 
 def _scope_key(scope, o):
@@ -668,6 +685,10 @@ def persistence_table(observations, tau, reps, seed, variant="raw"):
     point = _tables(observations, prefix, tau)
     grand = point["all"]["all"]["rmst"]
     clusters = sorted({o["seed"] for o in observations})
+    # A group's restricted mean needs follow-up to tau: past its last observed time the survival curve is not known,
+    # and carrying the last value forward would overstate persistence. Such a group gets no number, only its follow-up.
+    estimable = {(scope, g): st["max_time"] >= tau for scope in ("all",) + SCOPES
+                 for g, st in (point["all"] if scope == "all" else point[scope]).items()}
     by_seed = defaultdict(list)
     for o in observations:
         by_seed[o["seed"]].append(o)
@@ -687,25 +708,30 @@ def persistence_table(observations, tau, reps, seed, variant="raw"):
             row, col = boot["model"].get(model), boot["office"].get(office)
             if row and col:
                 inter_draws[(model, office)].append(st["rmst"] - row["rmst"] - col["rmst"] + boot_grand)
-    rows = [{"scope": "all", "group": "all", "variant": variant, "n": point["all"]["all"]["n"],
-             "events": point["all"]["all"]["events"], "rmst": round(grand, 6),
-             "s_tau": round(point["all"]["all"]["s_tau"], 6), "diff_vs_all": 0.0, "ci_low": None,
+    grand_st = point["all"]["all"]
+    rows = [{"scope": "all", "group": "all", "variant": variant, "n": grand_st["n"], "events": grand_st["events"],
+             "max_follow_up": grand_st["max_time"], "estimable": True, "small_group": grand_st["n"] < MIN_SEATS,
+             "rmst": round(grand, 6), "s_tau": round(grand_st["s_tau"], 6), "diff_vs_all": 0.0, "ci_low": None,
              "ci_high": None, "interaction": None, "interaction_ci_low": None, "interaction_ci_high": None,
              "valid_reps": reps, "clusters": len(clusters), "tau": tau}]
     for scope in SCOPES:
         for g, st in sorted(point[scope].items(), key=lambda kv: str(kv[0])):
-            low, high = _interval(diff_draws[(scope, g)], reps)
-            inter = None
-            ilow = ihigh = None
-            if scope == "model_office":
+            ok = estimable[(scope, g)]
+            low, high = _interval(diff_draws[(scope, g)], reps) if ok else (None, None)
+            inter = ilow = ihigh = None
+            if scope == "model_office" and ok:
                 model, office = g
                 row, col = point["model"][model], point["office"][office]
-                inter = st["rmst"] - row["rmst"] - col["rmst"] + grand
-                ilow, ihigh = _interval(inter_draws[g], reps)
+                if estimable[("model", model)] and estimable[("office", office)]:
+                    inter = st["rmst"] - row["rmst"] - col["rmst"] + grand
+                    ilow, ihigh = _interval(inter_draws[g], reps)
             label = g if isinstance(g, str) else f"{g[0]} x {g[1]}"
             rows.append({"scope": scope, "group": label, "variant": variant, "n": st["n"], "events": st["events"],
-                         "rmst": round(st["rmst"], 6), "s_tau": round(st["s_tau"], 6),
-                         "diff_vs_all": round(st["rmst"] - grand, 6), "ci_low": _round(low), "ci_high": _round(high),
+                         "max_follow_up": st["max_time"], "estimable": ok, "small_group": st["n"] < MIN_SEATS,
+                         "rmst": round(st["rmst"], 6) if ok else None,
+                         "s_tau": round(st["s_tau"], 6) if ok else None,
+                         "diff_vs_all": round(st["rmst"] - grand, 6) if ok else None,
+                         "ci_low": _round(low), "ci_high": _round(high),
                          "interaction": _round(inter), "interaction_ci_low": _round(ilow),
                          "interaction_ci_high": _round(ihigh), "valid_reps": len(diff_draws[(scope, g)]),
                          "clusters": len(clusters), "tau": tau})
@@ -775,7 +801,7 @@ def _label_of(labels, run, ev):
     if labels is None:
         return None
     member = "" if ev["exit_class"] == "government" else ev["member"]
-    return labels.lookup(run.name, ev["month"], ev["exit_class"], member, ev["event_type"])
+    return labels.lookup(run.name, ev["month"], ev["exit_class"], member, ev["event_type"], ev.get("motion_id", ""))
 
 
 def _first(events, run, labels, want=None):
@@ -888,15 +914,22 @@ def km_rows(observations, prefix, scope):
 
 
 def km_summary(observations, prefix, scope, horizon):
+    """Rows for the summary: S(t) is given only up to the group's longest follow-up. Past it the curve is unknown,
+    and a value there would be the last one carried forward. A group under MIN_SEATS seats is starred."""
     groups = defaultdict(list)
     for o in observations:
         groups[o["model"] if scope == "model" else o["office"]].append(o)
     rows = []
     for g, obs in sorted(groups.items()):
-        steps = km_steps([o[f"{prefix}_time"] for o in obs], [o[f"{prefix}_event"] for o in obs])
-        rows.append([g, len(obs), sum(o[f"{prefix}_event"] for o in obs),
-                     _fmt(km_survival_at(steps, 12)), _fmt(km_survival_at(steps, 24)),
-                     _fmt(km_survival_at(steps, horizon)), _fmt(km_median(steps), 0)])
+        durations = [o[f"{prefix}_time"] for o in obs]
+        steps = km_steps(durations, [o[f"{prefix}_event"] for o in obs])
+        follow = max(durations)
+
+        def at(t):
+            return _fmt(km_survival_at(steps, t)) if follow >= t else "NA"
+        star = " *" if len(obs) < MIN_SEATS else ""
+        rows.append([f"{g}{star}", len(obs), sum(o[f"{prefix}_event"] for o in obs), follow, at(12), at(24),
+                     at(horizon), _fmt(km_median(steps), 0)])
     return rows
 
 
@@ -972,6 +1005,8 @@ def main(argv=None):
     ap.add_argument("--labels", help="the audit sample CSV with the adjudicated column")
     ap.add_argument("--out", required=True, help="the output folder")
     ap.add_argument("--horizon", type=int, help="the horizon in months (default: each run's config run.months)")
+    ap.add_argument("--tau", type=int, help="the month at which restricted means are read (default: the horizon, "
+                                            "or the longest follow-up if that is shorter)")
     ap.add_argument("--bootstrap", type=int, default=DEFAULT_REPS, help=f"bootstrap replicates (default {DEFAULT_REPS})")
     ap.add_argument("--seed", type=int, default=DEFAULT_BOOTSTRAP_SEED, help="the bootstrap's RNG seed")
     ap.add_argument("--fixed-rotation", type=int, help="the rotation for the fixed-assignment ablation")
@@ -1041,7 +1076,9 @@ def main(argv=None):
                                       plan_by_run=plan_by_run, status_by_run=status_by_run,
                                       exits_by_run={r.name: all_exit_rows[r.name] for r in analysed})
     longest = max((max(o["raw_time"], o["last_month"]) for o in observations), default=horizon)
-    tau = min(horizon, longest)
+    tau = args.tau if args.tau else min(horizon, longest)
+    if tau < 1:
+        raise StudyError("--tau must be at least 1 month")
     prefix_list = ["raw"] + (["val"] if labels is not None else [])
 
     # ---- exits and reconciliation -----
@@ -1051,7 +1088,8 @@ def main(argv=None):
             present, label = (False, None)
             if labels is not None:
                 member = "" if ev["exit_class"] == "government" else ev["member"]
-                present, label = labels.find(run.name, ev["month"], ev["exit_class"], member, ev["event_type"])
+                present, label = labels.find(run.name, ev["month"], ev["exit_class"], member, ev["event_type"],
+                                             ev["motion_id"])
             seat_model = run.seats.get(ev["member"], {}).get("model", "") if ev["member"] else ""
             exits_rows.append({"run": run.name, "analysed": str(run in analysed), "month": ev["month"],
                                "month_label": ev["month_label"], "exit_class": ev["exit_class"],
@@ -1076,6 +1114,7 @@ def main(argv=None):
             "government_exits": counts.get("government", 0), "election_rows": counts.get("election", 0),
             "included": str(included), "exclusion": excluded_reason.get(run.name, ""),
             "integrity": _integrity_label(run, integrity, analysed, args.no_integrity),
+            "engine": run.engine,
             "served_models": json.dumps({L: run.seats[L]["served"] for L in LETTERS}, ensure_ascii=False),
             "warnings": " | ".join(sorted(set(run.warnings)))[:400]})
     _write_csv(out / "run_inventory.csv", inventory)
@@ -1169,9 +1208,11 @@ def _ablations(observations, tau, reps, seed, fixed_rotation, has_labels):
                          "label_b": f"rotation {fixed} only", "estimate_b": b["diff_vs_all"] if b else None,
                          "ci_b_low": b["ci_low"] if b else None, "ci_b_high": b["ci_high"] if b else None,
                          "n_b": b["n"] if b else 0})
-    elif len(rotations) <= 1:
+    else:
+        why = ("no plan, so the rotations are not recorded" if not rotations
+               else f"only one rotation ({rotations[0]}) in the data")
         rows.append({"ablation": "role rotation", "scope": "all", "group": "NA",
-                     "label_a": "not computed", "label_b": f"only {len(rotations)} rotation(s) in the data"})
+                     "label_a": "not computed", "label_b": why})
     if has_labels:
         raw = {(r["scope"], r["group"]): r for r in persistence_table(observations, tau, reps, seed, "raw")}
         val = {(r["scope"], r["group"]): r for r in persistence_table(observations, tau, reps, seed, "validated")}
@@ -1237,6 +1278,13 @@ def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau
         out.append("- Nothing left out.")
     seeds = sorted({o["seed"] for o in observations if o["seed"] is not None}, key=str)
     out.append(f"- Seat observations: {len(observations)} ({len(seeds)} seed clusters).")
+    runs_per_seed = Counter(r.seed for r in analysed)
+    shared = {s: n for s, n in runs_per_seed.items() if n > 1}
+    if shared:
+        out.append("- Seeds shared by more than one run (one cluster in the bootstrap): "
+                   + ", ".join(f"{s} ({n} runs)" for s, n in sorted(shared.items(), key=lambda kv: str(kv[0]))) + ".")
+    engines = sorted({r["engine"] for r in inventory if r.get("included") == "True"})
+    out.append(f"- Engine versions recorded by the analysed runs: {'; '.join(engines) if engines else 'none'}.")
     if labels is None:
         out.append("- Labels: none given, so only the raw engine labels are analysed.")
     else:
@@ -1251,22 +1299,26 @@ def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau
     out.append("")
     out.append("## Time to exit (Kaplan-Meier; months in office, censored at each run's last month)")
     out.append("")
+    out.append("NA means the group's follow-up ends before that month, so no value is given; a starred group has "
+               f"fewer than {MIN_SEATS} seats and is not a finding.")
+    out.append("")
     for scope, label in (("model", "by model"), ("office", "by formation office")):
         out.append(f"### {label}, raw engine labels")
         out.append("")
-        out += _md_table(["group", "seats", "exits", "S(12)", "S(24)", f"S({horizon})", "median"],
+        out += _md_table(["group", "seats", "exits", "max follow-up", "S(12)", "S(24)", f"S({horizon})", "median"],
                          km_summary(observations, "raw", scope, horizon) if observations else [])
         out.append("")
         if labels is not None:
             out.append(f"### {label}, validated (supported exits only)")
             out.append("")
-            out += _md_table(["group", "seats", "exits", "S(12)", "S(24)", f"S({horizon})", "median"],
-                             km_summary(observations, "val", scope, horizon))
+            out += _md_table(["group", "seats", "exits", "max follow-up", "S(12)", "S(24)", f"S({horizon})",
+                              "median"], km_summary(observations, "val", scope, horizon))
             out.append("")
     out.append("## Persistence")
     out.append("")
     out.append("Effect sizes with bootstrap intervals over seeds, not a league table. Each group's restricted mean "
-               "months in office, minus the grand mean of the same set.")
+               "months in office, minus the grand mean of the same set. A group whose follow-up ends before the "
+               "horizon gets NA, not a number.")
     out.append("")
     if len(seeds) < 5:
         out.append(f"Warning: only {len(seeds)} seed cluster(s). A bootstrap over so few seeds does not give a usable "
@@ -1278,12 +1330,13 @@ def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau
             continue
         out.append(f"### {variant}")
         out.append("")
-        rows = [[r["scope"], r["group"], r["n"], r["events"], _fmt(r["rmst"]), _fmt(r["diff_vs_all"]),
-                 f"[{_fmt(r['ci_low'])}, {_fmt(r['ci_high'])}]",
+        rows = [[r["scope"], r["group"] + (" *" if r["small_group"] else ""), r["n"], r["events"],
+                 r["max_follow_up"], _fmt(r["rmst"]), _fmt(r["diff_vs_all"]),
+                 "NA" if r["ci_low"] is None else f"[{_fmt(r['ci_low'])}, {_fmt(r['ci_high'])}]",
                  "" if r["interaction"] is None else f"{_fmt(r['interaction'])} [{_fmt(r['interaction_ci_low'])}, "
                                                     f"{_fmt(r['interaction_ci_high'])}]"]
                 for r in table]
-        out += _md_table(["scope", "group", "n", "exits", f"RMST to {tau}", "diff", "95% CI",
+        out += _md_table(["scope", "group", "n", "exits", "max follow-up", f"RMST to {tau}", "diff", "95% CI",
                           "interaction (cell only)"], rows)
         out.append("")
     out.append("## Invalid actions (delegates)")
@@ -1319,9 +1372,13 @@ def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau
     out.append("")
     out.append("## Reclassified exits")
     out.append("")
-    out += _md_table(["group", "labelled", "reclassified", "share", "unlabelled"],
-                     [[r["group"], r["labelled"], r["reclassified"], _fmt(r["share"]), r.get("unlabelled", "")]
-                      for r in recl_rows])
+    if labels is None:
+        out.append("No labels given, so no apparent exit has been reclassified: the audit sample has not been "
+                   "adjudicated. The share is not computed.")
+    else:
+        out += _md_table(["group", "labelled", "reclassified", "share", "unlabelled"],
+                         [[r["group"], r["labelled"], r["reclassified"], _fmt(r["share"]), r.get("unlabelled", "")]
+                          for r in recl_rows])
     out.append("")
     out.append("## Order protocols (paired by seed, rotation and seat)")
     out.append("")

@@ -123,10 +123,12 @@ class Bootstrap(unittest.TestCase):
             for rot in (0, 1):
                 for i, letter in enumerate("AB"):
                     t = 2 + (seed + rot + i) % 5
+                    event = int((seed + rot) % 2 == 0)
+                    # A censored seat is followed to the horizon (6), so every group reaches tau and has an estimate.
                     obs.append({"run": f"s{seed}-r{rot}", "seed": seed, "rotation": rot, "protocol": "p1",
                                 "letter": letter, "model": models[i], "office": offices[i], "complete": True,
-                                "last_month": 6, "raw_time": t, "raw_event": int((seed + rot) % 2 == 0),
-                                "val_time": t, "val_event": 0})
+                                "last_month": 6, "raw_time": t if event else 6, "raw_event": event,
+                                "val_time": t if event else 6, "val_event": 0})
         return obs
 
     def test_the_same_seed_gives_the_same_intervals(self):
@@ -143,6 +145,24 @@ class Bootstrap(unittest.TestCase):
         first = sa.persistence_table(obs, tau=6, reps=60, seed=7, variant="raw")
         other = sa.persistence_table(obs, tau=6, reps=60, seed=8, variant="raw")
         self.assertNotEqual(first, other)
+
+    def test_a_group_whose_follow_up_ends_before_tau_gets_no_estimate(self):
+        # m2's seats are all exits by month 3 and nobody is followed to 6, so its restricted mean is not estimable.
+        obs = []
+        for seed in (31, 32, 33):
+            obs.append({"run": f"a{seed}", "seed": seed, "rotation": 0, "protocol": "p1", "letter": "A",
+                        "model": "m1", "office": "head", "complete": True, "last_month": 6, "raw_time": 6,
+                        "raw_event": 0, "val_time": 6, "val_event": 0})
+            obs.append({"run": f"b{seed}", "seed": seed, "rotation": 0, "protocol": "p1", "letter": "B",
+                        "model": "m2", "office": "army", "complete": True, "last_month": 3, "raw_time": 3,
+                        "raw_event": 1, "val_time": 3, "val_event": 1})
+        rows = {r["group"]: r for r in sa.persistence_table(obs, tau=6, reps=10, seed=1, variant="raw")
+                if r["scope"] == "model"}
+        self.assertFalse(rows["m2"]["estimable"])
+        self.assertIsNone(rows["m2"]["rmst"])
+        self.assertIsNone(rows["m2"]["diff_vs_all"])
+        self.assertTrue(rows["m1"]["estimable"])
+        self.assertAlmostEqual(rows["m1"]["rmst"], 6.0)
 
     def test_protocol_differences_are_paired_and_measured_from_seeded_shuffle(self):
         base = []
@@ -222,7 +242,7 @@ class LabelsAndPlan(unittest.TestCase):
     def write_csv(self, rows, name="sample.csv"):
         path = os.path.join(self.tmp.name, name)
         fields = ["stratum", "event_id", "run", "month", "month_label", "event_type", "is_exit", "exit_class",
-                  "member", "annotator_1", "annotator_2", "adjudicated", "notes"]
+                  "member", "motion_id", "annotator_1", "annotator_2", "adjudicated", "notes"]
         with open(path, "w", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fields)
             writer.writeheader()
@@ -247,6 +267,31 @@ class LabelsAndPlan(unittest.TestCase):
         self.assertEqual(labels.lookup("r1", 5, "member", "C", "resigned"), "ambiguous")
         self.assertIsNone(labels.lookup("r1", 6, "member", "D", "resigned"))     # blank: unlabelled
         self.assertIsNone(labels.lookup("r1", 9, "member", "E", "resigned"))     # no row at all
+
+    def test_motion_rows_are_counted_and_do_not_collide(self):
+        # The audit's sample holds sampled motion rows too. Two refused motions of one member in one month share a key
+        # there, so they are counted and not indexed: only exits are looked up.
+        path = self.write_csv([
+            {"run": "r1", "month": "2", "event_type": "motion_refused", "is_exit": "False",
+             "exit_class": "motion_refused", "member": "B", "adjudicated": "ambiguous"},
+            {"run": "r1", "month": "2", "event_type": "motion_refused", "is_exit": "False",
+             "exit_class": "motion_refused", "member": "B", "adjudicated": ""},
+        ], name="motions.csv")
+        labels = sa.load_labels(path)
+        self.assertEqual(labels.counts["rows"], 2)
+        self.assertEqual(labels.counts["non_exit_rows"], 2)
+        self.assertEqual(labels.exit_rows, [])
+
+    def test_office_rows_are_told_apart_by_motion_id(self):
+        path = self.write_csv([
+            {"run": "r1", "month": "2", "event_type": "vacate_office", "is_exit": "True", "exit_class": "office",
+             "member": "B", "motion_id": "M4", "adjudicated": "substantively_supported"},
+            {"run": "r1", "month": "2", "event_type": "vacate_office", "is_exit": "True", "exit_class": "office",
+             "member": "B", "motion_id": "M5", "adjudicated": "ambiguous"},
+        ], name="offices.csv")
+        labels = sa.load_labels(path)
+        self.assertEqual(labels.lookup("r1", 2, "office", "B", "vacate_office", "M4"), "supported")
+        self.assertEqual(labels.lookup("r1", 2, "office", "B", "vacate_office", "M5"), "ambiguous")
 
     def test_a_duplicate_key_or_an_unknown_label_is_refused(self):
         duplicate = self.write_csv([

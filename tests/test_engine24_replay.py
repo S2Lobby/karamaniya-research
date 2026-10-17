@@ -162,6 +162,19 @@ class AChangedAnswerIsFoundInItsMonth(unittest.TestCase):
         self.assertEqual(result["divergence"]["month"], 1, result["message"])
         self.assertIn("Month 2", result["message"])
 
+    def test_a_call_the_replay_does_not_make_is_found_in_its_month(self):
+        # The run logs a call the replay never asks for. No month record shows it, so only the comparison of the
+        # calls made can find it.
+        copy = copy_run(self.original, self.tmp, "extra")
+        records = read_log(copy)
+        records.append({"type": "call", "month": 1, "phase": "decision", "member": "Z", "raw": "{}",
+                        "served_model": "x"})
+        write_log(copy, records)
+        result = replay_run.replay(copy)
+        self.assertFalse(result["identical"])
+        self.assertEqual(result["divergence"]["where"], "calls", result["message"])
+        self.assertEqual(result["divergence"]["month"], 1, result["message"])
+
     def test_a_missing_answer_is_found_in_its_month(self):
         copy = copy_run(self.original, self.tmp, "missing")
         records = read_log(copy)

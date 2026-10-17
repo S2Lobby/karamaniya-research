@@ -4,10 +4,10 @@
 
 The run's own config and seed are used again. Every seat and both foreign cabinets are answered from the run's
 log.jsonl by karamaniya/backends/replay.py, so no model is called. The replay is written to a temporary folder, and
-its month records and its final checkpoint are compared with the original's. The first divergence is printed, or
-"identical". A second line counts the prompts the replay sends differently from the run (information only: a run
-recorded on an older prompt version differs from the start of the first month whose prompt changed). Exit status 0
-when identical, 1 when not, 2 when the run cannot be read.
+its month records, the calls it made and its final checkpoint are compared with the original's. The first divergence
+is printed, or "identical". A second line counts the prompts the replay sends differently from the run (information
+only: a run recorded on an older prompt version differs from the start of the first month whose prompt changed). Exit
+status 0 when identical, 1 when not, 2 when the run cannot be read.
 
 Not compared, because they are not the engine's decisions:
   - latency_s (timing), call_id (numbered in the order the threads finish), the run id and log offsets (the checkpoint
@@ -50,7 +50,8 @@ def _json(path: str):
 
 
 def replay_config(config: dict, log_path: str) -> dict:
-    """The run's config with every seat and the foreign cabinets answered by replay, and no judges, report or baseline."""
+    """The run's config with every seat and the foreign cabinets answered by replay, with no judges, report or
+    baseline."""
     def as_replay(seat: dict) -> dict:
         return {**seat, "replay_of": seat.get("provider", ""), "provider": "replay", "replay_log": log_path}
 
@@ -162,7 +163,8 @@ def replay(run_dir: str, months: int | None = None, keep: bool = False) -> dict:
         replayed_log = _jsonl(os.path.join(replay_dir, "log.jsonl")) if os.path.exists(replay_dir) else []
         replayed_months = [r for r in replayed_log if r.get("type") == "month"]
         base.update(replayed_months=len(replayed_months))
-        verdict = _verdict(original_months, replayed_months, limit, error, replay_dir, checkpoint, completed)
+        verdict = _verdict(original_months, replayed_months, limit, error, _call_difference(run_dir, replay_dir, limit),
+                           replay_dir, checkpoint, completed)
         result = {**base, **verdict, "prompts": _prompts(run_dir, replay_dir, limit)}
         if keep:
             result["temp_dir"] = tmp
@@ -196,7 +198,8 @@ def _prompts(run_dir: str, replay_dir: str, limit: int) -> dict:
     differing = [k for k in keys if original.get(k) != replayed.get(k)]
     summary = {"total": len(original), "differ": len(differing), "first": None, "message": ""}
     if not differing:
-        summary["message"] = f"prompts: all {len(original)} of the run's prompts for these months are sent again unchanged."
+        summary["message"] = (f"prompts: all {len(original)} of the run's prompts for these months are sent again "
+                              "unchanged.")
         return summary
     month, phase, who, n = differing[0]
     summary["first"] = {"month": month, "phase": phase, "member": who, "call": n}
@@ -207,7 +210,34 @@ def _prompts(run_dir: str, replay_dir: str, limit: int) -> dict:
     return summary
 
 
-def _verdict(original_months, replayed_months, limit, error, replay_dir, checkpoint, completed) -> dict:
+def _call_difference(run_dir: str, replay_dir: str, limit: int):
+    """The first (month, phase, member) the replay called a different number of times than the run did, as
+    (key, the run's count, the replay's count), or None. It catches a call the engine made in a month that has no
+    month record of its own, such as the survey or the founding."""
+    def counts(folder: str) -> collections.Counter:
+        c = collections.Counter()
+        path = os.path.join(folder, "log.jsonl")
+        if not os.path.exists(path):
+            return c
+        for r in _jsonl(path):
+            month = r.get("month")
+            if r.get("type") not in ANSWER_TYPES or month is None or month >= limit:
+                continue
+            if r["type"] == "call":
+                key = (month, r.get("phase"), r.get("member"))
+            else:
+                key = (month, "foreign", r.get("actor"))
+            c[key] += 1
+        return c
+
+    original, replayed = counts(run_dir), counts(replay_dir)
+    for key in sorted(set(original) | set(replayed), key=lambda k: (k[0], str(k[1]), str(k[2]))):
+        if original.get(key, 0) != replayed.get(key, 0):
+            return key, original.get(key, 0), replayed.get(key, 0)
+    return None
+
+
+def _verdict(original_months, replayed_months, limit, error, calls, replay_dir, checkpoint, completed) -> dict:
     # 1. Month records, in order: the first month whose record differs is the divergence.
     for rec, orig in zip(replayed_months, original_months):
         found = first_difference(orig, rec)
@@ -228,14 +258,22 @@ def _verdict(original_months, replayed_months, limit, error, replay_dir, checkpo
         label = month_label(at)
         message = (f"first divergence in {label}: the replay raised {type(error).__name__}: {str(error)[:300]}")
         return {"identical": False, "divergence": _diverged("replay", message, at), "message": message}
-    # 3. The replay ran a different number of months from the run.
+    # 3. The replay asked a different set of questions: a call the run made and the replay did not, or the reverse.
+    if calls is not None:
+        (month, phase, who), run_count, replay_count = calls
+        what = "the foreign cabinet " + str(who) if phase == "foreign" else f"{phase} for member {who}"
+        label = month_label(int(month))
+        message = (f"first divergence in {label}: the replay made a different call: {what} is called {run_count} "
+                   f"time(s) in the run and {replay_count} in the replay.")
+        return {"identical": False, "divergence": _diverged("calls", message, month), "message": message}
+    # 4. The replay ran a different number of months from the run.
     if len(replayed_months) != limit:
         at = min(len(replayed_months), limit)
         label = month_label(at)
         message = (f"first divergence in {label}: the replay has {len(replayed_months)} month records, the run "
                    f"has {limit} to compare.")
         return {"identical": False, "divergence": _diverged("replay", message, at), "message": message}
-    # 4. The final checkpoint, when the replay covers the whole run.
+    # 5. The final checkpoint, when the replay covers the whole run.
     checkpoint_compared = limit == completed == len(original_months)
     if checkpoint_compared:
         replay_checkpoint = _json(os.path.join(replay_dir, "checkpoint.json"))
@@ -243,7 +281,8 @@ def _verdict(original_months, replayed_months, limit, error, replay_dir, checkpo
             found = first_difference(checkpoint[part], replay_checkpoint[part], part)
             if found:
                 path, a, b = found
-                message = f"first divergence in the final checkpoint: {path}: the run has {_show(a)}, the replay has {_show(b)}."
+                message = (f"first divergence in the final checkpoint: {path}: the run has {_show(a)}, the replay "
+                           f"has {_show(b)}.")
                 return {"identical": False, "checkpoint_compared": True,
                         "divergence": _diverged("checkpoint", message, None, path, a, b), "message": message}
     note = ("" if checkpoint_compared else

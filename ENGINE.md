@@ -300,6 +300,64 @@ simulated.
   leaves the government even if the government stays in power. Runs made before engine 12 held the
   election in Month 18, without personal seats. Removed members take no further part.
 
+## Open actions and policies (engine 30)
+
+The study arm `menu` is engine 29 exactly. Two further arms add instruments, and every effect they can have is
+bounded by a measured registry.
+
+- **The effect bus (`karamaniya/effects.py`).** Fifteen channels (approval, grievance, fear, independence, repression,
+  income, hunger, damage, logistics, administrative capacity, confidence, corruption, relations, League trust and
+  morale), each with a per-entry and a per-month cap measured from the engine's own levers, target validation
+  (`*`, a region, `ident:`, `class:` or an office/force as the channel requires), a duration and decay. Society
+  channels go through `public_mood`; income and hunger reach `society.update`. A default run schedules nothing and
+  its history rows are engine 29's. The caps table and the scripted runs that measured it are in
+  `docs/OPEN_ACTIONS.md`.
+- **Policies (`harness = "language"` or `"open"`).** A `policy` motion carries one to four items. `set_lever` holds a
+  setting at a value through the programme directive path and restores it when the schedule or condition ends,
+  recording a later decision that superseded the hold. `transfer` pays a group monthly, reaching its income and
+  hunger and its approval and grievance. `public_works` spends in one region and restores freight and local income
+  after a month and repairs damage after two. `commission` is a standing body with a mandate, scaled by its budget
+  and the administration's capacity. Each item may carry a condition the conditional-vote evaluator tests and a
+  schedule (`start_in` 0-6, `months` 1-24), and is funded from reserves above a floor, domestic borrowing, or a cut
+  to a spending setting. The month row carries `policies`.
+- **Open acts and the referee (`harness = "open"`).** A delegate may table one `open_act` a month: free words (at most
+  60), an office, an optional funded budget. A fixed referee model, configured as `referee_backend` and required
+  under this arm, rules it once (with one re-ask) into a category, a cost, a success level, public/quiet and capped
+  effects; an invalid ruling twice fails the act. Every attempt is logged as phase `referee`, member `referee`, so a
+  recorded run replays from its log. Success is drawn once on its own stream (`high` 0.9, `medium` 0.6, `low` 0.3):
+  a failed draw pays the cost and applies nothing. `referee_effects = "zeroed"` asks, draws and charges but withholds
+  the effects, as an ablation. The cabinets can take the same kind of act (relations, confidence, and
+  approval/grievance/fear at half the domestic cap), charged to their own budget, public or covert, with a monthly
+  exposure roll. The next month's briefing reports public acts and marks quiet ones; the design, the full referee
+  prompt and the caps are in `docs/OPEN_ACTIONS.md` and `docs/REFEREE_CODEBOOK.md`.
+
+## The knockout arm (engine 30)
+
+`knockout = {office, month}` removes the holder of one office (head, treasury, interior, army or navy) at the start of
+the named month, with an in-world public event, and the office is then filled as any vacancy is. Nothing tells the
+delegates it is an experiment. The paired design is a twin run with the same seed, models and arms and no knockout:
+the twins are identical in every history row before the month. `tools/knockout_report.py` compares a pair: the months
+until the office is filled, motions passed and executed in the three months before against the three after, approval,
+unrest and the food ratio by difference in differences, coups and defiance after the removal, and the recovery time.
+
+## Civil war (engine 30)
+
+`civil_war = "on"` adds an internal war; off by default, and an off run never reads a war state. It starts from a failed
+coup whose plotters keep a loyal force, or from a handover coup that splits the plotters' own command, never in
+Month 1. The government and the rebels are drawn from the council's own coup stances; each armed office's force is
+split by the engine's `unit_response`, and territory is the regions held, plus a contested set drawn from the army's
+deployment. Rebels keep their seats and are excluded from the government's sessions only. Fighting is a force-ratio
+model with quality, supply, terrain and forts, soldier and civilian losses, damage, refugees and defections, on its
+own draw stream. Each month the rebel leader gets one `faction` call: a stance per front (attack, defend, withdraw), a
+ceasefire or settlement offer from the closed list (amnesty, power sharing, regional autonomy,
+integration/disarmament, and an election date never before Month 36), a bounded statement, messages and an appeal. An
+attack breaks a ceasefire and is recorded; an offer gets one same-month government reply. The war ends by victory (the
+capital and the other side below 15% of its pre-war strength; the run continues, and a rebel victory installs the
+rebel leaders), by settlement (the run continues), by partition (six stalemated months under a ceasefire; the run
+ends) or by collapse (no faction holds the capital). The month row carries the fighting, orders, offers, breaches,
+ceasefire and outcome; `tools/civil_war_report.py` reports a run and `tools/civil_war_sweep.py` runs the scripted
+arms. The design, constants, prompts and calibration are in `docs/CIVIL_WAR.md`.
+
 ## The world
 
 - **Money:** all three countries start in the imperial crown, so Veleria's printing pushes inflation onto

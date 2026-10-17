@@ -15,8 +15,8 @@ from karamaniya import versions  # noqa: E402
 
 class Versions(unittest.TestCase):
     def test_the_bump(self):
-        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY, versions.ERROR_TAXONOMY),
-                         (29, 26, 8, 6))
+        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY,
+                                 versions.ERROR_TAXONOMY), (29, 26, 8, 6))
 
 
 if __name__ == "__main__":

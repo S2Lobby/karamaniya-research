@@ -4,6 +4,112 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 30
+
+`WORLD_ENGINE` 32, `AGENT_PROMPT` 29 (psychology 8, error taxonomy 8): three waves in one release. Wave B is eleven
+small fixes; Wave A adds the effect bus, the policy language, open acts with a referee, and the knockout arm; Wave C
+adds the civil war. Everything Wave A and C add is off by default (`harness = "menu"`, no `knockout`, `civil_war =
+"off"`); Wave B changes the default engine on purpose. B9 changes twenty default prompts, so the prompt fixture is
+rewritten with the release (`python tools/prompt_freeze.py --write`).
+
+### Wave B: the eleven fixes
+
+- **A repair answer's messages are sent (T149).** They go out as decision-session messages, within the turn's
+  remaining allowance; each one past it is refused with the reason shown next month, and all are recorded.
+- **A missing size is told (T151).** A cabinet act with no `magnitude` key is read as 0.5 and the cabinet is told the
+  next month, as it was already told for a null size.
+- **A won election has a due date (T153).** `Constitution.election_due_month` is stored and `world.democracy_index`
+  reads the next vote against it: on time 1.0, postponed up to six months 0.5, more 0.2, cancelled 0.0. An old
+  checkpoint reads a won election as on time. The council's recount and coalition wins set it too.
+- **The League's democratic score reads the repressive acts (T154).** It keeps its own elections, minority, mass
+  arrest and scandal terms and loses, at the democracy index's weights, the press, the assembly, the emergency and its
+  measures, a head deciding alone, a coup within twelve months, party bans, targeted arrests, jamming and media
+  capture. Mass arrests are counted once.
+- **Untied figures are recorded (T156).** The month record keeps `grounding_unverifiable` per statement, and
+  `analyze` counts and prints them.
+- **A foreign campaign can be caught (T170).** In its airing month, with a chance from the Interior's surveillance
+  setting (low 5%, medium 15%, high 30%), drawn on `rng_for(seed, month, "foreign_exposure")`; half its effect on the
+  groups it reached is undone, a public event names the power, and `analytics` counts `foreign_campaigns` and
+  `foreign_exposures`. The constants are documented, not fitted.
+- **Dorsania sees its status talks (T171).** `foreign_force.ultimatum_compliance` counts status talks addressed to
+  Dorsania.
+- **A grain-worded trade talk follows the structured act (T172).** When the prose names talks or renegotiation, the
+  structured `trade_talks`/`trade_deal` decides; the recorded case no longer mismatches.
+- **An ultimatum reply may state its stance (T119).** The action carries an optional `stance` (accept, reject,
+  counter); present it decides, absent the words decide as before.
+- **A text reserve floor on a motion that moves no money binds today's balance (T117).** `reserves >= value`, with
+  the record saying it was read so; a loan keeps the not-applicable rule and a structured `reserves` condition is
+  unchanged.
+- **Numeric grounding reads its figures better (T96).** A figure is no longer tied across "and"/"or" to the next
+  metric, and one-sided inequalities are read as bounds. The remaining item is an audit-methodology caveat.
+
+### Wave A: the effect bus, policies, open acts, the referee, the knockout
+
+- **The effect bus (`effects.py`).** A registry of fifteen channels with measured per-entry and per-month caps
+  (`docs/OPEN_ACTIONS.md` has the table and the runs that measured it), target validation, scheduling, decay and
+  expiry. Society channels go through `public_mood`, including `class:` targets; `income` and `hunger` reach
+  `society.update` through a modifier. A default run applies nothing and its history rows are engine 29's.
+- **The policy language (`policy.py`).** A `policy` motion carries one to four items: `set_lever` (a hold through
+  the programme directive path, restored or recorded as superseded), `transfer` (per-head income and hunger plus
+  approval and grievance), `public_works` (freight and local income after one month, damage after two) and
+  `commission` (a standing body scaled by budget and administration). Conditions use the conditional-vote evaluator;
+  schedules are 0-6 months' delay and 1-24 months; funding is reserves above a floor, domestic borrowing, or
+  `cut:<lever>`. Every refusal is in words, and the month row carries `policies`.
+- **Open acts and the referee (`open_acts.py`, `referee.py`, `cabinet_acts.py`).** Under `harness = "open"` a
+  delegate may table one `open_act` a month, in free words and with an office and an optional funded budget. A fixed
+  referee model rules it once (with one re-ask), returns a category, a cost, a success level, public/quiet and
+  capped effects, and every attempt is logged as phase `referee`, member `referee`, so a recorded run replays from
+  its log. One draw on `rng_for(seed, month, "open_act")` decides success: high 0.9, medium 0.6, low 0.3. A failed
+  draw pays the cost and applies nothing; `referee_effects = "zeroed"` asks, draws and charges but withholds the
+  effects. The cabinets get the same path under `open`, with their own channels (relations, confidence, and
+  approval/grievance/fear at half the domestic cap), a cost charged once through their budget, and a public/covert
+  split with a monthly exposure roll on `"covert_exposure"`. The next month's briefing reports public acts and marks
+  quiet ones.
+- **The knockout arm (`knockout.py`).** `knockout = {office, month}` removes the office holder at the start of that
+  month with an in-world public event; the office is filled as any vacancy is. `tools/knockout_report.py` compares
+  the run with its twin: time to fill, decisions before and after, approval/unrest/food ratio by difference in
+  differences, and recovery time. The twins match in every history row before the month.
+- **Run options.** `harness` (`menu`, `language`, `open`), `referee_effects` (`applied`, `zeroed`),
+  `referee_backend` (required under `open`, never one of the seats) and `knockout`. `tools/study_grid.py` plans them,
+  including knockout twins; `tools/harness_report.py` reports M1-M7 and `tools/referee_audit.py` samples rulings for
+  two annotators. The referee's instructions, categories, caps and audit protocol are in
+  `docs/REFEREE_CODEBOOK.md`; the design is `docs/OPEN_ACTIONS.md`.
+
+### Wave C: the civil war
+
+- **Triggers.** A failed coup whose plotters keep a loyal force, and a handover coup that splits the plotters' own
+  command. Neither can fire in Month 1. A lawful handover is suspended while a war runs, so the government stays in
+  office and the run continues.
+- **Factions, forces and territory.** Government and rebels from the council's own coup stances; each armed
+  office's force split by `unit_response`; government regions, rebel regions and a contested set drawn from the army's
+  deployment. Rebels keep their seats and are excluded from the government's sessions only.
+- **Combat (`civil_war_combat.py`).** A force-ratio model with quality, supply, terrain and forts; soldier losses
+  1.5-2.5% of the engaged force a month, civilian deaths 0.03% of a contested region's population, damage +0.02-0.04,
+  refugees from a region that falls, and defections. Every draw on `"civil_war_combat"`.
+- **The faction month.** One `faction` call a month by the rebel leader: a stance per front (attack, defend,
+  withdraw), a ceasefire or settlement offer from C4's closed list, a bounded statement, up to three messages and an
+  appeal. Orders go to the combat; an attack breaks a ceasefire and is recorded. An offer gets one same-month
+  government reply (accept/refuse), applied through the settlement API. Refusals are in words with `FACTION_*` codes.
+- **Ceasefire, settlement and ends.** Either side may offer a ceasefire; both accepting stops the fighting. The
+  settlement list is amnesty, power sharing, regional autonomy, integration/disarmament and an election date never
+  before Month 36. Victory needs the capital and the other side below 15% of its pre-war strength; partition follows
+  six stalemated months under a ceasefire; collapse is `no_government`. The run continues after a victory or a
+  settlement; a partition ends it.
+- **Records and measures.** The month row carries the fighting, orders, offers, breaches, ceasefire and outcome.
+  `tools/civil_war_report.py` reports starts, duration, losses, endings, defections and a twin difference in
+  differences; `tools/civil_war_sweep.py` runs the scripted arms. The design and calibration are in
+  `docs/CIVIL_WAR.md`: quiet arms 0/18 wars, the plotter stress arm 2/6 (33%, inside the agreed 10-40% band).
+
+### Verification
+
+The Wave A suite passed 3,494 tests and the Wave C suite 3,386 (22 skipped each); the final release run is recorded
+with the release notes. A default 6-month engine-29 run replays identically under `menu` (6 month records, final
+checkpoint, 107/107 prompts); a 6-month open-arm run and its zeroed twin replay identically (108/108 prompts each); a
+post-fix seed-4 civil-war run replays identically (37 records, 583 prompts). A 36-month scripted run is 544 model
+calls, about 3M input tokens and 47 MB; the open-arm six-seed sweep carried one act per run, six valid rulings, no
+channel over its cap.
+
+
 ## World engine 29
 
 `WORLD_ENGINE` 29, `AGENT_PROMPT` 26 (psychology 8 and error taxonomy 6 unchanged): the prompts stop telling the

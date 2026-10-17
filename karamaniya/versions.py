@@ -128,7 +128,17 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # scored (300 of the 1,452 delegate prompts of the recorded unobserved runs said so), and outside the simulation framing
 # the opening questionnaire is the Cabinet Office's contingency planning. A run that has ended asks each delegate one
 # closing question. A default scripted run's prompts change, and the fixture is rewritten.
-AGENT_PROMPT = 26
+# 27 goes with world engine 30 (Wave B, backlog T119 and T151). An ultimatum reply's action gains an optional stance
+# (accept, reject or counter): when it is given it decides, when it is left out the words decide as before, and the
+# opening instructions say to give it in the action. The answer-format example carries the field in every session
+# prompt. A cabinet's act with no size is read as 0.5 and the cabinet is told so next month (a dynamic note, not a
+# template). A default scripted run's prompts change, and the fixture is rewritten on purpose.
+# 28 goes with world engine 31 (Wave A). The `policy` paragraph appears only under the language arm and the `open_act`
+# paragraphs only under the open arm; a menu run's prompts are unchanged. The cabinets' one-sentence open-act text is
+# added only under open. The next month's briefing gains an OPEN ACTS CARRIED OUT section only when an act ran.
+# 29 goes with world engine 32 (Wave C). The rebel leader's faction prompt and the government's reply prompt appear
+# only while a civil war runs; the default prompts are unchanged.
+AGENT_PROMPT = 29
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose
@@ -339,7 +349,19 @@ PSYCHOLOGY = 8
 # be (runner._debrief, debrief.json; `debrief = false` turns it off). It is asked after the last month, never for a
 # paused or stopped run, and changes nothing in the run; no world rule changes. It goes with the prompt release above
 # and with tools/awareness_scan.py, which counts how often delegates call the situation a test or a simulation.
-WORLD_ENGINE = 29
+# 30 (Wave B): the eleven small fixes (T149, T151, T153, T154, T156, T170, T171, T172, T119, T117, T96) change what
+# the engine does on the default arm: a repair answer's messages are sent within its remaining allowance and refused
+# past it; a won election has a due date the democracy index reads; the League's democratic score loses the repressive
+# acts at the index's weights; a foreign campaign can be caught on its own exposure stream; a trade talk worded about
+# grain follows the structured act; an ultimatum reply may state its stance; a text reserve floor on a non-payment,
+# non-loan motion binds today's balance; numeric grounding no longer ties a figure across a coordination or reads a
+# one-sided inequality as a level. A scripted engine-29 run's behaviour changes on purpose.
+# 31 (Wave A): the effect bus, the policy language, delegates' and cabinets' open acts with the referee, and the
+# knockout arm. All are off under the menu arm (the open-act paragraphs and the knockout option appear only in their
+# arms), so a default run keeps engine 29's behaviour; a scripted engine-29 run replays identically under menu.
+# 32 (Wave C): the civil war — its triggers, factions, territory, combat, faction month, negotiation and ends. It is
+# off by default; an off run never reads a war state and a menu/off run is unchanged.
+WORLD_ENGINE = 32
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1
@@ -350,7 +372,11 @@ PROVENANCE = 1
 # were recorded as UNREGISTERED_ERROR_CODE.
 # 6 (engine 27) registers the ten media_campaign refusals (MEDIA_*), raised by validate_motion_detail and recorded
 # unregistered until now.
-ERROR_TAXONOMY = 6
+# 7 (engine 31, Wave A) registers the thirty codes the effect bus, the policy reader, the open-act reader and the
+# referee raise: EFFECT_* (8), POLICY_* (6), OPEN_ACT_* (9, including the cabinets' FORBIDDEN and NOT_APPLIED) and
+# REFEREE_* (7).
+# 8 (engine 32, Wave C) registers the eight FACTION_* codes the rebel leader's answer raises.
+ERROR_TAXONOMY = 8
 
 
 def stamp(agent_architecture: int = AGENT_ARCHITECTURE) -> dict:

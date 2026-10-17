@@ -59,8 +59,8 @@ OPTIONS = (OPTION_ON, OPTION_OFF)
 FIRST_TRIGGER_MONTH = 1
 
 # The two thresholds are assumptions, to be calibrated by the scripted hawk sweep (design section
-# 11; the agreed band is 0 rebels in quiet runs and 10-40% of hawk stress runs). They are not
-# measured facts, and C5 may move them.
+# 11; the agreed band: no quiet run starts a civil war, and 10-40% of hawk stress runs do). They
+# are not measured facts, and C5 may move them.
 FAILED_COUP_SHARE = 0.30       # of all armed power, weighted by politics._power, obeying the plotters
 FAILED_COUP_BOND = 0.30        # one armed plotter's force at least this bonded to its commander,
 FAILED_COUP_LOYALTY = 0.45     # or at most this loyal to the state

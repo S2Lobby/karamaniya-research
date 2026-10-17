@@ -204,6 +204,18 @@ class RefusalExplanationsAreWhole(unittest.TestCase):
         self.assertIn(self.LONG, text)
         self.assertNotIn("[cut]", text)
 
+    def test_an_unknown_lever_lists_every_setting_in_the_note(self):
+        # The engine's own explanation for a lever with no close match lists the settings the council can direct, about
+        # 580 characters. The cut at 300 ended the note inside that list ("... navy_mission, o") in run 20261008-130316-seed1
+        # (Month 5) and in tinytest-mild-sim-r0-s1001 (Month 1).
+        from karamaniya import politics
+        w = new_world(1, 12, member_ids=list("ABCDE"))
+        motion = {"type": "set_policy", "subject": "zq_nonexistent_lever", "value": "high", "text": "Raise it."}
+        detail = politics.validate_motion_detail(w, dict(motion))
+        self.assertGreater(len(detail["explanation"]), 300)
+        text = _rejected_last_month({"rejected_motions": [{"member": "A", "motion": motion, **detail}]}, "A")[0].text
+        self.assertIn(", ".join(sorted(politics.LEVER_OFFICE)), text)
+
     def test_every_refusal_of_a_delegate_is_listed(self):
         refusals = [{"member": "A", "motion": {"type": "program", "subject": f"s{i}", "value": ""},
                      "reason_code": "EMPTY_MOTION_TEXT", "explanation": f"refusal number {i}"} for i in range(6)]

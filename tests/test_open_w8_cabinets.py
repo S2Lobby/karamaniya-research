@@ -219,6 +219,14 @@ class ReadingTests(unittest.TestCase):
         self.assertTrue(any("magnitude" in problem for problem in problems))
         self.assertEqual(out["act_notes"][0]["code"], "UNKNOWN_FIELD")
 
+    def test_a_second_open_act_in_one_answer_is_not_read(self):
+        out, problems = read("veleria", open_act(text="Fund newspapers in the Highlands."),
+                             open_act(text="Open a clinic in Kessel Valley.", target="kessel"))
+        self.assertEqual(len(out["actions"]), 1)
+        self.assertEqual(out["actions"][0]["text"], "Fund newspapers in the Highlands.")
+        self.assertTrue(any("one open act a month" in problem for problem in problems), problems)
+        self.assertEqual(out["act_notes"][-1]["code"], "OPEN_ACT_LIMIT")
+
     def test_the_open_act_counts_within_the_four_act_cap(self):
         acts = [{"type": "offer_talks", "magnitude": .5},
                 {"type": "public_statement", "magnitude": .5},
@@ -587,22 +595,18 @@ class VisibilityTests(unittest.TestCase):
 
 
 class OrderTests(unittest.TestCase):
-    def test_cabinets_are_processed_veleria_then_dorsania_then_act_order(self):
+    def test_cabinets_are_processed_veleria_then_dorsania(self):
         w = world()
         w.month = month_where(w, True)
-        out_v, _ = read("veleria", open_act(text="Fund newspapers in the Highlands."),
-                        open_act(text="Open a clinic in Kessel Valley.", target="kessel"))
+        out_v, _ = read("veleria", open_act(text="Fund newspapers in the Highlands."))
         out_d, _ = read("dorsania", open_act(text="Fund a school in Dorran March.", target="dorran"))
         backend = StubBackend([ruling(public=False)])
         entries = process(w, {"dorsania": out_d, "veleria": out_v},
                           referee_obj=referee.Referee(backend=backend))
-        self.assertEqual([e["actor"] for e in entries], ["veleria", "veleria", "dorsania"])
-        self.assertEqual([e["text"] for e in entries],
-                         ["Fund newspapers in the Highlands.", "Open a clinic in Kessel Valley.",
-                          "Fund a school in Dorran March."])
-        # The shared success stream: the three rulings took successive draws.
+        self.assertEqual([e["actor"] for e in entries], ["veleria", "dorsania"])
+        # The shared success stream: the two rulings took successive draws.
         self.assertEqual([e["outcome"]["roll"] for e in entries],
-                         [referee.draw_success(w, "medium", i)[1] for i in range(3)])
+                         [referee.draw_success(w, "medium", i)[1] for i in range(2)])
 
 
 class DefaultsTests(unittest.TestCase):

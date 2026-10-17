@@ -133,7 +133,7 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "OPEN_ACT_UNKNOWN_OFFICE": ("motion", "info", "An open act names no office, or one that does not exist."),
     "OPEN_ACT_BAD_BUDGET": ("motion", "info", "An open act's budget is not a positive amount and 1 to 24 months."),
     "OPEN_ACT_UNFUNDED": ("motion", "info", "An open act with a budget has no valid funding."),
-    "OPEN_ACT_LIMIT": ("motion", "info", "A delegate tabled more than one open act in a month."),
+    "OPEN_ACT_LIMIT": ("motion", "info", "A delegate tabled, or a cabinet put, more than one open act in a month."),
     "OPEN_ACT_BAD_TARGET": ("foreign", "info", "A cabinet's open act names a target outside Karamaniya, its regions and its own country."),
     # Wave A W8 (plan 4.4): the neighbours' open acts and their visibility.
     "OPEN_ACT_FORBIDDEN": ("foreign", "info", "A cabinet's open act is about war, an election, the constitution, a change of government or another subject its own acts own."),

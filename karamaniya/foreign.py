@@ -2066,7 +2066,8 @@ def normalize_cabinet_output(actor_id: str, data, harness: str = "menu") -> tupl
     sent at all (_READING).
 
     `harness` is the run's arm (plan 4.6). Only under "open" does the act list accept the `open_act` kind (W2's
-    schema offers it there and only there); under menu and language every engine-29 answer is read as it was."""
+    schema offers it there and only there), and at most one open act a month is read; under menu and language
+    every engine-29 answer is read as it was."""
     from .actions import validate_harness
     harness = validate_harness(harness)
     if not isinstance(data, dict):
@@ -2096,6 +2097,7 @@ def normalize_cabinet_output(actor_id: str, data, harness: str = "menu") -> tupl
         # set, so an `open_act` is refused exactly as engine 29 refused every unsupported action.
         allowed.add("open_act")
     actions, act_notes = [], []
+    open_acts_read = 0
     raw_actions = data.get("actions") or []
     if not isinstance(raw_actions, list):
         problems.append("actions must be a list")
@@ -2120,6 +2122,15 @@ def normalize_cabinet_output(actor_id: str, data, harness: str = "menu") -> tupl
                 note["code"] = code
             act_notes.append(note)
             continue
+        if act.get("type") == "open_act":
+            # Plan 4.4: one open act a month. The first valid one in the answer counts; a second is not read,
+            # and the cabinet is told in words next month.
+            open_acts_read += 1
+            if open_acts_read > 1:
+                reason = "a cabinet may carry out one open act a month; this one was not read"
+                problems.append(reason)
+                act_notes.append({"type": "open_act", "reason": reason, "code": "OPEN_ACT_LIMIT"})
+                continue
         actions.append(act)
         told = [reason for reason in reasons if not _READING.match(reason)]
         if told:

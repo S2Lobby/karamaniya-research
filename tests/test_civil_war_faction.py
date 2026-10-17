@@ -635,7 +635,7 @@ class TheRunReplays(unittest.TestCase):
             run["civil_war"] = "on"
         return {"run": run, "seats": cfg["seats"]}
 
-    def _replay(self, name: str, cfg: dict, war_at: int | None):
+    def _replay(self, name: str, cfg: dict, war_at: int | None, months: int = 6):
         from karamaniya import runner
         from tools import replay_run
         original = Council._run_month_v2
@@ -646,7 +646,8 @@ class TheRunReplays(unittest.TestCase):
             return original(council)
 
         with mock.patch.object(Council, "_run_month_v2", patched):
-            runner.new_run(cfg, runs_dir=self.tmp, name=name, months=3, seed=1, quiet=True, check=False)
+            runner.new_run(cfg, runs_dir=self.tmp, name=name, months=months, seed=1, quiet=True,
+                           check=False)
             return replay_run.replay(os.path.join(self.tmp, name))
 
     def test_a_six_month_off_run_replays_identically(self):

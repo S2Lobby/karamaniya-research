@@ -200,9 +200,12 @@ def structured_action(w, motion: dict) -> dict:
     target = (_canonical_actor(w, raw_target) or raw_target) if raw_target else None
     if kind == "diplomacy":
         target = target or DIPLOMATIC_ACTIONS.get(action_type) or DIPLOMATIC_ACTIONS.get(subject)
+        stance = str(explicit.get("stance") or "").strip().lower()
         return {"action_type": action_type, "target": target, "policy": None,
                 "value": motion.get("value"), "issue": str(explicit.get("issue") or "").strip(),
                 "terms": explicit.get("terms") or explicit.get("demands") or [],
+                # A reply to an ultimatum may carry its stance in the action (engine 30, backlog T119).
+                **({"stance": stance} if stance in ("accept", "reject", "counter") else {}),
                 "kind": kind, "subject": subject}
     if kind == "set_policy":
         return {"action_type": "directive", "target": None, "policy": subject,
@@ -627,9 +630,11 @@ def evaluate_conditions(w, conditions: list, motion: dict | None = None) -> list
     results = []
     for cond in conditions or []:
         metric = cond.get("metric")
-        # A reserve floor on a motion that pays nothing out of reserves is not tested, and cannot block it: the balance
-        # such a motion leaves is today's, so a loan needing its own proceeds to reach the floor would block itself
-        # (run 20261011-105713-seed1, Month 8). It is recorded as not applicable, so the record shows why.
+        # A structured "reserves after payment" floor on a motion that pays nothing out of reserves is not tested,
+        # and cannot block it: the balance such a motion leaves is today's, so a loan needing its own proceeds to
+        # reach the floor would block itself (run 20261011-105713-seed1, Month 8). It is recorded as not applicable,
+        # so the record shows why. A floor read from the text of a non-payment, non-loan motion is a different
+        # condition: it binds today's balance as `reserves >= value` (T117), and is tested like any other.
         if motion is not None and _is_non_payment_reserve_floor(cond, motion):
             results.append({**cond, "met": True, "observed": None, "applies": False,
                             "reason": "not applicable: this motion pays nothing out of reserves"})

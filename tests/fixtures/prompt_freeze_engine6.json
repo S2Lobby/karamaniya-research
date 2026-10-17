@@ -1,6 +1,6 @@
 {
  "about": "Fingerprints of every prompt in a 4-month run of council.scripted.toml, seed 1, produced by the engine-6 code (AGENT_PROMPT 6, WORLD_ENGINE 6; the engine-5 prompts are those of tag engine-5, commit 27d7534). A default run must reproduce them exactly: see tests/test_prompt_freeze.py. Regenerate only with a deliberate AGENT_PROMPT bump: python tools/prompt_freeze.py --write.",
- "engine": "agent prompt 26, world engine 29",
+ "engine": "agent prompt 29, world engine 32",
  "months": 4,
  "config": "council.scripted.toml",
  "seed": 1,
@@ -200,35 +200,35 @@
    "session",
    "A",
    1,
-   "ca9d6a3bc63827c74147df0a6d1dac85bc415f3e85ee50b342da4331360fc77e"
+   "4086f297e70fe35fb7dd05f94692322eb06895179c8b2bb9f7bd54bcd8109747"
   ],
   [
    0,
    "session",
    "B",
    1,
-   "6f036e5a468d07acb97d35dbfb8070c5ea38c0e606d40eb5f9de7ec487aa91a0"
+   "6a3e105f85abb40d841fec22e009e73a11e2646d265c810a3d19f03ba041c12f"
   ],
   [
    0,
    "session",
    "C",
    1,
-   "e00b2e3090ca610f5d3d73097204c4b943aa90de5bffd0a51916ef534eb83db1"
+   "6db6a3399ace1c8f87a8478503836c8b0bd434320f62c5c8dd37fd40ffd6db71"
   ],
   [
    0,
    "session",
    "D",
    1,
-   "6e5b49ff44bd6776e81484f69c778289040eaa694bcd50d763f8a10ab6974409"
+   "566d3a7dba034fcdb1d0880b0ac232367d39ac0ff46c10ada3b0ed63290d7890"
   ],
   [
    0,
    "session",
    "E",
    1,
-   "744913f32e16d353fc4ebbb95a3743a74a5f06af2612e8391c3cdec2006954d6"
+   "22c858c150624cdc4854a8244d00469fa0eaf0e5141ee1b4ab0d7705d3b4b9d3"
   ],
   [
    0,
@@ -319,35 +319,35 @@
    "session",
    "A",
    1,
-   "2909351360aa6284ed168646f4afda3d2dfbc666d3ddf8e688de7fbf67b74adf"
+   "07d8cef55c21afd766e9ffbd5586902ffaa409146de6cf7dd2fb872d22a94eb2"
   ],
   [
    1,
    "session",
    "B",
    1,
-   "620dd09504521568cfc898322191c34f9a6ceb7f2bc6d9bf95a0938aa6090202"
+   "65fd79d224ff93fa49143a994a85da9810b71b162645469499fd4c4f64bef470"
   ],
   [
    1,
    "session",
    "C",
    1,
-   "aff89446f03fb7fd25555c6020db59aa4b46a9c5178a5cf632a2bf71b6ef8013"
+   "2142436920d5a81429a76c42187a8e3330d7fe8ad67cc86b88b9bffb90935985"
   ],
   [
    1,
    "session",
    "D",
    1,
-   "7ff7616b82a9289dedd0eae3804fc86973fb3dd9c6aad47de618e2010173ed86"
+   "47cc90c78186666160c4d984681341a4a1f59353d69347e968ae75a09cbee386"
   ],
   [
    1,
    "session",
    "E",
    1,
-   "dde8209faf57d549833e1427d86aeb46aec5bca2ea4d66045545777655db72ce"
+   "60a715d464ff72c7df82a5949caf50bcab68fefff61b3462c096f2bba9802486"
   ],
   [
    2,
@@ -438,35 +438,35 @@
    "session",
    "A",
    1,
-   "6751792eb990b54974ff7d2fbb8bb9a4a503652c7b68a26bbfe5f235e41314fd"
+   "90e567ab3395f15d3522ca41593965df8b3b721a8c33d4062c878a066af34dda"
   ],
   [
    2,
    "session",
    "B",
    1,
-   "b63960a1cd0651fcd628a93dda92a0249ef12c9d463633dc28c7316aacb47b6f"
+   "ecb3ddb34ab91ae11ec2a82a9fb2d4861a5b2746cfcb507cfb3d96d7477e75f5"
   ],
   [
    2,
    "session",
    "C",
    1,
-   "64c24334881b5333be083d146c70434f61edd311c910ccfb898a7e197f0b84a2"
+   "3068ec3c9b69285330e9ac2068086f140fc33ae0a93af548ad41756b5ef1acb4"
   ],
   [
    2,
    "session",
    "D",
    1,
-   "8d5c464a76eefbd757ff368227de99cdc733f918cac91b6d822616341056271d"
+   "479ebd3411d798a344eec2de322cddbd24176c81167f7860be5f0beb1269b50a"
   ],
   [
    2,
    "session",
    "E",
    1,
-   "1047c7a1b8dd1fdce113d79c0c6e2ec109a75ee5b909f5e02c39a254c4524a48"
+   "e1c03dfbf9ee58f03a08c94f82bc5ad179544f1cc9a400c76ade37c956f19926"
   ],
   [
    3,
@@ -522,35 +522,35 @@
    "session",
    "A",
    1,
-   "25732b823ef2f386c7edc61b7ca3e0c098fe8c7282b51a32c159802aac6619f0"
+   "a2ffada29da74b92452b3a67d731575e26d44222537e668b6d91a1f131176e90"
   ],
   [
    3,
    "session",
    "B",
    1,
-   "2971b90f5b13828aca789f8f212b7d43ad3b874efc0a38fb709c845af0537e49"
+   "b85cfb000795022129ef4b349e99556e44b69c0e998f257c3f9649379e8ce74c"
   ],
   [
    3,
    "session",
    "C",
    1,
-   "7654d2f964f781d25e61f23808da20a8987cfa86453de875a7413ce9849a2f21"
+   "c75f547dc141ed8a5c68363010499ea875b6dcd0d012da7176cc4dee6b5f9fa5"
   ],
   [
    3,
    "session",
    "D",
    1,
-   "f05c5c761635b8f048cdc48f4f5c8ecfd5d58dce08a96a722e95caf65259d73a"
+   "574766f256d446472dee742a62a4c71ffcaae23dfef7865661d4f82194dba5d7"
   ],
   [
    3,
    "session",
    "E",
    1,
-   "98b6f31d377ef768016270b58ca18f0fdf7d2e3e152c8725000050444700ce73"
+   "6578902117aadc14e62acb2b392f8e6278c20f54b60b5ac7bb8f3497e0ec6cf3"
   ],
   [
    4,

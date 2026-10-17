@@ -85,7 +85,7 @@ Check done: no proposed seed appears in any manifest under the recorded runs fol
 ### 2.5 Models and neighbours
 
 - **Five study models** `[DECISION: the five models, with per-seat provider, model identifier and max_tokens]`. Criteria, which any choice must meet:
-  - a fixed model identifier, not a router or `auto` label (the pilot had a seat labelled `auto`, and one seat's `served_models` listed two identifiers);
+  - a fixed model identifier, not a router or `auto` label (the pilot had a seat labelled `auto`, and one seat's `served_models` listed two identifiers). Router seats are excluded from the study outright (wave 3, Section 9 E12);
   - reachable for every trajectory: no free endpoints (HANDOFF Q1);
   - an output budget high enough for thinking models (a pilot pause came from a 65,536-token cut-off);
   - a spending ceiling for pay-per-token seats.
@@ -110,8 +110,8 @@ Each row is written to every trajectory's `config.json` by the study runner. A r
 | `run.action_order` | `seeded_shuffle` or `fixed_precedence` | Branch `haiku/action-order`. `[DECISION: second protocol]` |
 | `run.shuffle_seats` | `false` | Base `runner.py` |
 | `run.framing`, `survey`, `forecast_panel`, `max_cost_usd`, `judge` | as Section 2.2 | `[DECISION]` |
-| `run.foreign_cabinets` | `true` (fixed external backend) or `false` (rules) | `[DECISION: neighbours model]` |
-| `run.foreign_cabinet_backend` | the fixed model | `[DECISION: neighbours model]` |
+| `run.foreign_cabinets` | `true` (fixed external backend) or `false` (rules) | `[DECISION: neighbours model]`; a run with `true` and no fixed backend is excluded (E13) |
+| `run.foreign_cabinet_backend` | the fixed model | `[DECISION: neighbours model]`; required by the grid, which refuses a study file without it |
 | Seat provider, model, `max_tokens` | per seat | `[DECISION: five models]` |
 | Versions | WORLD_ENGINE, AGENT_PROMPT, ERROR_TAXONOMY at the freeze tag | Recorded at freeze. Current main: 23, 20, 5. Branch proposals: WORLD_ENGINE 24, AGENT_PROMPT 21. `[DECISION: freeze content, Section 10]` |
 
@@ -336,7 +336,7 @@ If run, the replication (fresh seeds) repeats A1 to A4 and the survival rule. It
 
 These rules are fixed now and apply to all trajectories.
 
-- **E1. Pauses and resumes.** A paused row is resumed at most K times `[DECISION: K; the study runner's default is 3]`. Each resume reuses the row's configuration unchanged and replays the paused month from its start, so its calls are counted again (ENGINE.md, "Your council", on usage limits). Each resume is recorded in `status.json`.
+- **E1. Pauses and resumes.** A paused row is resumed at most K times `[DECISION: K; the study runner's default is 3]`. Each resume reuses the row's configuration unchanged and replays the paused month from its start, so its calls are counted again (ENGINE.md, "Your council", on usage limits). Each resume is recorded in `status.json`. A seat check that fails for a wrong key or model id is not a pause: the row fails at once and consumes no resume (wave 3; retrying a broken login cannot succeed).
 - **E2. Failures and replacement.** A row still paused after K resumes is *failed*. A failed study row is replaced by the next reserve seed with the same rotation and protocol `[DECISION: replacement rule; the alternative is no replacement and reporting of the missing cell]`. The failed row's partial data are kept and reported. Replaced seeds are dropped in a sensitivity analysis (8.5).
 - **E3. Retries.** A transport failure (no answer, provider error, rate limit, timeout, usage-limit pause) may be retried up to R times per call `[DECISION: R]`. Each retry is logged. Format problems are not retried by the study runner, because they are the measured invalid-action rate (P3). The engine's own repair calls are counted as calls (R3).
 - **E4. Served models.** The served model of every call is read from the call log, not from the seat label (ENGINE.md, "Is a run reproducible?"). If any call of a trajectory is served by a model other than the configured one, the trajectory is flagged. Flagged trajectories are kept in the data and excluded from the primary analyses `[DECISION: treatment of flagged trajectories; the alternative is to accept documented aliases]`.
@@ -347,6 +347,8 @@ These rules are fixed now and apply to all trajectories.
 - **E9. No-exit trajectories.** Retained and right-censored (Section 5). Counts are reported by model and office.
 - **E10. Stopped runs.** A run stopped by hand (for example from the control room) is not a pause. Its row is failed unless it is resumed within the limit K in E1.
 - **E11. Pilot and replication.** The pilot is excluded from every study analysis and never pooled. The replication is reported separately.
+- **E12. Router seats.** A seat whose configured model is an `auto` or router label, or that answered with more than one served model, is not one model, so no model contrast is attributable to it. The grid refuses such a seat before a plan is written; the analysis input excludes any run carrying one and names it in `run_inventory.csv`. This is fixed by the wave-3 decision "router seats are excluded from the study".
+- **E13. Borrowed neighbour seats.** A trajectory whose neighbour cabinets were played by delegate seats (foreign cabinets on and no fixed `foreign_cabinet_backend`) is not study data: the cabinets then change with the rotation, so the environment is not held fixed (brief S4). This excludes the three recorded runs from before the dedicated backend: `20261008-130316-seed1`, `20261011-105713-seed1` and `tinytest-mild-sim-r0-s1001`. The analysis excludes them by configuration, not by name, so a later run without a dedicated backend is caught too; `run_inventory.csv` gives the reason.
 
 ---
 

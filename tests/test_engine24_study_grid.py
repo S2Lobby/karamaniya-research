@@ -92,6 +92,55 @@ class LatinSquareTests(TempDirTests):
             self.assertEqual([s["label"] for s in cfg["seats"]], [row["seat_map"][x] for x in LETTERS], row["name"])
 
 
+class RouterSeatTests(TempDirTests):
+    """A router or auto seat is not one model, so its answers cannot be attributed to a model. The brief's wave-3
+    decisions exclude router seats from the study; the grid refuses them before a plan exists."""
+
+    def study_with_first_seat(self, provider, model=None, **kwargs) -> Path:
+        text = study_text(**kwargs)
+        old = '[[seat]]\nlabel = "democrat"\nprovider = "scripted"\npersona = "democrat"\n'
+        lines = f'[[seat]]\nlabel = "democrat"\nprovider = "{provider}"\n'
+        if model is not None:
+            lines += f'model = "{model}"\n'
+        path = self.tmp / "router.toml"
+        path.write_text(text.replace(old, lines), encoding="utf-8", newline="\n")
+        return path
+
+    def test_an_auto_model_is_refused_at_plan_time(self):
+        for model in ("auto", "router", "openrouter/auto", "openrouter/free"):
+            with self.assertRaisesRegex(ValueError, "router"):
+                study_grid.plan_study(self.study_with_first_seat("openrouter", model), self.tmp / f"plan-{model.replace('/', '-')}")
+
+    def test_a_seat_without_a_model_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "no model"):
+            study_grid.plan_study(self.study_with_first_seat("openrouter"), self.tmp / "plan-empty")
+
+    def test_a_fixed_model_on_a_router_provider_is_accepted(self):
+        plan_dir = self.tmp / "plan-fixed"
+        study_grid.plan_study(self.study_with_first_seat("openrouter", "qwen/qwen3.5-9b", seeds=(1,), rotations=1,
+                                                         protocols=["seeded_shuffle"]),
+                              plan_dir, no_study_options=True)
+        (row,) = study_grid.load_plan(plan_dir / "plan.json")
+        self.assertEqual(row["seat_map"]["A"], "democrat")
+
+    def test_a_scripted_seat_needs_no_model(self):
+        plan_dir = self.tmp / "plan-scripted"
+        study_grid.plan_study(self.study(), plan_dir, no_study_options=True)
+        self.assertTrue((plan_dir / "plan.json").is_file())
+
+    def test_run_refuses_a_config_edited_to_a_router_seat(self):
+        plan_dir = self.tmp / "plan-run"
+        study_grid.plan_study(self.study(seeds=(1,), rotations=1, protocols=["seeded_shuffle"]), plan_dir,
+                              no_study_options=True)
+        (row,) = study_grid.load_plan(plan_dir / "plan.json")
+        config = plan_dir / row["config"]
+        text = config.read_text(encoding="utf-8")
+        text = text.replace('provider = "scripted"\npersona = "democrat"', 'provider = "openrouter"\nmodel = "auto"')
+        config.write_text(text, encoding="utf-8", newline="\n")
+        with self.assertRaisesRegex(ValueError, "router"):
+            study_grid.run_plan(plan_dir / "plan.json", dry_run=True, runs_dir=self.tmp / "runs", out=lambda s: None)
+
+
 class PlanShapeTests(TempDirTests):
     def test_rows_are_named_and_have_the_documented_keys(self):
         plan_dir = self.tmp / "plan"
@@ -246,6 +295,19 @@ class FakeEngine:
         step = self._step(name)
         if step == "seats":
             raise SystemExit("These seats cannot answer, so the run was not started: fake")
+        if step == "seats_broken":
+            raise SystemExit("These seats cannot answer, so the run was not started:\n"
+                             "  fake (openai gpt-x; seat error): 401 invalid api key\n"
+                             "Check the login, key or model id with `python -m karamaniya check`, then try again.")
+        if step == "seats_mixed":
+            raise SystemExit("These seats cannot answer, so the run was not started:\n"
+                             "  fake (openai gpt-x; seat error): 404 model not found\n"
+                             "  other (openai gpt-y; provider usage limit): quota\n"
+                             "Usage limits reset later; fix any other seat errors before retrying.")
+        if step == "seats_quota":
+            raise SystemExit("These seats cannot answer, so the run was not started:\n"
+                             "  fake (openai gpt-x; provider usage limit): quota\n"
+                             "Retry after the provider's limit resets.")
         if step == "crash":
             raise RuntimeError("fake crash")
         store = RunStore(Path(runs_dir) / name)
@@ -283,8 +345,8 @@ class ResumeLogicTests(TempDirTests):
     """Dry runs with the fake engine. The engine is handed the run folder's name, which in a dry run is the row
     name with a "dry-" prefix, so the scripts are keyed by that name."""
 
-    def grid(self, seeds):
-        plan_dir = self.tmp / "plan"
+    def grid(self, seeds, plan_name="plan"):
+        plan_dir = self.tmp / plan_name
         study_grid.plan_study(self.study(seeds=seeds, rotations=1, protocols=["seeded_shuffle"]), plan_dir,
                               no_study_options=True)
         names = [row["name"] for row in study_grid.load_plan(plan_dir / "plan.json")]
@@ -349,6 +411,30 @@ class ResumeLogicTests(TempDirTests):
         self.assertIn("cannot answer", status[a]["reason"])
         status = self.invoke(plan, engine)
         self.assertEqual(status[a]["state"], "done", "the next attempt is a resume, and the seats answer")
+
+    def test_a_seat_with_a_wrong_key_or_model_id_fails_the_row_at_once(self):
+        # The engine's hint for a non-quota seat error says to check the login, key or model id. Retrying that costs
+        # a resume per attempt and never fixes it, so the row fails without a retry.
+        for step in ("seats_broken", "seats_mixed"):
+            with self.subTest(step=step):
+                plan, (a,) = self.grid((2,), plan_name=f"plan-{step}")
+                engine = FakeEngine({f"dry-{a}": [step, "finish"]})
+                status = self.invoke(plan, engine)
+                self.assertEqual(status[a]["state"], "failed")
+                self.assertEqual(status[a]["resumes"], 0)
+                attempts = list(engine.attempts)
+                self.invoke(plan, engine)
+                self.assertEqual(engine.attempts, attempts, "a failed row is not tried again")
+
+    def test_a_usage_limit_seat_check_still_pauses_and_resumes(self):
+        plan, (a,) = self.grid((3,))
+        engine = FakeEngine({f"dry-{a}": ["seats_quota", "finish"]})
+        status = self.invoke(plan, engine)
+        self.assertEqual(status[a]["state"], "paused")
+        self.assertIn("limit resets", status[a]["reason"])
+        status = self.invoke(plan, engine)
+        self.assertEqual(status[a]["state"], "done")
+        self.assertEqual(status[a]["resumes"], 1)
 
     def test_an_unexpected_exception_fails_the_row(self):
         plan, (a,) = self.grid((1,))

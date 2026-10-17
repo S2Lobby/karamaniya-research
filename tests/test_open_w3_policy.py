@@ -20,7 +20,8 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from karamaniya import actions, calibration, effects, engine, errors, motion_actions, policy, politics  # noqa: E402
+from karamaniya import (actions, calibration, deliberation, effects, engine, errors, motion_actions,  # noqa: E402
+                        policy, politics)
 from karamaniya.world import World, new_world  # noqa: E402
 
 GDP = 552_676_524.75       # starting monthly output, for the cut-share arithmetic (see new_world)
@@ -103,6 +104,22 @@ def quiet_month(w):
 
 class ReaderAndKeyTests(unittest.TestCase):
     """The interface W2 built is the one the execution reads, and the duplicate key is the canonical items."""
+
+    def test_the_whole_tabling_path_carries_a_policy_into_the_month(self):
+        w = policy_world()
+        mo = {"id": "P-1", "type": "policy", "proposer": "A", "text": "Ration the cities.",
+              "action": {"items": [{"instrument": "set_lever", "lever": "rationing", "value": True,
+                                    "months": 1}]}}
+        rejection, warning = deliberation.check(w, mo, [], "A")
+        self.assertIsNone(rejection)
+        self.assertIsNone(warning)
+        # The council re-validates a carried motion before executing it; a policy must survive that too.
+        self.assertIsNone(politics.validate_motion(w, mo))
+        self.assertIsNone(motion_actions.validate_execution(w, {**mo, "passed": True}))
+        politics.apply_motion(w, mo)
+        engine.step(w)
+        self.assertTrue(w.policy.rationing)
+        self.assertTrue(w.history[-1]["policies"]["applied"])
 
     def test_a_valid_policy_is_accepted_at_resolution_under_language_and_refused_under_menu(self):
         w = policy_world()

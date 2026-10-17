@@ -247,6 +247,59 @@ def nation_detail(w: World) -> dict:
     return out
 
 
+def _civil_war_record(w: World):
+    """The month's civil-war record for the history row, or None when there is nothing to record.
+
+    Wave C (C5). The row references C2's ``last_combat`` and C3's ``last_faction``; it does not
+    copy their figures. C4's offers, breaches and settlement are filtered to this month. The key
+    is absent entirely under the default arm, and after a war has ended it is written only on the
+    month its outcome was recorded, so a later row is exactly engine 29's again.
+
+    C3 writes its faction record to the row after ``engine.step`` returns; the same dict is
+    enriched in place here, so the row C3 writes carries the month's fighting and negotiation too.
+    """
+    from . import civil_war
+    if not civil_war.enabled(w):
+        return None
+    state = civil_war.state(w)
+    if not isinstance(state, dict) or not state:
+        return None
+    month = w.month
+    outcome = state.get("outcome") if isinstance(state.get("outcome"), dict) else None
+    if outcome is not None and outcome.get("month") != month:
+        return None
+    combat = state.get("last_combat")
+    if not isinstance(combat, dict) or combat.get("month") != month:
+        combat = None
+    faction = state.get("last_faction")
+    if not isinstance(faction, dict) or faction.get("month") != month:
+        faction = None
+    record = faction if faction is not None else {"month": month}
+    record["since"] = state.get("since")
+    record["cause"] = state.get("cause")
+    record["combat"] = combat
+    record["offers"] = [entry for entry in state.get("offers") or []
+                        if isinstance(entry, dict) and entry.get("month") == month]
+    record["breaches"] = [entry for entry in state.get("breaches") or []
+                          if isinstance(entry, dict) and entry.get("month") == month]
+    block = state.get("ceasefire")
+    record["ceasefire_state"] = None
+    if isinstance(block, dict):
+        record["ceasefire_state"] = {
+            "active": bool(block.get("active")) and not bool(block.get("broken")),
+            "broken": bool(block.get("broken")),
+            "accepted_month": block.get("accepted_month"),
+            # Offers made, accepted or refused in this month, whichever month they were made in.
+            "offers": [entry for entry in block.get("offers") or []
+                       if isinstance(entry, dict)
+                       and month in (entry.get("month"), entry.get("response_month"))],
+        }
+    settlement = state.get("settlement")
+    record["settlement"] = settlement if isinstance(settlement, dict) and settlement.get("month") == month else None
+    record["war_outcome"] = outcome if outcome is not None and outcome.get("month") == month else None
+    return record
+
+
 def snapshot(w: World, refresh_last: bool = False) -> None:
     if refresh_last:
         # Rebuild against the preceding months: inflation and other history-derived
@@ -286,7 +339,7 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
     # on every month so historical reports can detect a mixed-code run instead of pretending the
     # entire history was produced by the engine version currently on disk.
     from .manifest import RUNTIME_SOURCE_FINGERPRINT
-    w.history.append({
+    row = {
         "month": w.month,
         "engine_source_fingerprint": RUNTIME_SOURCE_FINGERPRINT,
         "cpi": e.cpi, "infl_m": e.infl, "infl_a": annualize(e.infl), "infl_yoy": inflation_yoy(w),
@@ -379,4 +432,9 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
                              if w.foreign.get("government_intelligence") else {}) if w.foreign else {},
         },
         "police": m.police.size,
-    })
+    }
+    # Wave C (C5): the month's civil-war record, absent entirely while the arm is off.
+    war_record = _civil_war_record(w)
+    if war_record is not None:
+        row["civil_war"] = war_record
+    w.history.append(row)

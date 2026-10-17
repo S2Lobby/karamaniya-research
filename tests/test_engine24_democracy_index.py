@@ -7,6 +7,8 @@ coup through the coup term. The constitutional terms are unchanged. The tests ch
 repression gives a lower index, that the index recovers when the acts end, that a run which is never repressive stays at
 1.0, and that the history records the value the index gives. Scripted seats only; no server, no browser.
 """
+import contextlib
+import io
 import os
 import shutil
 import sys
@@ -201,6 +203,25 @@ class TheIndexStaysOnItsScaleAndTheHistoryRecordsIt(unittest.TestCase):
         _arrests("targeted")(w)
         engine.snapshot(w)
         self.assertEqual(w.history[-1]["democracy"], democracy_index(w))
+
+
+class TheR4DiagnosticStillRuns(unittest.TestCase):
+    def test_the_r4_table_runs_and_shows_the_new_levers(self):
+        # tools/detector_audit.py r4-index prints the index for each setting on a bare world. It must still run once the
+        # index reads the policy and the emergency measures; before the fix it raised AttributeError on `policy`.
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import detector_audit  # noqa: E402
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(detector_audit.r4_index(), 0)
+        table = {}
+        for line in out.getvalue().splitlines():
+            label, value = line.rsplit(" ", 1)
+            table[label.strip()] = float(value)
+        self.assertEqual(table["defaults"], 1.0)
+        self.assertEqual(table["arrests mass"], 0.9)
+        self.assertEqual(table["emergency measure curfew"], 0.95)
+        self.assertEqual(table["parties one_party"], 0.8)
 
 
 if __name__ == "__main__":

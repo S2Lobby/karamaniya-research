@@ -258,28 +258,29 @@ def _vote_intent_clashes(staged: dict, decision: dict) -> list:
     return out
 
 
-# A verdict the vote reason states about its own motion, in plain words. Two forms only. The reason opens with the
-# verdict ("No. Raising taxes ...", "Yes, the pact ..."), or the delegate says it in the first person ("I vote no",
-# "I oppose"). An argument that points the other way ("reducing surveillance is essential") is not read: its direction
-# depends on the motion's wording, which this check does not parse, so it is a known miss (D2-013). A hedged reason
-# states no verdict. "No conditions are needed" is not a verdict: the word needs its punctuation.
+# A verdict the vote reason states about its own motion, in plain words, and only two forms. The reason opens with the
+# verdict ("No. Raising taxes ...", "Yes, the pact ..."), or it says how the delegate votes ("I will vote no"). Support
+# and opposition phrases are not read ("I support X" names X, which may not be this motion; "I support X, but ..." is a
+# concession): on the recorded runs they flagged nine ballots, and all nine agreed with the vote (worker 25, T144).
+# An argument that points the other way ("reducing surveillance is essential") is not read either: its direction depends
+# on the motion's wording, so it is a known miss (D2-013). A reason with a hedge or a contrast ("but", "however") states
+# no verdict. "No conditions are needed" is not a verdict: the word needs its punctuation.
 _OPENING_VERDICT = re.compile(r"^\s*(?P<word>yes|aye|no|nay)\s*[.,;:!–—-]", re.I)
-_FIRST_PERSON_VERDICT = re.compile(
-    r"\bi(?:'ll|\s+will|\s+shall)?\s+(?:vote\s+)?(?P<how>yes|aye|no|nay|support|endorse|back|approve|oppose|reject"
-    r"|object\s+to)\b", re.I)
-_YES_VERDICTS = ("yes", "aye", "support", "endorse", "back", "approve")
+_VOTE_STATEMENT = re.compile(r"\b(?:i(?:'ll|\s+will|\s+shall)?\s+vote|my\s+vote\s+(?:is|will\s+be))\s+"
+                             r"(?P<how>yes|aye|no|nay)\b", re.I)
+_CONTRAST = re.compile(r"\b(?:but|however|although|though|yet|except|whereas|while)\b", re.I)
+_VERDICT_YES = ("yes", "aye")       # not _YES_WORDS: that name is the prose reader's, and it also counts "for"
 
 
 def _reason_verdict(reason) -> str | None:
     """"yes" or "no" when the reason states its verdict in plain words, else None."""
     text = str(reason or "").strip()
-    if not text or _HEDGED.search(text):
+    if not text or _HEDGED.search(text) or _CONTRAST.search(text):
         return None
     opening = _OPENING_VERDICT.match(text)
     if opening:
-        return "yes" if opening.group("word").lower() in ("yes", "aye") else "no"
-    stated = {("yes" if how.lower() in _YES_VERDICTS else "no")
-              for how in (m.group("how") for m in _FIRST_PERSON_VERDICT.finditer(text))}
+        return "yes" if opening.group("word").lower() in _VERDICT_YES else "no"
+    stated = {("yes" if m.group("how").lower() in _VERDICT_YES else "no") for m in _VOTE_STATEMENT.finditer(text)}
     return stated.pop() if len(stated) == 1 else None
 
 

@@ -64,12 +64,27 @@ class ReasonVerdicts(unittest.TestCase):
         self.assertEqual(self.flags("no", "No. Raising taxes now deepens the slump."), [])
         self.assertEqual(self.flags("yes", "Yes, the pact secures border calm."), [])
 
-    def test_a_first_person_verdict_against_the_vote_is_flagged(self):
-        self.assertEqual(len(self.flags("yes", "I oppose this, because the cost is too high.")), 1)
+    def test_a_stated_vote_against_the_vote_is_flagged(self):
+        self.assertEqual(len(self.flags("yes", "I will vote no, because the cost is too high.")), 1)
         self.assertEqual(len(self.flags("no", "I will vote yes; the audit is overdue.")), 1)
+        self.assertEqual(len(self.flags("no", "My vote is yes.")), 1)
 
-    def test_a_first_person_verdict_that_agrees_with_the_vote_is_not_flagged(self):
-        self.assertEqual(self.flags("yes", "I support the review, but the cost is too high."), [])
+    def test_a_stated_vote_that_agrees_with_the_vote_is_not_flagged(self):
+        self.assertEqual(self.flags("no", "I will vote no, because the cost is too high."), [])
+
+    def test_support_and_opposition_phrases_are_not_read(self):
+        # "I support X" names X, which may not be the motion. Nine recorded ballots were flagged on such phrases, and
+        # all nine agreed with the vote (worker 25, T144).
+        self.assertEqual(self.flags("yes", "I oppose this, because the cost is too high."), [])
+        self.assertEqual(self.flags("no", "I support this motion."), [])
+        self.assertEqual(self.flags("no", "I support equal protection, but cannot adopt incomplete language."), [])
+        self.assertEqual(self.flags("no", "I support the review, but the cost is too high."), [])
+
+    def test_a_reject_of_another_object_is_not_read(self):
+        self.assertEqual(self.flags("yes", "Dorsania's demand violates our integrity. I reject it. Counter-demand."), [])
+
+    def test_a_reason_with_a_contrast_states_no_verdict(self):
+        self.assertEqual(self.flags("no", "Yes, but the cost is too high."), [])
 
     def test_a_conditional_reason_states_no_verdict(self):
         self.assertEqual(self.flags("yes", "I would oppose it unless the cost falls."), [])

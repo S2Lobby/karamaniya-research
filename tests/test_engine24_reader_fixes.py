@@ -7,8 +7,8 @@ Private messages (F2):
 Cabinet answers (F4):
 - an act named under "action" instead of "type" (runs 20261008-130316-seed1 and 20261011-211521-seed1);
 - a null troops read as absent, as the reader already reads its other optional fields (runs 20261010-002051-seed1,
-  20261010-070501-seed1 and 20261011-094417-seed1: 31 acts). A null magnitude stays refused: the size it would take is a
-  choice for the user.
+  20261010-070501-seed1 and 20261011-094417-seed1). A null magnitude is read as 0.5 and the cabinet is told so (backlog
+  T142; test_engine24_cabinet_limits.py).
 
 The classes at the end pin what stays refused, and the two "terms" shapes that main already reads. Nothing here calls
 a model.
@@ -168,10 +168,10 @@ class ActNamedUnderActionKey(unittest.TestCase):
         self.assertEqual(problems, ["unsupported cabinet action"])
 
 
-class NullTroopsAreAbsentNullMagnitudeIsNot(unittest.TestCase):
-    """Runs 20261010-002051-seed1, 20261010-070501-seed1 and 20261011-094417-seed1: 31 acts with a null troops and a valid
-    magnitude were refused, and none of them takes troops. The 31 acts with a null magnitude stay refused: reading them
-    as the default 0.5 would give an ultimatum or a deployment a size the cabinet did not choose, which is for the user."""
+class NullTroopsAreAbsentNullMagnitudeIsHalf(unittest.TestCase):
+    """Runs 20261010-002051-seed1, 20261010-070501-seed1 and 20261011-094417-seed1: acts with a null troops and a valid
+    magnitude were refused, and none of them takes troops. A null magnitude is read as the default 0.5, and the cabinet is
+    told so the next month (backlog T142; test_engine24_cabinet_limits.py)."""
 
     def test_a_null_troops_is_read_as_absent_for_an_act_that_takes_none(self):
         out, problems = read("veleria", {"type": "intelligence_collection", "magnitude": .4, "troops": None,
@@ -180,10 +180,10 @@ class NullTroopsAreAbsentNullMagnitudeIsNot(unittest.TestCase):
         self.assertEqual(out["actions"], [{"type": "intelligence_collection", "magnitude": .4}])
         self.assertEqual(problems, [])
 
-    def test_a_null_magnitude_stays_refused(self):
+    def test_a_null_magnitude_is_read_as_one_half(self):
         out, problems = read("dorsania", {"type": "offer_talks", "magnitude": None})
-        self.assertEqual(out["actions"], [])
-        self.assertEqual(problems, ["action magnitude must be between 0 and 1"])
+        self.assertEqual(out["actions"], [{"type": "offer_talks", "magnitude": .5}])
+        self.assertNotIn("action magnitude must be between 0 and 1", problems)
 
     def test_a_null_troops_on_a_force_act_is_left_to_the_world_to_refuse_with_its_reason(self):
         w = world(month=2)

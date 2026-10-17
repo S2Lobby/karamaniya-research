@@ -2074,7 +2074,8 @@ def execution_key(w, motion: dict) -> str:
     """A semantic key for one action, used to stop the same act being sent twice in a cycle.
 
     Two motions that ask for the same thing to the same actor produce the same key; two genuinely
-    different diplomatic actions, even aimed at the same country, do not.
+    different diplomatic actions, even aimed at the same country, do not. A programme is the measures
+    it sets, so its words do not change its key.
     """
     action = structured_action(w, motion)
     payload = {"action_type": action["action_type"], "target": action.get("target"),
@@ -2086,6 +2087,13 @@ def execution_key(w, motion: dict) -> str:
     # power about different things, in one month, were one act, and the second was refused as a duplicate.
     if action["kind"] == "diplomacy" and not payload["issue"]:
         payload["text"] = _normalise(motion.get("text") or "")
+    # T136: the key ignored a programme's measures, so two programmes with empty values were one act and the second was
+    # refused as a duplicate of the first (run 20261011-211521-seed1, month index 4). A programme is the same act when it
+    # sets the same measures: the canonical payload the tabling check uses (deliberation._program_measure_key).
+    if action["kind"] == "program":
+        from .deliberation import _program_measure_key
+        payload = {"action_type": "program", "month": payload["month"],
+                   "measures": [list(pair) for pair in _program_measure_key(w, motion)]}
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 

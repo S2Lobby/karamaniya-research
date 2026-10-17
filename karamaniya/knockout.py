@@ -60,9 +60,9 @@ PUBLIC_EVENTS = {office: f"The {phrase} has been taken gravely ill and has left 
 def validate_option(value):
     """The normalised run option, or None when absent. Raise ValueError, in words, for anything else.
 
-    W6's config validation calls this at start; `monthly` calls it again so a run resumed with a
-    hand-edited checkpoint cannot remove the wrong office. Unknown keys are refused rather than ignored,
-    because a misspelt option ("mont") would otherwise look like a valid knockout that never fires.
+    W6's config validation calls this at start; `monthly` calls it again so a hand-edited config cannot
+    remove the wrong office months later. Unknown keys are refused rather than ignored, because a
+    misspelt option ("mont") would otherwise look like a valid knockout that never fires.
     """
     if value is None:
         return None

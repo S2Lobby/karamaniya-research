@@ -180,7 +180,7 @@ def _difference(ko, twin):
                                 - (twin["after"]["executed"] - twin["before"]["executed"]))}
 
 
-def month_table(ko, twin, start, band):
+def month_table(ko, twin, start):
     """Month by month: each metric for both runs, the difference (knockout minus twin), and its difference
     in differences from the last month before the knockout."""
     base_index = start - 1
@@ -288,7 +288,7 @@ def analyse_pair(knockout_run, twin_run, band=DEFAULT_BAND, window=DEFAULT_WINDO
     after_months = [m for m in range(start + 1, start + 1 + window)]
     ko_motions = {"before": motion_counts(ko, before_months), "after": motion_counts(ko, after_months)}
     twin_motions = {"before": motion_counts(twin, before_months), "after": motion_counts(twin, after_months)}
-    months, base = month_table(ko, twin, start, band)
+    months, base = month_table(ko, twin, start)
     return {
         "runs": {"knockout": ko.name, "twin": twin.name},
         "knockout": found,

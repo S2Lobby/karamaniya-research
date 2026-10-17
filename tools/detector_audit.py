@@ -167,6 +167,8 @@ def d1_rows() -> list:
                     "sentence": sentence_around(text, start, end),
                     "briefing": briefing_excerpt(prompts.get((m, mid), ""), g.get("metric")),
                     "prompt_found": (m, mid) in prompts,
+                    # Private: the whole field and the whole decision prompt, for replay_d1 (not written to the CSV).
+                    "_text": text, "_prompt": prompts.get((m, mid), ""), "_month": m,
                 })
     for i, row in enumerate(rows, 1):
         row["flag_id"] = f"D1-{i:03d}"
@@ -271,6 +273,60 @@ def d4_rows() -> list:
     return rows
 
 
+# ---- replay: the current main's grounding check on the recorded D1 texts -------------------------------------------
+def replay_d1() -> list:
+    """Run the current code's grounding check (motion_actions.check_numeric_grounding) on each recorded D1 field.
+
+    Only two things are replaced: the truth is the observed value recorded with the flag, and the sources are the
+    whole decision prompt the delegate was shown (a generous stand-in for the briefing and office reports). The
+    field text is the recorded text. A check that raises is an error, not a clear result. Engine code is not changed.
+    """
+    sys.path.insert(0, ROOT)
+    from types import SimpleNamespace
+    from karamaniya import motion_actions as ma
+
+    class Stub:                       # only the attributes the check reads
+        month = 0
+        econ = SimpleNamespace(food_ratio=1.0, gold=0.0, arrears=0.0, unemployment=0.0)
+        mil = SimpleNamespace(army=SimpleNamespace(size=0.0, morale=0.0, loyalty=0.0))
+
+        def k_pops(self):
+            return []
+
+        def population(self):
+            return 1.0
+
+    def truth_for(metric: str, observed: float):
+        # Only the recorded metric has a known truth. For any other metric the check's own try/except skips it,
+        # so a text is judged on the metric it was flagged for, against the value it was flagged with.
+        def _truth(w, key):
+            if key == "hunger":            # read outside the check's try block, for the food-shortage repair text only
+                return 0.0
+            if key != metric:
+                raise KeyError(key)
+            return observed
+        return _truth
+
+    original_truth, original_sources = ma._grounding_truth, ma.information_available_to
+    out = []
+    try:
+        for row in d1_rows():
+            observed = float(row["observed"])
+            prompt = row["_prompt"]
+            ma._grounding_truth = truth_for(row["metric"], observed)
+            ma.information_available_to = lambda w, mid, _p=prompt: [{"label": "decision prompt", "text": _p}]
+            try:
+                claim = ma.check_numeric_grounding(Stub(), row["member"], row["_text"])
+                status, code, metric = ("flagged", claim["code"], claim["metric"]) if claim else ("clear", "", "")
+            except Exception as exc:          # noqa: BLE001 - an error is reported, never counted as clear
+                status, code, metric = "error", type(exc).__name__, ""
+            out.append({"flag_id": row["flag_id"], "recorded_metric": row["metric"], "replay": status,
+                        "replay_metric": metric, "replay_code": code})
+    finally:
+        ma._grounding_truth, ma.information_available_to = original_truth, original_sources
+    return out
+
+
 # ---- writing and scoring ------------------------------------------------------------------------------------------
 def write_csv(path: str, rows: list, fields: list) -> None:
     with open(path, "w", encoding="utf-8", newline="\n") as f:
@@ -355,6 +411,14 @@ def score() -> int:
                          ["flag_id", "run", "month_no", "member", "field", "metric", "claim_text", "claimed",
                           "observed", "sentence", "briefing", "label", "reason"])
     print("D1 (precision: TRUE_ERROR of decided):", tally(labels, "TRUE_ERROR", "FALSE_POSITIVE"))
+    # The same question for the current code: the texts it would still flag on the recorded metric (replay).
+    flagged_now = {r["flag_id"] for r in read_csv(os.path.join(OUT, "D1_replay_current_main.csv"))
+                   if r["replay"] == "flagged"}
+    current = [lab for lab in labels if lab["flag_id"] in flagged_now]
+    current += read_csv(os.path.join(OUT, "D1_labels_replay_unsampled11.csv"))
+    if {lab["flag_id"] for lab in current} != flagged_now:
+        raise SystemExit("labels do not cover the replay's flags exactly")
+    print("D1 on the current code (replay, same metric):", tally(current, "TRUE_ERROR", "FALSE_POSITIVE"))
     labels = join_labels(os.path.join(OUT, "D2_evidence_36.csv"), os.path.join(OUT, "D2_labels_36.csv"),
                          os.path.join(OUT, "D2_labelled_36.csv"),
                          ["flag_id", "run", "month_no", "member", "motion", "motion_type", "motion_subject",
@@ -372,14 +436,35 @@ def score() -> int:
     return 0
 
 
+def replay() -> int:
+    sample = {row["flag_id"] for row in read_csv(os.path.join(OUT, "D1_evidence_all137.csv"))
+              if row["in_sample"] == "yes"}
+    results = replay_d1()
+    for row in results:
+        row["in_sample"] = "yes" if row["flag_id"] in sample else "no"
+    write_csv(os.path.join(OUT, "D1_replay_current_main.csv"), results,
+              ["flag_id", "in_sample", "recorded_metric", "replay", "replay_metric", "replay_code"])
+    counts = {}
+    for row in results:
+        key = row["replay"] + ("" if row["replay"] != "flagged" else
+                               ("_same_metric" if row["replay_metric"] == row["recorded_metric"] else "_other_metric"))
+        counts[key] = counts.get(key, 0) + 1
+    print("D1 replay on the current code, all 137:", counts)
+    print("D1 replay, sampled 40:", {r["replay"]: sum(1 for x in results if x["in_sample"] == "yes" and x["replay"] == r["replay"])
+                                    for r in results if r["in_sample"] == "yes"})
+    return 0
+
+
 def main(argv: list) -> int:
-    if not argv or argv[0] not in ("extract", "score", "wilson"):
+    if not argv or argv[0] not in ("extract", "score", "wilson", "replay"):
         print(__doc__)
         return 2
     if argv[0] == "extract":
         return extract()
     if argv[0] == "score":
         return score()
+    if argv[0] == "replay":
+        return replay()
     k, n = int(argv[1]), int(argv[2])
     lo, hi = wilson(k, n)
     print(f"{k}/{n} = {k / n:.4f}; Wilson 95%: [{lo:.4f}, {hi:.4f}]")

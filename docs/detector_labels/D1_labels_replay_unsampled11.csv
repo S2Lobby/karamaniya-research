@@ -1,0 +1,12 @@
+flag_id,label,reason
+D1-086,FALSE_POSITIVE,"'roughly 20 Union warships' is a count read as a 20% readiness figure; the stated fleet readiness 57-69/100 matches canonical 0.525"
+D1-096,FALSE_POSITIVE,"103M is the projected reserves after a proposed 50M loan (53M to about 103M), not a current level; the current 53M is accurate (canonical 52.5M)"
+D1-107,FALSE_POSITIVE,"15M is the size of a League loan under vote, not a Union force figure (canonical 95,000)"
+D1-111,FALSE_POSITIVE,"13.8M is the latest monthly deficit, a flow; the arrears claim (about 140M) is accurate (canonical 138.1M)"
+D1-120,FALSE_POSITIVE,"9-10M is a payment amount (partial relief to soldiers), not an army size (canonical 58,589)"
+D1-122,FALSE_POSITIVE,"'Output at 87' is the output index read as an 87% unemployment figure; the stated unemployment 11.7% is accurate (canonical 11.7%)"
+D1-131,FALSE_POSITIVE,"'~14 Union' is a count of Union ships read as a 14% readiness figure; the stated fleet readiness 56-68 matches canonical 0.525"
+D1-132,FALSE_POSITIVE,"'6 vs 14 Union ships' gives our ship count, read as a 6% readiness figure; the stated readiness 60-72 matches canonical 0.545"
+D1-133,FALSE_POSITIVE,"0.06 is the military budget share ('D3 military 0.06'), a setting, not a readiness level (canonical 0.556)"
+D1-135,FALSE_POSITIVE,"The 100 is the readiness scale ('63-75 of 100'), read as 100%; the stated 63-75 matches canonical 0.576"
+D1-136,FALSE_POSITIVE,"'+22M/month' is the cost of a proposed motion, a flow, not a reserves level (canonical 88M)"

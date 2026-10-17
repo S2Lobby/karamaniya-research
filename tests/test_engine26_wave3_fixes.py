@@ -40,6 +40,13 @@ class ABareGroupedLoanValueIsACountOfGold(unittest.TestCase):
     def test_a_grouped_million_is_one_million(self):
         self.assertEqual(parse_loan_amount("1,000,000"), 1.0)
 
+    def test_a_grouped_figure_below_a_million_stays_millions(self):
+        # "1,500" is 1,500 million, as it always was: only a grouped figure of a million or more is a count.
+        self.assertEqual(parse_loan_amount("1,500"), 1500.0)
+
+    def test_a_grouped_figure_with_gold_below_a_million_is_gold(self):
+        self.assertEqual(parse_loan_amount("1,500 gold"), 0.0015)
+
     def test_a_motion_is_read_at_the_same_amount(self):
         amount, missing = loan_amount_of({"value": "50,000,000"})
         self.assertEqual(amount, 50.0)

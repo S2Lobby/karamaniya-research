@@ -1672,18 +1672,20 @@ def _figure(number: str) -> float:
 
 def _loan_millions(number: str, unit: str | None, gold: bool) -> float:
     """A figure as millions of gold: a unit scales it (the arithmetic is the one the value reader always used), a
-    comma-grouped count is divided down, and a bare figure without commas is already millions.
+    comma-grouped count of a million or more is divided down, and a smaller bare figure is already millions.
 
-    A comma-grouped figure is a count of gold whether or not the word follows it (backlog T158): the value field
-    counts in millions, so a bare "50,000,000" is 50 million gold, not 50,000,000 million. Before engine 26 only
-    "50,000,000 gold" was divided, and a value written without the word was a loan a million times too large."""
+    A comma-grouped figure of a million or more is a count of gold whether or not the word follows it (backlog
+    T158): the value field counts in millions, so a bare "50,000,000" is 50 million gold, not 50,000,000 million.
+    Before engine 26 only "50,000,000 gold" was divided, and a value written without the word was a loan a million
+    times too large. A smaller grouped figure stays millions, the prompt's default unit, so "1,500" is 1,500 million
+    as it always was; the word "gold" still makes even a small grouped figure a count of gold ("1,500 gold")."""
     amount = _figure(number)
     unit = (unit or "").lower()
     if unit in ("billion", "bn"):
         return amount * 1000
     if unit in ("thousand", "k"):
         return amount / 1000
-    if not unit and _GROUPED.fullmatch(number):
+    if not unit and _GROUPED.fullmatch(number) and (gold or amount >= 1_000_000):
         return amount / 1e6
     return amount
 

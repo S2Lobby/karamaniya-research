@@ -269,7 +269,10 @@ class EveryLimitIsStated(unittest.TestCase):
 
     def test_every_text_of_a_version_2_answer_is_cut_only_at_a_stated_limit(self):
         cuts = self.answers()
-        self.assertEqual({c["field"] for c in cuts}, set(actions.STATED_LIMITS))
+        fields = {c["field"] for c in cuts}
+        # Every field this answer cuts must have a stated limit. The table may also hold fields this sample does
+        # not exercise (engine 26 added decision_factors, motions.action.issue and motions.action.terms).
+        self.assertTrue(fields <= set(actions.STATED_LIMITS), fields - set(actions.STATED_LIMITS))
         self.assertEqual([c for c in cuts if not c["stated"]], [])
 
     def test_the_system_prompt_states_each_limit(self):

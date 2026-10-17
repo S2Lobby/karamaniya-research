@@ -341,9 +341,11 @@ handover. It is the shape in which C1's first trigger can be reached at all. In 
 the handover coup fails (the seeded draw against `p_success` 0.77 and 0.79); the plotters keep
 their army (`obey_commander` about 0.83, army `bond` 0.95), and the failed-coup trigger starts the
 war. In seeds 3 and 5 the coup succeeds as a total takeover and the war does not start; seeds 1
-and 2 end in a revolution before the handover. The two wars begin in Month 37, last one month,
-and are still running when the run ends; the run outcome is `voted_out` because the lawful
-handover still takes place after the failed coup.
+and 2 end in a revolution before the handover. The two wars begin in Month 37 (the handover month
+extends the run by one) and are still running when the run reaches its horizon; the lawful
+handover is suspended while a war runs (lead fix after C5's sweep: without it the same month
+removed the government and ended the run `voted_out`), so those runs end `survived` with the war
+state running. The same seeds without the war end `voted_out`; the other four pairs match.
 
 **Why the all-hawk baseline starts none.** Every armed office in an all-hawk council is held by
 a stand-aside hawk, so the handover coup is a total takeover: the plotter-held army keeps
@@ -387,16 +389,18 @@ aggregation is exercised on a synthetic pair with casualties, offers, a breach a
 
 - Tests: `python -m unittest tests.test_civil_war tests.test_civil_war_combat
   tests.test_civil_war_faction tests.test_civil_war_negotiation tests.test_civil_war_integration
-  tests.test_civil_war_records` — 186 tests, all pass. The C5 tests cover the month record present
+  tests.test_civil_war_records` — 188 tests, all pass. The C5 tests cover the month record present
   when on and absent when off, the engine-29 row identity, the C3 record enriched in place, the
   report's per-run metrics, the twin DiD, the non-twin refusal, the sweep's band logic, and a
   scripted war run that replays identically with its month records.
-- Sweep: 60 scripted runs, counts above (`runs/cw-sweep/sweep.md`).
+- Sweep: the original 60 scripted runs (5 arms × on/off × 6 seeds) for the band, and the plotter
+  arm re-run after the handover fix (12 runs, still 2/6; the two war runs now end `survived` with
+  the war running instead of `voted_out`).
 - Report: `reports/cw-c5/civil_war_report.md` and `.json` over all 60 runs, with both war runs
   paired to their twins.
-- Replay: `tools/replay_run.py runs/cw-sweep/seed4-plotter-on` — identical: all 37 month records
-  and the final checkpoint match; all 583 prompts for those months are sent again unchanged.
-  Exit status 0.
+- Replay: the post-fix seed-4 plotter war run (`reports/cw-plotter-final/seed4-plotter-on`) —
+  identical: all 37 month records and the final checkpoint match; all 583 prompts for those
+  months are sent again unchanged. Exit status 0.
 - Prompt freeze: `python tools/prompt_freeze.py` — "prompts unchanged" (no `--write` was run).
 - Defaults: the engine-29 month fixture is compared whole and matches; `civil_war="off"` is
   absent from the manifest.
@@ -424,8 +428,8 @@ aggregation is exercised on a synthetic pair with casualties, offers, a breach a
   move.
 - **The stress arm is a sweep-tool definition** (`plotter`), not a `karamaniya/baseline.py` mode;
   the all-hawk baseline starts none on these seeds.
-- **The handover-month edge.** When the plotter's handover coup fails and starts the war, the
-  lawful handover still runs in the same month: the run outcome is `voted_out` and the old members
-  are removed while the war state says the war is still running. The run ends at that month, so
-  no engine path continues it, but the state is not a coherent post-handover government. No real
-  model has met this edge.
+- **The handover-month edge (fixed).** C5's sweep found that when the plotter's handover coup
+  failed and started the war, the lawful handover still ran in the same month and ended the run
+  `voted_out` with the war state still running. The lead fix suspends the handover while a war
+  runs: the government stays in office, the run continues, and the two plotter war runs now end
+  `survived` with the war running. No real model has met this edge.

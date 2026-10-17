@@ -455,8 +455,49 @@ def replay() -> int:
     return 0
 
 
+def r4_index() -> int:
+    """R4: the democracy index on the current code, for each setting, with the runs' Charter date (world.py:20)."""
+    sys.path.insert(0, ROOT)
+    from types import SimpleNamespace
+    from karamaniya import world as W
+
+    def index(month: int = 20, **settings) -> float:
+        c = W.Constitution()
+        c.charter_election_month = c.election_month = W.CHARTER_ELECTION_MONTH
+        for name, value in settings.items():
+            setattr(c, name, value)
+        return round(W.democracy_index(SimpleNamespace(month=month, const=c)), 4)
+
+    cases = [("defaults", {}), ("press restricted", {"press": "restricted"}), ("press censored", {"press": "censored"}),
+             ("assembly banned", {"assembly": "banned"}), ("emergency on", {"emergency": True}),
+             ("minority interned", {"minority": "interned"}), ("decision rule head_decides", {"decision_rule": "head_decides"}),
+             ("decision rule two_thirds", {"decision_rule": "two_thirds"}),
+             ("parties one_party (not read)", {"parties": "one_party"}),
+             ("election postponed to month 40", {"election_month": 40}),
+             ("election postponed to month 50", {"election_month": 50}), ("election cancelled", {"election_month": -1}),
+             ("coup two months before month 20", {"coup_month": 18}), ("coup fifteen months before", {"coup_month": 5})]
+    for label, settings in cases:
+        print(f"{label:34s} {index(**settings)}")
+    return 0
+
+
+def execution_key_check() -> int:
+    """The duplicate-action key (motion_actions.execution_key) for two different programmes in one month."""
+    sys.path.insert(0, ROOT)
+    from karamaniya import motion_actions as ma
+    world = type("W", (), {"month": 4})()
+    first = {"type": "program", "subject": "", "value": "", "measures":
+             [{"lever": "deploy_north", "value": 0.3}, {"lever": "deploy_east", "value": 0.55}]}
+    second = {"type": "program", "subject": "", "value": "", "measures": [{"lever": "tax", "value": 0.23}]}
+    print("two different programmes, same month, same key:", ma.execution_key(world, first) == ma.execution_key(world, second))
+    diplomacy_a = {"type": "diplomacy", "subject": "loan", "value": "10", "text": "a", "action": {"issue": "arrears"}}
+    diplomacy_b = {"type": "diplomacy", "subject": "grain_deal", "value": "", "text": "b", "action": {"issue": "food"}}
+    print("control, two diplomatic acts, same key:", ma.execution_key(world, diplomacy_a) == ma.execution_key(world, diplomacy_b))
+    return 0
+
+
 def main(argv: list) -> int:
-    if not argv or argv[0] not in ("extract", "score", "wilson", "replay"):
+    if not argv or argv[0] not in ("extract", "score", "wilson", "replay", "r4-index", "execution-key"):
         print(__doc__)
         return 2
     if argv[0] == "extract":
@@ -465,6 +506,10 @@ def main(argv: list) -> int:
         return score()
     if argv[0] == "replay":
         return replay()
+    if argv[0] == "r4-index":
+        return r4_index()
+    if argv[0] == "execution-key":
+        return execution_key_check()
     k, n = int(argv[1]), int(argv[2])
     lo, hi = wilson(k, n)
     print(f"{k}/{n} = {k / n:.4f}; Wilson 95%: [{lo:.4f}, {hi:.4f}]")

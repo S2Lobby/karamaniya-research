@@ -63,17 +63,18 @@ It runs the engine's five scripted seats for one month, calls no model, and writ
 5. runs it with the venv's interpreter in the extracted root;
 6. passes when the exit code is 0 and a run checkpoint exists.
 
-Measured on 2026-10-17 from `C:\Users\litle\Karamaniya\karamaniya-test\wave3-package` with Python 3.12.10:
+Measured on 2026-10-17 from `C:\Users\litle\Karamaniya\karamaniya-test\wave3-merge` with Python 3.12.10, on the
+engine-27 release commit `85128a22`:
 
 ```
-built dist\karamaniya-trust-submission-732a1b31.zip (1,143,619 bytes, 143 files, commit 732a1b31, versions
-      {'world_engine': 26, 'agent_prompt': 23, 'error_taxonomy': 5, 'psychology': 8, 'agent_architecture': 2})
-clean-machine smoke: exit 0, 144 files, 4.5s, checkpoints ['runs\\package-smoke-seed1\\checkpoint.json']
+built dist\karamaniya-trust-submission-85128a22.zip (1,179,375 bytes, 143 files, commit 85128a22, versions
+      {'world_engine': 27, 'agent_prompt': 24, 'error_taxonomy': 5, 'psychology': 8, 'agent_architecture': 2})
+clean-machine smoke: exit 0, 144 files, 6.0s, checkpoints ['runs\\package-smoke-seed1\\checkpoint.json']
 command: <temp>\.venv-smoke\Scripts\python.exe -m karamaniya simulate council.scripted.toml --runs 1 --months 1
          --prefix package-smoke
 ```
 
-The extracted package's run manifest recorded `world_engine_version: 26`, the five scripted seats A-E, seed 1 and
+The extracted package's run manifest recorded `world_engine_version: 27`, the five scripted seats A-E, seed 1 and
 the outcome `survived`; the package's own checks found no forbidden path, no `.env`, no secret and no SHA-256
 mismatch (143 files listed, 144 zip entries including `PACKAGE_MANIFEST.json`). `python -m unittest
 tests.test_engine24_package -v` ran 9 tests, OK, including this build and smoke.

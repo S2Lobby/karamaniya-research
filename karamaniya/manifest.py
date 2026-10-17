@@ -195,6 +195,9 @@ def build(world: World, cfg: dict, council_state: dict | None = None, store=None
                      "severity": run.get("founding_severity"),
                      "problems": run.get("founding_problems") or []},
         "office_assignment": office_assignment(cfg),
+        # Wave C: the civil-war arm, recorded only when it is on. Absent under the default, so a
+        # run that never names it has the manifest it always had.
+        **({"civil_war": "on"} if getattr(world, "civil_war_option", "off") == "on" else {}),
         **({"token_saving": token_saving.describe(cfg)} if token_saving.describe(cfg) else {}),
         "determinism_note": (
             "The world is fully determined by run_seed: world generation, structural parameters, "

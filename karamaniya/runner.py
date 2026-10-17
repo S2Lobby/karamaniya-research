@@ -223,6 +223,10 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
     cfg = config if isinstance(config, dict) else load_config(config)
     cfg = {**cfg, "run": dict(cfg["run"])}
     check_office_assignment(cfg["run"], len(cfg["seats"]))
+    if "civil_war" in cfg["run"]:
+        # Wave C: an explicit arm is checked before any folder or checkpoint is written.
+        from .civil_war import validate_option as validate_civil_war
+        cfg["run"]["civil_war"] = validate_civil_war(cfg["run"]["civil_war"])
     if check:
         _require_seats(cfg, observer, "started")
     run = cfg["run"]
@@ -256,7 +260,11 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
                       founding_severity=run.get("founding_severity", "default"),
                       founding_problems=run.get("founding_problems"),
                       agent_architecture_version=architecture, tuning=run.get("tuning"),
-                      trait_baselines=baselines, ballot=run.get("ballot", "open"))
+                      trait_baselines=baselines, ballot=run.get("ballot", "open"),
+                      # Wave C: the war arm. Absent from RUN_DEFAULTS, so a config that does not
+                      # name it normalizes and manifests exactly as before; the replay reads it
+                      # from the recorded config.
+                      civil_war_option=run.get("civil_war", "off"))
     # The manifest is written before the first call, so a run that dies early is still readable.
     store._write_json("manifest.json", manifest.build(world, {**cfg, "mapping": mapping}))
     council = Council(world, _seats(cfg, mapping), run, store, observer=observer)

@@ -20,7 +20,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from karamaniya import council, decision_context, foreign, prompts  # noqa: E402
+from karamaniya import actions, civil_war, council, decision_context, foreign, prompts  # noqa: E402
 from karamaniya import motion_actions as ma  # noqa: E402
 from karamaniya.world import new_world  # noqa: E402
 from tests.test_engine6_prompts import scripted_run  # noqa: E402
@@ -150,6 +150,24 @@ class TheForecastPanelSaysScoredOnlyWhereTheyAreTold(unittest.TestCase):
                 self.assertIn("FORECAST PANEL.", text)
                 self.assertEqual("Each answer is scored when it falls due" in text, scored)
                 self.assertIn("The answers decide nothing." if not scored else "the answers decide nothing.", text)
+
+
+class TheFactionMonthGivesNothingAway(unittest.TestCase):
+    """Wave C (C3): the rebel leader's month, shown only while a war runs."""
+
+    def test_the_rebel_leaders_prompt(self):
+        w = new_world(11, 36, civil_war_option="on")
+        w.const.offices.update({"head": "A", "treasury": "B", "interior": "C", "army": "D", "navy": "E"})
+        state = civil_war.start(w, "failed_coup", plotters=["D"], stances={"A": "join"})
+        fronts = actions.faction_fronts(w, state)
+        others = ["B", "C", "D", "E"]
+        schema = actions.faction_schema(w, fronts, others)
+        text = (prompts.faction_instructions(w, "A", fronts, state)
+                + "\nReply with this JSON:\n" + actions.example(schema))
+        self.assertEqual(found(text), {})
+        self.assertIn("never before Month 36", text)
+        self.assertIn("attack, defend or withdraw", text)
+        self.assertIn("amnesty", text)
 
 
 if __name__ == "__main__":

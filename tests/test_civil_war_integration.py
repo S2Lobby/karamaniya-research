@@ -87,6 +87,8 @@ class TheMilitiaPathStandsDownDuringAWar(unittest.TestCase):
 
     def test_a_war_stops_the_militia_uprising(self):
         w, r = self._angry_region()
+        # Wave C C3: the stand-down is read only under the arm; an off run ignores a present state.
+        w.civil_war_option = "on"
         w.civil_war = {"since": w.month, "factions": {}, "contested": []}
         society._rebel_regions(w, _Always())
         self.assertEqual(r.controller, "karamaniya")

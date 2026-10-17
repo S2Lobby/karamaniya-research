@@ -343,6 +343,19 @@ class TheAnswerReader(unittest.TestCase):
         # The valid term is kept; C4 validates the offer itself.
         self.assertEqual(out["offer"], {"terms": [{"amnesty": True}]})
 
+    def test_the_election_date_is_a_one_based_month(self):
+        answer = {"fronts": {"north": "defend"},
+                  "offer": {"terms": [{"election_date": 36}]},
+                  "statement": "", "messages": [], "appeal": None}
+        self.w.month = 35                       # Month 36: the earliest date is still to come
+        out, problems = self.read(answer)
+        self.assertEqual(problems, [])
+        self.assertEqual(out["offer"], {"terms": [{"election_date": 36}]})
+        self.w.month = 36                       # Month 37: Month 36 has passed
+        out, problems = self.read(answer)
+        self.assertIn("already passed", problems[0])
+        self.assertIsNone(out["offer"])
+
     def test_an_election_before_month_36_is_refused_in_words(self):
         out, problems = self.read({"fronts": {"north": "defend"},
                                    "offer": {"terms": [{"election_date": 20}]},

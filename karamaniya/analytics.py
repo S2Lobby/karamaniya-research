@@ -295,9 +295,10 @@ def deception(months: list) -> dict:
             credibility = entry["credibility"]
         for camp in entry.get("campaigns") or []:
             if camp.get("source") != "state":
-                # A foreign campaign: one record, in the month it aired, with no claims of the state's.
+                # A foreign campaign: one record, in the month it aired, with no claims of the state's. Its target and
+                # message tell two campaigns by one power in one month apart.
                 if camp.get("source"):
-                    key = ("foreign", camp.get("source"), camp.get("month"))
+                    key = ("foreign", camp.get("source"), camp.get("month"), camp.get("target"), camp.get("message"))
                     foreign_campaigns.add(key)
                     if camp.get("exposed"):
                         foreign_exposures.add(key)

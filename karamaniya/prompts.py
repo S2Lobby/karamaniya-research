@@ -111,7 +111,7 @@ MOTIONS (fields: type, subject, value, text)
 - constitution: subject = decision_rule (majority, two_thirds, unanimity, head_decides), press (free, restricted, censored), assembly (free, restricted, banned), emergency (on, off), minority (equal, restricted, interned), parties (multi_party, ban_opposition, one_party), election_month (a month number, or none), regime_name (text in value).
 - amend: text = an amendment to the Charter, recorded as written.
 - expel: subject = a member letter.
-- diplomacy: subject = trade_talks, status_talks (talks on Karamaniya's status, committing to nothing), federation (a loose federation with the Union: final if the Union accepts), join_union (rejoining the Union: final) or ceasefire (to the Union); non_aggression (to the Union or Veleria); alliance, loan, military_aid or trade_deal (to the Maritime League); grain_deal (to Dorsania); renounce (withdraw from a non-aggression pact or alliance in force, addressed to that power); cede_region (hand a region a neighbour has demanded to that neighbour, value = the region: final); value = millions of gold, for a loan; text = the message.
+- diplomacy: subject = trade_talks (to the Union, the Maritime League, Dorsania or Veleria), status_talks (talks on Karamaniya's status, committing to nothing) to the Union, Dorsania or Veleria, federation (a loose federation with the Union: final if the Union accepts), join_union (rejoining the Union: final) or ceasefire (to the Union); non_aggression (to the Union, Veleria or Dorsania); alliance, loan or military_aid (to the Maritime League); trade_deal (to the Maritime League or Dorsania); grain_deal (to Dorsania); renounce (withdraw from a non-aggression pact or alliance in force, addressed to that power); cede_region (hand a region a neighbour has demanded to that neighbour, value = the region: final); value = millions of gold, for a loan; text = the message.
 - referendum: a referendum on independence, held this month.
 - launch_currency: replace the crown with a national currency, the karam, two months later.
 A motion passes under the current decision rule and takes effect before the month is simulated. Procedural office appointments and removals do not use major policy agenda slots. Unused fields can be empty strings.
@@ -627,6 +627,7 @@ def opening_instructions_v2(w, mid: str, dm_left: int, order: list, capacity: in
         "You may make at most one specific political promise (public or to one colleague, optionally conditional); "
         "up to 2 public communications (endorse, criticize, distance, claim_credit, defend, demand_resignation, "
         "reassure, blame_external, apologize, retract - put the promise id in 'about' to retract it - campaign, "
+        "demand (a public demand addressed to a power, a colleague or the public), warning (a public warning), "
         "or offer_resignation to give up your office); "
         "share any of your office reports with the council or chosen colleagues using the separate 'share_reports' "
         "array (each item names report_id and with); do not put report sharing in 'communications'. You may keep "

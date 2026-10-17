@@ -79,6 +79,14 @@ DIPLOMATIC_TARGETS["cede_region"] = {VELERIA, DORSANIA}
 # a pact with the whole Union. Dorsania is a Union member too: since the Union formed it is answered
 # the same way (run 20261011-105713-seed1, Month 8: A's offer of a pact to Dorsania was refused as ACTION_NOT_VALID_FOR_TARGET).
 DIPLOMATIC_TARGETS["non_aggression_pact"] = {SOLVARAN_UNION, VELERIA, DORSANIA}
+# Engine 27 (wave 3, D): the six pairs the census in docs/DIPLOMACY_TARGETS_PROPOSAL.md section 4 found refused, and
+# the only ones widened. Each got a handler before its table entry, so an accepted act cannot vanish: status talks to
+# Veleria and Dorsania (their own branches, not the Union's), trade talks to Veleria, the League and Dorsania, and a
+# trade deal to Dorsania (answered with the grain agreement, its only trade lever). Every other pair in the proposal
+# stays refused: a ceasefire to Veleria would end the Union's war, and join_union to Veleria would end the run.
+DIPLOMATIC_TARGETS["trade_talks"] = {SOLVARAN_UNION, MARITIME_LEAGUE, DORSANIA, VELERIA}
+DIPLOMATIC_TARGETS["status_talks"] = {SOLVARAN_UNION, DORSANIA, VELERIA}
+DIPLOMATIC_TARGETS["trade_deal"] = {MARITIME_LEAGUE, DORSANIA}
 # Engine 22: an ultimatum is answered by the power that issued it, and the Union answers for its members'
 # demands. Which of the four may receive a reply depends on the ultimatum that stands, so it is checked in
 # validate_diplomatic_action rather than here.

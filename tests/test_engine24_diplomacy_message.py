@@ -9,6 +9,10 @@ and for Dorsania only grain_deal.
 
 The refusal goes back to the delegate, in the repair request and in the month's rejected-motions note, so these words
 are model-facing. The table itself is not changed here: which acts a target accepts is a design decision.
+
+Engine 27 (wave 3, D) widened six pairs, among them trade_talks to Veleria and status_talks to Veleria; those examples
+now pass. The specific assertions below use pairs the proposal keeps refused (a trade deal to Veleria, a grain deal to
+Veleria, a federation to Dorsania), so the engine-24 wording stays pinned.
 """
 import os
 import sys
@@ -48,16 +52,17 @@ def not_valid_reason(clash: dict) -> dict:
 
 
 class TheRefusalNamesWhatTheTargetAccepts(unittest.TestCase):
-    def test_trade_talks_to_veleria_says_what_veleria_accepts(self):
+    def test_trade_deal_to_veleria_says_what_veleria_accepts(self):
         w = world()
-        clash = ma.conflict(w, diplomatic_motion("trade_talks", ma.VELERIA))
+        clash = ma.conflict(w, diplomatic_motion("trade_deal", ma.VELERIA))
         self.assertEqual(not_valid_reason(clash)["detail"],
-                         "a trade_talks can be addressed to Solvaran Union, not the Veleria. Veleria accepts: "
-                         "diplomatic_protest, non_aggression_pact, renounce, cede_region, ultimatum_reply")
+                         "a trade_deal can be addressed to Dorsania, Maritime League, not the Veleria. Veleria accepts: "
+                         "diplomatic_protest, trade_talks, status_talks, non_aggression_pact, renounce, cede_region, "
+                         "ultimatum_reply")
 
     def test_the_execution_gate_gives_the_same_words(self):
         w = world()
-        motion = diplomatic_motion("trade_talks", ma.VELERIA)
+        motion = diplomatic_motion("trade_deal", ma.VELERIA)
         gate = ma.validate_diplomatic_action(w, motion)
         self.assertEqual(gate["code"], "ACTION_NOT_VALID_FOR_TARGET")
         self.assertEqual(gate["detail"], not_valid_reason(ma.conflict(w, motion))["detail"])
@@ -93,15 +98,15 @@ class TheRepairRequestNamesTheTablesActs(unittest.TestCase):
 
     def test_dorsania_is_not_told_only_grain_deal(self):
         w = world()
-        repair = ma.repair_request(w, ma.conflict(w, diplomatic_motion("trade_talks", ma.DORSANIA)))
-        self.assertIn("Acts the engine can address to the Dorsania: diplomatic_protest, non_aggression_pact, "
-                      "grain_deal, renounce, cede_region, ultimatum_reply.", repair)
+        repair = ma.repair_request(w, ma.conflict(w, diplomatic_motion("federation", ma.DORSANIA)))
+        self.assertIn("Acts the engine can address to the Dorsania: diplomatic_protest, trade_talks, status_talks, "
+                      "non_aggression_pact, trade_deal, grain_deal, renounce, cede_region, ultimatum_reply.", repair)
 
     def test_veleria_is_not_told_only_cede_region(self):
         w = world()
-        repair = ma.repair_request(w, ma.conflict(w, diplomatic_motion("status_talks", ma.VELERIA)))
-        self.assertIn("Acts the engine can address to the Veleria: diplomatic_protest, non_aggression_pact, "
-                      "renounce, cede_region, ultimatum_reply.", repair)
+        repair = ma.repair_request(w, ma.conflict(w, diplomatic_motion("grain_deal", ma.VELERIA)))
+        self.assertIn("Acts the engine can address to the Veleria: diplomatic_protest, trade_talks, status_talks, "
+                      "non_aggression_pact, renounce, cede_region, ultimatum_reply.", repair)
 
 
 class TheAcceptedPairsAreStillNotRefused(unittest.TestCase):

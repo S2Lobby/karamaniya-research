@@ -476,8 +476,43 @@ def reactions_text(w: World, mid: str) -> str:
 
 # ---- communications (spec 42) --------------------------------------------------------------
 COMM_KINDS = ("endorse", "criticize", "distance", "claim_credit", "defend", "demand_resignation",
-              "reassure", "blame_external", "apologize", "retract", "campaign", "offer_resignation")
+              "reassure", "blame_external", "apologize", "retract", "campaign", "demand", "warning",
+              "offer_resignation")
 EXTERNAL = ("union", "veleria", "dorsania", "league", "previous_regime", "public")
+# Engine 27 (wave 3, D): a public demand and a public warning are words, not instruments. A demand addressed to a
+# foreign power hardens that power's view of Karamaniya a little; a warning hardens it a little more, and is read at
+# home as firmness. The values are small on purpose (the proposal left their size to this worker): a public sentence
+# must not weigh as much as a diplomatic act. A demand or warning addressed to a colleague or the public moves no
+# foreign state; the transcript still records it.
+COMM_DEMAND_HOSTILITY = .010      # a demand on a power: one hundredth of a 0..1 hostility figure
+COMM_WARNING_HOSTILITY = .015     # a warning is firmer than a demand, so one and a half times its move
+COMM_DEMAND_LEAGUE_TRUST = -.005  # the League's trust is commercial-political; a demand costs it a little
+COMM_WARNING_LEAGUE_TRUST = -.008
+COMM_WARNING_REPUTATION = .25     # a warning reads as firmness at a quarter of a protest's reputation and audience move
+
+
+def _public_pressure(w: World, target: str, hostility: float, league_trust: float) -> None:
+    """A public demand or warning, as the power it names reads it (engine 27).
+
+    A demand on "the Union" is read by both Union governments at half the size, since neither is named alone. The
+    League's reaction is its trust, the figure the engine adjusts elsewhere; the two neighbours' is hostility.
+    Members, audiences, "public" and "previous_regime" have no foreign reaction; the communication remains a record.
+    """
+    name = str(target or "").strip().lower()
+    actors = (w.foreign or {}).get("actors") or {}
+    if name == "union":
+        for actor_id in ("veleria", "dorsania"):
+            _add_hostility(actors.get(actor_id), hostility / 2)
+    elif name in ("veleria", "dorsania"):
+        _add_hostility(actors.get(name), hostility)
+    elif name == "league":
+        w.adjust_league_trust(league_trust)
+
+
+def _add_hostility(actor: dict | None, amount: float) -> None:
+    relation = ((actor or {}).get("relations") or {}).get("karamaniya")
+    if isinstance(relation, dict):
+        relation["hostility"] = round(clamp(float(relation.get("hostility", 0.0)) + amount), 3)
 
 
 def apply_communications(w: World, mid: str, items: list, statements_by: dict) -> list:
@@ -549,6 +584,14 @@ def apply_communications(w: World, mid: str, items: list, statements_by: dict) -
             s = ensure(w, mid)
             s["personal_approval"] = round(clamp(s["personal_approval"] + .005), 3)
             entry["campaign"] = True
+        elif kind == "demand":
+            # Engine 27: a public demand addressed to a foreign power hardens it a little; a demand on a colleague
+            # or the public moves no foreign state and remains a record.
+            _public_pressure(w, target, COMM_DEMAND_HOSTILITY, COMM_DEMAND_LEAGUE_TRUST)
+        elif kind == "warning":
+            # Engine 27: a public warning is firmer than a demand abroad and reads as firmness at home.
+            _public_pressure(w, target, COMM_WARNING_HOSTILITY, COMM_WARNING_LEAGUE_TRUST)
+            reputation_effect(w, mid, "protest", COMM_WARNING_REPUTATION)
         applied.append(entry)
     w.media.setdefault("communications", []).extend(applied)
     w.media["communications"] = [x for x in w.media["communications"] if w.month - x["month"] <= 12]

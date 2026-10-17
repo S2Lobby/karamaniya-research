@@ -436,6 +436,11 @@ def _answer_proposals(w: World) -> None:
             # The terms travel with the proposal, so an answer can say which of them a grain agreement leaves out.
             foreign.dorsania_reply(w, kind, pr.get("amount", 0.0), pr.get("text", ""), pr.get("region", ""),
                                    terms=pr.get("terms"))
+        elif pr["party"] == "veleria" and kind in ("status_talks", "trade_talks"):
+            # Engine 27: Veleria answers its own two widened pairs. Without this branch they fell through to
+            # _union_reply, the Union answering for its member, which misrouted trade talks to the Dorsania grain
+            # embargo (proposal 4.2, 4.3).
+            _veleria_reply(w, kind)
         elif pr["party"] in ("veleria", "dorsania"):
             # Veleria is a member of the Solvaran Union, so an approach addressed to Veleria alone
             # is answered by the Union — but it is recorded as Veleria's, because the motion was
@@ -621,6 +626,79 @@ def _union_reply(w: World, kind: str, pr: dict | None = None) -> None:
             _msg(w, union, "The Union rejects a ceasefire." if dip.war else "There is no war to end.")
 
 
+# Engine 27 (wave 3, D): Veleria answers the two pairs the act-target table used to refuse it. The proposal
+# (docs/DIPLOMACY_TARGETS_PROPOSAL.md 4.2, 4.3) left each widened pair's size open, so these are the values chosen and
+# why:
+#   - a status talk moves Veleria's trust by VELERIA_STATUS_TALKS_TRUST (.01): it opens a channel, not a settlement.
+#   - a trade talk eases the coal embargo by VELERIA_TRADE_TALKS_RELIEF (.05), half the .10 a protest eases
+#     (director._protest_reply): a talk is less than a protest's concession and far less than a deal. It raises
+#     Veleria's trust by VELERIA_TALKS_TRUST (.02). The easing gives Veleria back the trade it held back
+#     (foreign._embargo_output), which is the cost the proposal asks every widening to name.
+VELERIA_STATUS_TALKS_TRUST = .01
+VELERIA_TRADE_TALKS_RELIEF = .05
+VELERIA_TALKS_TRUST = .02
+
+
+def _veleria_reply(w: World, kind: str) -> None:
+    """Veleria's own answer to a status talk or a trade talk (engine 27).
+
+    Before the widening both fell through to _union_reply, where the Union answered for its member: a status talk
+    read "the Union takes note", and a trade talk cut the Dorsania grain embargo, the wrong party and the wrong lever
+    (proposal 4.2, 4.3). A motion addressed to Veleria is answered by Veleria; only the Union's own motions are
+    answered by the Union.
+    """
+    dip, n = w.dip, w.names
+    name = n.get("veleria", "Veleria")
+    actor = w.foreign["actors"]["veleria"]
+    relation = actor["relations"]["karamaniya"]
+    if kind == "status_talks":
+        # Talks on Karamaniya's status are what the Union's blockade rule reads, whoever they are addressed to, so the
+        # month joins the log the Union branch keeps. A demand for land is not answered by status talks, and a demand
+        # another power issued stays with it.
+        talks = w.foreign.setdefault("status_talks", [])
+        talks.append(w.month)
+        del talks[:-12]
+        relation["trust"] = round(clamp(relation["trust"] + VELERIA_STATUS_TALKS_TRUST), 3)
+        ult = dip.ultimatum or {}
+        if not ult:
+            _msg(w, name, "Veleria takes note of Karamaniya's offer of talks on its status and will take part.")
+        elif ult.get("by") == "dorsania":
+            _msg(w, name, "Veleria takes note of Karamaniya's offer of talks on its status; the demand that stands "
+                 "is Dorsania's and stays with it.")
+        elif ult.get("terms_id") == "status_talks" and not cabinet_decides(w, "veleria"):
+            # The rule-issued status demand is met by the talks, as it is when they are addressed to the Union.
+            dip.ultimatum = {}
+            _msg(w, name, "Veleria accepts Karamaniya's offer of talks on its status and the Union lifts its deadline.")
+        elif ult.get("terms_id") == "status_talks":
+            # The issuing cabinet judges its own demand by what Karamaniya does (foreign_force.ultimatum_compliance).
+            _msg(w, name, "Veleria takes note of Karamaniya's offer of talks on its status; its government will judge "
+                 "the demand by what Karamaniya gives.")
+        else:
+            _msg(w, name, "Veleria takes note of Karamaniya's offer of talks on its status. A demand for land is not "
+                 "answered by talks, and the demand still stands.")
+        return
+    # trade_talks
+    if dip.war:
+        _msg(w, name, "Veleria will not discuss coal trade while the war runs.")
+        return
+    relation["trust"] = round(clamp(relation["trust"] + VELERIA_TALKS_TRUST), 3)
+    if dip.coal_embargo > 0:
+        old = dip.coal_embargo
+        dip.coal_embargo = max(0.0, old - VELERIA_TRADE_TALKS_RELIEF)
+        foreign._embargo_output(w, "veleria", old, dip.coal_embargo, "targeted embargo", approval=0.0)
+        _msg(w, name, "Veleria agrees to trade talks and relaxes some coal shipment checks.")
+    else:
+        _msg(w, name, "Veleria agrees to trade talks; no coal restriction stands to ease.")
+
+
+# Engine 27 (wave 3, D): a trade talk to the Maritime League had no branch and was dropped without a message
+# (proposal 4.4). It moves the League's trust by LEAGUE_TALKS_TRUST (.02) where the League is willing to talk, at
+# LEAGUE_TALKS_FLOOR (.35). A talk is easier than the agreement the deal needs (trust above .45), and these sizes were
+# the design choice the proposal left open.
+LEAGUE_TALKS_FLOOR = .35
+LEAGUE_TALKS_TRUST = .02
+
+
 def _league_reply(w: World, kind: str, amount: float) -> None:
     dip, league = w.dip, w.names["league"]
     t = dip.league_trust
@@ -667,6 +745,12 @@ def _league_reply(w: World, kind: str, amount: float) -> None:
             _private_msg(w, league, "navy", f"The League will supply equipment for about {dip.league_aid:,.0f} soldiers a month.")
         else:
             _private_msg(w, league, "navy", "The League declines to supply military equipment.")
+    elif kind == "trade_talks":
+        if t > LEAGUE_TALKS_FLOOR:
+            w.adjust_league_trust(LEAGUE_TALKS_TRUST)
+            _private_msg(w, league, "treasury", "The League agrees to discuss supply and credit terms with Karamaniya.")
+        else:
+            _private_msg(w, league, "treasury", "The League declines trade talks at present.")
     elif kind == "trade_deal":
         if t > 0.45:
             w.counters["league_trade"] = 1.0

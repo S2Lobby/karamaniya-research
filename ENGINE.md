@@ -258,6 +258,19 @@ simulated.
   reject or counter), addressed to the power that issued it, whose cabinet reads the reply the next month;
   whether the demand is met is still judged by what Karamaniya does. Foreign powers' private answers to an
   office (the League's on a loan, Dorsania's on grain) reach that office's holder, ahead of its reports.
+- **Wider diplomacy (engine 27):** the act-target table lets the council address status talks to Veleria and
+  Dorsania as well as the Union, trade talks to Veleria, the Maritime League and Dorsania as well as the Union, and
+  a trade deal to Dorsania as well as the League (`motion_actions.DIPLOMATIC_TARGETS`, proposed in
+  `docs/DIPLOMACY_TARGETS_PROPOSAL.md` and recorded in `docs/WIDER_DIPLOMACY.md`). Each widened pair has its own
+  handler, so the power answers in its own voice instead of the Union answering for a member or the act being dropped
+  silently. The effects are small and documented: a status talk moves trust by .01 and joins the status-talks record
+  the Union's blockade rule reads (a status demand Veleria's rule issued is met, a demand for land is not); a trade
+  talk to Veleria eases the coal embargo by .05 and moves trust by .02; one to the League moves its trust by .02 above
+  a .35 floor; one to Dorsania opens a commercial channel and changes no delivery; a trade deal to Dorsania is
+  answered with the grain agreement it can sign. A pair without a handler stays out of the table, and its refusal
+  still names the acts its target accepts. Public communications gain `demand` and `warning`: a demand or warning
+  addressed to a power moves that power's hostility a little (.010 and .015), and a warning also reads at home as
+  firmness.
 - **Losing power:** members can be expelled, removed in a coup, voted out at the Assembly election in
   Month 36 or overthrown by revolution. At the election the government stands as the Council List and keeps
   power with 40% of the vote, or with 30% and more votes than any other list; the delegates are told this

@@ -127,6 +127,36 @@ class B3TheElectionsTermReadsTheDueDate(unittest.TestCase):
 
 
 # ---- B4 (T154): the League's democratic score ---------------------------------------------------
+class B3ACouncilWinRecordsItsDueDate(unittest.TestCase):
+    """The recount-reversed and coalition-formed wins in council.py set the due date too (lead's fix)."""
+
+    def _win(self, route, shares):
+        import types
+        from karamaniya.council import Council
+        w = world(month=40)
+        w.const.elections = [{"shares": shares, "month": w.month}]
+        w.const.election_month = w.month
+        seats = {"A": types.SimpleNamespace(label="A")}
+        council = Council(w, seats, {}, None)
+        with mock.patch("karamaniya.council.rng_for") as draw, \
+                mock.patch("karamaniya.politics.apply_seats"):
+            draw.return_value.random.return_value = 0.0
+            council._election_responses({"A": {"election_response": route}}, {"resigned": []})
+        return w
+
+    def test_a_recount_win_records_the_due_date(self):
+        w = self._win("request_recount", {"Council List": .5, "Union Party": .3})
+        self.assertTrue(w.const.elected)
+        self.assertEqual(w.const.election_due_month, 40)
+        self.assertEqual(w.const.election_month, 40 + 48)
+
+    def test_a_coalition_win_records_the_due_date(self):
+        w = self._win("negotiate_coalition", {"Council List": .4, "Union Party": .3, "Reform Bloc": .3})
+        self.assertTrue(w.const.elected)
+        self.assertEqual(w.const.election_due_month, 40)
+        self.assertEqual(w.const.election_month, 40 + 48)
+
+
 class B4TheLeagueLosesWhatTheIndexLoses(unittest.TestCase):
     def score(self, w):
         return foreign.league_democratic_score(w)

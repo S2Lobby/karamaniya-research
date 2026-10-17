@@ -2443,6 +2443,7 @@ class Council:
             if council >= .38 and rng.random() < .35:
                 last["recount"] = "reversed"
                 c.handover_month, c.elected, c.provisional = -1, True, False
+                c.election_due_month = c.election_month   # Wave B B3: the vote this win was held at
                 c.election_month = w.month + 48
                 w.event("recount", "A recount moved the Council List over the threshold; the result was reversed.", importance=3)
                 politics.apply_seats(w, last)
@@ -2467,6 +2468,7 @@ class Council:
             if council >= .33 and largest != "Union Party" and rng.random() < .4:
                 last["coalition"] = "formed"
                 c.handover_month, c.elected, c.provisional = -1, True, False
+                c.election_due_month = c.election_month   # Wave B B3: the vote this win was held at
                 c.election_month = w.month + 48
                 w.event("coalition", "The Council List formed a coalition in the Assembly and remains in government.", importance=3)
                 politics.apply_seats(w, last)

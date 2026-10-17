@@ -117,7 +117,7 @@ def combat(w: World, rng=None) -> dict | None:
     state = getattr(w, "civil_war", None)
     if not isinstance(state, dict) or not state:
         return None
-    if state.get("outcome"):
+    if state.get("outcome") or getattr(w, "outcome", None):
         return None
     if rng is None:
         rng = rng_for(w.seed, w.month, "civil_war_combat")

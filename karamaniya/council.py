@@ -17,6 +17,7 @@ from . import (actions, agendas, agents, analytics, beliefs, briefing, commitmen
                freshness, director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations,
                politics, prompts, provenance, psychology, slate as slate_rules, standing, token_saving, tuning)
 from .backends import CallResult
+from .config import OFFICES_BY_LETTER
 from .world import OFFICES, World, month_label, rng_for
 
 
@@ -707,7 +708,8 @@ class Council:
                                             political_agendas=any((m.agent_state or {}).get("agenda")
                                                                   for m in world.members),
                                             mandate=self.settings.get("mandate", "default"),
-                                            secret_ballot=world.ballot == "secret")
+                                            secret_ballot=world.ballot == "secret",
+                                            offices_by_letter=self.settings.get("office_assignment") == "by_letter")
         configured = self.settings.get("foreign_cabinet_seats") or {}
         by_label = {seat.label: seat for seat in seats.values()}
         ordered_seats = list(seats.values())
@@ -945,6 +947,8 @@ class Council:
     def form_government(self) -> dict:
         """Vote on appointments before Month 1; this phase has no policy agenda cap."""
         w = self.w
+        if self.settings.get("office_assignment") == "by_letter":
+            return self._assign_by_letter()
         if not w.founding or w.founding.get("formation"):
             return dict((w.founding or {}).get("formation", {}))
         ids = [m.id for m in w.active_members()]
@@ -1112,6 +1116,29 @@ class Council:
         formation = {"month": -1, "proposals": proposals, "motions": motions,
                      "offices": dict(w.const.offices), "agenda_slots_used": 0}
         w.founding["formation"] = formation
+        self.store.log({"type": "government_formation", **formation})
+        self._emit(type="government_formation", formation=formation)
+        return formation
+
+    def _assign_by_letter(self) -> dict:
+        """Engine 24 (S1): office_assignment = "by_letter" fills the five offices without the vote. A is head of
+        government, B the treasury, C the interior, D the army and E the navy, in every run, so a model moved to
+        another letter moves to another office. No proposal is made and no formation call is sent. The record keeps
+        the shape the vote keeps (the readers of the formation record still work) and says it was assigned by letter."""
+        w = self.w
+        if w.founding and w.founding.get("formation"):
+            return dict(w.founding["formation"])
+        if sorted(m.id for m in w.members) != sorted(OFFICES_BY_LETTER):
+            raise ValueError("office_assignment = 'by_letter' needs members A to E, found "
+                             + ", ".join(m.id for m in w.members))
+        for letter, office in OFFICES_BY_LETTER.items():
+            w.const.offices[office] = letter
+            politics.reset_bond(w, office)
+        formation = {"month": -1, "assignment": "by_letter", "proposals": {}, "motions": [],
+                     "offices": dict(w.const.offices), "agenda_slots_used": 0,
+                     "note": "Offices were assigned by letter (office_assignment = by_letter): no formation vote was held."}
+        if w.founding:
+            w.founding["formation"] = formation
         self.store.log({"type": "government_formation", **formation})
         self._emit(type="government_formation", formation=formation)
         return formation

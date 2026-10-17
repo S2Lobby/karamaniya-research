@@ -863,9 +863,11 @@ def faction_instructions(w, mid: str, fronts: list, state: dict) -> str:
         out = []
         for member_id in entry.get("members") or []:
             try:
-                out.append(w.member(member_id).name)
+                member = w.member(member_id)
             except KeyError:
                 continue
+            if member.status == "active":
+                out.append(member.name)
         return ", ".join(out) or "no one"
 
     def leader_name(entry) -> str:

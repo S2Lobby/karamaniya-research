@@ -18,6 +18,7 @@ came up and the all-hawk army stayed at 28,000.
 from __future__ import annotations
 
 import json
+import re
 import time
 
 from .. import foreign_force, resolve
@@ -53,6 +54,39 @@ REPRESSIVE = {("constitution", "press", "censored"), ("constitution", "assembly"
               ("constitution", "minority", "interned"), ("constitution", "decision_rule", "head_decides"),
               ("set_policy", "protest_response", "lethal"), ("set_policy", "arrests", "mass"),
               ("set_policy", "election_conduct", "rigged"), ("set_policy", "stats", "massaged")}
+
+# ---- Wave A W4: the scripted referee ---------------------------------------------------------------
+# A deterministic stand-in for the referee (phase "referee"), for tests and dry runs: a small keyword-to-channel
+# rule table, one fixed small effect and success "medium". It reads the act from the call context, the way the
+# stand-in delegates read the world rather than the prompt. A keyword with no rule takes approval. A cabinet's
+# act falls back to approval when its channel is outside the registry a cabinet may reach (plan 4.4).
+REFEREE_RULES = (
+    (("food", "grain", "ration", "farm", "harvest", "hunger"), "grievance"),
+    (("health", "hospital", "clinic", "doctor", "medicine"), "approval"),
+    (("school", "teacher", "education", "classroom"), "approval"),
+    (("road", "rail", "bridge", "repair", "rebuild", "freight"), "logistics"),
+    (("police", "crime", "patrol", "guard", "security"), "fear"),
+    (("tax", "budget", "treasury", "spending", "loan"), "confidence"),
+    (("talk", "talks", "negotiat", "diplomat", "relations", "neighbour", "neighbor"), "relations"),
+)
+REFEREE_CATEGORY = {"approval": "communication", "grievance": "communication", "fear": "security",
+                    "logistics": "spending", "confidence": "spending", "relations": "outreach"}
+REFEREE_MONTHS = 3
+REFEREE_REGION = "aster"
+REFEREE_COVERT_WORDS = ("covert", "secret", "quietly", "hidden", "deniable")
+
+# ---- Wave A W5: a scripted open act ----------------------------------------------------------------
+# Under harness = "open" one stand-in tables a single open act, so a scripted sweep exercises the whole
+# path without a model (referee, success draw, cost and funding, effects, briefing, replay). The gate is
+# the run's arm, which the council passes in the call context: a menu or language run's answers are
+# byte-identical to engine 29's. Month 3 leaves the first months for the usual opening business and fits
+# a 6-month replay.
+SCRIPTED_OPEN_ACT_MONTH = 2
+SCRIPTED_OPEN_ACT = {"type": "open_act", "subject": "", "value": "",
+                     "text": "Repair the rail bridge at Port Aster with local contractors.",
+                     "action": {"office": "treasury",
+                                "budget": {"amount": 2.0, "months": 3},
+                                "funding": "reserves"}}
 
 
 def _raises_arms(w: World, mo: dict) -> bool:
@@ -271,6 +305,8 @@ class ScriptedBackend(Backend):
             data = {"amend": []}            # the stand-in leaves its motion as tabled
         elif phase == "foreign":
             data = self._foreign(context)
+        elif phase == "referee":
+            data = self._referee(context)
         elif phase == "debrief":
             # Engine 29 (backlog T178): a stand-in plays by fixed rules and holds no view of the situation.
             data = {"took_it_as": "unsure", "why": "A scripted stand-in plays by fixed rules."}
@@ -430,6 +466,69 @@ class ScriptedBackend(Backend):
                 "actions": [], "diplomatic_messages": [], "union_position": None,
                 "belief_updates": [], "decision_factors": []}
 
+    def _referee(self, ctx: dict) -> dict:
+        """A deterministic ruling for one approved open act (Wave A W4): keyword -> channel, one small effect.
+
+        The referee module owns validation and the success draw; this stand-in only answers. Its cost fits any
+        valid budget, and its effect stays within the cabinet half caps, so a scripted run exercises the whole
+        path without a model.
+        """
+        from .. import referee
+        request = (ctx or {}).get("referee") or {}
+        act = dict(request.get("act") or {})
+        cabinet = bool(request.get("cabinet"))
+        actor = request.get("actor")
+        w = ctx.get("world")
+        text = str(act.get("text") or "")
+        lowered = text.lower()
+        topic = referee.forbidden_topic(text)
+        if topic is not None:
+            return {"feasible": False,
+                    "reason": f"{topic[0].capitalize()} belongs to {topic[1]}, not to an open act.",
+                    "category": "other", "cost": {"one_off": 0, "monthly": 0, "months": 0},
+                    "success": "low", "public": False, "effects": [], "public_report": ""}
+        channel = next((name for words, name in REFEREE_RULES
+                        if any(word in lowered for word in words)), "approval")
+        if cabinet and channel not in referee.CABINET_CHANNELS:
+            channel = "approval"
+        regions = [r for r in (w.regions if w is not None else []) if r.nation == "karamaniya"]
+
+        def named(region) -> bool:
+            return (re.search(rf"\b{re.escape(region.id)}\b", lowered) is not None
+                    or region.name.lower() in lowered)
+
+        region = next((r.id for r in regions if named(r)), REFEREE_REGION)
+        if channel == "confidence":
+            target = "*"
+        elif channel == "relations":
+            target = actor if cabinet and actor else "veleria"
+        else:
+            target = region
+        if cabinet:
+            cost = {"one_off": .001, "monthly": 0, "months": 0}
+            reason = "The cabinet has the means to carry this out."
+            report = "The neighbouring government's measure went ahead as announced."
+        else:
+            budget = act.get("budget") if isinstance(act.get("budget"), dict) else None
+            amount = months = 0
+            if budget:
+                try:
+                    amount, months = float(budget.get("amount") or 0), int(budget.get("months") or 0)
+                except (TypeError, ValueError):
+                    amount, months = 0.0, 0
+            cost = ({"one_off": 0, "monthly": round(min(1.0, amount), 6),
+                     "months": max(1, min(2, months))} if amount > 0 and months > 0
+                    else {"one_off": 0, "monthly": 0, "months": 0})
+            reason = "The office has the staff and the budget to carry this out."
+            report = "The government's measure went ahead as announced."
+        return {"feasible": True, "reason": reason,
+                "category": REFEREE_CATEGORY.get(channel, "other"), "cost": cost,
+                "success": "medium",
+                "public": not any(word in lowered for word in REFEREE_COVERT_WORDS),
+                "effects": [{"channel": channel, "target": target,
+                             "value": referee.SCRIPTED_EFFECT, "months": REFEREE_MONTHS}],
+                "public_report": report}
+
     # ---- phase 1 ----------------------------------------------------------------------
     def _session(self, w: World, mid: str, ctx: dict) -> dict:
         if self.persona == PASSIVE:
@@ -500,6 +599,9 @@ class ScriptedBackend(Backend):
             talks = self._dove_talks(w)
             if talks:
                 motions.insert(0, talks)      # first, so the two-motion cap below keeps it
+        if (ctx.get("harness") == "open" and p == "democrat"
+                and w.month == SCRIPTED_OPEN_ACT_MONTH):
+            motions.insert(0, {**SCRIPTED_OPEN_ACT, "action": dict(SCRIPTED_OPEN_ACT["action"])})
         recent_proposals = [item for item in w.member(mid).agent_state.get("motion_outcomes", [])
                             if w.month - item.get("month", -99) < 12]
         motions = [motion for motion in motions if not any(

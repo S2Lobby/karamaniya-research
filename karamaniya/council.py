@@ -13,9 +13,10 @@ import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (actions, agendas, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors, forecasts,
-               freshness, director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations,
-               politics, prompts, provenance, psychology, slate as slate_rules, standing, token_saving, tuning)
+from . import (actions, agendas, agents, analytics, beliefs, briefing, cabinet_acts, commitments, convergence, decision_context, deliberation, errors, forecasts,
+               freshness, director, engine, foreign, founding, human, intelligence, knockout, memory, motion_actions,
+               open_acts, operations, politics, prompts, provenance, psychology, slate as slate_rules, standing,
+               token_saving, tuning)
 from .backends import CallResult
 from .config import OFFICES_BY_LETTER
 from .world import OFFICES, World, month_label, rng_for
@@ -546,9 +547,9 @@ def _conflict_fields(conflict: dict) -> dict:
     return {k: v for k, v in (conflict or {}).items() if k != "motion"}
 
 
-def _repair_answer_schema(w, ids: list) -> dict:
+def _repair_answer_schema(w, ids: list, harness: str = "menu") -> dict:
     """The answer to a MOTION_ACTION_MISMATCH: each corrected motion, with the repair id it answers (Audit MO13)."""
-    schema = actions.repair_schema(w, len(ids))
+    schema = actions.repair_schema(w, len(ids), harness=harness)
     motions = schema["properties"]["motions"]
     item = motions["items"]
     tagged = {**item, "properties": {"id": {"type": "string", "enum": list(ids)}, **item["properties"]},
@@ -804,6 +805,15 @@ class Council:
         self.observer = observer    # optional callback for live progress (the control room)
         self.seats = seats
         self.settings = settings
+        # Wave A (engine 30): the run's arm, read from the world when W6 stamps it, else from the run
+        # settings. Stamping the world here keeps every reader (politics.validate_motion, the schemas, the
+        # scripted stand-ins) on one arm even before W6's run option lands.
+        harness = self.settings.get("harness")
+        if harness is not None and getattr(world, "harness", None) in (None, ""):
+            world.harness = actions.validate_harness(harness)
+        # The referee is one fixed seat-like model for the whole run, built on the first open act and
+        # kept, so the precedents it is shown accumulate across months.
+        self._referee_obj = None
         self.foreign_enabled = bool(self.settings.get("foreign_cabinets", False))
         # The monthly forecast panel (engine 13): on unless the run turns it off.
         self.panel = self.settings.get("forecast_panel", True) is not False and world.agent_architecture_version >= 2
@@ -824,7 +834,8 @@ class Council:
                                                                   for m in world.members),
                                             mandate=self.settings.get("mandate", "default"),
                                             secret_ballot=world.ballot == "secret",
-                                            offices_by_letter=self.settings.get("office_assignment") == "by_letter")
+                                            offices_by_letter=self.settings.get("office_assignment") == "by_letter",
+                                            harness=self._harness())
         configured = self.settings.get("foreign_cabinet_seats") or {}
         by_label = {seat.label: seat for seat in seats.values()}
         ordered_seats = list(seats.values())
@@ -874,6 +885,28 @@ class Council:
             except Exception:  # progress display must never break a run
                 pass
 
+    # ---- the open-actions arm -------------------------------------------------------
+    def _harness(self) -> str:
+        """The run's arm: the world's when it carries one (W6 stamps it), else the run settings."""
+        stamped = getattr(getattr(self, "w", None), "harness", None)
+        if stamped in actions.HARNESSES:
+            return stamped
+        return actions.validate_harness((getattr(self, "settings", None) or {}).get("harness", "menu"))
+
+    def _referee_for_acts(self):
+        """The run's one Referee, built from the seat-like `referee_backend` on first use, or None.
+
+        One instance for the run: the referee is a fixed model at temperature 0, and one object keeps the
+        same connector (and any prompt-budget trait it carries) across months.
+        """
+        if self._referee_obj is None:
+            cfg = self.settings.get("referee_backend")
+            if not isinstance(cfg, dict) or not cfg.get("provider"):
+                return None
+            from .referee import Referee
+            self._referee_obj = Referee(cfg)
+        return self._referee_obj
+
     # ---- calls ----------------------------------------------------------------------
     def _schema_text(self, mid: str, schema: dict) -> str:
         """The answer's shape as the prompt spells it out: in full (engine 5), or compactly when the
@@ -891,7 +924,7 @@ class Council:
 
     def _call(self, mid: str, phase: str, user: str, schema: dict, context: dict) -> CallResult:
         seat = self.seats[mid]
-        ctx = {"world": self.w, "member": mid, "phase": phase, **context}
+        ctx = {"world": self.w, "member": mid, "phase": phase, "harness": self._harness(), **context}
         if self.w.agent_architecture_version >= 2 and "temperature" not in ctx:
             temperature = self._temperature(mid)
             if temperature is not None:
@@ -1289,6 +1322,11 @@ class Council:
         if w.human_factor and w.agent_architecture_version >= 1:
             agents.ensure(w)
         engine.begin_month(w)
+        # Wave A (W9): the knockout arm, if this run has one, acts at the start of its month before anyone speaks.
+        knockout.monthly(w, self.settings.get("knockout"))
+        # Wave A (W5): an open act's remaining monthly charges are paid at the start of the month, beside the
+        # other pre-session calls; a charge that cannot be paid is recorded and stops its schedule.
+        open_acts.monthly(w)
         self._emit(type="month_start", month=w.month)
         rng = rng_for(w.seed, w.month, "council")
         active = [m.id for m in w.active_members()]
@@ -1310,7 +1348,7 @@ class Council:
 
         def speak(mid):
             annex = briefing.annex(w, mid, intercepted.get(mid))
-            schema = actions.session_schema(w, mid)
+            schema = actions.session_schema(w, mid, harness=self._harness())
             left = quota - used[mid]
             user = decision_context.for_member(w, mid, "independent opening round") + "\n\n" + prompts.session_prompt(
                 w, mid, brief, annex, inbox[mid], [], [], order, schema, left)
@@ -1382,7 +1420,7 @@ class Council:
             # statements and motions, and phase-one messages arrive as they are sent.
             for mid in order:
                 annex = briefing.annex(w, mid, intercepted.get(mid))
-                schema = actions.session_schema(w, mid)
+                schema = actions.session_schema(w, mid, harness=self._harness())
                 left = quota - used[mid]
                 user = decision_context.for_member(w, mid, "sequential council session", motions) + "\n\n" + prompts.session_prompt(
                     w, mid, brief, annex, inbox[mid], statements, motions, order, schema, left)
@@ -1440,8 +1478,18 @@ class Council:
             contexts = director.prepare_external(w)
             cabinet_decisions, foreign_calls = self._foreign_cabinets(contexts)
             record["foreign_calls"] = foreign_calls
+            # Wave A (engine 30, W8): the cabinets' open acts are ruled, charged and scheduled here, after both
+            # cabinets answered and before engine.step, in the fixed order veleria then dorsania. Under any
+            # other harness this is a no-op, so a menu or language run is byte-identical to engine 29.
+            cabinet_acts.process(w, cabinet_decisions, settings=self.settings,
+                                 referee=self._referee_for_acts(), store=self.store,
+                                 next_call_id=self._next_call_id, names=self.names)
         acted_month = w.month
         engine.step(w, cabinet_decisions, foreign_prepared=self.foreign_enabled)
+        # Wave A (engine 30, W5): the month's open acts, as in the version-2 month. Left out when none ran.
+        open_record = open_acts.month_record(w, acted_month)
+        if open_record:
+            record["open_acts"] = open_record["open_acts"]
         self._emit(type="neighbours", month=acted_month, actors=_neighbours_live(w, acted_month, cabinet_decisions))
         if w.human_factor and w.agent_architecture_version >= 1:
             record["social"] = _post_month_social(w)
@@ -1451,6 +1499,8 @@ class Council:
         record["outcome"] = dict(w.outcome)
         self.last_record = {"motions": record["motions"], "defiance": record["defiance"],
                             "coups": record["coups"]}
+        if record.get("open_acts"):
+            self.last_record["open_acts"] = record["open_acts"]
         _keep_month_outcome(w, record)
         self.store.log({"type": "month", **record})
         return record
@@ -1516,6 +1566,11 @@ class Council:
         agents.ensure(w)
         standing.ensure_world(w)
         engine.begin_month(w)
+        # Wave A (W9): the knockout arm, if this run has one, acts at the start of its month before anyone speaks.
+        knockout.monthly(w, self.settings.get("knockout"))
+        # Wave A (W5): an open act's remaining monthly charges are paid at the start of the month, beside the
+        # other pre-session calls; a charge that cannot be paid is recorded and stops its schedule.
+        open_acts.monthly(w)
         self._emit(type="month_start", month=w.month)
         rng = rng_for(w.seed, w.month, "council")
         active = [m.id for m in w.active_members()]
@@ -1565,7 +1620,7 @@ class Council:
             # The quota is read before the schema is built: the schema has to advertise what the
             # member actually has left, not a flat per-phase maximum it may not spend.
             left = quota - used[mid]
-            schema = actions.session_schema_v2(w, mid, left)
+            schema = actions.session_schema_v2(w, mid, left, harness=self._harness())
             prompt, meta = decision_context.build(
                 w, mid, "independent opening", public_brief=brief, motions=[],
                 messages=prompts.messages_v2(w, inbox[mid], intercepted.get(mid)),
@@ -1960,6 +2015,13 @@ class Council:
                           "offices": dict(w.const.offices), "war": w.dip.war}
         record = self._resolve_v2(decisions, final, scheduled, statements, order, calls, opening_values,
                                   pre_positions, commitments_added, election_pending)
+        # Wave A (engine 30, W5): a refused open act reaches its proposer through the same refusal note as a
+        # motion refused at tabling (the note is built from `rejected_motions` next month).
+        open_record = open_acts.month_record(w)
+        if open_record:
+            for act in open_record["open_acts"]:
+                if act.get("kind", "act") == "act" and act.get("refused"):
+                    rejected.append(open_acts.refusal_entry(act))
         # Audit CO3: a deferral this month's votes passed is written during resolution, so the month it names is read
         # here, after it, and set on this month's deferred entries (the same dicts the agenda holds).
         wanted = {str(d.get("target") or ""): d for d in w.agenda.get("deferrals", []) if d.get("month") == w.month}
@@ -2072,8 +2134,18 @@ class Council:
             contexts = director.prepare_external(w)
             cabinet_decisions, foreign_calls = self._foreign_cabinets(contexts)
             record["foreign_calls"] = foreign_calls
+            # Wave A (engine 30, W8): as in the version-1 month, the cabinets' open acts are carried out after
+            # both cabinets answer and before engine.step.
+            cabinet_acts.process(w, cabinet_decisions, settings=self.settings,
+                                 referee=self._referee_for_acts(), store=self.store,
+                                 next_call_id=self._next_call_id, names=self.names)
         completed_month = record["month"]
         engine.step(w, cabinet_decisions, foreign_prepared=self.foreign_enabled)
+        # Wave A (engine 30, W5): the month's open acts, as carried out or refused. The same list is added to
+        # the history row by engine.snapshot; left out entirely when there was none.
+        open_record = open_acts.month_record(w, completed_month)
+        if open_record:
+            record["open_acts"] = open_record["open_acts"]
         self._emit(type="neighbours", month=completed_month,
                    actors=_neighbours_live(w, completed_month, cabinet_decisions))
         # Wave 3: the month record carries what the state media line did and what it cost.
@@ -2092,6 +2164,10 @@ class Council:
                             "deferred": record["deferred"], "office_orders": record["office_orders"],
                             "rejected_motions": record.get("rejected_motions", []),
                             "rejected_messages": record["rejected_messages"]}
+        if record.get("open_acts"):
+            # The next month's briefing describes every act carried out this month, and marks a quiet one
+            # as not announced (briefing.public_v2).
+            self.last_record["open_acts"] = record["open_acts"]
         if quiet:
             record["quiet_month"] = quiet
             self.last_record["quiet_month"] = True
@@ -2156,7 +2232,7 @@ class Council:
 
     def _repair_structured_action(self, mid: str, motion: dict, rejection: dict, calls: list):
         """Give the author one format-only retry for a motion with no executable action."""
-        schema = actions.repair_schema(self.w, 1)
+        schema = actions.repair_schema(self.w, 1, harness=self._harness())
         body = motion_actions.structured_action_repair_request(motion, rejection)
         res = self._call(mid, "motion_repair", body + "\n\nReply with this JSON:\n" + actions.example(schema),
                          schema, {"motion": motion, "repair_code": rejection.get("reason_code")})
@@ -2206,7 +2282,7 @@ class Council:
         # Audit MO13: each held-back motion has a repair id, which the reply must give back. Replies are paired
         # with the motions by these ids, never by their position in the answer.
         ids = [f"R{i}" for i in range(1, len(items) + 1)]
-        schema = _repair_answer_schema(w, ids)
+        schema = _repair_answer_schema(w, ids, harness=self._harness())
         body = "\n\n".join(f"Repair id {rid}\n" + motion_actions.repair_request(w, item["conflict"])
                            for rid, item in zip(ids, items))
         res = self._call(mid, "motion_repair", body + "\n\nReply with this JSON:\n" + actions.example(schema),
@@ -2696,9 +2772,21 @@ class Council:
                     entry["blocking_reason"] = ""
                     entry["execution_status"] = "EXECUTED"
                     entry["world_state_after"] = None
-                    entry["result"] = politics.apply_motion(w, {**mo, "proposer": mo["proposer"], "votes": dict(counted),
-                                                                "final_executable_action": action,
-                                                                "conditions": entry["conditions"]})
+                    if mo["type"] == "open_act":
+                        # Wave A (engine 30, W5): the only execution path for a passed open act. The
+                        # referee rules it, the success is drawn on its own stream, the cost is charged
+                        # through the funding paths and the ruling's effects go through the bus. The
+                        # loop's own fields are kept exactly as for `politics.apply_motion`.
+                        act_record = open_acts.execute(w, mo, settings=self.settings,
+                                                       referee=self._referee_for_acts(),
+                                                       store=self.store, next_call_id=self._next_call_id,
+                                                       names=self.names)
+                        entry["open_act"] = act_record
+                        entry["result"] = act_record["result"]
+                    else:
+                        entry["result"] = politics.apply_motion(w, {**mo, "proposer": mo["proposer"], "votes": dict(counted),
+                                                                    "final_executable_action": action,
+                                                                    "conditions": entry["conditions"]})
                     entry["execution_result"] = entry["result"]
                     if mo["type"] == "disaster_relief":
                         implementation = next((x for x in reversed((w.institutions or {}).get("relief", []))
@@ -2852,7 +2940,7 @@ class Council:
         def decide(actor_id):
             seat = self.foreign_seats[actor_id]
             context = contexts[actor_id]
-            schema = foreign.cabinet_schema(actor_id)
+            schema = foreign.cabinet_schema(actor_id, harness=self._harness())
             user = ("=== CURRENT STRATEGIC CONTEXT ===\n" +
                     json.dumps(_rounded(context), ensure_ascii=False, indent=2, default=str) +
                     "\n\nChoose a multi-month strategy and actions for this month. Use only supplied estimates. "
@@ -2860,7 +2948,7 @@ class Council:
             self._emit(type="foreign_call_start", actor=actor_id, month=w.month, seat=seat.label,
                        provider=seat.cfg.get("provider"), model=seat.cfg.get("model"))
             temperament = w.foreign["actors"][actor_id].get("temperament", "")
-            system = foreign.cabinet_system_prompt(actor_id, temperament)
+            system = foreign.cabinet_system_prompt(actor_id, temperament, harness=self._harness())
             if self.names:
                 system, user, schema = self.names.out(system), self.names.out(user), self.names.out_obj(schema)
             result = seat.backend.complete(system, user, schema,
@@ -2887,7 +2975,14 @@ class Council:
             if result.quota:
                 raise RunPaused(actor_id.title(), seat.label, result.error[:300], role="Foreign cabinet")
             try:
-                normalized, problems = foreign.normalize_cabinet_output(actor_id, result.data)
+                # The open arm passes the harness so the reader accepts the cabinet's open_act; the default
+                # arms keep the two-argument call engine 29 made, so recorded stand-ins and callers that
+                # replace the normaliser are unaffected.
+                if self._harness() == "open":
+                    normalized, problems = foreign.normalize_cabinet_output(actor_id, result.data,
+                                                                            harness="open")
+                else:
+                    normalized, problems = foreign.normalize_cabinet_output(actor_id, result.data)
             except Exception as exc:  # noqa: BLE001 - nothing a model sends may end the month (Audit CO2-f)
                 # Read as empty, as a failed call is, so the month goes on; the problem names what broke (read_answer).
                 normalized, problems = {}, [f"answer could not be read ({type(exc).__name__}: {str(exc)[:200]})"]
@@ -3011,7 +3106,17 @@ class Council:
                     entry["blocking_reason"] = ""
                     entry["execution_month"] = w.month
                     entry["world_state_after"] = None
-                    entry["result"] = politics.apply_motion(w, {**mo, "proposer": mo["proposer"]})
+                    if mo["type"] == "open_act":
+                        # Wave A (engine 30, W5): mirrored for the version-1 month, so a legacy council
+                        # that passes an open act carries it out through the same path.
+                        act_record = open_acts.execute(w, mo, settings=self.settings,
+                                                       referee=self._referee_for_acts(),
+                                                       store=self.store, next_call_id=self._next_call_id,
+                                                       names=self.names)
+                        entry["open_act"] = act_record
+                        entry["result"] = act_record["result"]
+                    else:
+                        entry["result"] = politics.apply_motion(w, {**mo, "proposer": mo["proposer"]})
                     entry["world_state_after"] = _audit_state(w.to_dict(), w.avg("approval"))
                     entry["execution_status"] = "EXECUTED"
                     if entry["conditions"]:

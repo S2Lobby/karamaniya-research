@@ -252,6 +252,13 @@ def structured_action(w, motion: dict) -> dict:
                 "kinds": list(explicit.get("kinds") or []),
                 "claims": [dict(c) for c in explicit.get("claims") or [] if isinstance(c, dict)],
                 "intensity": str(explicit.get("intensity") or "")}
+    if kind == "policy":
+        # Wave A (engine 30, W3): the canonical items are the executable payload; the items' own
+        # conditions are evaluated monthly by policy.monthly, not as a motion-level gate.
+        from . import actions
+        return {"action_type": "policy", "target": None, "policy": None,
+                "value": motion.get("value"), "issue": "", "terms": [], "kind": kind,
+                "subject": subject, "items": actions.policy_items_of(w, motion)}
     return {"action_type": action_type or kind, "target": target, "policy": subject,
             "value": motion.get("value"), "issue": "", "terms": [], "kind": kind, "subject": subject}
 
@@ -483,7 +490,14 @@ def parse_conditions(text: str, motion_type: str = "", subject: str = "", action
 
 
 def motion_conditions(motion: dict) -> list:
-    """The binding conditions for one motion: explicit beats derived, never invented."""
+    """The binding conditions for one motion: explicit beats derived, never invented.
+
+    Wave A (engine 30, W3): a policy's conditions live on its items, one per item, and policy.monthly
+    evaluates them at the start of each month. The motion itself carries none, so prose that reads like a
+    condition is a description of the policy rather than a gate on the whole motion.
+    """
+    if str(motion.get("type", "")).strip() == "policy":
+        return []
     explicit = motion.get("conditions") or motion.get("execution_conditions") or []
     if isinstance(explicit, list) and explicit:
         clean = []
@@ -674,6 +688,10 @@ def evaluate_conditions(w, conditions: list, motion: dict | None = None) -> list
 
 def condition_mismatch(w, motion: dict) -> dict | None:
     """Final text says 'only after X' but the stored conditions would run now: block."""
+    if str(motion.get("type", "")).strip() == "policy":
+        # Wave A (engine 30, W3): the policy's gates are its per-item conditions (see motion_conditions);
+        # there is no motion-level condition to compare the prose against.
+        return None
     text_conds = parse_conditions(str(motion.get("text", "")), str(motion.get("type", "")),
                                   str(motion.get("subject", "")), motion.get("action"))
     if not text_conds:
@@ -2294,12 +2312,65 @@ def execution_key(w, motion: dict) -> str:
                    "kinds": sorted(action.get("kinds") or []),
                    "claims": [[str(c.get("metric")), str(c.get("value"))] for c in action.get("claims") or []],
                    "intensity": str(action.get("intensity") or "")}
+    # Wave A (engine 30, W3): a policy is the canonical items it carries, so its label and wording do not
+    # change its key, and re-tabling the same items in another order is the same motion (W2's key beside
+    # the month, the programme branch's shape). An open act is its words, office, budget and funding (W2's
+    # key): without this branch every open act in a month shared the empty subject/value fallback and the
+    # second one was refused as a duplicate of the first.
+    if action["kind"] == "policy":
+        from .deliberation import _policy_measure_key
+        payload = {"action_type": "policy", "month": payload["month"],
+                   "items": list(_policy_measure_key(w, motion))}
+    if action["kind"] == "open_act":
+        from .deliberation import _open_act_key
+        payload = {"action_type": "open_act", "month": payload["month"],
+                   "act": list(_open_act_key(w, motion))}
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
 def _normalise(text: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", str(text).casefold()))
+
+
+def _policy_conflict(items: list) -> dict | None:
+    """A policy whose own items contradict each other, or a spending item the reader left incomplete.
+
+    Wave A (engine 30, W3). Two set_lever items on one setting name two values for it; a set_lever item and
+    a funding cut on the same setting mean the policy both raises and lowers that line. Neither can be
+    carried out as written, so the motion is blocked rather than resolved by item order.
+    """
+    from . import actions
+    if not items:
+        return {"code": "POLICY_LIMIT", "detail": "the policy carries no item the engine could read"}
+    set_levers = [str(entry.get("lever")) for entry in items
+                  if entry.get("instrument") == "set_lever"]
+    duplicates = sorted({lever for lever in set_levers if set_levers.count(lever) > 1})
+    if duplicates:
+        return {"code": "POLICY_LIMIT",
+                "detail": (f"the policy sets {', '.join(duplicates)} more than once; one policy may not "
+                           "name two values for the same setting")}
+    cuts = {str(entry.get("funding"))[len("cut:"):] for entry in items
+            if str(entry.get("funding") or "").startswith("cut:")}
+    clash = sorted(set(set_levers) & cuts)
+    if clash:
+        return {"code": "POLICY_LIMIT",
+                "detail": (f"the policy sets {', '.join(clash)} and also funds spending by cutting it; "
+                           "one policy may not both set a setting and cut it")}
+    missing = []
+    for entry in items:
+        if entry.get("instrument") not in actions.POLICY_SPENDING:
+            continue
+        try:
+            amount = float(entry.get("amount"))
+        except (TypeError, ValueError):
+            amount = 0.0
+        if amount <= 0 or not entry.get("funding"):
+            missing.append(entry)
+    if missing:
+        return {"code": "POLICY_UNFUNDED",
+                "detail": "a spending item reached the council without a positive amount or a funding source"}
+    return None
 
 
 def validate_execution(w, motion: dict, executed: dict | None = None) -> dict | None:
@@ -2322,6 +2393,21 @@ def validate_execution(w, motion: dict, executed: dict | None = None) -> dict | 
         return {"code": "SESSION_VOID", "detail": "the session was ended by force; nothing it passed is executed"}
     if not motion.get("passed"):
         return {"code": "NOT_PASSED", "detail": "the motion did not carry"}
+    if str(motion.get("type", "")).strip() == "policy":
+        # Wave A (engine 30, W3): a policy's gates are per item and monthly (policy.monthly evaluates each
+        # item's condition at the start of the month), so a condition written in the prose is a description
+        # of the policy, not a motion-level gate. The motion is blocked here only when its own items
+        # contradict each other, and the duplicate key is the canonical items (W2's key).
+        from . import actions
+        conflict = _policy_conflict(actions.policy_items_of(w, motion))
+        if conflict:
+            return conflict
+        if executed is not None:
+            key = execution_key(w, motion)
+            if key in executed:
+                return {"code": "DUPLICATE_ACTION", "detail": "an equivalent action already executed this month",
+                        "duplicate_of": executed[key]}
+        return None
     mismatch = condition_mismatch(w, motion)
     if mismatch:
         return {**mismatch, "condition_results": [],

@@ -1161,6 +1161,13 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
             _remember(w.foreign, actor_id, "rejected_action", note["reason"], w.month, action={"type": note["type"]})
         for index, raw in enumerate(decision.get("actions", [])[:ACTS_PER_MONTH]):
             action = dict(raw) if isinstance(raw, dict) else raw
+            if isinstance(action, dict) and action.get("type") == "open_act" \
+                    and getattr(w, "harness", None) == "open":
+                # Wave A W8 (plan 4.4): a cabinet's open act is ruled, charged and scheduled by cabinet_acts after
+                # both cabinets answer and before engine.step. It is not one of this reader's acts, so it must not
+                # be applied here or recorded as FOREIGN_ACTION_INVALID. Under any other arm the kind does not
+                # exist and an open_act is refused as an unsupported action, exactly as engine 29 refused it.
+                continue
             available = max(0, actor["military"]["reserves"]-actor["military"]["active"]*.45) if isinstance(action, dict) else 0
             error = validate_action(actor_id, action, {"mobilized_reserve": available}, w)
             if error:
@@ -1305,6 +1312,57 @@ ACT_BUDGET = {"public_statement": 0.0, "offer_talks": .001, "border_accord": .00
 # Dorsania "eased" a grain embargo that stood at zero in every month, and lost about 11% of its output in 36
 # months on every seed and council (found by the calibration harness, tools/calibrate.py).
 EMBARGO_COST = {"veleria": .03, "dorsania": .06}
+
+
+# Wave A W8 (plan 4.4): a covert open act by a neighbouring cabinet can be exposed in each month its effects still
+# run. The chance comes from the Interior. Engine 29 has one surveillance setting (Policy.surveillance: low, medium,
+# high) and no separate "intelligence" setting; the Interior's ability to act on what it hears is its office capacity
+# (standing writes institutions["capacity"]), and its operational focus is the setting that says what it watches
+# (operations.py: "smuggling" disrupts the arms networks, "election_security" guards the political sphere). The combined
+# chance is the surveillance base, plus up to COVERT_EXPOSURE_CAPACITY for a fully working Interior, plus
+# COVERT_EXPOSURE_FOCUS when its focus is one of the two intelligence-led ones. At the defaults (surveillance low,
+# capacity 1.0, focus public_order) the chance is .04 + .05 = .09 a month, documented in the W8 report.
+COVERT_EXPOSURE_CHANCE = {"low": .04, "medium": .10, "high": .20}
+COVERT_EXPOSURE_CAPACITY = .05
+COVERT_EXPOSURE_FOCUS = .04
+COVERT_EXPOSURE_FOCUS_VALUES = ("smuggling", "election_security")
+# What an exposure costs the power's relations with Karamaniya, in trust points: the same scale as the relations
+# channel's cap (.03 a month) and just under the .06 covert_support's own exposure charges (foreign_force.apply).
+EXPOSURE_HOSTILITY = .05
+EXPOSURE_TRUST = .05
+
+
+def covert_exposure_chance(w) -> float:
+    """The combined chance this month's covert cabinet act is exposed, from the Interior's settings.
+
+    The mapping and constants are above. A world without an institutions table reads the starting capacity (1.0); an
+    unknown surveillance value reads the low setting, as the plots and intel checks do.
+    """
+    base = COVERT_EXPOSURE_CHANCE.get(getattr(w.policy, "surveillance", "low"), COVERT_EXPOSURE_CHANCE["low"])
+    capacity = (w.institutions.get("capacity") or {}).get("interior", 1.0)
+    try:
+        capacity = clamp(float(capacity))
+    except (TypeError, ValueError):
+        capacity = 1.0
+    focus = (operations.current(w, "interior") or {}).get("focus", "public_order")
+    return clamp(base + COVERT_EXPOSURE_CAPACITY * capacity
+                 + (COVERT_EXPOSURE_FOCUS if focus in COVERT_EXPOSURE_FOCUS_VALUES else 0.0))
+
+
+def exposure_roll(w, tag: str, chance: float, index: int = 0) -> bool:
+    """One exposure draw for this month on the stream rng_for(seed, month, tag).
+
+    `index` is the place of this act among the month's acts on the same stream (0 for the first). The stream is opened
+    for each act and advanced by the index, so two acts in one month are judged by different numbers while every draw
+    still comes only from its own stream. Wave B's B6 (foreign.exposure_roll, "foreign_exposure") has this shape; when
+    it merges, replace this body with it: W8's caller already passes the tag "covert_exposure" and the state media's
+    "media" stream is never touched.
+    """
+    rng = rng_for(w.seed, w.month, tag)
+    draw = rng.random()
+    for _ in range(index):
+        draw = rng.random()
+    return draw < chance
 
 
 def _embargo_output(w, actor_id: str, old: float, new: float, label: str, approval: float) -> None:
@@ -1641,27 +1699,43 @@ STRATEGY_CHARS = 180
 
 
 # Optional cabinet adapters can use this contract without adding delegate seats.
-def cabinet_schema(actor_id: str | None = None) -> dict:
+def cabinet_schema(actor_id: str | None = None, harness: str = "menu") -> dict:
     """The reply contract for one cabinet: its own actions only. Without an actor, the union of
     both catalogs. Either way each action appears once: strict validators (the Claude CLI's
-    --json-schema) reject an enum with duplicate items, and the two catalogs share four actions."""
+    --json-schema) reject an enum with duplicate items, and the two catalogs share four actions.
+
+    Wave A: under `harness = "open"` the act list gains `open_act`, with text (at most 60 words, said in
+    the system prompt) and a target that is Karamaniya, one of its regions, or the cabinet's own country.
+    The shape is W2's; reading and applying it are W8's. Under the default "menu" the contract is
+    engine 29's exactly.
+    """
+    from .actions import cabinet_open_act_targets, validate_harness
+    harness = validate_harness(harness)
     catalog = action_catalog(actor_id) if actor_id else action_catalog("veleria") + action_catalog("dorsania")
     kinds = list(dict.fromkeys(a["type"] for a in catalog))
+    targets = list(PROPAGANDA_TARGET_CHOICES)
+    if harness == "open":
+        kinds = list(dict.fromkeys([*kinds, "open_act"]))
+        # The target field is shared with propaganda; the open arm's enum adds Karamaniya and the
+        # cabinet's own country, and the reader (W8) keeps each act to its own targets.
+        targets = list(dict.fromkeys([*targets, *cabinet_open_act_targets(actor_id)]))
+    properties = {"type": {"type": "string", "enum": kinds},
+                  "magnitude": {"type": "number", "minimum": 0, "maximum": 1},
+                  "troops": {"type": "integer", "minimum": 0},
+                  # Fields an act of force names (foreign_force); each is optional.
+                  "front": {"type": "string", "enum": list(foreign_force.FRONTS)},
+                  "aim": {"type": "string", "enum": list(foreign_force.AIMS)},
+                  "region": {"type": "string", "enum": list(CABINET_REGIONS)},
+                  # Wave 3: the fields a propaganda act states (PROPAGANDA_TARGETS, PROPAGANDA_MESSAGES).
+                  "target": {"type": "string", "enum": targets},
+                  "message": {"type": "string", "enum": list(PROPAGANDA_MESSAGE_KINDS)},
+                  "terms": {"type": "string", "enum": list(foreign_force.ULTIMATUM_TERMS)},
+                  "deadline_months": {"type": "integer", "minimum": foreign_force.DEADLINE_MONTHS[0],
+                                      "maximum": foreign_force.DEADLINE_MONTHS[1]}}
+    if harness == "open":
+        properties["text"] = {"type": "string"}
     action = {"type": "object", "additionalProperties": False,
-              "properties": {"type": {"type": "string", "enum": kinds},
-                             "magnitude": {"type": "number", "minimum": 0, "maximum": 1},
-                             "troops": {"type": "integer", "minimum": 0},
-                             # Fields an act of force names (foreign_force); each is optional.
-                             "front": {"type": "string", "enum": list(foreign_force.FRONTS)},
-                             "aim": {"type": "string", "enum": list(foreign_force.AIMS)},
-                             "region": {"type": "string", "enum": list(CABINET_REGIONS)},
-                             # Wave 3: the fields a propaganda act states (PROPAGANDA_TARGETS, PROPAGANDA_MESSAGES).
-                             "target": {"type": "string", "enum": list(PROPAGANDA_TARGET_CHOICES)},
-                             "message": {"type": "string", "enum": list(PROPAGANDA_MESSAGE_KINDS)},
-                             "terms": {"type": "string", "enum": list(foreign_force.ULTIMATUM_TERMS)},
-                             "deadline_months": {"type": "integer", "minimum": foreign_force.DEADLINE_MONTHS[0],
-                                                 "maximum": foreign_force.DEADLINE_MONTHS[1]}},
-              "required": ["type"]}
+              "properties": properties, "required": ["type"]}
     message = {"type": "object", "additionalProperties": False,
                "properties": {"recipient": {"type": "string", "enum": ["karamaniya", "union", "league"]},
                               "text": {"type": "string"}}, "required": ["recipient", "text"]}
@@ -1733,7 +1807,16 @@ CABINET_STANCE = ("You treat Karamaniya's government as an adversary, never a pa
                   "pressure alone will not get you what you want. A war you start must be won.")
 
 
-def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
+# Wave A (plan 4.4): one neutral sentence, added only under harness = "open", that states the open act's
+# limits — it is one of the four acts, its text is at most 60 words, and its target is Karamaniya, one of its
+# regions, or the cabinet's own country. Reading and applying the act are W8's; this is the prompt text.
+OPEN_ACT_SENTENCE = (
+    "One of those acts may be an open act: its text, at most 60 words, says what your government does, and its "
+    "target is Karamaniya, one of its regions, or your own country."
+)
+
+
+def cabinet_system_prompt(actor_id: str, temperament: str = "", harness: str = "menu") -> str:
     """The cabinet's standing instructions.
 
     Engine 12 removed the two lines that decided for it: "avoid a damaging war" and "choose actions only
@@ -1743,8 +1826,12 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
     Engine 15 makes both governments hostile (CABINET_AIMS, CABINET_STANCE) and states the two limits on
     opening a war: none in Month 1, and an invasion only with troops that stood at the border the month
     before. It also states the act cap and the strategy limit (ACTS_PER_MONTH, STRATEGY_CHARS, backlog T139): the
-    reader enforces both, and a cabinet that is not told them cannot keep to them."""
+    reader enforces both, and a cabinet that is not told them cannot keep to them. Wave A: under the open arm,
+    one sentence states the open act and its limits (OPEN_ACT_SENTENCE); the default arm says nothing of it."""
+    from .actions import validate_harness
+    harness = validate_harness(harness)
     character = foreign_force.temperament_text(actor_id, temperament)
+    open_act = (OPEN_ACT_SENTENCE + " ") if harness == "open" else ""
     return (f"You are the government of {actor_id.title()}, deciding this month's policy toward Karamaniya as its "
             f"cabinet. {CABINET_AIMS[actor_id]} {CABINET_STANCE} " + (f"{character} " if character else "")
             + "You receive only public observations and uncertain intelligence estimates; Karamaniya's private "
@@ -1759,7 +1846,8 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
             "money and support at home. "
             f"You may take at most {ACTS_PER_MONTH} acts a month: only the first {ACTS_PER_MONTH} in your list are "
             "read, and you are told the next month which acts were not read. "
-            "A propaganda act states a target (country or one of the regions of Karamaniya), a message "
+            + open_act
+            + "A propaganda act states a target (country or one of the regions of Karamaniya), a message "
             "(government_failing, stir_minority or blame_government) and a magnitude from 0 to 1. "
             f"Your strategy is kept to {STRATEGY_CHARS} characters: a longer one is cut to that length. "
             "A public statement is kept to 500 characters and your strategic assessment to 1200. "
@@ -1790,13 +1878,108 @@ def _spaced_lower(text: str) -> str:
 # March. Every such act was refused, and no covert support took effect in eleven months.
 REGION_BY_NAME = {_spaced_lower(text): rid for rid, name, *_ in KARAMANIYA_REGIONS for text in (rid, name)}
 
+# Wave A W8 (plan 4.4): a cabinet's open act names its text and its target and nothing else. The schema offers the
+# other action fields to every act the cabinets can take, so a model that writes one anyway is told in words next
+# month rather than having it silently ignored.
+OPEN_ACT_FIELDS = frozenset({"type", "action", "text", "target"})
+# What an open act may never be, beyond the referee's own guard (W4, referee.FORBIDDEN): a change of government has
+# no pattern there, so it is checked here. The wording of each refusal names the decision that owns the subject.
+OPEN_ACT_REGIME_CHANGE = re.compile(
+    r"\b(overthrow|overthrows|overthrowing|topple|topples|toppling|oust|ousts|ousting|depose|deposes|deposing|"
+    r"coup|coups|regime change|install (?:a |an )?(?:new|puppet|loyal|friendly|client) government|"
+    r"replace (?:the )?government|change (?:of |the )?government)\b", re.I)
 
-def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
-    """Read one act a cabinet wrote. Returns the act to carry out, or None when it is refused, and the reasons.
+
+def _open_act_forbidden_reason(topic: str) -> str:
+    """One sentence, in words the cabinet is told next month, naming the kind of act that owns the subject."""
+    return {
+        "war or peace": ("An open act cannot decide war or peace: an invasion, a blockade and an ultimatum are "
+                         "separate acts, with their own rules."),
+        "propaganda": ("An open act cannot run a propaganda campaign: that is a separate act, with its own rules."),
+        "election": ("An open act cannot call or decide an election: Karamaniya's elections are the council's "
+                     "decisions."),
+        "constitution": ("An open act cannot change Karamaniya's constitution: that is the council's decision."),
+        "emergency powers": ("An open act cannot take emergency powers: that is the council's decision."),
+        "change of government": ("An open act cannot change who governs Karamaniya: that is its council's "
+                                 "decision."),
+    }.get(topic, f"An open act cannot decide {topic}: that belongs to another kind of act.")
+
+
+def _read_cabinet_open_act(raw: dict, actor_id: str | None, changes: list) -> tuple:
+    """Read one cabinet `open_act` (plan 4.4). Returns (act or None, reasons, code).
+
+    Under the open arm only (the caller's `allowed` set says whether the kind exists this month). The act is its text
+    (at most 60 words), said in the cabinet's system prompt, and its target: Karamaniya, one of its regions, or the
+    cabinet's own country. A target written as a region's display name is read as its id, as the reader does for
+    propaganda and covert support. Every other field is refused in words the cabinet is told next month; a forbidden
+    subject (war, an invasion, a blockade, an ultimatum, propaganda, an election, the constitution, a change of
+    government) is refused before the referee is asked.
+    """
+    from . import referee
+    from .actions import OPEN_ACT_WORDS
+    refusals, code = [], ""
+
+    def refuse(reason: str, problem_code: str) -> None:
+        nonlocal code
+        refusals.append(reason)
+        code = code or problem_code
+
+    text = raw.get("text")
+    if not isinstance(text, str) or not text.strip():
+        refuse(f"an open act needs its text: what your government does, at most {OPEN_ACT_WORDS} words",
+               "OPEN_ACT_MISSING_TEXT")
+    else:
+        words = len(text.split())
+        if words > OPEN_ACT_WORDS:
+            refuse(f"an open act's text is at most {OPEN_ACT_WORDS} words; this one is {words}",
+                   "OPEN_ACT_TOO_LONG")
+    topic = referee.forbidden_topic(str(text or ""))
+    if topic is not None:
+        refuse(_open_act_forbidden_reason(topic[0]), "OPEN_ACT_FORBIDDEN")
+    elif OPEN_ACT_REGIME_CHANGE.search(str(text or "")):
+        refuse(_open_act_forbidden_reason("change of government"), "OPEN_ACT_FORBIDDEN")
+
+    target = raw.get("target")
+    resolved = None
+    if not isinstance(target, str) or not target.strip():
+        refuse("an open act needs a target: karamaniya, one of its regions, or your own country",
+               "OPEN_ACT_BAD_TARGET")
+    else:
+        wanted = _spaced_lower(target)
+        own = str(actor_id or "")
+        if wanted == "karamaniya":
+            resolved = "karamaniya"
+        elif own and wanted == own:
+            resolved = own
+        else:
+            rid = REGION_BY_NAME.get(wanted)
+            if rid is not None:
+                resolved = rid
+                if rid != target:
+                    changes.append(f"target '{target}' was read as {rid}")
+            else:
+                refuse("target must be karamaniya, one of its regions ("
+                       + ", ".join(name for _, name, *_ in KARAMANIYA_REGIONS)
+                       + "), or your own country", "OPEN_ACT_BAD_TARGET")
+
+    for key in sorted(set(raw) - OPEN_ACT_FIELDS):
+        value = raw.get(key)
+        if value not in (None, "", [], {}):
+            refuse(f"an open act takes only its text and target; it has no '{key}'", "UNKNOWN_FIELD")
+    if refusals:
+        return None, refusals, code
+    return {"type": "open_act", "text": text.strip(), "target": resolved}, changes, ""
+
+
+def _read_act(raw, allowed: set, actor_id: str | None = None) -> tuple[dict | None, list[str], str]:
+    """Read one act a cabinet wrote. Returns (the act to carry out or None, reasons, refusal code).
 
     A refused act gives its refusals. A kept act gives what was read or changed in it: a word read as its number, a
-    region read from its name, the one demand an ultimatum carries, a missing or null size taken as 0.5. Each reason
-    is a problem in the month's record, and normalize_cabinet_output sends it to the cabinet as a note."""
+    region read from its name, the one demand an ultimatum carries, a missing or null size taken as 0.5. Each
+    reason is a problem in the month's record, and normalize_cabinet_output sends it to the cabinet as a note.
+    The code is the registered taxonomy code of the first refusal ("" for an ordinary act; only a cabinet open act
+    carries one today).
+    """
     # Runs 20261008-130316-seed1 and 20261011-211521-seed1: twelve acts that were valid types were written under "action"
     # instead of "type", and each was refused as an unsupported act. The act is read as the type it names. "type" wins
     # when both are given, and a value that is no act of this cabinet is still refused.
@@ -1806,11 +1989,14 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
         raw = {**raw, "type": named}
     if not isinstance(raw, dict) or not isinstance(raw.get("type"), str) or raw.get("type") not in allowed:
         # Audit CO2-f: a type that is not text (a list, say) is an unsupported action, not an error in the set test.
-        return None, ["unsupported cabinet action"]
+        return None, ["unsupported cabinet action"], ""
     kind = raw["type"]
     action, changes = {"type": kind}, []
     if named is not None:
         changes.append(f"type '{named}' was read from the key 'action'")
+    if kind == "open_act":
+        # Wave A W8 (plan 4.4): the neighbours' open act has its own shape, text and target; see above.
+        return _read_cabinet_open_act(raw, actor_id, changes)
     # A null size is read as the default size, as a missing one always was (backlog T142). Runs 20261010-002051-seed1,
     # 20261010-070501-seed1 and 20261011-094417-seed1 refused 31 such acts, 7 of them ultimatums. The cabinet did not
     # choose 0.5, so the reading is a change the next month's note carries (normalize_cabinet_output; _READING does not
@@ -1826,7 +2012,7 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
         changes.append(f"magnitude '{magnitude.strip()}' was read as {magnitude_read:g}")
         magnitude = magnitude_read
     if not isinstance(magnitude, (int, float)) or not math.isfinite(magnitude) or not 0 <= magnitude <= 1:
-        return None, ["action magnitude must be between 0 and 1"]
+        return None, ["action magnitude must be between 0 and 1"], ""
     action["magnitude"] = float(magnitude)
     # A null troops is absent. Most acts take no troops, so the field does nothing for them (runs 20261010-002051-seed1,
     # 20261010-070501-seed1 and 20261011-094417-seed1 refused 31 such acts: intelligence_collection, public_statement,
@@ -1836,7 +2022,7 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
         if isinstance(raw["troops"], int) and not isinstance(raw["troops"], bool) and raw["troops"] >= 0:
             action["troops"] = raw["troops"]
         else:
-            return None, ["troops must be a nonnegative integer"]
+            return None, ["troops must be a nonnegative integer"], ""
     refusals = []
     # The fields an act of force names (foreign_force). A value outside its list refuses the act, and the reason says
     # which values would have done.
@@ -1926,8 +2112,8 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
         else:
             refusals.append(f"message must be one of {', '.join(PROPAGANDA_MESSAGE_KINDS)}")
     if refusals:
-        return None, refusals
-    return action, changes
+        return None, refusals, ""
+    return action, changes, ""
 
 
 #: A name or a word the reader read as the id or the number it means. The act went ahead as the cabinet meant it, so the
@@ -1959,14 +2145,21 @@ def _misplaced_acts(data: dict) -> list:
     return out
 
 
-def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
+def normalize_cabinet_output(actor_id: str, data, harness: str = "menu") -> tuple[dict, list[str]]:
     """Bound model-provided data before it can influence the world.
 
-    Every act the reader refuses or changes is also a note in out["act_notes"] ({"type", "reason"}).
-    _apply_cabinet_decisions writes each note to the cabinet's memory, and cabinet_view shows it to that cabinet the
-    next month (run 20261011-105713-seed1: the same refusals repeated for eleven months, and nothing reached the
-    cabinet). A kept act's note begins "carried out", and a plain reading of a name or a word is not sent at all
-    (_READING)."""
+    Every act the reader refuses or changes is also a note in out["act_notes"] ({"type", "reason"}); a refused
+    cabinet open act's note also carries the registered code of its first problem ("code"), which cabinet_acts
+    records. _apply_cabinet_decisions writes each note to the cabinet's memory, and cabinet_view shows it to that
+    cabinet the next month (run 20261011-105713-seed1: the same refusals repeated for eleven months, and nothing
+    reached the cabinet). A kept act's note begins "carried out", and a plain reading of a name or a word is not
+    sent at all (_READING).
+
+    `harness` is the run's arm (plan 4.6). Only under "open" does the act list accept the `open_act` kind (W2's
+    schema offers it there and only there), and at most one open act a month is read; under menu and language
+    every engine-29 answer is read as it was."""
+    from .actions import validate_harness
+    harness = validate_harness(harness)
     if not isinstance(data, dict):
         return {}, ["cabinet response was not a JSON object"]
     out, problems = {}, []
@@ -1989,7 +2182,12 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
     # Audit CO2: a list or an object is not a position, and testing it against the set raised.
     out["union_position"] = position if isinstance(position, str) and position in allowed_union else None
     allowed = {a["type"] for a in action_catalog(actor_id)}
+    if harness == "open":
+        # Wave A W8: the kind W2's cabinet schema offers under the open arm. Under menu and language it is not in the
+        # set, so an `open_act` is refused exactly as engine 29 refused every unsupported action.
+        allowed.add("open_act")
     actions, act_notes = [], []
+    open_acts_read = 0
     raw_actions = data.get("actions") or []
     if not isinstance(raw_actions, list):
         problems.append("actions must be a list")
@@ -2006,11 +2204,23 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
             act_notes.append({"type": kind,
                               "reason": f"only the first {ACTS_PER_MONTH} acts of a month are read; this one was not"})
             continue
-        act, reasons = _read_act(raw, allowed)
+        act, reasons, code = _read_act(raw, allowed, actor_id)
         problems.extend(reasons)
         if act is None:
-            act_notes.append({"type": kind, "reason": "; ".join(reasons)})
+            note = {"type": kind, "reason": "; ".join(reasons)}
+            if code:
+                note["code"] = code
+            act_notes.append(note)
             continue
+        if act.get("type") == "open_act":
+            # Plan 4.4: one open act a month. The first valid one in the answer counts; a second is not read,
+            # and the cabinet is told in words next month.
+            open_acts_read += 1
+            if open_acts_read > 1:
+                reason = "a cabinet may carry out one open act a month; this one was not read"
+                problems.append(reason)
+                act_notes.append({"type": "open_act", "reason": reason, "code": "OPEN_ACT_LIMIT"})
+                continue
         actions.append(act)
         told = [reason for reason in reasons if not _READING.match(reason)]
         if told:
@@ -2106,10 +2316,29 @@ def validate_action(actor_id: str, action: dict, world_state: dict, w=None) -> s
     """Validate the bounded action contract before an actor can affect canonical state.
 
     With the world, an act that uses force is also checked against what the country actually has and
-    where (foreign_force.check)."""
+    where (foreign_force.check). Wave A W8: under `harness = "open"` the cabinet's `open_act` kind is part
+    of its contract; its text and target are checked here as well (the reader already checked them and told
+    the cabinet in words)."""
+    from . import actions as action_rules
+    harness = "menu"
+    stamped = getattr(w, "harness", None) if w is not None else None
+    if stamped in action_rules.HARNESSES:
+        harness = stamped
     allowed = {a["type"] for a in action_catalog(actor_id)}
+    if harness == "open":
+        allowed.add("open_act")
     if not isinstance(action, dict) or action.get("type") not in allowed:
         return f"Unsupported {actor_id} action: {action.get('type') if isinstance(action, dict) else action!r}"
+    if action.get("type") == "open_act":
+        text = action.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return "an open act needs its text: what the government does, at most 60 words"
+        if len(text.split()) > action_rules.OPEN_ACT_WORDS:
+            return f"an open act's text is at most {action_rules.OPEN_ACT_WORDS} words"
+        if action.get("target") not in action_rules.cabinet_open_act_targets(actor_id):
+            return ("an open act's target must be Karamaniya, one of its regions, or the cabinet's own "
+                    "country")
+        return None
     magnitude = action.get("magnitude", 0)
     if not isinstance(magnitude, (int, float)) or not math.isfinite(magnitude) or magnitude < 0 or magnitude > 1:
         return "magnitude must be between 0 and 1"

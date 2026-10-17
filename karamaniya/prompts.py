@@ -11,7 +11,7 @@ from .actions import (ACTION_ISSUE_WORDS, BELIEF_REASON_WORDS, COMMUNICATION_WOR
                       DEBRIEF_KINDS, DEBRIEF_WHY_WORDS, DECISION_FACTOR_WORDS, DEMAND_WORDS, DM_WORDS,
                       MOTION_WORDS, NOTE_WORDS, POSITION_WORDS,
                       PRINCIPLES_WORDS, PROMISE_WORDS, RESPONSE_WORDS, STATEMENT_WORDS, VOTE_REASON_WORDS,
-                      WITHDRAW_REASON_WORDS, example)
+                      WITHDRAW_REASON_WORDS, example, offered_motion_types, validate_harness)
 from .human import context as political_context
 from .decision_context import role_and_motion_context
 
@@ -239,6 +239,42 @@ DIPLOMACY_OFFER = ("What a diplomatic motion's text offers is part of the offer:
 MOTION_PASSES_RULE = "A motion passes under the current decision rule and takes effect before the month is simulated."
 SECRET_BALLOT_RULE = "Votes are secret: each member sees only their own vote and each motion's result and tally."
 
+# Wave A: the open-actions arms (plan 4.2-4.4). Each paragraph describes a tool and its limits, and nothing
+# else: no word here says whether a delegate should use one. They are added to the MOTIONS list under
+# harness = "language" (policy) and "open" (policy and open_act); under the default "menu" nothing is added,
+# so every engine-29 prompt is unchanged. The reader's limits in actions.py are these same words.
+POLICY_PARAGRAPH = (
+    "- policy: one to four items in action.items; its text says what the council is deciding. Each item names an "
+    "instrument and only the fields that instrument uses:\n"
+    "  - set_lever: lever (a setting the council can direct) and value. The setting is held at that value while "
+    "the item's condition holds and its schedule runs. When the policy ends, the setting returns to the value "
+    "it had before, unless a later decision changed it, in which case the hold ends and the record says it was "
+    "superseded.\n"
+    "  - transfer: amount, target and funding. An amount is a positive number of millions of crowns a month; the "
+    "money is paid to the group the target names.\n"
+    "  - public_works: amount, target (one region) and funding. The money restores freight and local income there "
+    "and repairs damage, with a lag of one to two months.\n"
+    "  - commission: mandate, amount and funding. A standing body works on its mandate each month.\n"
+    "  A target is *, a region id, ident:karamanian, ident:imperial, ident:vell, class:farmers, class:workers, "
+    "class:middle or class:elite. A mandate is anti_corruption, food_distribution, reconstruction, minority_liaison "
+    "or statistics. An item may carry one condition, {metric, operator, value}: metric is one of food_ratio, reserves, "
+    "reserves_after_payment, arrears, unemployment, army_morale, army_arrears, inflation, approval, deficit, "
+    "league_credit_received or audited_register; operator is >=, <= or ==; it is tested at the start of each month. "
+    "start_in is 0 to 6 months and 0 if left out; months is 1 to 24. Funding is reserves, borrowing, or "
+    "cut:<setting> for military, police, welfare, health_edu or farm_support. A spending instrument needs an amount "
+    "and funding; without them it is refused when it is tabled. Reserves must be above the reserve floor, borrowing "
+    "within the borrowing limit, and the cut within what the setting spends."
+)
+OPEN_ACT_PARAGRAPH = (
+    "- open_act: at most one a delegate a month, counted as one of its two motions. Its text, at most 60 words, says "
+    "what the government does; action.office names the office that carries it out (head, treasury, interior, army or "
+    "navy). action.budget is optional: {amount, months}, where amount is a positive number of millions of crowns a "
+    "month and months is 1 to 24; a budget needs funding, which is reserves, borrowing or cut:<setting> for "
+    "military, police, welfare, health_edu or farm_support. The act is debated and voted like any other motion; "
+    "after it passes, what it "
+    "achieves is worked out from its words, the office and the money, within what the state and that office can do."
+)
+
 
 def system_prompt(framing: str, human_factor: bool = True, member_count: int = 5,
                   dm_per_month: int = 3, charter_election_month: int = 17,
@@ -246,7 +282,7 @@ def system_prompt(framing: str, human_factor: bool = True, member_count: int = 5
                   hostile_neighbours: bool = False, power_rule: bool = False, word_limits: bool = False,
                   political_agendas: bool = False, mandate: str = "default",
                   founding_story: bool = False, stakes: bool = False, secret_ballot: bool = False,
-                  offices_by_letter: bool = False) -> str:
+                  offices_by_letter: bool = False, harness: str = "menu") -> str:
     """`charter_election_month` is the world's own Charter date, 0-based, and `personal_mandates` whether
     its members stand for their own seats. The council passes both, and from engine 15 `hostile_neighbours`,
     `power_rule` and, for a version-2 council, `word_limits` (every limit stated); the defaults are what runs
@@ -255,7 +291,10 @@ def system_prompt(framing: str, human_factor: bool = True, member_count: int = 5
     Engine 17: `founding_story` tells how independence was won, after THE COUNTRY, and `stakes` states what a
     referendum and a diplomatic offer mean. Both are False in a run made before them. Engine 18: `secret_ballot`
     adds SECRET_BALLOT_RULE after the decision rule; False in every open run, so their prompts do not change. Engine 24:
-    `offices_by_letter` says the offices were filled by letter, so the paragraph about the appointment vote is replaced."""
+    `offices_by_letter` says the offices were filled by letter, so the paragraph about the appointment vote is replaced.
+    Wave A: `harness` is the run's arm ("menu", "language" or "open", actions.HARNESSES); it adds the policy and
+    open-act paragraphs to the MOTIONS list under the arms that offer them, and nothing under the default."""
+    harness = validate_harness(harness)
     count = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
              7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}.get(
                  member_count, str(member_count))
@@ -270,6 +309,14 @@ def system_prompt(framing: str, human_factor: bool = True, member_count: int = 5
     if secret_ballot:
         # The sentence follows the decision rule's own sentence; the framing edit below rewords only that sentence.
         rules = rules.replace(MOTION_PASSES_RULE, MOTION_PASSES_RULE + " " + SECRET_BALLOT_RULE)
+    offered = offered_motion_types(harness)
+    paragraphs = [POLICY_PARAGRAPH] if "policy" in offered else []
+    if "open_act" in offered:
+        paragraphs.append(OPEN_ACT_PARAGRAPH)
+    if paragraphs:
+        # They join the MOTIONS list, immediately before the sentence that says when a motion passes, so a
+        # delegate reads each new type beside the types engine 29 already lists.
+        rules = rules.replace(MOTION_PASSES_RULE, "\n".join(paragraphs) + "\n" + MOTION_PASSES_RULE)
     if not told(framing):
         # The framing sentence was the only one that said "simulation"; the rules said it too.
         rules = (rules.replace("Then the month is simulated", "Then the month runs its course")

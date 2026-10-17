@@ -109,6 +109,46 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "MEDIA_CLAIMS_WITHOUT_FIGURES": ("motion", "info", "Claims were given without the claim_figures kind."),
     "MEDIA_MISSING_INTENSITY": ("motion", "info", "A media_campaign names no intensity."),
     "MEDIA_MISSING_TEXT": ("motion", "info", "A media_campaign has no text."),
+    # -- effect bus (engine 30, Wave A W1) -------------------------------------------------
+    "EFFECT_UNKNOWN_CHANNEL": ("action", "info", "An effect names a channel the effect bus does not have."),
+    "EFFECT_UNKNOWN_TARGET": ("action", "info", "An effect is aimed at a target its channel cannot reach."),
+    "EFFECT_OVER_CAP": ("action", "info", "A single effect moves a channel further than its per-entry cap allows."),
+    "EFFECT_MONTH_CAP": ("action", "info", "Effects on one channel and target sum beyond the month's cap."),
+    "EFFECT_BAD_VALUE": ("action", "info", "An effect's value, or its decay, is not a usable number."),
+    "EFFECT_BAD_MONTHS": ("action", "info", "An effect's duration is not a whole number of at least one month."),
+    "EFFECT_TOO_MANY_MONTHS": ("action", "info", "An effect lasts longer than its channel allows."),
+    "EFFECT_UNKNOWN_SOURCE": ("action", "info", "An effect's source is not a policy, an open act or a "
+                                                "neighbour's open act."),
+    # -- open actions (Wave A, W2) ----------------------------------------------------------
+    # The tabling refusals of the `policy` motion and the delegate `open_act` (plan 4.2-4.3). Each is raised by
+    # actions.validate_new_motion under the arm that offers the type, and travels the council's usual rejection path.
+    "POLICY_UNKNOWN_INSTRUMENT": ("motion", "info", "A policy item names an instrument the policy language does not have."),
+    "POLICY_BAD_TARGET": ("motion", "info", "A policy item aims at a lever, target, mandate or value it cannot have."),
+    "POLICY_BAD_CONDITION": ("motion", "info", "A policy item's condition is not one the engine can test."),
+    "POLICY_BAD_SCHEDULE": ("motion", "info", "A policy item's start_in or months is outside its stated range."),
+    "POLICY_UNFUNDED": ("motion", "info", "A spending policy item has no amount or no valid funding."),
+    "POLICY_LIMIT": ("motion", "info", "A policy motion does not carry the stated one to four items."),
+    "OPEN_ACT_TOO_LONG": ("motion", "info", "An open act's text is longer than the stated 60 words."),
+    "OPEN_ACT_MISSING_TEXT": ("motion", "info", "An open act has no text saying what the government does."),
+    "OPEN_ACT_UNKNOWN_OFFICE": ("motion", "info", "An open act names no office, or one that does not exist."),
+    "OPEN_ACT_BAD_BUDGET": ("motion", "info", "An open act's budget is not a positive amount and 1 to 24 months."),
+    "OPEN_ACT_UNFUNDED": ("motion", "info", "An open act with a budget has no valid funding."),
+    "OPEN_ACT_LIMIT": ("motion", "info", "A delegate tabled, or a cabinet put, more than one open act in a month."),
+    "OPEN_ACT_BAD_TARGET": ("foreign", "info", "A cabinet's open act names a target outside Karamaniya, its regions and its own country."),
+    # Wave A W8 (plan 4.4): the neighbours' open acts and their visibility.
+    "OPEN_ACT_FORBIDDEN": ("foreign", "info", "A cabinet's open act is about war, an election, the constitution, a change of government or another subject its own acts own."),
+    "OPEN_ACT_NOT_APPLIED": ("foreign", "warning", "A cabinet's open act was ruled feasible but the effect bus could not schedule all its effects."),
+    # -- the referee (Wave A W4) -------------------------------------------------------------
+    # The referee rules an approved open act. Its rulings are validated before anything is scheduled; an invalid
+    # ruling is re-asked once and only a second invalid one fails the act. Every code below travels with the
+    # problems the engine sends back to the referee in words (the sentences never carry the code).
+    "REFEREE_BAD_ANSWER": ("action", "info", "A referee's ruling is not the required shape or value."),
+    "REFEREE_BAD_COST": ("action", "info", "A referee's cost is not three usable numbers."),
+    "REFEREE_OVER_BUDGET": ("action", "info", "A referee's cost does not fit the act's funding."),
+    "REFEREE_FORBIDDEN_ACT": ("action", "info", "A referee made feasible an act that another decision owns."),
+    "REFEREE_CHANNEL_NOT_ALLOWED": ("action", "info", "A cabinet's ruling uses a channel or target it cannot reach."),
+    "REFEREE_TOO_LONG": ("action", "info", "A referee's reason or public report is over its word limit."),
+    "REFEREE_INVALID": ("action", "info", "A referee's ruling was invalid twice, so the act failed."),
     # -- foreign ---------------------------------------------------------------------------
     "FOREIGN_ACTION_DUPLICATE": ("foreign", "warning", "A foreign action's effects were already applied."),
     "FOREIGN_ACTION_INVALID": ("foreign", "info", "A foreign cabinet proposed an act outside its action space."),

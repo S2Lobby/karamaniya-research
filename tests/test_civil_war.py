@@ -431,6 +431,15 @@ class Checkpoints(unittest.TestCase):
         self.assertNotIn("civil_war", w.to_dict())
         self.assertNotIn("civil_war_option", w.to_dict())
 
+    def test_an_on_checkpoint_keeps_the_option_before_a_war(self):
+        w = new_world(3, 36, civil_war_option="on")
+        data = w.to_dict()
+        self.assertIn("civil_war", data)
+        self.assertIsNone(data["civil_war"])
+        restored = World.from_dict(data)
+        self.assertEqual(restored.civil_war_option, "on")
+        self.assertIsNone(restored.civil_war)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -98,3 +98,37 @@ change the shape without updating the other worker's tests and `docs/PROPAGANDA_
 - The package zip builds, and a fresh venv runs the README's one command.
 - The statistics script writes an SVG and the secondary measures, and the pre-registration names them.
 - Every workstream has its docs page, and `docs/WAVE3_PLAN.md` is updated with what actually shipped.
+
+## Shipped — 2026-10-17
+
+Engine 27 (`WORLD_ENGINE` 27, `AGENT_PROMPT` 24). The six workers built on engine 26 in separate worktrees and
+were merged by the reviewer; the prompt fixture was rewritten once, and the full suite is the merge gate.
+
+| # | Branch | Commits | Verified tests | Docs |
+|---|---|---|---|---|
+| A | `wave3/state-media` | `9bf3603`, `aeb3be3` | 38 new; 54 with the pipeline | `docs/PROPAGANDA_STATE.md` |
+| B | `wave3/union-propaganda` | `805bd5e`, `a434ec5` | 27 new; 126 with the neighbours | `docs/PROPAGANDA_UNION.md` |
+| C | `wave3/jev` | `616b30d`, `e71f60d`, `c45246e` | 60 with the exit and detector audits | `docs/JEV_ANNOTATOR.md` |
+| D | `wave3/wider-diplomacy` | `2679bca` | 27 new; 134 with the diplomacy modules | `docs/WIDER_DIPLOMACY.md` |
+| E | `wave3/package` | `9367789`, `6391829`, `732a1b3`, `01889e2`, `2aa97c5`, `9f21525` | 92 (7 + 3 skipped without the vendor) | `docs/SCOPE_TEST.md`, `docs/PACKAGING.md` |
+| F | `wave3/statistics` | `eca402e`, `f18d81f` | 35 with the analysis | `docs/STATISTICS.md` |
+
+What shipped, in one line each:
+
+- **A:** `media_campaign` motion, state-media credibility and effects, exposure on the `media` stream, month
+  records and deception analytics, the media-capture democracy term. Constants in `docs/PROPAGANDA_STATE.md`.
+- **B:** the `propaganda` cabinet act, `foreign_broadcasts` (open/jammed), the counter's credibility and
+  democracy-index costs, foreign campaign records. Constants in `docs/PROPAGANDA_UNION.md`.
+- **C:** the blind Jev annotator, the codebook decisions (A1/F4, seed 1 and 60 non-exit events), the dry-run
+  cost estimate and the D1/D2 re-audit method. Real labels await the user's key (T173).
+- **D:** the six widened pairs with handlers, `demand` and `warning` in `COMM_KINDS`, their effects and the
+  widened refusal lists. Constants in `docs/WIDER_DIPLOMACY.md`.
+- **E:** the SocioVerse2 scope test (7 fallbacks in 48 decisions; 3 quiet replacements), the submission zip
+  and clean-machine smoke test, the seat-start rule and the study exclusions. See `docs/SCOPE_TEST.md`,
+  `docs/PACKAGING.md`.
+- **F:** SVG Kaplan-Meier curves, S1/S2 secondary measures, the vote-mismatch flag demoted to a diagnostic,
+  and the pre-registration/paper text. See `docs/STATISTICS.md`.
+
+Open after the wave: T169-T175 (see the backlog) — the jamming cross-write, foreign campaign exposure, the
+Dorsania status-talk compliance gap, the grain-wording reader fault, the real Jev/scope-test runs, the
+bootstrap coverage and S1/S2 on a real grid.

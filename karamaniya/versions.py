@@ -110,7 +110,13 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # written as an object, whose text is read. The response round's schema allows one public communication, and the
 # ballot repair ask uses the reason-based check. A default scripted run's council prompts change (the delegate
 # sentences); its neighbours' system prompts change.
-AGENT_PROMPT = 23
+# 24 goes with world engine 27 (wave 3). A delegate's prompts name the new `media_campaign` motion and its neutral
+# paragraph, show "trust in state media: X%" in the canonical state, give the Interior its `media_intensity` order,
+# state the `foreign_broadcasts` setting with its costs, list `demand` and `warning` among the public communication
+# kinds, and name the addressees of the six widened diplomacy pairs. A default scripted run's council prompts and
+# its neighbours' system prompts change (the motion list, the settings block, the communication list and the
+# cabinet system prompt); the prompt fixture is rewritten on purpose.
+AGENT_PROMPT = 24
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose
@@ -303,7 +309,17 @@ PSYCHOLOGY = 8
 # allows one public communication; the ballot repair ask uses the reason-based check. T159 is the scripted hawk's own
 # rule: it takes over in the handover month, so a 36-month scripted run ends kept_power_by_force; the engine's
 # handover is not at fault.
-WORLD_ENGINE = 26
+# 27 (wave 3): domestic state media, the Union's propaganda and the counter, and wider diplomacy. A `media_campaign`
+# motion sets the council's line, carried out by the Interior; credibility falls with measured gaps and with claims
+# that deny lived hardship, praise and claims lift approval with a decay, a distrusted line backfires, attack_opposition
+# and blame_union have their effects, and false claims can be exposed on a seeded `media` stream. The month record
+# carries `media`, the analytics measure deception, and a high-intensity line is media capture on the democracy index.
+# Veleria and Dorsania can run a `propaganda` act against a target, scaled by (1 - credibility) and by hardship;
+# jamming foreign broadcasts cuts it, costs credibility and lowers the democracy index. Six diplomacy pairs (status
+# talks to Veleria and Dorsania; trade talks to Veleria, the League and Dorsania; a trade deal to Dorsania) have
+# handlers, and `demand` and `warning` join the public communication kinds. See docs/PROPAGANDA_STATE.md,
+# docs/PROPAGANDA_UNION.md and docs/WIDER_DIPLOMACY.md.
+WORLD_ENGINE = 27
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

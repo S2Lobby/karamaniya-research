@@ -15,8 +15,9 @@ from karamaniya import versions  # noqa: E402
 
 class Versions(unittest.TestCase):
     def test_the_bump(self):
-        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY, versions.ERROR_TAXONOMY),
-                         (26, 23, 8, 5))
+        # At least: engine 27 bumped both again (tests/test_engine27_versions.py pins the current tuple).
+        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY,
+                                 versions.ERROR_TAXONOMY), (26, 23, 8, 5))
 
 
 if __name__ == "__main__":

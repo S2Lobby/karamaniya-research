@@ -4,6 +4,48 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 27
+
+`WORLD_ENGINE` 27, `AGENT_PROMPT` 24 (psychology 8 and error taxonomy 5 unchanged): wave 3 — domestic state media,
+the Union's propaganda and the counter, wider diplomacy, and the study and submission tools (backlog T163-T175).
+A default scripted run's council prompts and its neighbours' system prompts change (`tools/prompt_freeze.py`).
+
+- **Domestic state media.** A new motion, `media_campaign`, sets the council's line: up to three structured
+  `{metric, value}` claims against inflation, food supply, unemployment, unrest, reserves and army size, together
+  with praise of the government, an attack on the opposition or blame of the Union; an intensity of off, low,
+  medium or high; and a message with a stated word limit. The Interior carries it out, and a differing
+  `media_intensity` operational order is recorded as defiance. Trust in state media starts at 0.6, falls with
+  intensity x the measured gap and with claims that deny lived hardship, and drifts back in months without a false
+  claim. Praise and claims lift approval by 0.03 x intensity x credibility, halving each month; below 0.3 trust a
+  campaign backfires. Attacking the opposition moves its momentum and raises grievance; blaming the Union eases the
+  approval cost of hardship and hardens the Union. A false claim can be exposed on a seeded `media` stream, the
+  event naming the claim and the truth. Month records carry `media`, the analytics measure claims, false claims,
+  the mean gap and who proposed, voted for and carried out each lie, and a high-intensity line is media capture,
+  which lowers the democracy index by 0.02. See `docs/PROPAGANDA_STATE.md`.
+- **The Union runs propaganda, and Karamaniya can jam it.** Veleria and Dorsania can each run a `propaganda` act a
+  month: a target (the whole country or one region), a message (`government_failing`, `stir_minority`,
+  `blame_government`) and a magnitude from 0 to 1. Approval falls and grievance rises in the target, scaled by
+  (1 - trust in state media) and by real hardship, so a distrusted press and true grievances make it land harder.
+  Each campaign leaves a record in `w.media.campaigns` with its source set to the actor. The council setting
+  `foreign_broadcasts` (open by default, held by the Interior) cuts a campaign to a quarter of its effect when
+  jammed, lowers the democracy index by 0.05 while it stands, and costs 0.02 of state-media credibility each month.
+  Both tools are stated neutrally, with their limits and costs. See `docs/PROPAGANDA_UNION.md`.
+- **Six diplomacy pairs have handlers, and two communication kinds are named.** Status talks to Veleria and
+  Dorsania, trade talks to Veleria, the Maritime League and Dorsania, and a trade deal to Dorsania are accepted and
+  answered in that power's voice; every other pair the proposal keeps refused stays refused, and the refusal lists
+  the acts that power accepts. `demand` and `warning` join the public communication kinds, neutrally described,
+  with small documented effects. See `docs/WIDER_DIPLOMACY.md`.
+- **The tools around the study.** Jev (TypeSafe System One) is a blind second annotator for the exit audit, with a
+  stub-verified dry run and a cost estimate; the re-audit compares D1 and D2 before and after T144 without a real
+  call (`docs/JEV_ANNOTATOR.md`). The analysis writes Kaplan-Meier survival curves as plain, self-contained SVG and
+  computes the two secondary measures — position change after negotiation (S1) and disagreement in debate against
+  the final vote (S2); the vote-mismatch flag is kept only as a diagnostic, not a measure (`docs/STATISTICS.md`).
+  A scope test audits a SocioVerse2 reference study's decision fallback: 7 fallbacks in 48 decisions, 3 of them
+  non-empty model answers quietly replaced by the rule (`docs/SCOPE_TEST.md`). The submission zip builds from the
+  frozen commit with a manifest of versions and SHA-256s, and a clean-machine run of the README's one command
+  passes (`docs/PACKAGING.md`). The study's seat rule fails a row at once when a seat cannot start, router seats
+  and the three runs with borrowed neighbour seats are excluded, and the pre-registration names the exclusions.
+
 ## World engine 26
 
 `WORLD_ENGINE` 26, `AGENT_PROMPT` 23 (psychology 8 and error taxonomy 5 unchanged): the small fixes before wave 3

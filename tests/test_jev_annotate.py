@@ -205,6 +205,24 @@ class StubSampleTests(unittest.TestCase):
         self.assertNotIn("plain_json", body["state"])
         self.assertIn("The arrears crisis is beyond my ministry.", body["state"])
 
+    def test_the_openrouter_mode_uses_the_decisions_path_and_its_key(self):
+        buf = io.StringIO()
+        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": KEY}), \
+                redirect_stdout(buf), redirect_stderr(buf):
+            code = ja.main(["sample", self.sample, "--out", self.out,
+                            "--base-url", self.url + "/api/alpha", "--openrouter"])
+        text = buf.getvalue()
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(self.state.requests), 2)
+        path, headers, body = self.state.requests[0]
+        self.assertTrue(path.endswith("/api/alpha/decisions"), path)
+        self.assertEqual(headers.get("Authorization"), f"Bearer {KEY}")
+        self.assertEqual(body["model"], "typesafe/jev-latest")
+        self.assertNotIn(KEY, text)
+        rows = read_csv(self.out)
+        self.assertEqual([row["annotator_2"] for row in rows], [SUP, SUP])
+        self.assertEqual(rows[0]["annotator_2_model"], "jev-stub-1")
+
     def test_the_output_sheet_can_be_compared_with_exit_audit_agreement(self):
         code, _ = self.run_tool(["sample", self.sample, "--out", self.out, "--base-url", self.url])
         self.assertEqual(code, 0)

@@ -365,12 +365,10 @@ def cmd_sample(args):
         print(json.dumps(question, ensure_ascii=False, indent=2, sort_keys=True))
         print("\nThe blind state leaves out: parsed (the engine's reading), raw_reading, annotator_1, annotator_2, "
               "adjudicated, notes.")
-        print(f"With a key in TYPESAFE_API_KEY, this run would write {args.out}.")
+        print(f"With a key in {api_config(args)['api_key_env']}, this run would write {args.out}.")
         return 0
     try:
-        backend = AuditingSystemOne({"model": args.model, "base_url": args.base_url,
-                                     "api_key_env": "TYPESAFE_API_KEY", "timeout": args.timeout,
-                                     "retries": args.retries})
+        backend = AuditingSystemOne(api_config(args))
     except ValueError as exc:
         raise AnnotateError(str(exc)) from None
     results, usage = annotate(rows, states, question, LABELS, backend)
@@ -501,13 +499,11 @@ def cmd_reaudit(args):
         print(d2_states[0] if d2_states else "(none)")
         print("\n--- first D2 question ---")
         print(json.dumps(d2_question, ensure_ascii=False, indent=2, sort_keys=True))
-        print(f"\nWith a key in TYPESAFE_API_KEY, this run would write D1_jev_labels.csv and D2_jev_labels.csv "
-              f"to {args.out_dir}.")
+        print(f"\nWith a key in {api_config(args)['api_key_env']}, this run would write D1_jev_labels.csv "
+              f"and D2_jev_labels.csv to {args.out_dir}.")
         return 0
     try:
-        backend = AuditingSystemOne({"model": args.model, "base_url": args.base_url,
-                                     "api_key_env": "TYPESAFE_API_KEY", "timeout": args.timeout,
-                                     "retries": args.retries})
+        backend = AuditingSystemOne(api_config(args))
     except ValueError as exc:
         raise AnnotateError(str(exc)) from None
     d1_results, d1_usage = annotate(d1_rows, d1_states, d1_question, D1_LABELS, backend, "flag_id")
@@ -570,8 +566,25 @@ def add_api_args(parser):
                         help="the System One server (default: https://api.typesafe.ai; tests use the stub)")
     parser.add_argument("--timeout", type=int, default=30, help="seconds per HTTP request (default: 30)")
     parser.add_argument("--retries", type=int, default=2, help="retries on 429/5xx (default: 2)")
+    parser.add_argument("--openrouter", action="store_true",
+                        help="use OpenRouter's Decisions API (base https://openrouter.ai/api/alpha, path "
+                             "/decisions, key in OPENROUTER_API_KEY, model typesafe/jev-latest)")
     parser.add_argument("--dry-run", action="store_true",
                         help="build the requests and print the cost estimate; send nothing and need no key")
+
+
+def api_config(args):
+    """The backend configuration: TypeSafe's hosted API by default, OpenRouter's Decisions API with --openrouter."""
+    base_url = (args.base_url or "").rstrip("/")
+    path, key_env, model = "/v1/systemone", "TYPESAFE_API_KEY", args.model
+    if getattr(args, "openrouter", False):
+        base_url = base_url or "https://openrouter.ai/api/alpha"
+        path = "/decisions"
+        key_env = "OPENROUTER_API_KEY"
+        if model == "jev-latest":
+            model = "typesafe/jev-latest"
+    return {"model": model, "base_url": base_url, "path": path, "api_key_env": key_env,
+            "timeout": args.timeout, "retries": args.retries}
 
 
 def main(argv=None):

@@ -35,6 +35,9 @@ class SystemOneBackend:
     def __init__(self, cfg: dict):
         self.base_url = (cfg.get("base_url") or os.environ.get("TYPESAFE_BASE_URL")
                          or "https://api.typesafe.ai").rstrip("/")
+        # OpenRouter's Decisions API exposes the same state/questions contract at /api/alpha/decisions
+        # rather than TypeSafe's /v1/systemone. The path is configurable so the same backend drives both.
+        self.path = "/" + str(cfg.get("path") or "v1/systemone").lstrip("/")
         key_env = cfg.get("api_key_env", "TYPESAFE_API_KEY")
         self.api_key = os.environ.get(key_env, "") if key_env else ""
         if key_env and not self.api_key:
@@ -71,7 +74,7 @@ class SystemOneBackend:
 
     # -- the call -------------------------------------------------------------------------------
     def _post(self, body: dict) -> dict:
-        req = urllib.request.Request(self.base_url + "/v1/systemone", data=json.dumps(body).encode(),
+        req = urllib.request.Request(self.base_url + self.path, data=json.dumps(body).encode(),
                                      method="POST", headers={
                                          "Content-Type": "application/json",
                                          "Authorization": f"Bearer {self.api_key}"})

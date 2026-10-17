@@ -15,6 +15,8 @@ class StubState:
         self.schema_error_in_200 = False   # OpenRouter style: HTTP 200 carrying an error object inside
         self.systemone_status = 200        # the fake TypeSafe endpoint: raise to test error handling
         self.systemone_error = "invalid questions"
+        self.last_path = ""                # the last System One/OpenRouter request path and Authorization header
+        self.last_auth = ""
         self.systemone_reply = {           # a valid answer set for the default judge panel
             "survive_to_end": {"type": "choice", "choice": "no",
                                "probabilities": {"yes": 0.3, "no": 0.7}, "confidence": 0.4},
@@ -55,7 +57,9 @@ def _handler(state: StubState):
             body = json.loads(self.rfile.read(length) or b"{}")
             state.requests.append((self.path, dict(self.headers), body))
             text = state.text_override if state.text_override is not None else json.dumps(state.reply)
-            if self.path.endswith("/v1/systemone"):
+            if self.path.endswith("/v1/systemone") or self.path.endswith("/api/alpha/decisions"):
+                state.last_path = self.path
+                state.last_auth = self.headers.get("Authorization", "")
                 if state.systemone_status != 200:
                     self._send(state.systemone_status, {"error": {"message": state.systemone_error}})
                     return

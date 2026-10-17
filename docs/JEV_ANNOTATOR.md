@@ -32,8 +32,17 @@ python tools/exit_audit.py extract research/runs/*/ --out events.jsonl
 python tools/exit_audit.py sample events.jsonl --seed 1 --other 60 --out sample.csv
 python tools/jev_annotate.py sample sample.csv --out sample.jev.csv
 
+# Through OpenRouter's Decisions API (same request contract, same input-only price):
+python tools/jev_annotate.py sample sample.csv --openrouter --limit 3 --out sample.jev.csv
+
 python tools/exit_audit.py agreement sample.csv sample.jev.csv --col-b annotator_2
 ```
+
+`--openrouter` uses `https://openrouter.ai/api/alpha` and the `/decisions` path, reads the key from
+`OPENROUTER_API_KEY` instead of `TYPESAFE_API_KEY`, and defaults the model to `typesafe/jev-latest`. `--base-url`
+overrides the base (the tests point it at the stub), `--dry-run` builds the requests and prints the estimate without a
+key, and the key is never printed. The OpenRouter path is covered by a stub test that asserts the path, the bearer
+header and the model id.
 
 The pre-registered sample is seed 1 and 60 non-exit events, with every exit included. The recorded runs give 20
 exits, so the sheet has 80 rows.

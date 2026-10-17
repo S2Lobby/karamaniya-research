@@ -67,6 +67,9 @@ def act(w: World, cabinet_decisions: dict | None = None, foreign_prepared: bool 
     if w.ended():
         return
     _foreign_cabinets(w, cabinet_decisions, foreign_prepared)
+    # Wave 3: while the council jams foreign broadcasts, the counter's monthly cost is paid here, after this month's
+    # setting (a motion voted this month) and campaigns have been resolved.
+    foreign.broadcast_month(w)
     _union_forces(w)
     foreign.league_month(w)
     _weather(w)

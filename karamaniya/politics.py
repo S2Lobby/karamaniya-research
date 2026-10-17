@@ -38,6 +38,9 @@ ENUMS = {
     "ownership": ("private", "mixed", "state"),
     "planning": ("none", "indicative", "command"),
     "amnesty": ("none", "release"),
+    # Wave 3: whether foreign broadcasts reach the public. Directed by the council, executed by the Interior, like
+    # every setting here (LEVER_AUTHORITY). Its monthly cost is foreign.broadcast_month and world.democracy_index.
+    "foreign_broadcasts": ("open", "jammed"),
 }
 # A delegate who reaches for a near-synonym of a real value is understood, not refused -- but only
 # where the synonym is unambiguous for that lever and means the same act. "Appease the protesters"
@@ -63,7 +66,7 @@ LEVER_OFFICE = {
                                 "capital_controls", "imports", "stats", "debt_service", "regional_fund",
                                 "ownership", "import_cap", "planning")},
     **{k: "interior" for k in ("protest_response", "surveillance", "arrests", "emigration",
-                                "election_conduct", "amnesty")},
+                                "election_conduct", "amnesty", "foreign_broadcasts")},
     **{k: "army" for k in ("recruitment", "army_target", "posture", "purge", "deploy_north",
                             "deploy_east", "deploy_capital", "officer_pay", "training_intensity",
                             "mobilization")},

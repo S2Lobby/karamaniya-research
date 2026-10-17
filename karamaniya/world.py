@@ -424,6 +424,11 @@ class Policy:
     # fear among the repressed at a small cost to the loyalty of the security apparatus. `none` is
     # the default and does nothing until a council sets `release`.
     amnesty: str = "none"             # none | release
+    # Wave 3: whether foreign broadcasts reach the public. `open` (the default) leaves the Union's
+    # propaganda at full strength; `jammed` cuts its effect, counts against the democracy index
+    # (world.democracy_index) and costs state media credibility each month (foreign.broadcast_month).
+    # The council directs it and the Interior office executes it, like every other setting.
+    foreign_broadcasts: str = "open"  # open | jammed
     # Army Command
     recruitment: str = "none"           # none | volunteer | partial | general
     army_target: float = 28000.0
@@ -751,6 +756,11 @@ EMERGENCY_MEASURE_PENALTY = {"curfew": 0.05, "police_powers": 0.05, "movement_re
                              "military_aid_civil": 0.05, "ration_enforcement": 0.03, "fiscal_authority": 0.02}
 # An opposition ban weighs as a banned assembly (0.15); one-party rule as cancelled elections (0.2).
 PARTIES_PENALTY = {"multi_party": 0.0, "ban_opposition": 0.15, "one_party": 0.2}
+# Wave 3: jamming foreign broadcasts is media control, not the absence of an election or a free press. It weighs the
+# same as targeted arrests (0.05): a narrow, reversible restriction, half one step of press freedom (free -> restricted
+# costs 0.2 weight x 0.5 = 0.1). The index recovers when the broadcasts are reopened, because it reads the setting in
+# force rather than a stored penalty.
+BROADCAST_JAM_PENALTY = 0.05
 
 
 def democracy_index(w: World) -> float:
@@ -759,6 +769,7 @@ def democracy_index(w: World) -> float:
     The seven constitutional terms are what the Charter sets; their weights sum to 1. Engine 24 (T141) takes off the
     repressive acts in force (the penalties above), so a government that represses lowers the index and it recovers when
     the acts end. Nothing repressive in force leaves the sum at exactly 1.0, as it was in every run before engine 24.
+    Wave 3 adds jamming foreign broadcasts (BROADCAST_JAM_PENALTY) to the same list: it is a media restriction in force.
     """
     c = w.const
     if c.elected:
@@ -780,7 +791,8 @@ def democracy_index(w: World) -> float:
     repression = (ARREST_PENALTY.get(w.policy.arrests, 0.0)
                   + sum(EMERGENCY_MEASURE_PENALTY.get(name, 0.0)
                         for name in (w.institutions.get("emergency_measures") or {}))
-                  + PARTIES_PENALTY.get(c.parties, 0.0))
+                  + PARTIES_PENALTY.get(c.parties, 0.0)
+                  + (BROADCAST_JAM_PENALTY if getattr(w.policy, "foreign_broadcasts", "open") == "jammed" else 0.0))
     return clamp(base - repression)
 
 

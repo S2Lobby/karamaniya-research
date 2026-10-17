@@ -111,6 +111,9 @@ class QoderCLIBackend(Backend):
         if not isinstance(data, dict):
             data = extract_json(text)
         refusal = out.get("stop_reason") == "refusal"
-        return CallResult(data=data if isinstance(data, dict) else None, raw=text, served_model=served,
+        # Logged as `structured` (T145): the answer is the structured field when the CLI gives one, not the raw text.
+        answer = data if isinstance(data, dict) else None
+        return CallResult(data=answer, raw=text, served_model=served,
                           input_tokens=tokens_in, output_tokens=tokens_out,
-                          cost_usd=self.cost(tokens_in, tokens_out), refusal=refusal)
+                          cost_usd=self.cost(tokens_in, tokens_out), refusal=refusal,
+                          structured=answer, structured_read=True)

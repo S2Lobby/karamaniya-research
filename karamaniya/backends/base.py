@@ -49,10 +49,18 @@ class CallResult:
     # reasoning field. Most providers hide it, and then it is empty. Logged with the call, never shown to
     # another delegate.
     reasoning_text: str = ""
+    # The answer as the connector handed it to the council, where that answer is a structured field the raw text does
+    # not carry: claude_cli, qoder_cli and antigravity_cli (engine 24, backlog T145). A replay returns it, not a reading
+    # of raw. structured_read says the connector read one, even when it was null; logs without it replay from raw.
+    structured: object = None
+    structured_read: bool = False
 
     def to_dict(self) -> dict:
         d = asdict(self)
         d.pop("data")
+        if not self.structured_read:
+            d.pop("structured")
+            d.pop("structured_read")
         return d
 
 

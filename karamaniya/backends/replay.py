@@ -9,11 +9,12 @@ than one answer. A repair is a second call in the same phase for the same member
 for a key, the replay gives the k-th answer the run logged for it. A format retry is one call in the log
 (base.complete keeps one record for it), so it is one answer here too, and the retry logic is not run again.
 
-Two things the log does not hold are derived the way the connector derived them:
-  - the answer is the JSON in raw (extract_json), for every connector except the three below;
-  - codex_cli also drops the optional nulls that its strict schema adds (drop_optional_nulls).
-Known gap: claude_cli, qoder_cli and antigravity_cli take the answer from the CLI's structured_output field, which the
-log does not keep. A replay matches them only when raw is that same JSON.
+The answer is the JSON in raw (extract_json), except where the log holds the answer the connector used:
+  - claude_cli, qoder_cli and antigravity_cli take the answer from the CLI's structured_output field, not from raw. They
+    log it as `structured` (with `structured_read`), and the replay returns that (engine 24, T145). A log recorded
+    before that has no such field, and its three seats replay from raw as before, which is exact only when raw is that
+    same JSON.
+  - codex_cli also drops the optional nulls that its strict schema adds (drop_optional_nulls), for raw.
 
 The traits that shape the prompts (enforces_schema, supports_temperature, prompt_budget) are copied from the connector
 the seat was recorded with, so the replay's prompts are the run's prompts. prompt_budget is copied for ollama only;
@@ -121,9 +122,13 @@ class ReplayBackend(Backend):
         raw = rec.get("raw") or ""
         if raw == PLACEHOLDER:
             raise ReplayMissing(month, phase, who, attempt, why="the run logged its stand-in answer as '(scripted)'")
-        data = extract_json(raw) if raw else None
-        if data is not None and self.replay_of == "codex_cli":
-            data = drop_optional_nulls(data, schema)
+        if rec.get("structured_read"):
+            # The connector's own answer, as the log holds it (T145). Null is an answer too: the council saw no answer.
+            data = rec.get("structured")
+        else:
+            data = extract_json(raw) if raw else None
+            if data is not None and self.replay_of == "codex_cli":
+                data = drop_optional_nulls(data, schema)
         return CallResult(data=data, raw=raw, **{k: rec[k] for k in _CALL_FIELDS if k in rec})
 
     def complete(self, system: str, user: str, schema: dict, context: dict | None = None) -> CallResult:

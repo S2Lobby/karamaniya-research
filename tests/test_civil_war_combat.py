@@ -395,5 +395,21 @@ class Defections(unittest.TestCase):
             self.assertTrue(all(v >= 0.0 for v in shares.values()))
 
 
+class TheCapitalFrontIsRead(unittest.TestCase):
+    """C3's prompt names the deployments north/east/capital; the capital region's front is empty."""
+
+    def test_the_capital_stance_is_consumed(self):
+        w = world()
+        capital = next(r for r in w.regions if r.nation == "karamaniya" and r.capital)
+        state = {"orders": {"rebels": {"capital": "attack"}}}
+        self.assertEqual(cwc._order(state, "rebels", capital), "attack")
+
+    def test_a_region_that_is_not_the_capital_does_not_take_it(self):
+        w = world()
+        other = next(r for r in w.regions if r.nation == "karamaniya" and not r.capital)
+        state = {"orders": {"rebels": {"capital": "attack"}}}
+        self.assertIsNone(cwc._order(state, "rebels", other))
+
+
 if __name__ == "__main__":
     unittest.main()

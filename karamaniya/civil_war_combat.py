@@ -286,7 +286,11 @@ def _order(state: dict, side: str, region) -> str | None:
     entry = orders.get(side)
     if not isinstance(entry, dict):
         return None
-    for key in (region.id, region.front):
+    # C3's faction prompt names the three deployments "north", "east" and "capital"; a region's own id
+    # and front are the first two keys. The capital region's front is empty, so its stance was recorded
+    # under "capital" and never read (C3 review, 2026-10-17). The third key closes that gap for the one
+    # region the prompt calls the capital.
+    for key in (region.id, region.front, "capital" if getattr(region, "capital", False) else None):
         if key and key in entry:
             return str(entry[key]).strip().lower()
     return None

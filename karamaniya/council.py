@@ -227,6 +227,12 @@ def _vote_intent_clashes(staged: dict, decision: dict) -> list:
     otherwise what it said in words in the response round. A stance of undecided or conditional is
     the delegate saying it had not committed, and nothing is held against it. Each finding names where
     the position came from: `source` is "stance" or "statement".
+
+    This comparison now only decides which ballots are put to the delegate again (council's repair ask).
+    It is NOT the recorded VOTE_INTENT_MISMATCH: that is _reason_contradictions. On the 36 labelled stance
+    flags (docs/detector_labels/D2_labelled_36.csv) the reason agreed with the vote in 32 of the 34 false
+    positives, so the stance was the outlier, and the record no longer uses it (backlog T144).
+    The ask is left as it was, pending the user's decision.
     """
     staged = staged or {}
     stances = staged.get("stances") or {}
@@ -250,6 +256,50 @@ def _vote_intent_clashes(staged: dict, decision: dict) -> list:
                 continue
             out.append({"code": "VOTE_INTENT_MISMATCH", "motion": motion_id, "stance": position, "vote": vote,
                         "reason": reason[:200], "source": "statement", "statement": sentence[:200]})
+    return out
+
+
+# A verdict the vote reason states about its own motion, in plain words, and only two forms. The reason opens with the
+# verdict ("No. Raising taxes ...", "Yes, the pact ..."), or it says how the delegate votes ("I will vote no"). Support
+# and opposition phrases are not read ("I support X" names X, which may not be this motion; "I support X, but ..." is a
+# concession): on the recorded runs they flagged nine ballots, and on one reading all nine agreed with the vote.
+# An argument that points the other way ("reducing surveillance is essential") is not read either: its direction depends
+# on the motion's wording, so it is a known miss (D2-013). A reason with a hedge or a contrast ("but", "however") states
+# no verdict. "No conditions are needed" is not a verdict: the word needs its punctuation.
+_OPENING_VERDICT = re.compile(r"^\s*(?P<word>yes|aye|no|nay)\s*[.,;:!–—-]", re.I)
+_VOTE_STATEMENT = re.compile(r"\b(?:i(?:'ll|\s+will|\s+shall)?\s+vote|my\s+vote\s+(?:is|will\s+be))\s+"
+                             r"(?P<how>yes|aye|no|nay)\b", re.I)
+_CONTRAST = re.compile(r"\b(?:but|however|although|though|yet|except|whereas|while)\b", re.I)
+_VERDICT_YES = ("yes", "aye")       # not _YES_WORDS: that name is the prose reader's, and it also counts "for"
+
+
+def _reason_verdict(reason) -> str | None:
+    """"yes" or "no" when the reason states its verdict in plain words, else None."""
+    text = str(reason or "").strip()
+    if not text or _HEDGED.search(text) or _CONTRAST.search(text):
+        return None
+    opening = _OPENING_VERDICT.match(text)
+    if opening:
+        return "yes" if opening.group("word").lower() in _VERDICT_YES else "no"
+    stated = {("yes" if m.group("how").lower() in _VERDICT_YES else "no") for m in _VOTE_STATEMENT.finditer(text)}
+    return stated.pop() if len(stated) == 1 else None
+
+
+def _reason_contradictions(decision: dict) -> list:
+    """The votes that the delegate's own stated reason contradicts: the reason states a plain verdict on the motion,
+    and the vote is the other way. This is what VOTE_INTENT_MISMATCH records (backlog T144). The stance is
+    not read: on the labelled flags the reason agreed with the vote in 32 of 34 false positives, and the stance was the
+    outlier. `stance` here is the verdict the reason states, and `source` is "reason"."""
+    out = []
+    reasons = _said_reasons(decision)
+    for motion_id, vote in (decision.get("votes") or {}).items():
+        if vote not in ("yes", "no"):
+            continue
+        reason = str(reasons.get(motion_id, "") or "")
+        verdict = _reason_verdict(reason)
+        if verdict and verdict != vote:
+            out.append({"code": "VOTE_INTENT_MISMATCH", "motion": motion_id, "stance": verdict, "vote": vote,
+                        "reason": reason[:200], "source": "reason"})
     return out
 
 
@@ -1839,6 +1889,9 @@ class Council:
                         "it will count as an abstention")
             problems.extend(out.pop("validation_problems", []))
             out["vote_intent_clashes"] = clashes
+            # What the record calls VOTE_INTENT_MISMATCH: the final vote against its own reason (T144). The stance list
+            # above is only what the repair ask uses, so the two can differ.
+            out["vote_reason_contradictions"] = _reason_contradictions(out)
             if repair:
                 out["vote_intent_repair"] = repair
             if self.tokens["wakeups"] == "on_events":
@@ -2687,13 +2740,13 @@ class Council:
                 record["memory_mismatches"].append(clash)
                 if getattr(self, "store", None) is not None:
                     self.store.log({"type": "memory_finding", "month": w.month, **clash})
-            for clash in d.get("vote_intent_clashes") or []:
+            for clash in d.get("vote_reason_contradictions") or []:
                 if clash.get("code") != "VOTE_INTENT_MISMATCH":
                     continue
                 record["vote_intent_mismatches"].append({"member": mid, **clash})
                 errors.record(w, "VOTE_INTENT_MISMATCH",
-                              f"{mid} said it would {clash.get('stance')} {clash.get('motion')} and voted "
-                              f"{clash.get('vote')}, with no reversal stated",
+                              f"{mid}'s reason states {clash.get('stance')} on {clash.get('motion')}, and the vote "
+                              f"was {clash.get('vote')}",
                               member=mid, motion=clash.get("motion"), stance=clash.get("stance"),
                               vote=clash.get("vote"), source=clash.get("source"))
             if not d.get("quiet"):

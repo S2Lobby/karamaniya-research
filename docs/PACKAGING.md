@@ -63,21 +63,22 @@ It runs the engine's five scripted seats for one month, calls no model, and writ
 5. runs it with the venv's interpreter in the extracted root;
 6. passes when the exit code is 0 and a run checkpoint exists.
 
-Measured on 2026-10-17 from `C:\Users\litle\Karamaniya\karamaniya-test\wave3-merge` with Python 3.12.10, on the
-engine-27 release commit `bdfa1057` (after the full suite passed: 3,188 tests, OK):
+Measured on 2026-10-17 from `C:\Users\litle\Karamaniya\research-wt-e12` with Python 3.12.10, on the engine-28
+release commit `15e85d77` (after the full suite passed: 3,194 tests, OK):
 
 ```
-built dist\karamaniya-trust-submission-bdfa1057.zip (1,179,908 bytes, 143 files, commit bdfa1057, versions
-      {'world_engine': 27, 'agent_prompt': 24, 'error_taxonomy': 6, 'psychology': 8, 'agent_architecture': 2})
-clean-machine smoke: exit 0, 144 files, 3.2s, checkpoints ['runs\\package-smoke-seed1\\checkpoint.json']
+built dist\karamaniya-trust-submission-15e85d77.zip (1,181,042 bytes, 143 files, commit 15e85d77, versions
+      {'world_engine': 28, 'agent_prompt': 25, 'error_taxonomy': 6, 'psychology': 8, 'agent_architecture': 2})
+clean-machine smoke: exit 0, 144 files, 4.3s, checkpoints ['runs\\package-smoke-seed1\\checkpoint.json']
 command: <temp>\.venv-smoke\Scripts\python.exe -m karamaniya simulate council.scripted.toml --runs 1 --months 1
          --prefix package-smoke
 ```
 
-The extracted package's run manifest recorded `world_engine_version: 27`, the five scripted seats A-E, seed 1 and
-the outcome `survived`; the package's own checks found no forbidden path, no `.env`, no secret and no SHA-256
-mismatch (143 files listed, 144 zip entries including `PACKAGE_MANIFEST.json`). `python -m unittest
-tests.test_engine24_package -v` ran 9 tests, OK, including this build and smoke.
+The extracted package's run manifest recorded `world_engine_version: 28` and `agent_prompt_version: 25`, the five
+scripted seats A-E, seed 1 and the outcome `survived`; the package's own checks found no forbidden path, no `.env`, no
+secret and no SHA-256 mismatch (143 files listed, 144 zip entries including `PACKAGE_MANIFEST.json`). `python -m
+unittest tests.test_engine24_package -v` ran 9 tests, OK, including this build and smoke. This build replaces the
+engine-27 one, `bdfa1057` (1,179,908 bytes, 143 files).
 
 The unit tests are `python -m unittest tests.test_engine24_package -v`. The integration class builds from `HEAD`
 and runs the smoke; it skips until the package files are committed, because the build reads a commit.

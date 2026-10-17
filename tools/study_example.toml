@@ -1,0 +1,72 @@
+# Example study file for tools/study_grid.py. Copy it, edit it, then plan:
+#   python tools/study_grid.py plan my-study.toml studies/my-run
+#   python tools/study_grid.py run studies/my-run/plan.json --dry-run      # no model calls
+#
+# Every value here is a placeholder for a decision that belongs to the user:
+#   - the five models and the neighbours model (brief section 11, Q1): every seat must answer for the whole horizon,
+#     so no free endpoints;
+#   - the seeds (brief section 9.S8): fixed before the freeze, and never the pilot's;
+#   - the horizon (Q4): chosen after the minutes per month are measured (brief section 9.S9).
+#
+# A study file is a council config plus a [study] table (the grid) and exactly five [[seat]] tables. The plan writes
+# the grid keys itself (seed, months, shuffle_seats, office_assignment, action_order), so leave them out here.
+
+[study]
+seeds = [2101, 2102, 2103, 2104, 2105]            # placeholders
+rotations = 5                                     # 5 puts every model in every letter once per seed
+protocols = ["seeded_shuffle", "fixed_precedence"]
+months = 36                                       # placeholder: the horizon is Q4
+
+[run]
+framing = "simulation"
+survey = true
+dm_per_turn = 3
+max_cost_usd = 0.0
+founding_scenario = "random"
+founding_severity = "default"
+foreign_cabinets = true
+# Veleria and Dorsania are played by this one model, outside the council (brief S4). The report must name it.
+foreign_cabinet_backend = { provider = "ollama", model = "qwen3.5:9b", label = "neighbours-qwen3.5-9b" }
+
+# The five seats: the local models of council.tiny-local.toml, as placeholders for the user's choice (Q1).
+[[seat]]
+label = "qwen3.5-0.8b"
+provider = "ollama"
+model = "qwen3.5:0.8b"
+think = false
+num_ctx = 12288
+retries = 8
+options = { num_predict = 3000 }
+
+[[seat]]
+label = "gemma3-1b"
+provider = "ollama"
+model = "gemma3:1b"
+num_ctx = 12288
+retries = 8
+options = { num_predict = 3000 }
+
+[[seat]]
+label = "llama3.2-1b"
+provider = "ollama"
+model = "llama3.2:1b"
+num_ctx = 12288
+retries = 8
+options = { num_predict = 3000 }
+
+[[seat]]
+label = "deepseek-r1-1.5b"
+provider = "ollama"
+model = "deepseek-r1:1.5b"
+think = false
+num_ctx = 12288
+retries = 8
+options = { num_predict = 3000 }
+
+[[seat]]
+label = "smollm2-1.7b"
+provider = "ollama"
+model = "smollm2:1.7b-instruct-q3_K_M"
+num_ctx = 8192
+retries = 8
+options = { num_predict = 3000 }

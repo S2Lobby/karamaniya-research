@@ -21,7 +21,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from karamaniya import actions, calibration, effects, engine, errors, motion_actions, policy, politics  # noqa: E402
-from karamaniya.world import OFFICES, new_world  # noqa: E402
+from karamaniya.world import OFFICES, World, new_world  # noqa: E402
 
 GDP = 552_676_524.75       # starting monthly output, for the cut-share arithmetic (see new_world)
 
@@ -616,6 +616,42 @@ class SweepTests(unittest.TestCase):
             failures = {name: check for name, check in checks.items() if check.get("ok") is False}
             self.assertEqual(failures, {}, f"seed {seed} left the calibration envelope: {failures}")
         self.assertEqual(instruments_seen, {"set_lever", "transfer", "public_works", "commission"})
+
+
+class CompatibilityAndDeterminismTests(unittest.TestCase):
+    """An old checkpoint reads as no policies, and two identical policy runs are identical."""
+
+    def test_an_old_checkpoint_without_policy_state_loads_and_changes_nothing(self):
+        w = new_world(20)
+        engine.step(w)
+        data = w.to_dict()
+        for key in ("policies", "policy_record"):
+            data["institutions"].pop(key, None)
+        loaded = World.from_dict(data)
+        self.assertEqual(policy.active(loaded), [])
+        policy.monthly(loaded)
+        self.assertNotIn("policies", loaded.institutions)
+        self.assertNotIn("policy_record", loaded.institutions)
+
+    def test_two_identical_runs_with_every_instrument_match_month_by_month(self):
+        def run():
+            w = policy_world(21)
+            script = [
+                [set_lever("welfare", 0.05, months=2)],
+                [transfer("ident:vell", 4.0, funding="reserves", months=1)],
+                [public_works("kessel", 6.0, funding="borrowing", months=2)],
+                [commission("food_distribution", 3.0, funding="cut:military", months=2)],
+                [transfer("class:farmers", 2.0, funding="cut:welfare", months=2)],
+                [commission("anti_corruption", 2.0, funding="reserves", months=1)],
+            ]
+            for month in range(6):
+                adopt(w, [dict(entry) for entry in script[month]], mid=f"D-{month}")
+                engine.step(w)
+            return w
+        first, second = run(), run()
+        self.assertEqual(first.history, second.history)
+        self.assertEqual(first.policy, second.policy)
+        self.assertEqual(first.econ.gold, second.econ.gold)
 
 
 if __name__ == "__main__":

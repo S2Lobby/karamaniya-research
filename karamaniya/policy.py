@@ -265,7 +265,7 @@ def _end_hold(w, entry: dict, hold: dict, reason: str) -> dict:
     return summary
 
 
-def _end_holds(w, entry: dict, reason: str, record: dict) -> list:
+def _end_holds(w, entry: dict, reason: str) -> list:
     summaries = []
     for hold in list(entry.get("holds") or []):
         summaries.append(_end_hold(w, entry, hold, reason))
@@ -527,8 +527,8 @@ def _release_pending(w, entry: dict, record: dict) -> None:
             funding={}, scheduled=stored))
 
 
-def _pause(w, entry: dict, record: dict, reason: str) -> None:
-    summaries = _end_holds(w, entry, "its condition stopped holding", record)
+def _pause(w, entry: dict, record: dict) -> None:
+    summaries = _end_holds(w, entry, "its condition stopped holding")
     if summaries:
         record["ended"].append({"id": entry["id"], "motion": entry.get("motion"),
                                 "instrument": entry["instrument"], "office": entry.get("office"),
@@ -537,7 +537,7 @@ def _pause(w, entry: dict, record: dict, reason: str) -> None:
 
 
 def _finalize(w, entry: dict, record: dict, reason: str) -> None:
-    summaries = _end_holds(w, entry, reason, record)
+    summaries = _end_holds(w, entry, reason)
     entry["done"] = True
     record["ended"].append({"id": entry["id"], "motion": entry.get("motion"),
                             "instrument": entry["instrument"], "office": entry.get("office"),
@@ -602,6 +602,8 @@ def _run_entry(w, entry: dict, record: dict) -> None:
         return
     start, end = int(entry["start"]), int(entry["end"])
     if w.month > end:
+        # The last scheduled month has run; the hold is released at the start of the month after it, so
+        # the setting was in force through the whole month the council ordered it for.
         if entry.get("pending"):
             record["in_force"].append(_in_force(entry, "finishing", "paid work is still under way"))
             return
@@ -615,7 +617,7 @@ def _run_entry(w, entry: dict, record: dict) -> None:
         result = motion_actions.evaluate_conditions(w, [condition])[0]
         if not result.get("met"):
             reason = result.get("reason") or f"condition {condition['metric']} is not met"
-            _pause(w, entry, record, reason)
+            _pause(w, entry, record)
             record["in_force"].append(_in_force(entry, "paused", f"its condition is not met: {reason}"))
             return
     if entry["instrument"] == "set_lever":

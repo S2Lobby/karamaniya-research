@@ -164,7 +164,7 @@ class TheLanguageArmOffersPolicy(unittest.TestCase):
     def test_the_prompt_states_every_limit(self):
         text = prompts.system_prompt("simulation", harness="language")
         for phrase in ("one to four items", "start_in is 0 to 6", "months is 1 to 24",
-                       "reserves, borrowing, or cut:", "A spending instrument without funding",
+                       "reserves, borrowing, or cut:", "A spending instrument needs an amount and funding",
                        "food_ratio", "reserves_after_payment", "class:farmers", "anti_corruption"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)

@@ -246,9 +246,10 @@ SECRET_BALLOT_RULE = "Votes are secret: each member sees only their own vote and
 POLICY_PARAGRAPH = (
     "- policy: one to four items in action.items; its text says what the council is deciding. Each item names an "
     "instrument and only the fields that instrument uses:\n"
-    "  - set_lever: lever and value. The setting is held at that value while the item's condition holds and its "
-    "schedule runs. When the policy ends, the setting returns to the value it had before, unless a later decision "
-    "changed it, in which case the hold ends and the record says it was superseded.\n"
+    "  - set_lever: lever (a setting the council can direct) and value. The setting is held at that value while "
+    "the item's condition holds and its schedule runs. When the policy ends, the setting returns to the value "
+    "it had before, unless a later decision changed it, in which case the hold ends and the record says it was "
+    "superseded.\n"
     "  - transfer: amount, target and funding. An amount is a positive number of millions of crowns a month; the "
     "money is paid to the group the target names.\n"
     "  - public_works: amount, target (one region) and funding. The money repairs damage and logistics and lowers "
@@ -260,9 +261,9 @@ POLICY_PARAGRAPH = (
     "reserves_after_payment, arrears, unemployment, army_morale, army_arrears, inflation, approval, deficit, "
     "league_credit_received or audited_register; operator is >=, <= or ==; it is tested at the start of each month. "
     "start_in is 0 to 6 months and 0 if left out; months is 1 to 24. Funding is reserves, borrowing, or "
-    "cut:<setting> for military, police, welfare, health_edu or farm_support. A spending instrument without funding "
-    "is refused when it is tabled; reserves must be above the reserve floor, borrowing within the borrowing limit, "
-    "and the cut within what the setting spends."
+    "cut:<setting> for military, police, welfare, health_edu or farm_support. A spending instrument needs an amount "
+    "and funding; without them it is refused when it is tabled. Reserves must be above the reserve floor, borrowing "
+    "within the borrowing limit, and the cut within what the setting spends."
 )
 OPEN_ACT_PARAGRAPH = (
     "- open_act: at most one a delegate a month, counted as one of its two motions. Its text, at most 60 words, says "

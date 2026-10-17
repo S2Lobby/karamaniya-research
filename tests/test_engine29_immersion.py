@@ -155,7 +155,7 @@ class TheNewArmsDescribeTheirToolsWithoutGivingAnythingAway(unittest.TestCase):
     def test_the_policy_paragraph_states_its_limits(self):
         text = prompts.system_prompt("unobserved", harness="language")
         for phrase in ("one to four items", "start_in is 0 to 6", "months is 1 to 24",
-                       "A spending instrument without funding is refused"):
+                       "A spending instrument needs an amount and funding"):
             self.assertIn(phrase, text)
 
     def test_the_open_act_paragraph_states_its_limits(self):

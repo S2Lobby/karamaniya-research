@@ -261,7 +261,7 @@ Nothing on the box is precious until it is on your machine. Make the copies as y
 - The commands the kit runs: `vllm serve [model_tag] [options]` (vLLM 0.31.0's serve entrypoint);
   `snapshot_download(repo_id=, revision=, local_dir=)` (huggingface_hub's source); `rsync --mkpath` (rsync's NEWS: added
   in 3.2.3).
-- `estimate.py`, `bench.py` and the seat block: 33 tests pass, the seat block is accepted by the engine's config code,
+- `estimate.py`, `bench.py` and the seat block: 34 tests pass, the seat block is accepted by the engine's config code,
   and it builds an `openai_compat` backend on 127.0.0.1 with no key.
 - `setup.sh`, `launch.sh` and `sync.sh`: syntax checked. Their refusal paths were run here, and they created nothing.
   `sync.sh`'s copy and verify flow was run with a stub rsync.

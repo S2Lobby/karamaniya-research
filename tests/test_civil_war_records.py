@@ -21,13 +21,19 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from karamaniya import civil_war, engine  # noqa: E402
+from karamaniya.config import load_config  # noqa: E402
+from karamaniya.council import Council  # noqa: E402
+from karamaniya.runner import new_run  # noqa: E402
 from karamaniya.storage import RunStore  # noqa: E402
 from karamaniya.world import new_world  # noqa: E402
-from tools import civil_war_report, civil_war_sweep  # noqa: E402
+from tools import civil_war_report, civil_war_sweep, replay_run  # noqa: E402
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def world(seed: int = 11, option: str = "on", month: int = 1):
@@ -289,6 +295,40 @@ class TheReportMeasures(unittest.TestCase):
         self.assertIn("soldiers gov / rebels", text)
         self.assertIn("difference in differences", text.lower())
         self.assertEqual(report["arms"]["plotter"]["started"], 1)
+
+
+class AScriptedWarReplays(unittest.TestCase):
+    """A scripted run whose war starts in Month 2 replays identically, month record and all."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="cw-records-replay-")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_the_war_run_replays_identically(self):
+        cfg = load_config(os.path.join(ROOT, "council.scripted.toml"))
+        cfg = {**cfg, "run": {**cfg["run"], "civil_war": "on", "survey": False,
+                              "foreign_cabinets": False, "baseline": False, "report": False,
+                              "debrief": False}}
+        original = Council._run_month_v2
+
+        def patched(council):
+            if council.w.month == 1 and civil_war.state(council.w) is None:
+                civil_war.start(council.w, "failed_coup", plotters=["C"], stances={"A": "join"})
+            return original(council)
+
+        with mock.patch.object(Council, "_run_month_v2", patched):
+            new_run(cfg, runs_dir=self.tmp, name="war", months=3, seed=1, quiet=True, check=False)
+            # The replay runs the same patched month: the war starts at the same point, so the
+            # faction calls are asked for and found in the recording.
+            verdict = replay_run.replay(os.path.join(self.tmp, "war"))
+        self.assertTrue(verdict["identical"], verdict.get("message"))
+        with open(os.path.join(self.tmp, "war", "checkpoint.json"), encoding="utf-8") as f:
+            history = json.load(f)["world"]["history"]
+        self.assertIn("civil_war", history[1])
+        self.assertIsNotNone(history[1]["civil_war"]["combat"])
+        self.assertEqual(history[1]["civil_war"]["cause"], "failed_coup")
 
 
 class TheSweepChecks(unittest.TestCase):

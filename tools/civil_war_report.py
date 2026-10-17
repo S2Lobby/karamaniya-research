@@ -554,8 +554,8 @@ def write_markdown(report, path):
               "keeps the engine index. Soldier losses are C2's active losses (dead and wounded); the "
               "killed counters (30% of the losses, the engine's convention) are in the JSON. Damage is "
               "the sum of each fighting front's monthly damage. Fear is reported with unrest because "
-              "the engine derives unrest from grievance and fear and only those two are in the history "
-              "row; grievance itself is per region in region_detail and is not carried in the row.", ""]
+              "the engine derives unrest from grievance and fear: the history row carries unrest and "
+              "fear, while grievance itself is per region in region_detail and is not in the row.", ""]
     Path(path).write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
 

@@ -387,9 +387,10 @@ aggregation is exercised on a synthetic pair with casualties, offers, a breach a
 
 - Tests: `python -m unittest tests.test_civil_war tests.test_civil_war_combat
   tests.test_civil_war_faction tests.test_civil_war_negotiation tests.test_civil_war_integration
-  tests.test_civil_war_records` — 185 tests, all pass. The C5 tests cover the month record present
+  tests.test_civil_war_records` — 186 tests, all pass. The C5 tests cover the month record present
   when on and absent when off, the engine-29 row identity, the C3 record enriched in place, the
-  report's per-run metrics, the twin DiD, the non-twin refusal, and the sweep's band logic.
+  report's per-run metrics, the twin DiD, the non-twin refusal, the sweep's band logic, and a
+  scripted war run that replays identically with its month records.
 - Sweep: 60 scripted runs, counts above (`runs/cw-sweep/sweep.md`).
 - Report: `reports/cw-c5/civil_war_report.md` and `.json` over all 60 runs, with both war runs
   paired to their twins.

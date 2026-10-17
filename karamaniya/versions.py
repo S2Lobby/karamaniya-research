@@ -96,7 +96,13 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # reads (engine 23 listed each act's default receiver only, wrong for three of the four powers). An unknown lever that
 # is, or nearly is, a constitution setting says it is changed by a constitution motion. A refused loan says what is
 # missing: no amount, an amount with no unit, or several amounts.
-AGENT_PROMPT = 21
+# 22 goes with world engine 25 (backlog T138-T140, T142). A neighbour's cabinet is told in its system prompt that only
+# the first four acts in its list are read and that its strategy is kept to 180 characters; both were enforced and not
+# stated. It is told the next month when an act's null size was taken as 0.5. A delegate's next-month briefing names each
+# private message and public communication the engine did not send, and why, and shows every refusal whole (the briefing
+# cut each explanation at 300 characters and listed four refusals). A default scripted run's council prompts are
+# unchanged; its neighbours' system prompts change.
+AGENT_PROMPT = 22
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose
@@ -270,7 +276,18 @@ PSYCHOLOGY = 8
 # RecursionError in extract_json, which caught only JSONDecodeError, and the run paused as fatal. It is re-asked like
 # any malformed answer, and the same guard covers the provider-body parses (openai_compat, ollama), the CLI line
 # reader (cli_common) and the whole-stdout fallbacks (claude_cli, qoder_cli).
-WORLD_ENGINE = 24
+# 25 (backlog T136-T145, T147): the second wave of fixes from the census and the detector audit. A programme's
+# duplicate key is the measures it sets: run 20261011-211521-seed1 (Month 5) refused a programme as a duplicate of
+# another that set other measures. The compliance rows of patronage and deployment orders record the value the order left
+# in force (deployment rows recorded null). The democracy index takes off the repressive acts in force (arrests,
+# emergency measures, party bans), and an officers' coup sets the coup month; the index had stood at 1.0 in every month
+# of every recorded run. A neighbour act with a null size is read as 0.5, not refused (31 acts, 7 of them ultimatums).
+# Refused private messages and communications are kept with their reasons for the sender's briefing. VOTE_INTENT_MISMATCH
+# records only a vote its own reason contradicts, and NUMERIC_GROUNDING_ERROR judges a figure only against the metric its
+# own segment names; both are diagnostics, and no prompt reads them. claude_cli, qoder_cli and antigravity_cli log the
+# structured answer they used, so a run with those seats replays exactly. The control room counts a run done only when
+# the engine has ended it.
+WORLD_ENGINE = 25
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

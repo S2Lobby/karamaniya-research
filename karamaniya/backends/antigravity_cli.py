@@ -147,6 +147,7 @@ class AntigravityCLIBackend(Backend):
             data = extract_json(text)
         if isinstance(data, dict):
             data = restore(data, schema)
+        # Logged as `structured` after `restore` (T145): the council reads the restored answer, and a replay must too.
         return CallResult(data=data, raw=text, served_model=served or "antigravity default",
                           input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=self.cost(tokens_in, tokens_out),
-                          reasoning_text=reasoning(*thoughts))
+                          reasoning_text=reasoning(*thoughts), structured=data, structured_read=True)

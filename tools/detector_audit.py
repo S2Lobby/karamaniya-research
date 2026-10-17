@@ -315,9 +315,13 @@ def replay_d1() -> list:
             prompt = row["_prompt"]
             ma._grounding_truth = truth_for(row["metric"], observed)
             ma.information_available_to = lambda w, mid, _p=prompt: [{"label": "decision prompt", "text": _p}]
+            untied = []                       # figures the check could not tie to a metric (T144): unverifiable
             try:
-                claim = ma.check_numeric_grounding(Stub(), row["member"], row["_text"])
-                status, code, metric = ("flagged", claim["code"], claim["metric"]) if claim else ("clear", "", "")
+                claim = ma.check_numeric_grounding(Stub(), row["member"], row["_text"], untied)
+                if claim:
+                    status, code, metric = "flagged", claim["code"], claim["metric"]
+                else:
+                    status, code, metric = ("unverifiable" if untied else "clear"), "", ""
             except Exception as exc:          # noqa: BLE001 - an error is reported, never counted as clear
                 status, code, metric = "error", type(exc).__name__, ""
             out.append({"flag_id": row["flag_id"], "recorded_metric": row["metric"], "replay": status,
@@ -412,13 +416,15 @@ def score() -> int:
                           "observed", "sentence", "briefing", "label", "reason"])
     print("D1 (precision: TRUE_ERROR of decided):", tally(labels, "TRUE_ERROR", "FALSE_POSITIVE"))
     # The same question for the current code: the texts it would still flag on the recorded metric (replay).
+    # T144 changed which texts are still flagged, so the same labels are tallied only for the flags that
+    # remain. A flag with no label is counted, not guessed: it needs a second annotator.
     flagged_now = {r["flag_id"] for r in read_csv(os.path.join(OUT, "D1_replay_current_main.csv"))
                    if r["replay"] == "flagged"}
-    current = [lab for lab in labels if lab["flag_id"] in flagged_now]
-    current += read_csv(os.path.join(OUT, "D1_labels_replay_unsampled11.csv"))
-    if {lab["flag_id"] for lab in current} != flagged_now:
-        raise SystemExit("labels do not cover the replay's flags exactly")
-    print("D1 on the current code (replay, same metric):", tally(current, "TRUE_ERROR", "FALSE_POSITIVE"))
+    labelled = {lab["flag_id"]: lab for lab in labels + read_csv(os.path.join(OUT, "D1_labels_replay_unsampled11.csv"))}
+    current = [labelled[fid] for fid in sorted(flagged_now) if fid in labelled]
+    unlabelled = sorted(flagged_now - set(labelled))
+    print("D1 on the current code (replay, same metric):", tally(current, "TRUE_ERROR", "FALSE_POSITIVE"),
+          "; flagged and not labelled:", unlabelled)
     labels = join_labels(os.path.join(OUT, "D2_evidence_36.csv"), os.path.join(OUT, "D2_labels_36.csv"),
                          os.path.join(OUT, "D2_labelled_36.csv"),
                          ["flag_id", "run", "month_no", "member", "motion", "motion_type", "motion_subject",
@@ -461,23 +467,55 @@ def r4_index() -> int:
     from types import SimpleNamespace
     from karamaniya import world as W
 
-    def index(month: int = 20, **settings) -> float:
+    def index(month: int = 20, arrests: str = "none", measures: tuple = (), **settings) -> float:
         c = W.Constitution()
         c.charter_election_month = c.election_month = W.CHARTER_ELECTION_MONTH
         for name, value in settings.items():
             setattr(c, name, value)
-        return round(W.democracy_index(SimpleNamespace(month=month, const=c)), 4)
+        # Engine 24 (T141): the index also reads the arrests and the emergency measures in force.
+        world = SimpleNamespace(month=month, const=c, policy=W.Policy(arrests=arrests),
+                                institutions={"emergency_measures": {m: {"since": 0, "until": 99} for m in measures}})
+        return round(W.democracy_index(world), 4)
 
     cases = [("defaults", {}), ("press restricted", {"press": "restricted"}), ("press censored", {"press": "censored"}),
              ("assembly banned", {"assembly": "banned"}), ("emergency on", {"emergency": True}),
              ("minority interned", {"minority": "interned"}), ("decision rule head_decides", {"decision_rule": "head_decides"}),
              ("decision rule two_thirds", {"decision_rule": "two_thirds"}),
-             ("parties one_party (not read)", {"parties": "one_party"}),
+             ("arrests targeted", {"arrests": "targeted"}), ("arrests mass", {"arrests": "mass"}),
+             ("emergency measure curfew", {"measures": ("curfew",)}),
+             ("emergency measure fiscal authority", {"measures": ("fiscal_authority",)}),
+             ("parties ban_opposition", {"parties": "ban_opposition"}), ("parties one_party", {"parties": "one_party"}),
              ("election postponed to month 40", {"election_month": 40}),
              ("election postponed to month 50", {"election_month": 50}), ("election cancelled", {"election_month": -1}),
              ("coup two months before month 20", {"coup_month": 18}), ("coup fifteen months before", {"coup_month": 5})]
     for label, settings in cases:
         print(f"{label:34s} {index(**settings)}")
+    return 0
+
+
+def reason_check() -> int:
+    """VOTE_INTENT_MISMATCH on the current code (T144): the reason-based rule over every yes or no ballot in the
+    recorded runs, joined to the 36 labelled stance flags (D2_labelled_36.csv) by run, month, member and motion."""
+    sys.path.insert(0, ROOT)
+    from karamaniya import council as C
+    labels = {(r["run"], r["month_no"], r["member"], r["motion"]): r["label"]
+              for r in read_csv(os.path.join(OUT, "D2_labelled_36.csv"))}
+    ballots, found = 0, []
+    for run, log in run_logs():
+        for rec in month_records(log):
+            for mid, dec in (rec.get("decisions") or {}).items():
+                if not isinstance(dec, dict):
+                    continue
+                ballots += sum(1 for v in (dec.get("votes") or {}).values() if v in ("yes", "no"))
+                for c in C._reason_contradictions(dec):
+                    key = (run, str(rec.get("month") + 1), mid, c["motion"])
+                    found.append((key, c["vote"], c["stance"], labels.get(key, "unlabelled"), c["reason"][:90]))
+    print(f"ballots yes or no in the recorded runs: {ballots}; flagged by the reason rule: {len(found)}")
+    for key, vote, verdict, label, reason in found:
+        print(f"  {key[0]} M{key[1]} {key[2]} {key[3]} vote={vote} reason says={verdict} [{label}] {reason!r}")
+    labelled = [label for *_rest, label, _r in found if label != "unlabelled"]
+    counts = {name: labelled.count(name) for name in set(labelled)}
+    print(f"of the 36 labelled stance flags, flagged by the reason rule: {sum(counts.values())}; by label: {counts}")
     return 0
 
 
@@ -497,7 +535,7 @@ def execution_key_check() -> int:
 
 
 def main(argv: list) -> int:
-    if not argv or argv[0] not in ("extract", "score", "wilson", "replay", "r4-index", "execution-key"):
+    if not argv or argv[0] not in ("extract", "score", "wilson", "replay", "r4-index", "execution-key", "reason-check"):
         print(__doc__)
         return 2
     if argv[0] == "extract":
@@ -510,6 +548,8 @@ def main(argv: list) -> int:
         return r4_index()
     if argv[0] == "execution-key":
         return execution_key_check()
+    if argv[0] == "reason-check":
+        return reason_check()
     k, n = int(argv[1]), int(argv[2])
     lo, hi = wilson(k, n)
     print(f"{k}/{n} = {k / n:.4f}; Wilson 95%: [{lo:.4f}, {hi:.4f}]")

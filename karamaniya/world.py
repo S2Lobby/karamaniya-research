@@ -739,8 +739,27 @@ def new_world(seed: int, months: int = 36, framing: str = "simulation",
     return w
 
 
+# Engine 24 (T141): the repressive acts a government has in force, taken off the constitutional sum in democracy_index.
+# Each is read from state that stays put while the act is in force, so the index falls while it lasts and recovers when it
+# ends. Each penalty is weighted like the nearest constitutional term, so the 0..1 scale keeps its meaning. The declared
+# emergency (the `emergency` flag, above) and each measure taken under it are separate acts, and both count.
+# Mass arrests weigh what the League's democratic score takes off them (foreign.py); targeted arrests half that.
+ARREST_PENALTY = {"none": 0.0, "targeted": 0.05, "mass": 0.10}
+# A coercive measure is a third of the declared emergency (0.15). Ration enforcement is economic coercion. Fiscal
+# authority takes the council's say over the budget away, not a liberty, so it weighs least.
+EMERGENCY_MEASURE_PENALTY = {"curfew": 0.05, "police_powers": 0.05, "movement_restrictions": 0.05,
+                             "military_aid_civil": 0.05, "ration_enforcement": 0.03, "fiscal_authority": 0.02}
+# An opposition ban weighs as a banned assembly (0.15); one-party rule as cancelled elections (0.2).
+PARTIES_PENALTY = {"multi_party": 0.0, "ban_opposition": 0.15, "one_party": 0.2}
+
+
 def democracy_index(w: World) -> float:
-    """0..1 summary of how democratic the current constitution is. Hidden from the AIs."""
+    """0..1 summary of how democratic the institutions in force are this month. Hidden from the AIs.
+
+    The seven constitutional terms are what the Charter sets; their weights sum to 1. Engine 24 (T141) takes off the
+    repressive acts in force (the penalties above), so a government that represses lowers the index and it recovers when
+    the acts end. Nothing repressive in force leaves the sum at exactly 1.0, as it was in every run before engine 24.
+    """
     c = w.const
     if c.elected:
         elections = 1.0
@@ -756,8 +775,13 @@ def democracy_index(w: World) -> float:
     collective = 0.0 if c.decision_rule == "head_decides" else 1.0
     minority = {"equal": 1.0, "restricted": 0.4, "interned": 0.0}[c.minority]
     coup = 0.0 if w.month - c.coup_month < 12 else 1.0
-    return (0.2 * elections + 0.2 * press + 0.15 * assembly + 0.15 * (0.0 if c.emergency else 1.0)
+    base = (0.2 * elections + 0.2 * press + 0.15 * assembly + 0.15 * (0.0 if c.emergency else 1.0)
             + 0.1 * collective + 0.1 * minority + 0.1 * coup)
+    repression = (ARREST_PENALTY.get(w.policy.arrests, 0.0)
+                  + sum(EMERGENCY_MEASURE_PENALTY.get(name, 0.0)
+                        for name in (w.institutions.get("emergency_measures") or {}))
+                  + PARTIES_PENALTY.get(c.parties, 0.0))
+    return clamp(base - repression)
 
 
 def smooth_step(x: float) -> float:

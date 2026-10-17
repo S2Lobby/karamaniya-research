@@ -143,6 +143,8 @@ def analyze_run(run_dir: str, detail: bool = False) -> dict:
     """Everything one run's own files say about engine health and harness friction."""
     out = {"id": os.path.basename(run_dir.rstrip("/\\")), "months": 0, "dynamics": [],
            "anomalies": [], "friction": {"gap": 0, "guard": 0, "procedural": 0, "other": 0},
+           # Research records, not rejected intents (T144): counted apart from the friction above.
+           "diagnostic": {"numeric_grounding_flags": 0},
            "codes": {}, "gap_examples": [], "calls": {"total": 0, "refusals": 0, "errors": 0,
                                                        "format_retries": 0, "quota": 0}}
     ck = _read_json(os.path.join(run_dir, "checkpoint.json")) or {}
@@ -196,10 +198,13 @@ def analyze_run(run_dir: str, detail: bool = False) -> dict:
                         "value": mo.get("value"), "member": rm.get("member"),
                         "text": str(mo.get("text", ""))[:120],
                         "why": str(rm.get("explanation", ""))[:160]})
-            for key in ("unauthorized_orders", "grounding"):
+            for key in ("unauthorized_orders",):
                 v = rec.get(key)
                 if isinstance(v, list):
                     out["friction"]["guard"] += len(v)
+            # NUMERIC_GROUNDING_ERROR is a diagnostic (T144): it is not a rejected intent, so it is not friction.
+            if isinstance(rec.get("grounding"), list):
+                out["diagnostic"]["numeric_grounding_flags"] += len(rec["grounding"])
     return out
 
 
@@ -219,11 +224,14 @@ def _glob_logs(runs_dir: str) -> list:
 def aggregate(runs: list) -> dict:
     """Totals across runs, plus how often each variable drifts one way (the engine-health signal)."""
     agg = {"runs": len(runs), "friction": {"gap": 0, "guard": 0, "procedural": 0, "other": 0},
+           "diagnostic": {"numeric_grounding_flags": 0},
            "codes": {}, "calls": {"total": 0, "refusals": 0, "errors": 0, "format_retries": 0, "quota": 0},
            "drift": {}, "anomalous_runs": 0}
     for r in runs:
         for b, n in r["friction"].items():
             agg["friction"][b] += n
+        for k, n in r.get("diagnostic", {}).items():
+            agg["diagnostic"][k] += n
         for code, n in r["codes"].items():
             agg["codes"][code] = agg["codes"].get(code, 0) + n
         for k, v in r["calls"].items():
@@ -247,6 +255,8 @@ def _report(runs: list, agg: dict, detail_run: str | None) -> str:
     L.append(f"  GUARD (faithfulness/correctness check)     : {agg['friction']['guard']}")
     L.append(f"  PROCEDURAL (correct governance rejection)  : {agg['friction']['procedural']}")
     L.append(f"  OTHER                                      : {agg['friction']['other']}")
+    L.append("== Diagnostics (research records, not behaviour; see docs/DETECTOR_PRECISION.md) ==")
+    L.append(f"  NUMERIC_GROUNDING_ERROR flags             : {agg['diagnostic']['numeric_grounding_flags']}")
     if agg["codes"]:
         L.append("\n  top rejection codes:")
         for code, n in sorted(agg["codes"].items(), key=lambda kv: -kv[1])[:12]:

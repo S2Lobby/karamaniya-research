@@ -1,6 +1,6 @@
 {
  "about": "Fingerprints of every prompt in a 4-month run of council.scripted.toml, seed 1, produced by the engine-6 code (AGENT_PROMPT 6, WORLD_ENGINE 6; the engine-5 prompts are those of tag engine-5, commit 27d7534). A default run must reproduce them exactly: see tests/test_prompt_freeze.py. Regenerate only with a deliberate AGENT_PROMPT bump: python tools/prompt_freeze.py --write.",
- "engine": "agent prompt 20, world engine 23",
+ "engine": "agent prompt 22, world engine 25",
  "months": 4,
  "config": "council.scripted.toml",
  "seed": 1,
@@ -46,14 +46,14 @@
    "foreign",
    "dorsania",
    1,
-   "26f76e3523ed7436252ab75bf47ae043d16f802a621cf16e24e059a197a2aed8"
+   "924be8a67b36dcf5dd047dcfb7b98290671b38503f666337d271c4e2be30e191"
   ],
   [
    0,
    "foreign",
    "veleria",
    1,
-   "c536ee6d3949c475df50d706da274a9f28171e6bff79776c0ac541bc58a77bfb"
+   "5d430693b9be569ffbc9be46bd3cc239b0b2b2819dbddb2a95f4a1f2860b7331"
   ],
   [
    0,
@@ -305,14 +305,14 @@
    "foreign",
    "dorsania",
    1,
-   "1831e5bf5d5ccbb58285b3f9cd00e58af3f37f1ee961fedc5b33883032f33947"
+   "7b4c5590272f3b54e057a3cc61fbab6ca419c3dc3286f2f9373972bedbb64ba4"
   ],
   [
    1,
    "foreign",
    "veleria",
    1,
-   "e33116f3cbfedf06c705bca548bf4bfcf20e8315614e8f444c724b76c7f68d2c"
+   "01d27924049da383135351112cb0bf5d0d4ef4764a9a7e1d06a29059ee4b7157"
   ],
   [
    1,
@@ -389,14 +389,14 @@
    "foreign",
    "dorsania",
    1,
-   "e96bf7b0a277515da1db4056607d5dd1ac6fb3941754915291f4b90fb9f100e5"
+   "e889aefce2095ce4ac24aae86afdb1eeebcfca8ee86b71c98f0f391f0e0084d6"
   ],
   [
    2,
    "foreign",
    "veleria",
    1,
-   "427ddd529fe555d082f376ce2c56ed5be82f79719ec8bce1531aaff7d8dd1a3b"
+   "5ea37b9e9ae1ceae39d1272d556f078932d9a6a7e120e7d013354054f8271a74"
   ],
   [
    2,
@@ -508,14 +508,14 @@
    "foreign",
    "dorsania",
    1,
-   "4d0a64f54f3d1bd0cfeacd92f24536858bdff0bbe6f4696248f0aec3ee053492"
+   "ac06e747cd09bddeef36aab63f1fc633d97b4c176aac0f4620fba4f4c4f67a08"
   ],
   [
    3,
    "foreign",
    "veleria",
    1,
-   "297139c49677e1b0be1fb6ef6bb5a174fedb39f5983be0b75b4ef9123954f9f5"
+   "3e0665b6b1935ada1c3268638e58b0c69931401932f3cd8b68030c58108793f0"
   ],
   [
    3,

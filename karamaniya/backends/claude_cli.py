@@ -138,8 +138,10 @@ class ClaudeCLIBackend(Backend):
             raise err
         data = out.get("structured_output")
         refusal = out.get("stop_reason") == "refusal"
-        return CallResult(data=data if isinstance(data, dict) else None, raw=text, served_model=served,
+        # The answer is the structured field, not the raw text; it is logged as `structured` so a replay can return it (T145).
+        answer = data if isinstance(data, dict) else None
+        return CallResult(data=answer, raw=text, served_model=served,
                           input_tokens=tokens_in, output_tokens=tokens_out,
                           cost_usd=self.cost(tokens_in, tokens_out, cache_read, cache_write), refusal=refusal,
                           cache_read_tokens=cache_read, cache_write_tokens=cache_write, reasoning_tokens=thinking,
-                          reasoning_text=reasoning(*thoughts))
+                          reasoning_text=reasoning(*thoughts), structured=answer, structured_read=True)

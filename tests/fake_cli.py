@@ -12,6 +12,7 @@ FAKE_CLI_ANSWER=<json>        the answer to give (Antigravity), instead of one c
 FAKE_CLI_DETOURS=<n>          Antigravity: the first n calls reach for a tool, which is denied, and end with no answer
 FAKE_CLI_THINKING=<text>      reasoning to print the way each tool prints it (Claude Code, Codex, Cline); Claude Code,
                               like 2.1.293, prints the thinking block's text only with --thinking-display summarized
+FAKE_CLI_RESULT=<text>        Claude Code: the text its `result` field carries, when that is not the JSON of the structured answer
 FAKE_CLI_OLD_CLAUDE=1         Claude Code: refuse --thinking-display as an unknown option, as a CLI older than it would
 FAKE_CLI_CLINE_IGNORES_STDIN=1  Cline: answer from the prompt argument alone, as a Cline that did not read stdin would
 """
@@ -214,7 +215,10 @@ def main():
             print(json.dumps({"type": "assistant", "message": {"content": [
                 {"type": "thinking", "thinking": shown, "signature": "x"},
                 {"type": "text", "text": json.dumps(data)}]}}), file=out)
-        print(json.dumps({"type": "result", "is_error": False, "result": json.dumps(data), "structured_output": data,
+        # FAKE_CLI_RESULT: the text the real CLI may report in `result` beside its structured answer, which is not the
+        # JSON of that answer (T145). Unset, `result` is the JSON, as before.
+        print(json.dumps({"type": "result", "is_error": False,
+                          "result": os.environ.get("FAKE_CLI_RESULT") or json.dumps(data), "structured_output": data,
                           "stop_reason": "end_turn", "usage": {"input_tokens": 120, "output_tokens": 12, **extra_usage()},
                           "modelUsage": {model: {}}, "total_cost_usd": 0.01}), file=out)
         return 0

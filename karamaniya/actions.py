@@ -372,25 +372,50 @@ def _dm_target(dm: dict) -> str:
     return str("" if raw is None else raw).strip().upper().replace("DELEGATE ", "")
 
 
-def _dms(w: World, mid: str, raw, quota: int, problems: list) -> list:
+def _recipients(others: str) -> str:
+    return f"; the recipient must be one of {others}" if others else ""
+
+
+def _dm_refusal(dm: dict, reason: str) -> dict:
+    """A refused private message as the sender's next-month note shows it: the recipient as the model wrote it, and why
+    (T138). The text is not repeated; the sender wrote it."""
+    shown = str(_dm_recipient(dm))
+    return {"channel": "private_message", "to": shown if shown.strip() else "(blank)", "reason": reason}
+
+
+def _dms(w: World, mid: str, raw, quota: int, problems: list, refused: list | None = None) -> list:
+    """The private messages the engine sends. A refused one is recorded in `problems`, as before, and also in `refused`
+    with its reason, so the sender is told the next month (T138). Past the quota every message is refused; only the
+    first is a problem, as before."""
     out = []
+    refused = [] if refused is None else refused
     ids = {m.id for m in w.active_members()}
+    others = ", ".join(sorted(ids - {mid}))
+    over_quota = False
     for dm in raw if isinstance(raw, list) else []:
         if len(out) >= quota:
-            problems.append("too many private messages")
-            break
+            if not over_quota:
+                problems.append("too many private messages")
+            over_quota = True
+            if isinstance(dm, dict):
+                refused.append(_dm_refusal(dm, f"too many private messages: {quota} was the most left to send this month"))
+            continue
         if not isinstance(dm, dict):
             continue
         to = _dm_target(dm)
         text = words(dm.get("text", ""), DM_WORDS)
         if to not in ids:
             problems.append(f"bad private message recipient '{_dm_recipient(dm)}'")
+            refused.append(_dm_refusal(dm, f"bad private message recipient '{_dm_recipient(dm)}'"
+                                           + _recipients(others)))
             continue
         if to == mid:
             problems.append(f"private message cannot be sent to self ('{to}')")
+            refused.append(_dm_refusal(dm, "a private message cannot be sent to yourself" + _recipients(others)))
             continue
         if not text.strip():
             problems.append(f"private message to {to} has an empty body")
+            refused.append(_dm_refusal(dm, "a private message needs non-empty text"))
             continue
         out.append({"from": mid, "to": to, "text": text})
     return out
@@ -780,9 +805,9 @@ def decision_schema_v2(w: World, mid: str, motion_ids: list, election_pending: b
     return _obj(props)
 
 
-def _v2_dms(w: World, mid: str, raw, quota: int, problems: list) -> list:
+def _v2_dms(w: World, mid: str, raw, quota: int, problems: list, refused: list | None = None) -> list:
     from .commitments import DM_KINDS, infer_kind
-    out = _dms(w, mid, raw, quota, problems)
+    out = _dms(w, mid, raw, quota, problems, refused)
     kinds = {}
     for dm in raw if isinstance(raw, list) else []:
         if isinstance(dm, dict):
@@ -793,22 +818,39 @@ def _v2_dms(w: World, mid: str, raw, quota: int, problems: list) -> list:
     return out
 
 
-def _comms(raw, problems: list) -> list:
+def _comm_refusal(target: str, kind: str, reason: str) -> dict:
+    """A refused public communication as the sender's next-month note shows it (T138)."""
+    return {"channel": "communication", "to": target, "kind": kind, "reason": reason}
+
+
+SESSION_COMMUNICATIONS_CAP = "only two public communications are read a month; this one came after them"
+RESPONSE_COMMUNICATION_CAP = "only one public communication is read in the response round; this one came after it"
+
+
+def _comms(raw, problems: list, refused: list | None = None, cap_reason: str = SESSION_COMMUNICATIONS_CAP) -> list:
+    """The public communications the engine reads, at most two. An unknown kind is recorded in `problems`, as before. Each
+    refusal is also kept in `refused` with its reason (T138): an unknown kind, and a communication past the two read.
+    `cap_reason` is the reason given past the cap; the response round passes its own (it reads one)."""
     from .standing import COMM_KINDS
+    refused = [] if refused is None else refused
     out = []
     for item in _listed(raw, "communications", problems):
-        if not isinstance(item, dict) or len(out) >= 2:
+        if not isinstance(item, dict):
             continue
         kind = str(item.get("kind", "")).strip().lower()
         # Some models put report sharing in communications despite the dedicated field.
         # It is migrated below instead of reported as an unknown communication kind.
         if kind == "share_reports":
             continue
+        target = str(item.get("target", "public")).strip()
+        if len(out) >= 2:
+            refused.append(_comm_refusal(target, kind, cap_reason))
+            continue
         if kind not in COMM_KINDS:
             problems.append(f"unknown communication kind '{kind}'")
+            refused.append(_comm_refusal(target, kind, f"unknown communication kind '{kind}'"))
             continue
-        out.append({"kind": kind, "target": str(item.get("target", "public")).strip(),
-                    "about": words(item.get("about", ""), COMMUNICATION_WORDS)})
+        out.append({"kind": kind, "target": target, "about": words(item.get("about", ""), COMMUNICATION_WORDS)})
     return out
 
 
@@ -1048,8 +1090,13 @@ def normalize_session_v2(w: World, mid: str, data, dm_quota: int) -> tuple:
     for mo, raw in zip(base["motions"],
                        [m for m in _listed(data.get("motions"), "motions", []) if isinstance(m, dict)]):
         mo["force_agenda"] = raw.get("force_agenda") is True
-    base["private_messages"] = _v2_dms(w, mid, data.get("private_messages"), dm_quota, problems)
-    base["communications"] = _comms(data.get("communications"), problems)
+    refused = []
+    base["private_messages"] = _v2_dms(w, mid, data.get("private_messages"), dm_quota, problems, refused)
+    base["communications"] = _comms(data.get("communications"), problems, refused)
+    # The key is set only when something was refused, so a well-formed answer comes out as it did before (the golden
+    # record in test_engine19_robustness). The council reads it with .get.
+    if refused:
+        base["refused_messages"] = refused
     base["information_requests"] = [{"topic": str(x.get("topic", "")), "motion_id": str(x.get("motion_id", ""))}
                                     for x in _listed(data.get("information_requests"), "information_requests", problems)
                                     if isinstance(x, dict)][:2]
@@ -1098,6 +1145,7 @@ def normalize_revision(w: World, mid: str, data, motions: list, dm_quota: int) -
     own = {m["id"] for m in motions if m["proposer"] == mid}
     sponsored_ids = {m["id"] for m in motions if mid in m.get("cosponsors", [])}
     stances = _objected(data.get("stances"), "stances", problems)
+    refused = []
     out = {"response": words(data.get("response", ""), RESPONSE_WORDS),
            "stances": {k: v for k, v in stances.items() if k in ids and v in ("support", "oppose", "undecided", "conditional")},
            "demands": _demands(data.get("demands"), ids, mid, problems),
@@ -1110,10 +1158,17 @@ def normalize_revision(w: World, mid: str, data, motions: list, dm_quota: int) -
                           if isinstance(x.get("measures"), list) else {})}
                      for x in _listed(data.get("amend"), "amend", problems)
                      if isinstance(x, dict) and _is_id(x.get("motion_id"), own)][:1],
-           "communications": _comms(data.get("communications"), problems)[:1],
+           "communications": _comms(data.get("communications"), problems, refused, RESPONSE_COMMUNICATION_CAP),
            "share_reports": _shares(data.get("share_reports"), problems),
            "private_messages": _v2_dms(w, mid, _listed(data.get("private_messages"), "private_messages", problems),
-                                       dm_quota, problems)}
+                                       dm_quota, problems, refused)}
+    # The response round reads one public communication: the prompt asks for "one public communication". A second one
+    # is not read, and the sender is told so the next month (T138) rather than finding it silently gone.
+    for item in out["communications"][1:]:
+        refused.append(_comm_refusal(item["target"], item["kind"], RESPONSE_COMMUNICATION_CAP))
+    out["communications"] = out["communications"][:1]
+    if refused:
+        out["refused_messages"] = refused
     # The council is shown the response cut to its limit; what the delegate said it would vote is read
     # from the whole of it.
     if out["response"].endswith(CUT_MARK):
@@ -1203,6 +1258,9 @@ def normalize_decision_v2(w: World, mid: str, data, motion_ids: list, dm_quota: 
     response = str(data.get("election_response", "")).strip().lower()
     base["election_response"] = response if response in ("concede", "legal_challenge", "request_recount",
                                                           "negotiate_coalition", "resign", "refuse") else ""
+    refused = []
     base["private_messages"] = _v2_dms(w, mid, _listed(data.get("private_messages"), "private_messages", problems),
-                                       dm_quota, problems)
+                                       dm_quota, problems, refused)
+    if refused:
+        base["refused_messages"] = refused
     return base, problems

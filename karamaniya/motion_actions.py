@@ -1618,9 +1618,35 @@ def _side_of(marks: list, text: str, start: int, end: int) -> str:
     return best
 
 
+def _claim_side(marks: list, text: str, start: int, end: int, figures=()) -> str | None:
+    """Whose force a claimed figure is (T144): the side named nearest to it in its own segment (see
+    _segment_span). A segment that names no side takes ours, unless its sentence names another side: then the figure's
+    side is not tied, and it is not judged. "Union 14 warships, ~106k troops vs our 59k": the 106k is not tied to a side.
+    Source figures keep _side_of, the sentence reading."""
+    lo, hi = _segment_span(text, start, end, figures)
+    best, best_gap = None, None
+    for s, e, side in marks:
+        if s < lo or e > hi:
+            continue
+        gap = start - e if e <= start else s - end
+        if best_gap is None or gap < best_gap:
+            best, best_gap = side, gap
+    if best is not None:
+        return best
+    sentence_lo, sentence_hi = _sentence_bounds(text, start, end)
+    named = {side for s, e, side in marks if s >= sentence_lo and e <= sentence_hi}
+    return None if named - {"ours"} else "ours"
+
+
+#: Units that make a figure an amount of money, never a count of troops: "9-10M" beside "soldiers" is pay.
+_MONEY_UNITS = ("million", "m", "billion", "bn")
+
+
 def _is_troop_figure(text: str, claim: dict) -> bool:
     """A figure that counts troops: it has a troop noun, or no other noun while its sentence speaks of the army.
-    "2,000,000 gold" beside "28,000 soldiers" is not one (Audit MO4)."""
+    "2,000,000 gold" beside "28,000 soldiers" is not one (Audit MO4). A figure in money units is never one."""
+    if claim["unit"] in _MONEY_UNITS:
+        return False
     if claim["noun"]:
         return claim["noun"] in _TROOP_NOUNS
     lo, hi = _sentence_bounds(text, claim["start"], claim["end"])
@@ -1705,14 +1731,37 @@ def _clause_span(text: str, start: int, end: int) -> tuple:
     return lo, hi
 
 
-def _owners(text: str, claim: dict, sentence_keys: frozenset) -> frozenset:
-    """The metric(s) a figure is judged against (engine 19). A sentence that names one spec judges each of its figures
-    by that spec. A sentence that names several judges a figure by the spec named nearest before it in its clause, or
-    else nearest after it in the clause. A sentence that names none judges nothing: "The deficit is roughly 28M a
-    month" is not a claim about reserves just because a later sentence names them."""
-    if len(sentence_keys) <= 1:
-        return sentence_keys
-    lo, hi = _clause_span(text, claim["start"], claim["end"])
+#: The breaks a figure's metric cannot be tied across: a clause break, or a comparison that sets two figures against
+#: each other. In "Fleet readiness 53-65/100 vs 13-16 Union warships" the 13-16 is not the readiness figure (T144).
+_SEGMENT_BREAK = re.compile(_CLAUSE_BREAK.pattern + r"|\b(?:vs\.?|versus|against|compared\s+(?:with|to))\b", re.I)
+
+
+def _segment_span(text: str, start: int, end: int, figures=()) -> tuple:
+    """The text a figure at [start, end) may be tied to (T144): from the nearest clause break or comparison, or
+    the neighbouring figure, on each side. A metric outside it is not this figure's metric."""
+    lo, hi = 0, len(text)
+    for stop in _SEGMENT_BREAK.finditer(text):
+        if stop.end() <= start:
+            lo = stop.end()
+        elif stop.start() >= end:
+            hi = stop.start()
+            break
+    for other in figures:
+        if other["end"] <= start:
+            lo = max(lo, other["end"])
+        elif other["start"] >= end:
+            hi = min(hi, other["start"])
+    return lo, hi
+
+
+def _owners(text: str, claim: dict, sentence_keys: frozenset, figures=()) -> frozenset:
+    """The metric a figure is judged against (engine 19, tied locally for T144): the metric its own segment names,
+    the nearest before it, else the nearest after it. A segment that names none ties the figure to nothing, and the figure
+    is unverifiable, not judged. The sentence does not decide it: "Economy: output 82, unemployment 10%" does not make the
+    82 an unemployment figure, and "Army actual 36.5k vs Union 98k" does not tie the 36.5k to the Union's force (T144)."""
+    if not sentence_keys:
+        return frozenset()
+    lo, hi = _segment_span(text, claim["start"], claim["end"], figures)
     keys = _metric_before(text[lo:claim["start"]]) & sentence_keys
     return keys or (_metric_after(text[claim["end"]:hi]) & sentence_keys)
 
@@ -1940,10 +1989,28 @@ def _figure_clause(before: str) -> str:
     return before
 
 
+#: T144: a threshold, a projection or an accrual next to a figure. See _states_a_fact.
+_THRESHOLD_WORD = re.compile(r"\b(?:floors?|ceilings?|minimums?|maximums?|caps?|limits?|thresholds?|triggers?)\b", re.I)
+_PROJECTED_BEFORE = re.compile(r"(?:->|→|=>)\s*~?\s*$")
+_ACCRUAL_AFTER = re.compile(r"^\s*(?:still\s+|also\s+|further\s+|additional\s+)?"
+                            r"(?:accrues?|accrued|accruing|accrual|accumulates?|accumulated|accumulating)\b", re.I)
+#: A rate right after the figure: "46M monthly", "2M a month", "3M per year". A drain or a cost per period is a flow.
+_RATE_AFTER = re.compile(r"^\s*(?:/\s*(?:month|year|week|day)s?|(?:per|a|each|every)\s+(?:month|year|week|day)|"
+                         r"monthly|annual(?:ly)?|yearly|weekly|daily)\b", re.I)
+
+
+def _threshold_after(text: str, claim: dict) -> bool:
+    """A threshold word within the two words that follow the figure in its clause: "a 60M floor", "9% cap". The figure's
+    match takes the space after it, so the words are read from the text, not from a leading space."""
+    _lo, hi = _clause_span(text, claim["start"], claim["end"])
+    words = re.findall(r"[\w'-]+", text[claim["end"]:hi])[:2]
+    return bool(_THRESHOLD_WORD.search(" ".join(words)))
+
+
 def _states_a_fact(text: str, claim: dict) -> bool:
     """True when the figure is a statistic the text states as a fact about the current or past state. False when the
     figure is an amount the text proposes, requests, pays, allocates or borrows; a threshold, floor, cap or condition;
-    a setting the text sets; a change; or a figure whose noun names a quantity no spec checks."""
+    a setting the text sets; a change; a projection; an accrual; or a figure whose noun names a quantity no spec checks."""
     before = _figure_clause(_clause_before(text, claim["start"]))
     # The text after the figure's unit, so the noun the figure carries ("40M deficit") is read as the noun it is.
     after = text[claim["unit_end"]:claim["end"] + 60]
@@ -1961,11 +2028,18 @@ def _states_a_fact(text: str, claim: dict) -> bool:
         return False
     if _CHANGE_BEFORE.search(before) or _CHANGE_AFTER.match(after):
         return False
+    if (_threshold_after(text, claim) or _PROJECTED_BEFORE.search(before) or _ACCRUAL_AFTER.match(after)
+            or _RATE_AFTER.match(after)):
+        return False
     return not _FLOW_AFTER.match(after)
 
 
-def check_numeric_grounding(w, mid: str, text: str) -> dict | None:
-    """A precise statistic with no available source is sent back, not silently kept."""
+def check_numeric_grounding(w, mid: str, text: str, unverifiable: list | None = None) -> dict | None:
+    """A precise statistic with no available source is sent back, not silently kept.
+
+    T144: a figure is judged only when its own segment ties it to one metric, and to one side for a troop
+    figure. A figure that cannot be tied is unverifiable, not an error: it is not flagged, and it is appended to
+    `unverifiable` when the caller passes a list (the replay audit counts those; the month record keeps flags only)."""
     if not text or not text.strip():
         return None
     lowered = text.lower()
@@ -1977,22 +2051,27 @@ def check_numeric_grounding(w, mid: str, text: str) -> dict | None:
     numbers = [claim for claim in _numbers_in(text) if _states_a_fact(text, claim)]
     if not numbers:
         return None
+    # Every figure in the text, claim or not, bounds the segment of its neighbours (see _segment_span).
+    figures = _numbers_in(text)
     # Audit MO5: an opinion word ("alarming", "weak") used to switch the check off when no figure had a noun
     # ("Inflation of 9% is alarming" passed at 0%). A stated figure is always checked; with no figure there is
     # nothing to check, which the early return above already covers.
     marks = _force_marks(w, text)
     for claim in numbers:
-        claim["side"] = _side_of(marks, text, claim["start"], claim["end"])
+        claim["side"] = _claim_side(marks, text, claim["start"], claim["end"], figures)
     # Audit MO4: a troop figure about the Union is checked against the Union's force even when no Union keyword
     # is in the text: "The Solvaran Union has 95000 soldiers" names soldiers, and only the army spec would match.
     if not any(spec[0] == "union_forces" for spec in hits) and any(
             c["side"] == "union" and _is_troop_figure(text, c) for c in numbers):
         hits.append(next(spec for spec in GROUNDING_SPECS if spec[0] == "union_forces"))
     for claim in numbers:
-        claim["owners"] = _owners(text, claim, _keys_naming(hits, text, claim))
-        # A Union troop figure whose sentence names no metric is about the Union's force (Audit MO4).
+        claim["owners"] = _owners(text, claim, _keys_naming(hits, text, claim), figures)
+        # A Union troop figure whose sentence names no metric is about the Union's force (Audit MO4). Its side is
+        # tied (above), so the figure is the Union's only when its own segment names the Union.
         if not claim["owners"] and claim["side"] == "union" and _is_troop_figure(text, claim):
             claim["owners"] = frozenset({"union_forces"})
+        if not claim["owners"] and unverifiable is not None:
+            unverifiable.append({"raw": claim["raw"], "value": claim["value"], "start": claim["start"]})
     sources = information_available_to(w, mid)
     source_texts = [src["text"] for src in sources]
     shortage_talk = any(word in lowered for word in ("shortage", "shortfall", "short of food"))
@@ -2074,7 +2153,8 @@ def execution_key(w, motion: dict) -> str:
     """A semantic key for one action, used to stop the same act being sent twice in a cycle.
 
     Two motions that ask for the same thing to the same actor produce the same key; two genuinely
-    different diplomatic actions, even aimed at the same country, do not.
+    different diplomatic actions, even aimed at the same country, do not. A programme is the measures
+    it sets, so its words do not change its key.
     """
     action = structured_action(w, motion)
     payload = {"action_type": action["action_type"], "target": action.get("target"),
@@ -2086,6 +2166,13 @@ def execution_key(w, motion: dict) -> str:
     # power about different things, in one month, were one act, and the second was refused as a duplicate.
     if action["kind"] == "diplomacy" and not payload["issue"]:
         payload["text"] = _normalise(motion.get("text") or "")
+    # T136: the key ignored a programme's measures, so two programmes with empty values were one act and the second was
+    # refused as a duplicate of the first (run 20261011-211521-seed1, month index 4). A programme is the same act when it
+    # sets the same measures: the canonical payload the tabling check uses (deliberation._program_measure_key).
+    if action["kind"] == "program":
+        from .deliberation import _program_measure_key
+        payload = {"action_type": "program", "month": payload["month"],
+                   "measures": [list(pair) for pair in _program_measure_key(w, motion)]}
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 

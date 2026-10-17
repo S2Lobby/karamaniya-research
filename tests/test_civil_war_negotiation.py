@@ -517,6 +517,22 @@ class PartitionAndCollapse(unittest.TestCase):
         self.assertIsNone(state(w)["outcome"])
 
 
+class ApiForC3(unittest.TestCase):
+    def test_running_is_true_only_while_the_war_is_unresolved(self):
+        w = war_world()
+        self.assertTrue(civil_war.running(w))
+        self.assertIsNone(civil_war.war_outcome(w))
+        settle(w, {"amnesty": True})
+        # The war is over but the run goes on: C3 stops the faction phase by `running`.
+        self.assertFalse(civil_war.running(w))
+        self.assertEqual(civil_war.war_outcome(w)["type"], "settled")
+
+    def test_off_is_never_running_and_has_no_war_outcome(self):
+        w = world(option="off")
+        self.assertFalse(civil_war.running(w))
+        self.assertIsNone(civil_war.war_outcome(w))
+
+
 class OffAndCheckpoints(unittest.TestCase):
     def test_the_off_arm_never_reads_or_writes_a_war(self):
         w = world(option="off")

@@ -1672,14 +1672,18 @@ def _figure(number: str) -> float:
 
 def _loan_millions(number: str, unit: str | None, gold: bool) -> float:
     """A figure as millions of gold: a unit scales it (the arithmetic is the one the value reader always used), a
-    comma-grouped count of gold is divided down, and a bare figure is already millions."""
+    comma-grouped count is divided down, and a bare figure without commas is already millions.
+
+    A comma-grouped figure is a count of gold whether or not the word follows it (backlog T158): the value field
+    counts in millions, so a bare "50,000,000" is 50 million gold, not 50,000,000 million. Before engine 26 only
+    "50,000,000 gold" was divided, and a value written without the word was a loan a million times too large."""
     amount = _figure(number)
     unit = (unit or "").lower()
     if unit in ("billion", "bn"):
         return amount * 1000
     if unit in ("thousand", "k"):
         return amount / 1000
-    if not unit and gold and _GROUPED.fullmatch(number):
+    if not unit and _GROUPED.fullmatch(number):
         return amount / 1e6
     return amount
 
@@ -1688,9 +1692,9 @@ def parse_loan_amount(value) -> float | None:
     """Read a positive loan request's value as millions of gold, the unit used by diplomacy motions.
 
     Accept a bare number (the prompt's default unit), or explicit million/billion/thousand units, or a count of gold
-    such as "50,000,000 gold". Structured providers sometimes serialize the amount as a one-item list; the brackets and
-    quotes are harmless, while a target enum such as ``[MARITIME_LEAGUE]`` is not a number. A figure that is not finite
-    is no amount (engine 24).
+    such as "50,000,000 gold" or a comma-grouped "50,000,000" (engine 26). Structured providers sometimes serialize the
+    amount as a one-item list; the brackets and quotes are harmless, while a target enum such as ``[MARITIME_LEAGUE]``
+    is not a number. A figure that is not finite is no amount (engine 24).
     """
     text = str(value or "").strip().strip("[](){}'\" ")
     match = _LOAN_VALUE.fullmatch(text)

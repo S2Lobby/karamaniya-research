@@ -4,6 +4,47 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 26
+
+`WORLD_ENGINE` 26, `AGENT_PROMPT` 23 (psychology 8 and error taxonomy 5 unchanged): the small fixes before wave 3
+(backlog T150, T152, T158-T162). A default scripted run's council prompts change (the delegate sentences); its
+neighbours' system prompts change (`tools/prompt_freeze.py`).
+
+- **A bare comma-grouped loan value is a count of gold.** The value field counts in millions, so a value written
+  `50,000,000` was read as 50,000,000 million gold (50 trillion); it is now 50 million, as `50,000,000 gold` already
+  was. A bare figure without commas (`50`) is still millions, the prompt's default unit. A loan a million times too
+  large was refused or executed against the wrong figure.
+- **A cabinet's strategy written as an object is read.** Five recorded answers wrote `strategy` as an object, its text
+  in its string values (`{"name", "horizon_months", "description"}` or `{"months", "objective", "approach"}`), and each
+  was refused as "strategy must be text". The text is read and cut to the stated 180 characters. A value that is
+  neither text nor object is still refused.
+- **The remaining silent cuts are stated.** The engine's own tally flagged 80 of 183 cuts in the recorded runs as cuts
+  to a limit no prompt named. All the fields those cuts touched are now in the stated table; the three that were not are
+  the delegate's decision factors (14 words), and a motion action's issue and each term (20 words each, at most four),
+  now stated in the opening and decision prompts. The cabinet's other cuts are stated too: a public statement 500
+  characters, the assessment 1200, decision factors 160 each and at most six, a diplomatic message 500 and at most
+  three; and an action's magnitude is stated to be a number from 0 to 1. A magnitude above 1 is still refused, and the
+  refusal names the range.
+- **A provider's transport error is an error, not the answer.** In run 20261008-130316-seed1, Month 4, seat B, the
+  Cline CLI's "The socket connection was closed unexpectedly..." came back as the final message; it was kept in `raw`
+  as if the model had written it, with an empty `error`. A short unreadable answer that matches a transport, quota or
+  authentication pattern is now classified as that error, retried, and logged in `error`; an ordinary unreadable answer
+  is still kept in `raw` for the format retry.
+- **A scripted 36-month run's Month 37 is the stand-in's rule.** The study package's scripted parity run ended with the
+  government keeping power by force in Month 37. Reproduced on engine 26, seed 1: the scripted hawk takes over in the
+  handover month by its own rule (leader C, p=0.85, the coup succeeded), which blocks the handover. The engine's
+  handover is not at fault, and a real council is not bound by the stand-in rule.
+- **The ballot repair ask uses the reason-based check.** The ask that puts a ballot back to its delegate still used the
+  stance comparison T144 removed from the record. In the recorded runs it fired twice on the placeholder reason "...",
+  and one ballot changed from no to yes. It now fires only when the ballot's own reason states the other verdict; the
+  stance comparison stays in the month's record. The three decision calls this changes are prompt-visible.
+- **The hidden resignation communication is named.** The reader and the schema accept `offer_resignation`, and the
+  opening prompt's list of communication kinds named the other eleven. It now says "offer_resignation to give up your
+  office", neutrally.
+- **The response round's schema allows one public communication.** The prompt asked for one and the reader kept one,
+  while the schema allowed two (the second was refused with a note since engine 25; 211 came after the one the round
+  reads in the recorded runs). An opening still allows two.
+
 ## World engine 25
 
 `WORLD_ENGINE` 25, `AGENT_PROMPT` 22 (psychology 8 and error taxonomy 5 unchanged): the second wave of fixes from the

@@ -228,11 +228,12 @@ def _vote_intent_clashes(staged: dict, decision: dict) -> list:
     the delegate saying it had not committed, and nothing is held against it. Each finding names where
     the position came from: `source` is "stance" or "statement".
 
-    This comparison now only decides which ballots are put to the delegate again (council's repair ask).
     It is NOT the recorded VOTE_INTENT_MISMATCH: that is _reason_contradictions. On the 36 labelled stance
     flags (docs/detector_labels/D2_labelled_36.csv) the reason agreed with the vote in 32 of the 34 false
     positives, so the stance was the outlier, and the record no longer uses it (backlog T144).
-    The ask is left as it was, pending the user's decision.
+    Since engine 26 the repair ask uses _reason_contradictions too (backlog T155): the stance comparison is
+    kept in the month's record, and a ballot is put back to the delegate only when its own reason states the
+    other verdict.
     """
     staged = staged or {}
     stances = staged.get("stances") or {}
@@ -283,6 +284,12 @@ def _reason_verdict(reason) -> str | None:
         return "yes" if opening.group("word").lower() in _VERDICT_YES else "no"
     stated = {("yes" if m.group("how").lower() in _VERDICT_YES else "no") for m in _VOTE_STATEMENT.finditer(text)}
     return stated.pop() if len(stated) == 1 else None
+
+
+def _repair_ask_clashes(decision: dict, motions: list | None = None) -> list:
+    """The ballots put back to the delegate: the reason-based contradictions (engine 26, backlog T155) and a
+    conditional vote whose condition does not test the safeguard its reason states."""
+    return _reason_contradictions(decision) + _conditional_reason_clashes(decision, motions)
 
 
 def _reason_contradictions(decision: dict) -> list:
@@ -1779,17 +1786,17 @@ class Council:
             out, problems = actions.read_answer(actions.normalize_decision_v2, w, mid, res.data, motion_ids, left)
             answers = [res.data]
             ballot_repairs = _decision_ballot_repairs(problems)
+            # The record keeps the stance comparison; since engine 26 the ask uses the reason-based check
+            # (backlog T155), which is what VOTE_INTENT_MISMATCH itself records.
             clashes = (_vote_intent_clashes(revisions.get(mid, {}), out)
                        + _conditional_reason_clashes(out, final))
-            # What the delegate is asked about: a bare reversal of its structured stance, and a conditional
-            # vote whose condition does not test the safeguard its reason states. A position read from
-            # the delegate's words is recorded, not queried: it is a reading, and an ask-back is an
-            # intervention in what the delegate does. So is a ballot that argues its way to a different
-            # vote (see _ARGUED_REASON_WORDS): it stays in `clashes`, and so in the record.
-            asked = [c for c in clashes
-                     if c.get("source") != "statement"
-                     and (c["code"] != "VOTE_INTENT_MISMATCH"
-                          or len(str(c.get("reason", "")).split()) < _ARGUED_REASON_WORDS)]
+            # What the delegate is asked about: a ballot whose own reason states the other verdict, and a
+            # conditional vote whose condition does not test the safeguard its reason states. A ballot that
+            # argues its way to a different vote (see _ARGUED_REASON_WORDS) stays in the record and is not
+            # queried: an ask-back is an intervention in what the delegate does.
+            asked = [c for c in _repair_ask_clashes(out, final)
+                     if c["code"] != "VOTE_INTENT_MISMATCH"
+                     or len(str(c.get("reason", "")).split()) < _ARGUED_REASON_WORDS]
             repair = None
             if asked or ballot_repairs:
                 # One scoped repair gives the delegate a chance to correct malformed ballots and

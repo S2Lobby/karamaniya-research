@@ -287,10 +287,13 @@ class EndToEndThroughARealCouncilMonth(unittest.TestCase):
     """The whole flow: clash -> ask-back -> what the engine records and executes.
 
     One scripted seat (the army holder) is made to do what Qwen did on the real run: state support for
-    a motion in the response round, cast a contradicting first ballot, and then answer the ask-back
-    with a full re-written decision whose army order is 3100."""
+    a motion in the response round, cast a first ballot whose own reason says yes while the vote is no,
+    and then answer the ask-back with a full re-written decision whose army order is 3100.
 
-    def build(self, second_vote, second_reason="I changed my position after the debate."):
+    Since engine 26 the ask uses the reason-based check (backlog T155), so the first reason states the
+    other verdict."""
+
+    def build(self, second_vote, second_reason="I changed my position after the debate.", first_reason="Yes."):
         import shutil
         import tempfile
         from karamaniya.backends.scripted import ScriptedBackend
@@ -334,8 +337,10 @@ class EndToEndThroughARealCouncilMonth(unittest.TestCase):
                         data["orders"]["army"]["recruitment"] = "general"
                     else:
                         case.calls.append(("first", motion, (data.get("orders") or {}).get("army", {}).get("army_target")))
-                        data["votes"][motion] = "no"                                  # contradicts 'support'
-                        data.setdefault("vote_reasons", {})[motion] = "No."
+                        data["votes"][motion] = "no"
+                        # A default first reason states the other verdict, so the reason-based ask (engine 26)
+                        # fires; a test that wants no ask passes a reason that agrees with the vote.
+                        data.setdefault("vote_reasons", {})[motion] = first_reason
                 return res
 
         for seat in seats.values():
@@ -360,6 +365,16 @@ class EndToEndThroughARealCouncilMonth(unittest.TestCase):
             self.target = council.w.const.offices.get("army")
         self.fail("no month produced a vote-intent ask-back for the army holder")
 
+    def month_with_a_ballot(self, council):
+        """Run months until the army holder has cast a first ballot; no ask-back is expected."""
+        for _ in range(10):
+            self.calls.clear()
+            record = council.run_month()
+            if any(kind == "first" for kind, *_ in self.calls):
+                return record
+            self.target = council.w.const.offices.get("army")
+        self.fail("the army holder did not cast a ballot")
+
     def test_the_delegate_fixes_the_ballot_and_nothing_else_moves(self):
         council, w = self.build(second_vote="yes")
         record = self.month_with_an_askback(council)
@@ -380,18 +395,19 @@ class EndToEndThroughARealCouncilMonth(unittest.TestCase):
         self.assertEqual(record["vote_intent_mismatches"], [])
         self.assertNotEqual(w.policy.army_target, 3100)
 
-    def test_the_bare_no_that_agrees_with_its_reason_is_asked_about_but_not_recorded(self):
-        # Backlog T144: the record holds only a vote that its own reason contradicts. Here the reason is
-        # "No.", the vote is no, so the stance (support) was the outlier. The stance still puts the ballot to the
-        # delegate again (the repair ask is unchanged), and nothing is recorded.
-        council, w = self.build(second_vote="no", second_reason="No.")
-        record = self.month_with_an_askback(council)
+    def test_a_stance_contradiction_with_an_agreeing_reason_is_no_longer_asked_about(self):
+        # Backlog T144/T155: the record holds only a vote that its own reason contradicts. Here the vote is
+        # no and the reason is "No.", so the stance (support) was the outlier. The stance clash stays in the
+        # record, but since engine 26 it no longer puts the ballot to the delegate again.
+        council, w = self.build(second_vote="no", second_reason="No.", first_reason="No.")
+        record = self.month_with_a_ballot(council)
         decision = record["decisions"][self.target]
         first = next(c for c in self.calls if c[0] == "first")
         motion = first[1]
         self.assertEqual(decision["votes"][motion], "no")
         self.assertEqual([(c["motion"], c["source"]) for c in decision["vote_intent_clashes"]], [(motion, "stance")])
         self.assertEqual(decision["vote_reason_contradictions"], [])
+        self.assertNotIn("vote_intent_repair", decision)
         self.assertEqual(record["vote_intent_mismatches"], [])
         self.assertEqual(len([e for e in errors.since(w, record["month"]) if e["code"] == "VOTE_INTENT_MISMATCH"]), 0)
         # ...and confirming a vote does not license the regenerated army order.

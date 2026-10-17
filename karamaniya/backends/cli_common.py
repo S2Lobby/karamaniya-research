@@ -29,7 +29,8 @@ QUOTA_RE = re.compile(r"usage limit|session limit|limit reached|hit your (usage 
 SHORT_WAIT_RE = re.compile(r"per minute|per-minute|retry in \d|retrydelay|try again in \d+ ?(s\b|sec|second|minute)", re.I)
 NOT_QUOTA_RE = re.compile(r"context (window|length|limit)|too long|maximum context", re.I)
 RATE_RE = re.compile(r"rate.?limit|too many requests|\b429\b|overloaded|\b529\b|\b50[0234]\b|temporarily unavailable"
-                     r"|timed? ?out|timeout|connection (reset|refused|error)|network|ECONNRESET|ETIMEDOUT|socket hang up",
+                     r"|timed? ?out|timeout|connection (reset|refused|error)|network|ECONNRESET|ETIMEDOUT|socket hang up"
+                     r"|the socket connection was closed|connection was closed|fetch failed|networkerror",
                      re.I)
 AUTH_RE = re.compile(r"not logged in|log ?in again|please (log|sign) ?in|unauthori[sz]ed|authenticat|invalid (api )?key"
                      r"|\b401\b|\b403\b|expired token|token (has )?expired|no credentials", re.I)

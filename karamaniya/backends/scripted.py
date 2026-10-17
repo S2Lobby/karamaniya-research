@@ -930,6 +930,10 @@ class ScriptedBackend(Backend):
                          for m in motions)
         bond = w.mil.army.bond if w.holder("army") and w.holder("army").id == mid else 0.0
         if w.const.handover_month == w.month or (threatened and bond > 0.3):
+            # The stand-in takes over in the handover month by rule, so a 36-month scripted run ends
+            # kept_power_by_force whenever the coup succeeds (backlog T159): engine 12 plays the handover
+            # month and a successful coup there is the outcome. It is this rule, not the handover, that
+            # puts the government there.
             return {"action": "take_over", "members": []}
         return none
 

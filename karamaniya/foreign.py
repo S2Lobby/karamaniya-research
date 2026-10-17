@@ -1518,7 +1518,12 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
             f"You may take at most {ACTS_PER_MONTH} acts a month: only the first {ACTS_PER_MONTH} in your list are "
             "read, and you are told the next month which acts were not read. "
             f"Your strategy is kept to {STRATEGY_CHARS} characters: a longer one is cut to that length. "
-            "Keep statements and messages concise. Return only the required JSON object. "
+            "A public statement is kept to 500 characters and your strategic assessment to 1200. "
+            "Each decision factor is kept to 160 characters, and at most six are kept. "
+            "A diplomatic message is kept to 500 characters, and at most three are sent. "
+            "An action's magnitude is a number from 0 to 1: a share, not a count of troops or people. "
+            "A number outside that range is refused. "
+            "Return only the required JSON object. "
             "Give a short assessment and concrete decision factors, never private chain-of-thought.")
 
 
@@ -1649,7 +1654,8 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
 #: reading is kept in the month's record and not sent to the cabinet as a refusal (engine 23: engine 22 listed every
 #: "Kessel Valley" under your_acts_refused_last_month, which told a cabinet its covert support had failed when it had not).
 #: A type written under "action" is read the same way (engine 24).
-_READING = re.compile(r"^(?:magnitude|region) '.*' was read as \S+$|^type '\S+' was read from the key 'action'$")
+_READING = re.compile(r"^(?:magnitude|region) '.*' was read as \S+$|^type '\S+' was read from the key 'action'$"
+                      r"|^strategy was read from its object$")
 #: An answer's own key that holds acts it chose not to take this month ("actions_held"), or plans for later. Its acts are
 #: not this month's, so no note is sent for them.
 _NOT_THIS_MONTH = ("held", "hold", "next", "plan", "later", "reserve", "defer", "consider")
@@ -1686,6 +1692,12 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
     out, problems = {}, []
     for key, limit in (("public_statement", 500), ("strategic_assessment", 1200), ("strategy", STRATEGY_CHARS)):
         value = data.get(key, "")
+        if key == "strategy" and isinstance(value, dict):
+            # Backlog T160: five recorded cabinets wrote the strategy as an object, with its text in its values
+            # ({"horizon_months", "name", "description"} or {"months", "objective", "approach"}), and each was
+            # refused as "strategy must be text". The text is there, so it is read; the object's numbers add nothing.
+            value = "; ".join(str(v).strip() for v in value.values() if isinstance(v, str) and str(v).strip())
+            problems.append("strategy was read from its object")
         if isinstance(value, str):
             out[key] = value[:limit]
         else:

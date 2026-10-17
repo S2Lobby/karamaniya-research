@@ -151,9 +151,14 @@ class ClineCLIBackend(Backend):
             detail = errors[-1] if errors else (stderr.strip() or f"exit code {code}, finish {finish or '-'}")
             raise cli_common.classify(detail, "Cline CLI")
         data = extract_json(text)
-        if data is None and len(text) < 600 and cli_common.QUOTA_RE.search(text):
-            # A used-up plan can come back as the answer itself ("You have reached your monthly
-            # Clinepass limit. The limit resets in 1h 11m..."), not as an error event.
+        if data is None and len(text) < 600 and (cli_common.QUOTA_RE.search(text)
+                                                 or cli_common.RATE_RE.search(text)
+                                                 or cli_common.AUTH_RE.search(text)):
+            # A used-up plan or a dropped connection can come back as the answer itself, not as an error
+            # event ("You have reached your monthly Clinepass limit..."; run 20261008-130316-seed1,
+            # Month 4, seat B: "The socket connection was closed unexpectedly..."). It was kept in raw
+            # as if it were the model's answer, with an empty error (backlog T161). Classify it as the
+            # error it is, so it is retried and its text is logged in error.
             raise cli_common.classify(text, "Cline CLI")
         tokens_in = int(usage.get("inputTokens", 0))
         tokens_out = int(usage.get("outputTokens", 0))

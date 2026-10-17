@@ -35,6 +35,9 @@ PROMISE_WORDS = 50          # 35
 CONDITION_WORDS = 30        # a promise's condition; 24
 COMMUNICATION_WORDS = 40
 MOTION_WORDS = 120          # a motion's or an amendment's text
+DECISION_FACTOR_WORDS = 14  # each decision factor; up to four are read
+ACTION_ISSUE_WORDS = 20     # a motion action's issue at stake
+ACTION_TERMS_WORDS = 20     # each term a motion action demands; up to four are read
 MAX_MOTIONS = 2
 
 
@@ -556,8 +559,9 @@ def normalize_decision(w: World, mid: str, data, motion_ids: list, dm_quota: int
     resign = data.get("resign") is True
     dms = [] if defer_to_v2 else _dms(w, mid, data.get("private_messages"), dm_quota, problems)
     notes = words(data.get("notes", ""), NOTE_WORDS)
-    factors = [words(x, 14) for x in _listed(data.get("decision_factors"), "decision_factors", problems)[:4]
-               if isinstance(x, str) and words(x, 14)]
+    factors = [words(x, DECISION_FACTOR_WORDS)
+               for x in _listed(data.get("decision_factors"), "decision_factors", problems)[:4]
+               if isinstance(x, str) and words(x, DECISION_FACTOR_WORDS)]
     return {"votes": votes, "vote_reasons": reasons, "vote_reasons_full": reasons_full, "vote_conditions": conditions,
             "orders": orders, "coup": coup, "coup_stance": stance, "resign": resign,
             "private_messages": dms, "notes": notes, "decision_factors": factors}, problems
@@ -645,7 +649,11 @@ STATED_LIMITS = {"statement": STATEMENT_WORDS, "response": RESPONSE_WORDS, "priv
                  "demands.demand": DEMAND_WORDS, "belief_updates.reason": BELIEF_REASON_WORDS,
                  "withdraw.reason": WITHDRAW_REASON_WORDS, "promises.text": PROMISE_WORDS,
                  "promises.condition": CONDITION_WORDS, "communications.about": COMMUNICATION_WORDS,
-                 "motions.text": MOTION_WORDS, "amend.text": MOTION_WORDS, "over_cap.text": MOTION_WORDS}
+                 "motions.text": MOTION_WORDS, "amend.text": MOTION_WORDS, "over_cap.text": MOTION_WORDS,
+                 # Engine 26 (backlog T150): these three were cut and their limits were never stated.
+                 "decision_factors": DECISION_FACTOR_WORDS,
+                 "motions.action.issue": ACTION_ISSUE_WORDS,
+                 "motions.action.terms": ACTION_TERMS_WORDS}
 EXTERNAL_TARGETS = ["public", "union", "veleria", "dorsania", "league"]
 
 
@@ -680,12 +688,12 @@ def _offer_dms(props: dict, targets: list, dm_left: int) -> None:
         props["private_messages"] = _v2_dm_schema(targets, min(dm_left, DM_PER_PHASE))
 
 
-def _comm_schema(w: World, mid: str, others: list) -> dict:
+def _comm_schema(w: World, mid: str, others: list, max_items: int = 2) -> dict:
     from .standing import COMM_KINDS
     audiences = list((w.member(mid).agent_state or {}).get("constituencies", {}))
     return _arr(_obj({"kind": {"type": "string", "enum": list(COMM_KINDS)},
                       "target": {"type": "string", "enum": EXTERNAL_TARGETS + others + audiences},
-                      "about": {"type": "string"}}), 2)
+                      "about": {"type": "string"}}), max_items)
 
 
 def _share_schema(w: World, mid: str, others: list) -> dict | None:
@@ -746,7 +754,9 @@ def revision_schema(w: World, mid: str, motions: list, dm_left: int = DM_PER_PHA
             # prevents the engine from executing cached measures from the original wording.
             amend_props["measures"] = _arr(_obj({"lever": {"type": "string"}, "value": {"type": "string"}}))
         props["amend"] = _arr(_obj(amend_props), 1)
-    props["communications"] = _comm_schema(w, mid, others)
+    # The response round reads one public communication (the prompt asks for one, and the reader refuses a
+    # second with a note). The schema allows one too, not two (engine 26, backlog T148); an opening keeps two.
+    props["communications"] = _comm_schema(w, mid, others, 1)
     share = _share_schema(w, mid, others)
     if share:
         props["share_reports"] = share
@@ -985,8 +995,9 @@ def _explicit_action(w, raw, problems: list | None = None) -> dict:
         terms = []
     action = {"action_type": str(raw.get("action_type", "")).strip(),
               "target": target,
-              "issue": words(raw.get("issue", ""), 20),
-              "terms": [words(x, 20) for x in terms if isinstance(x, str) and words(x, 20)][:4]}
+              "issue": words(raw.get("issue", ""), ACTION_ISSUE_WORDS),
+              "terms": [words(x, ACTION_TERMS_WORDS) for x in terms
+                        if isinstance(x, str) and words(x, ACTION_TERMS_WORDS)][:4]}
     for key in ("deal_action", "region", "amount", "funding", "funding_plan", "scope",
                 "military_engineers", "regions", "measures"):
         if key in raw:

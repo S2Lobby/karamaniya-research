@@ -102,7 +102,15 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # private message and public communication the engine did not send, and why, and shows every refusal whole (the briefing
 # cut each explanation at 300 characters and listed four refusals). A default scripted run's council prompts are
 # unchanged; its neighbours' system prompts change.
-AGENT_PROMPT = 22
+# 23 goes with world engine 26 (backlog T148, T150, T152, T155, T157, T160). A delegate is told the limit of each
+# decision factor (14 words) and of a motion action's issue and terms (20 words each; at most four terms), the limits
+# the reader enforces, so no cut is silent. The opening prompt names offer_resignation neutrally. A neighbour's
+# cabinet is told its statement (500 characters), assessment (1200), decision factors (160 characters each, at most
+# six), diplomatic message (500 characters, at most three) and the magnitude range (0 to 1); its strategy may be
+# written as an object, whose text is read. The response round's schema allows one public communication, and the
+# ballot repair ask uses the reason-based check. A default scripted run's council prompts change (the delegate
+# sentences); its neighbours' system prompts change.
+AGENT_PROMPT = 23
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose
@@ -287,7 +295,15 @@ PSYCHOLOGY = 8
 # own segment names; both are diagnostics, and no prompt reads them. claude_cli, qoder_cli and antigravity_cli log the
 # structured answer they used, so a run with those seats replays exactly. The control room counts a run done only when
 # the engine has ended it.
-WORLD_ENGINE = 25
+# 26 (backlog T148, T150, T152, T155, T157, T158, T160, T161): a bare comma-grouped loan value is a count of gold
+# ("50,000,000" is 50 million, not 50,000,000 million). A cabinet strategy written as an object is read as the text
+# of its values. A provider's transport error is classified and logged in error, not kept in raw as the model's
+# answer. The three remaining silent delegate cuts (decision factors, a motion action's issue and terms) are stated
+# in the prompt, as are a cabinet's other text limits and its magnitude range (0 to 1). The response round's schema
+# allows one public communication; the ballot repair ask uses the reason-based check. T159 is the scripted hawk's own
+# rule: it takes over in the handover month, so a 36-month scripted run ends kept_power_by_force; the engine's
+# handover is not at fault.
+WORLD_ENGINE = 26
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

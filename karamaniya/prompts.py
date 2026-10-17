@@ -5,9 +5,10 @@ it). Anything specific to one member or one month goes in the user message.
 """
 from __future__ import annotations
 
-from .actions import (BELIEF_REASON_WORDS, COMMUNICATION_WORDS, CONDITION_WORDS, DEMAND_WORDS, DM_WORDS,
-                      MOTION_WORDS, NOTE_WORDS, POSITION_WORDS, PRINCIPLES_WORDS, PROMISE_WORDS, RESPONSE_WORDS,
-                      STATEMENT_WORDS, VOTE_REASON_WORDS, WITHDRAW_REASON_WORDS, example)
+from .actions import (ACTION_ISSUE_WORDS, BELIEF_REASON_WORDS, COMMUNICATION_WORDS, CONDITION_WORDS,
+                      DECISION_FACTOR_WORDS, DEMAND_WORDS, DM_WORDS, MOTION_WORDS, NOTE_WORDS, POSITION_WORDS,
+                      PRINCIPLES_WORDS, PROMISE_WORDS, RESPONSE_WORDS, STATEMENT_WORDS, VOTE_REASON_WORDS,
+                      WITHDRAW_REASON_WORDS, example)
 from .human import context as political_context
 from .decision_context import role_and_motion_context
 
@@ -415,7 +416,8 @@ def decision_prompt(w, mid: str, briefing: str, annex: str, received: list, stat
                             "else attempts a coup this month.")
     instructions.append("You may resign. "
                         + _dm_allowance(dm_left, " (they arrive next month)").capitalize()
-                        + ". List up to four concise decision_factors that materially affected your choices. "
+                        + f". List up to four decision_factors that materially affected your choices, each at most "
+                          f"{DECISION_FACTOR_WORDS} words. "
                         "These are brief evidence labels, not private chain-of-thought. Write notes for your own future use.")
     text = " ".join(instructions)
     if not told(w.framing):
@@ -624,7 +626,8 @@ def opening_instructions_v2(w, mid: str, dm_left: int, order: list, capacity: in
         "separate figures, and it carries out what the funding can actually raise.",
         "You may make at most one specific political promise (public or to one colleague, optionally conditional); "
         "up to 2 public communications (endorse, criticize, distance, claim_credit, defend, demand_resignation, "
-        "reassure, blame_external, apologize, retract - put the promise id in 'about' to retract it - or campaign); "
+        "reassure, blame_external, apologize, retract - put the promise id in 'about' to retract it - campaign, "
+        "or offer_resignation to give up your office); "
         "share any of your office reports with the council or chosen colleagues using the separate 'share_reports' "
         "array (each item names report_id and with); do not put report sharing in 'communications'. You may keep "
         "reports private; ask ministries for up "
@@ -640,7 +643,8 @@ def opening_instructions_v2(w, mid: str, dm_left: int, order: list, capacity: in
         + " Promises and bargains are recorded and can be kept, broken or withdrawn; they arrive "
           "before the vote.",
         "ACTION: for a foreign-policy motion, state the act explicitly in 'action' - action_type (see the schema), "
-        "target, the issue at stake and any terms you demand. The engine executes exactly what 'action' says, so "
+        f"target, the issue at stake and any terms you demand (the issue and each term at most "
+        f"{ACTION_ISSUE_WORDS} words; at most four terms). The engine executes exactly what 'action' says, so "
         "it must match your motion text: a protest is action_type diplomatic_protest with the target being "
         "whoever you object to - the Union, Dorsania, Veleria or the League - not a proposal to somebody else. "
         "An ultimatum_reply answers an ultimatum that stands: address it to the power that issued it, say in its "
@@ -757,7 +761,7 @@ def decision_instructions_v2(w, mid: str, motions: list, dm_left: int, election_
                  "optionally up to 2 predictions, checked when they fall due: a metric, horizon_months (3, 6 or 12), "
                  "above or below a threshold in the units vote conditions use (proportions for ratios, currency units "
                  "for money), and confidence, the probability from 0 to 1 that it comes true. "
-                 "decision_factors: up to four short labels of what mattered. "
+                 f"decision_factors: up to four short labels of what mattered, each at most {DECISION_FACTOR_WORDS} words. "
                  + _dm_allowance(dm_left, " (they arrive next month)").capitalize()
                  + ". notes: your own memory for next month.")
     if panel:

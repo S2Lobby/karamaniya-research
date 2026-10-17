@@ -206,14 +206,15 @@ class NullTroopsAreAbsentNullMagnitudeIsHalf(unittest.TestCase):
 
 
 class PinsWhatStaysRefusedOrAlreadyRead(unittest.TestCase):
-    """Refusals kept on purpose (the cabinet's strategy object, a sentence as a belief name, the fifth act), and the two
-    ultimatum shapes that run 20261011-105713-seed1 refused and main already reads."""
+    """Refusals kept on purpose (a sentence as a belief name, the fifth act), what engine 26 now reads (the cabinet's
+    strategy object), and the two ultimatum shapes that run 20261011-105713-seed1 refused and main already reads."""
 
-    def test_a_strategy_given_as_an_object_is_still_refused(self):
+    def test_a_strategy_given_as_an_object_is_read(self):
+        # Engine 26 (backlog T160): five recorded answers wrote the strategy as an object; its text is read.
         out, problems = foreign.normalize_cabinet_output("dorsania", cabinet_answer(
             strategy={"name": "Leverage before force", "horizon_months": 6}))
-        self.assertIn("strategy must be text", problems)
-        self.assertNotIn("strategy", out)
+        self.assertEqual(out["strategy"], "Leverage before force")
+        self.assertNotIn("strategy must be text", problems)
 
     def test_a_belief_named_by_a_sentence_is_still_refused(self):
         out, problems = foreign.normalize_cabinet_output("dorsania", cabinet_answer(belief_updates=[

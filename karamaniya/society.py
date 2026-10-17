@@ -448,6 +448,11 @@ def _protests(w: World, rng) -> None:
 
 def _rebel_regions(w: World, rng) -> None:
     """Armed uprisings where Union-backed militias have guns and people are angry enough."""
+    if getattr(w, "civil_war", None) and getattr(w, "civil_war_option", "off") == "on":
+        # While a civil war runs, territory changes through its combat; the militia-uprising path stands down so
+        # the two do not seize the same region twice. The arm is read first: an off run ignores a state loaded
+        # from an on run's checkpoint, as engine.step and the council do (Wave C).
+        return
     m, dip = w.mil, w.dip
     for r in [x for x in w.regions if x.nation == "karamaniya"]:
         rp = [p for p in w.pops if p.region == r.id]

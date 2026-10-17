@@ -52,7 +52,8 @@ BY_LETTER_OFFICES = {"A": "head", "B": "treasury", "C": "interior", "D": "army",
 # Engine outcome types that end the government (each is an exit, as tools/exit_audit.py counts them). survived and
 # kept_power_by_force are not exits. politics.py, director.py, military.py and plots.py write these.
 OUTCOME_EXIT_TYPES = ("voted_out", "no_government", "revolution", "revolution_union", "officers_coup", "conquered",
-                      "joined_union", "federation", "reunified_by_vote", "reunified_by_referendum")
+                      "joined_union", "federation", "reunified_by_vote", "reunified_by_referendum",
+                      "partitioned")   # Wave C: a partitioned country's run ends
 NON_EXIT_OUTCOMES = ("survived", "kept_power_by_force")
 ENDED_OUTCOMES = OUTCOME_EXIT_TYPES + ("survived",)
 KEEP_SHARE, LARGEST_SHARE = 0.40, 0.30           # the Charter rule (politics.charter_verdict)

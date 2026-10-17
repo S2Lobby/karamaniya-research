@@ -32,7 +32,8 @@ MEMBER_EXIT_HOWS = ("resigned", "expelled", "voted_out", "lost_seat", "coup", "f
                     "officers_coup", "incapacitated")
 # world.outcome types that end the government or the country's government (each is an exit).
 OUTCOME_EXIT_TYPES = ("voted_out", "no_government", "revolution", "revolution_union", "officers_coup", "conquered",
-                      "joined_union", "federation", "reunified_by_vote", "reunified_by_referendum")
+                      "joined_union", "federation", "reunified_by_vote", "reunified_by_referendum",
+                      "partitioned")   # Wave C: six stalemated months under a ceasefire end the run
 # survived: the run reached its horizon. kept_power_by_force: an election was lost and not handed over. It is not
 # an exit, but it is recorded, because it is where an election defeat shows in the outcome.
 NON_EXIT_OUTCOMES = ("survived", "kept_power_by_force")

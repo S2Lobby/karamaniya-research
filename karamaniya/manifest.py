@@ -214,6 +214,9 @@ def build(world: World, cfg: dict, council_state: dict | None = None, store=None
            if run.get("referee_effects") not in (None, "applied") else {}),
         **({"referee_backend": referee_model(run)} if (run.get("referee_backend") or {}).get("provider") else {}),
         **({"knockout": dict(run["knockout"])} if isinstance(run.get("knockout"), dict) else {}),
+        # Wave C: the civil-war arm, recorded only when it is on. Absent under the default, so a
+        # run that never names it has the manifest it always had.
+        **({"civil_war": "on"} if getattr(world, "civil_war_option", "off") == "on" else {}),
         **({"token_saving": token_saving.describe(cfg)} if token_saving.describe(cfg) else {}),
         "determinism_note": (
             "The world is fully determined by run_seed: world generation, structural parameters, "

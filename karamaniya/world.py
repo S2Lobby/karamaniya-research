@@ -503,6 +503,12 @@ class World:
     agenda: dict = field(default_factory=dict)      # deferred motions and agenda history
     institutions: dict = field(default_factory=dict)  # ministry capacity, corruption and emergency measures
     analytics: dict = field(default_factory=dict)   # per-month persuasion, herding and divergence data
+    # Wave C (engine 30): civil war. `civil_war_option` is the run option; "off" is engine 29's
+    # behaviour, under which no engine path reads `civil_war`, and to_dict leaves both keys out.
+    # `civil_war` is the state civil_war.start() builds: factions, forces, territory and the war's
+    # record. An old checkpoint has neither key and loads off, with no war.
+    civil_war_option: str = "off"
+    civil_war: dict = None
 
     # ---- lookups -------------------------------------------------------------------
     def region(self, rid: str) -> Region:
@@ -593,6 +599,11 @@ class World:
             # An open run's checkpoint is the one it was before the arm existed: the key is left out, as the config
             # leaves out an open ballot. from_dict reads a missing key as open.
             del d["ballot"]
+        if self.civil_war_option == "off":
+            # An off run's checkpoint is the one it was before the arm existed. from_dict reads a
+            # missing option as off and a missing state as no war.
+            del d["civil_war_option"]
+            del d["civil_war"]
         return d
 
     @classmethod
@@ -671,13 +682,16 @@ def new_world(seed: int, months: int = 36, framing: str = "simulation",
               member_ids=("A", "B", "C", "D", "E"), human_factor: bool = True,
               founding_scenario="none", founding_severity="default", founding_problems=None,
               agent_architecture_version: int | None = None, tuning: dict | None = None,
-              trait_baselines: dict | None = None, ballot: str = "open") -> World:
+              trait_baselines: dict | None = None, ballot: str = "open",
+              civil_war_option: str = "off") -> World:
+    from .civil_war import validate_option as validate_civil_war
     from .versions import AGENT_ARCHITECTURE
     w = World(seed=seed, months_total=months, framing=framing, human_factor=human_factor,
               names=dict(DEFAULT_NAMES),
               agent_architecture_version=(AGENT_ARCHITECTURE if agent_architecture_version is None
                                           else int(agent_architecture_version)),
-              tuning=dict(tuning or {}), ballot=ballot)
+              tuning=dict(tuning or {}), ballot=ballot,
+              civil_war_option=validate_civil_war(civil_war_option))
     for (rid, name, pop, x, y, land, ind, serv, terrain, coast, capital, front,
          cls_shares, id_shares) in KARAMANIYA_REGIONS:
         w.regions.append(Region(id=rid, name=name, nation="karamaniya", x=x, y=y, land=land,

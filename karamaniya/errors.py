@@ -149,6 +149,17 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "REFEREE_CHANNEL_NOT_ALLOWED": ("action", "info", "A cabinet's ruling uses a channel or target it cannot reach."),
     "REFEREE_TOO_LONG": ("action", "info", "A referee's reason or public report is over its word limit."),
     "REFEREE_INVALID": ("action", "info", "A referee's ruling was invalid twice, so the act failed."),
+    # -- the rebel leader's month (Wave C, C3) ------------------------------------------
+    # A faction answer names a front, a stance, a settlement term or a recipient outside the closed
+    # lists the prompt states. The refusals are informational: the rest of the answer stands.
+    "FACTION_UNKNOWN_FRONT": ("faction", "info", "The faction answer names a front that is not on this month's list."),
+    "FACTION_BAD_STANCE": ("faction", "info", "A front's stance is not attack, defend or withdraw."),
+    "FACTION_UNKNOWN_TERM": ("faction", "info", "A settlement term is not one of the closed list."),
+    "FACTION_BAD_OFFER": ("faction", "info", "The offer is not a ceasefire or settlement terms the list allows."),
+    "FACTION_BAD_APPEAL": ("faction", "info", "The appeal is not to the Union or the League."),
+    "FACTION_BAD_MESSAGE": ("faction", "info", "A private message names an unknown recipient, is empty, or is over the count read."),
+    "FACTION_UNKNOWN_FIELD": ("faction", "info", "The faction answer carries a field that is not part of it."),
+    "FACTION_STATEMENT_TOO_LONG": ("faction", "info", "The rebel leader's statement is past its word limit; it is kept cut at the limit."),
     # -- foreign ---------------------------------------------------------------------------
     "FOREIGN_ACTION_DUPLICATE": ("foreign", "warning", "A foreign action's effects were already applied."),
     "FOREIGN_ACTION_INVALID": ("foreign", "info", "A foreign cabinet proposed an act outside its action space."),

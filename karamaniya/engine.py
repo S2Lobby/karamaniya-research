@@ -65,6 +65,18 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         # step that has just run. See karamaniya/effects.py for the full reasoning.
         from . import effects
         effects.step(w)
+        # Wave C: a civil war fights its fronts after the armies have moved and after the month's scheduled effects
+        # (an open act or a policy can move morale or damage before the fighting reads it), and before society
+        # reads the month. The arm is read first: an off run ignores a civil-war state loaded from an on run's
+        # checkpoint (test test_off_never_reads_a_state_that_is_present), and with no war the call returns without
+        # touching anything.
+        from . import civil_war, civil_war_combat
+        if civil_war.enabled(w):
+            civil_war_combat.combat(w)
+            # Wave C (C4): the war's ends are checked once a month, after the fronts have moved: a victory,
+            # a collapse, or a partition after six stalemated months under a ceasefire. C3 breaks a
+            # ceasefire from an attack order before combat; this check is the backstop and the outcome.
+            civil_war.check_end(w)
         society.update(w, prod, fiscal)
         # Wave 3: the state media line, after the month's economy and society have moved, so its claims are
         # measured against the world people are living in and its effects land in this month's snapshot.
@@ -251,6 +263,59 @@ def nation_detail(w: World) -> dict:
     return out
 
 
+def _civil_war_record(w: World):
+    """The month's civil-war record for the history row, or None when there is nothing to record.
+
+    Wave C (C5). The row references C2's ``last_combat`` and C3's ``last_faction``; it does not
+    copy their figures. C4's offers, breaches and settlement are filtered to this month. The key
+    is absent entirely under the default arm, and after a war has ended it is written only on the
+    month its outcome was recorded, so a later row is exactly engine 29's again.
+
+    C3 writes its faction record to the row after ``engine.step`` returns; the same dict is
+    enriched in place here, so the row C3 writes carries the month's fighting and negotiation too.
+    """
+    from . import civil_war
+    if not civil_war.enabled(w):
+        return None
+    state = civil_war.state(w)
+    if not isinstance(state, dict) or not state:
+        return None
+    month = w.month
+    outcome = state.get("outcome") if isinstance(state.get("outcome"), dict) else None
+    if outcome is not None and outcome.get("month") != month:
+        return None
+    combat = state.get("last_combat")
+    if not isinstance(combat, dict) or combat.get("month") != month:
+        combat = None
+    faction = state.get("last_faction")
+    if not isinstance(faction, dict) or faction.get("month") != month:
+        faction = None
+    record = faction if faction is not None else {"month": month}
+    record["since"] = state.get("since")
+    record["cause"] = state.get("cause")
+    record["combat"] = combat
+    record["offers"] = [entry for entry in state.get("offers") or []
+                        if isinstance(entry, dict) and entry.get("month") == month]
+    record["breaches"] = [entry for entry in state.get("breaches") or []
+                          if isinstance(entry, dict) and entry.get("month") == month]
+    block = state.get("ceasefire")
+    record["ceasefire_state"] = None
+    if isinstance(block, dict):
+        record["ceasefire_state"] = {
+            "active": bool(block.get("active")) and not bool(block.get("broken")),
+            "broken": bool(block.get("broken")),
+            "accepted_month": block.get("accepted_month"),
+            # Offers made, accepted or refused in this month, whichever month they were made in.
+            "offers": [entry for entry in block.get("offers") or []
+                       if isinstance(entry, dict)
+                       and month in (entry.get("month"), entry.get("response_month"))],
+        }
+    settlement = state.get("settlement")
+    record["settlement"] = settlement if isinstance(settlement, dict) and settlement.get("month") == month else None
+    record["war_outcome"] = outcome if outcome is not None and outcome.get("month") == month else None
+    return record
+
+
 def snapshot(w: World, refresh_last: bool = False) -> None:
     if refresh_last:
         # Rebuild against the preceding months: inflation and other history-derived
@@ -290,7 +355,7 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
     # on every month so historical reports can detect a mixed-code run instead of pretending the
     # entire history was produced by the engine version currently on disk.
     from .manifest import RUNTIME_SOURCE_FINGERPRINT
-    w.history.append({
+    row = {
         "month": w.month,
         "engine_source_fingerprint": RUNTIME_SOURCE_FINGERPRINT,
         "cpi": e.cpi, "infl_m": e.infl, "infl_a": annualize(e.infl), "infl_yoy": inflation_yoy(w),
@@ -383,20 +448,25 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
                              if w.foreign.get("government_intelligence") else {}) if w.foreign else {},
         },
         "police": m.police.size,
-    })
+    }
     from . import effects, open_acts, policy
     applied = effects.applied(w)
     if applied:
         # Wave A (engine 30): what the effect bus applied this month, by channel, target and source. Left out
         # entirely when nothing was applied, so a default run's history rows are exactly engine 29's.
-        w.history[-1]["effects_applied"] = applied
+        row["effects_applied"] = applied
     policies = policy.month_record(w)
     if policies:
         # Wave A (engine 30, W3): the month's policy record, when a policy was scheduled, carried out, ended or
         # refused this month. Left out entirely when there was none, so a default run's rows are unchanged.
-        w.history[-1]["policies"] = policies
+        row["policies"] = policies
     open_record = open_acts.month_record(w)
     if open_record:
         # Wave A (engine 30, W5): delegates' open acts carried out or refused this month, with their rulings,
         # costs and effects. Left out entirely when there was none, so a default run's rows are unchanged.
-        w.history[-1]["open_acts"] = open_record["open_acts"]
+        row["open_acts"] = open_record["open_acts"]
+    # Wave C (C5): the month's civil-war record, absent entirely while the arm is off.
+    war_record = _civil_war_record(w)
+    if war_record is not None:
+        row["civil_war"] = war_record
+    w.history.append(row)

@@ -2846,21 +2846,30 @@ def resolve_coups(w: World, coups: dict, stances: dict) -> list:
             continue
         attack = defend = 0.0
         armed_plotters = set()
+        # Wave C: the anticipated split of every armed office is kept in the result record. The
+        # failed-coup trigger reads the plotters' obey_commander share, and the handover trigger
+        # reads the government's share; both are the numbers this coup was judged on, before any
+        # removal or legitimacy change, so the record and the trigger cannot disagree.
+        divisions = {}
         for office in ARMED_OFFICES:
             holder = w.holder(office)
             force = _force(w, office)
             power = _power(w, office)
+            # The army is not one mind. `anticipated_response` returns the share of units that
+            # would obey the plotter, obey the government, stay neutral or split, from the same
+            # state the scalar below used to collapse: institutional loyalty, personal bond,
+            # pay arrears and the legitimacy of the government. Units that would join do so
+            # only if they expect enough others to join, so a plot that looks like it will fail
+            # collapses further rather than being carried by a determined few. Whole-army
+            # obedience is not a producible answer: the commander's share is capped.
+            division = military.anticipated_response(
+                w, {"kind": "coup", "office": office,
+                    "leader": holder.id if holder is not None else None})
+            divisions[office] = {"holder": holder.id if holder is not None else None,
+                                 "power": round(power, 3),
+                                 **{k: round(v, 6) for k, v in division.items()}}
             if holder is not None and holder.id in plotters:
                 armed_plotters.add(holder.id)
-                # The army is not one mind. `anticipated_response` returns the share of units that
-                # would obey the plotter, obey the government, stay neutral or split, from the same
-                # state the scalar below used to collapse: institutional loyalty, personal bond,
-                # pay arrears and the legitimacy of the government. Units that would join do so
-                # only if they expect enough others to join, so a plot that looks like it will fail
-                # collapses further rather than being carried by a determined few. Whole-army
-                # obedience is not a producible answer: the commander's share is capped.
-                division = military.anticipated_response(
-                    w, {"kind": "coup", "office": office, "leader": holder.id})
                 attack += power * division["obey_commander"]
                 # Units that stay in barracks are not defending the government either, so they
                 # count for neither side; a split garrison defends at half weight.
@@ -2893,19 +2902,30 @@ def resolve_coups(w: World, coups: dict, stances: dict) -> list:
         leader_name = w.member(leader).name
         rec = {"leader": leader, "plotters": sorted(plotters), "armed": sorted(armed_plotters),
                "action": action, "targets": targets, "attack": round(attack), "defend": round(defend),
-               "p_success": round(p, 2), "success": success, "handover": handover}
+               "p_success": round(p, 2), "success": success, "handover": handover,
+               "divisions": divisions}
         if success:
             w.count("coups_succeeded", 1)
-            for t in targets:
-                remove_member(w, t, "coup")
+            # Wave C: the handover trigger is judged before the targets are removed, so a war keeps
+            # its government side in being. A coup that keeps power by force still removes them.
+            war = None
+            if handover:
+                from . import civil_war
+                war = civil_war.maybe_start_from_handover(w, rec)
+            if war is None:
+                for t in targets:
+                    remove_member(w, t, "coup")
             w.const.coup_month = w.month
             w.const.emergency = True
             if handover:
                 w.const.handover_month = -1
                 w.const.election_month = -1
                 w.const.elected = False
-                # The government lost the election and kept power by force: the run's outcome says so.
-                w.counters["handover_blocked_month"] = float(w.month)
+                if war is None:
+                    # The government lost the election and kept power by force: the outcome says so.
+                    w.counters["handover_blocked_month"] = float(w.month)
+                else:
+                    rec["civil_war"] = {"started": True, "cause": "handover_coup"}
             w.adjust_league_trust(-0.35)
             w.dip.propaganda = min(1.0, w.dip.propaganda + 0.1)
             for p_ in w.k_pops():
@@ -2914,16 +2934,23 @@ def resolve_coups(w: World, coups: dict, stances: dict) -> list:
                     f"About {dead:,.0f} people were killed. Martial law has been declared.",
                     importance=3, detail=rec)
         else:
-            for pl in armed_plotters:
-                force_office = [o for o in w.offices_of(pl) if o in ARMED_OFFICES]
-                for o in force_office:
-                    f = _force(w, o)
-                    f.morale = clamp(f.morale - 0.15, 0.05, 0.95)
-                remove_member(w, pl, "failed_coup")
-            w.dip.rally = min(1.0, w.dip.rally + 0.05)
-            w.event("coup", f"Coup attempt: {leader_name} tried to use armed force against {names}. The "
-                    f"attempt failed and the plotters were arrested. About {dead:,.0f} people were killed.",
-                    importance=3, detail=rec)
+            # Wave C: a failed coup whose plotters keep their force starts a civil war instead of
+            # ending with their arrest. Everything else about the failure path is unchanged.
+            from . import civil_war
+            war = civil_war.maybe_start_from_failed_coup(w, rec)
+            if war is not None:
+                rec["civil_war"] = {"started": True, "cause": "failed_coup"}
+            else:
+                for pl in armed_plotters:
+                    force_office = [o for o in w.offices_of(pl) if o in ARMED_OFFICES]
+                    for o in force_office:
+                        f = _force(w, o)
+                        f.morale = clamp(f.morale - 0.15, 0.05, 0.95)
+                    remove_member(w, pl, "failed_coup")
+                w.dip.rally = min(1.0, w.dip.rally + 0.05)
+                w.event("coup", f"Coup attempt: {leader_name} tried to use armed force against {names}. The "
+                        f"attempt failed and the plotters were arrested. About {dead:,.0f} people were killed.",
+                        importance=3, detail=rec)
         results.append(rec)
     return results
 
@@ -2941,11 +2968,20 @@ def monthly_checks(w: World) -> None:
     if not w.ended() and c.election_month == w.month and not c.elected:
         _election(w, rng)
     if not w.ended() and c.handover_month == w.month and w.active_members():
-        for m in w.active_members():
-            remove_member(w, m.id, "voted_out")
-        w.outcome = {"type": "voted_out", "month": w.month,
-                     "text": "The Provisional Government handed power to the elected Constituent Assembly."}
-        w.event("handover", w.outcome["text"], importance=3)
+        from . import civil_war
+        if civil_war.running(w):
+            # A civil war that began in this month's split handover suspends the lawful handover: the
+            # government the war is fought over stays in office, and the run continues. Without this the
+            # handover ended the run as voted_out with the war state still running (C5 sweep, seed 4).
+            c.handover_month = -1
+            w.event("handover_suspended",
+                    "The election handover is suspended while the civil war runs.", importance=3)
+        else:
+            for m in w.active_members():
+                remove_member(w, m.id, "voted_out")
+            w.outcome = {"type": "voted_out", "month": w.month,
+                         "text": "The Provisional Government handed power to the elected Constituent Assembly."}
+            w.event("handover", w.outcome["text"], importance=3)
     if not w.ended():
         _revolution(w, rng)
     if not w.ended():

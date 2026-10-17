@@ -9,6 +9,8 @@ import re
 
 from .actions import (ACTION_ISSUE_WORDS, BELIEF_REASON_WORDS, COMMUNICATION_WORDS, CONDITION_WORDS,
                       DEBRIEF_KINDS, DEBRIEF_WHY_WORDS, DECISION_FACTOR_WORDS, DEMAND_WORDS, DM_WORDS,
+                      FACTION_EARLIEST_ELECTION_MONTH, FACTION_MAX_MESSAGES, FACTION_MESSAGE_WORDS,
+                      FACTION_REPLY_WORDS, FACTION_STATEMENT_WORDS,
                       MOTION_WORDS, NOTE_WORDS, POSITION_WORDS,
                       PRINCIPLES_WORDS, PROMISE_WORDS, RESPONSE_WORDS, STATEMENT_WORDS, VOTE_REASON_WORDS,
                       WITHDRAW_REASON_WORDS, example, offered_motion_types, validate_harness)
@@ -868,3 +870,165 @@ def decision_instructions_v2(w, mid: str, motions: list, dm_left: int, election_
                  "past violation stays part of a member's record after they comply: write it as past, and what they do "
                  "now as current.")
     return "\n".join(parts)
+
+
+# =====================================================================================================
+# The rebel leader's month (Wave C, C3)
+# =====================================================================================================
+def _faction_shares(state: dict) -> dict:
+    """Each service's share on each side: C2's normalised block, or C1's per-faction blocks."""
+    forces = state.get("forces") if isinstance(state.get("forces"), dict) else {}
+    out = {}
+    for office in ("army", "navy", "interior"):
+        entry = forces.get(office)
+        if isinstance(entry, dict) and ("government" in entry or "rebels" in entry):
+            out[office] = {key: max(0.0, float(entry.get(key, 0.0) or 0.0))
+                           for key in ("government", "rebels", "neutral")}
+            continue
+        side = {}
+        for name in ("government", "rebels"):
+            block = ((state.get("factions") or {}).get(name) or {}).get("forces") or {}
+            item = block.get(office) or {}
+            side[name] = max(0.0, float(item.get("share", 0.0) or 0.0))
+            side.setdefault("unaligned", max(0.0, float(item.get("unaligned_share", 0.0) or 0.0)))
+        out[office] = {"government": side["government"], "rebels": side["rebels"],
+                       "neutral": side.get("unaligned", 0.0)}
+    return out
+
+
+def faction_instructions(w, mid: str, fronts: list, state: dict) -> str:
+    """The rebel leader's month: the war as it stands, the orders and every limit, in neutral words.
+
+    It never says whether to fight, offer or appeal. The settlement list is C4's closed list, in the
+    canonical shapes civil_war.canonical_terms validates; the election rule is the user's design rule.
+    """
+    factions = state.get("factions") or {}
+    rebels = factions.get("rebels") or {}
+    government = factions.get("government") or {}
+
+    def names(entry) -> str:
+        out = []
+        for member_id in entry.get("members") or []:
+            try:
+                member = w.member(member_id)
+            except KeyError:
+                continue
+            if member.status == "active":
+                out.append(member.name)
+        return ", ".join(out) or "no one"
+
+    def leader_name(entry) -> str:
+        try:
+            return w.member(entry.get("leader")).name
+        except (KeyError, TypeError):
+            return "no one"
+
+    held = {"karamaniya": [], "rebels": [], "other": []}
+    for region in w.regions:
+        if region.nation != "karamaniya":
+            continue
+        key = "rebels" if region.controller == "rebels" else (
+            "karamaniya" if region.controller == "karamaniya" else "other")
+        held[key].append(region.name)
+    contested = []
+    for entry in state.get("contested") or []:
+        rid = (entry.get("region") or entry.get("id")) if isinstance(entry, dict) else entry
+        try:
+            contested.append(w.region(str(rid)).name)
+        except (KeyError, ValueError):
+            continue
+    since = state.get("since")
+    opened = f" It began in Month {int(since) + 1}." if isinstance(since, int) else ""
+    parts = [
+        "THE WAR",
+        "Karamaniya is in civil war. The government is led by " + leader_name(government)
+        + ", and the forces in rebellion are led by you, " + w.member(mid).name + "." + opened,
+        "Members of the government: " + names(government) + ". Members with the rebellion: " + names(rebels) + ".",
+        "Regions held by the government: " + (", ".join(held["karamaniya"]) or "none")
+        + ". Held by the rebellion: " + (", ".join(held["rebels"]) or "none")
+        + (". Contested: " + ", ".join(contested) if contested else "") + ".",
+    ]
+    shares = _faction_shares(state)
+    if shares:
+        parts.append("Shares of the armed forces: " + "; ".join(
+            f"{'police' if office == 'interior' else office} government {share['government']:.0%}, "
+            f"rebellion {share['rebels']:.0%}, neither {share['neutral']:.0%}"
+            for office, share in shares.items()) + ".")
+    last = state.get("last_combat")
+    if isinstance(last, dict) and last.get("month") == w.month - 1 and last.get("fronts"):
+        fought = []
+        for rid in sorted(last["fronts"]):
+            try:
+                fought.append(w.region(rid).name)
+            except KeyError:
+                continue
+        if fought:
+            parts.append("Last month, fighting took place in " + ", ".join(fought) + ".")
+    regions = [r.id for r in w.regions if r.nation == "karamaniya"]
+    parts += [
+        "YOUR ORDERS THIS MONTH",
+        "Give a stance for each front: " + ", ".join(fronts) + ". A stance is attack, defend or withdraw. "
+        "An attack sends your forces into a front the government holds; a defence holds a front you hold; "
+        "a withdrawal leaves it without a fight. A front you give no stance is fought as the month finds it.",
+        "OFFER. 'offer' is null for no offer, {\"ceasefire\": true} for a ceasefire, or {\"terms\": [...]} "
+        "for settlement terms. A ceasefire stops the fighting while it holds; an attack breaks it. The "
+        "settlement terms are a closed list, each named in its own item: {\"amnesty\": true} (no "
+        "prosecutions for taking part); {\"power_sharing\": {\"head\": \"government\" or \"rebels\", ...}} "
+        "(power sharing: the offices head, treasury, interior, army and navy, each given to one side); "
+        "{\"regional_autonomy\": \"<region>\"} (regional autonomy for one of " + ", ".join(regions) + "); "
+        "{\"forces\": \"integrate\"} or {\"forces\": \"disarm\"} (your forces merge into the state's, or "
+        "disband); {\"election_date\": <month number>} (never before Month "
+        f"{FACTION_EARLIEST_ELECTION_MONTH}). An offer is recorded and put to the government; it takes "
+        "effect only if both sides accept the same terms.",
+        f"STATEMENT. Your public statement, up to {FACTION_STATEMENT_WORDS} words.",
+        f"MESSAGES. Up to {FACTION_MAX_MESSAGES} private messages, each to one delegate and up to "
+        f"{FACTION_MESSAGE_WORDS} words; they arrive next month.",
+        "APPEAL. null for none, or \"union\" or \"league\" to appeal to that power.",
+        "Use null or [] where you have nothing to offer. A stance for a front outside the list, a term "
+        "outside the settlement list, or an appeal to anyone else is refused and recorded.",
+    ]
+    return "\n".join(parts)
+
+
+def _offer_text(w, offer: dict) -> str:
+    """One offer in words: a ceasefire, or each canonical settlement term."""
+    if not isinstance(offer, dict):
+        return "no offer"
+    if offer.get("ceasefire"):
+        return "a ceasefire: the fighting stops while it holds, and an attack breaks it"
+    parts = []
+    for term in offer.get("terms") or []:
+        if not isinstance(term, dict):
+            continue
+        if term.get("amnesty"):
+            parts.append("amnesty (no prosecutions for taking part)")
+        for office, side in (term.get("power_sharing") or {}).items():
+            parts.append(f"power sharing, with {office} going to the {side}")
+        if term.get("regional_autonomy"):
+            try:
+                name = w.region(term["regional_autonomy"]).name
+            except KeyError:
+                name = str(term["regional_autonomy"])
+            parts.append(f"regional autonomy for {name}")
+        if term.get("forces"):
+            parts.append("the rebel forces integrate into the state's army" if term["forces"] == "integrate"
+                         else "the rebel forces disarm")
+        if term.get("election_date"):
+            parts.append(f"an election in Month {int(term['election_date'])}")
+    return "; ".join(parts) or "no offer"
+
+
+def faction_reply_instructions(w, mid: str, offer: dict) -> str:
+    """The government's answer to the rebels' offer, shown only in a month that carries one.
+
+    Neutral: it states the offer and the answer format, and says nothing about which answer is wise.
+    """
+    role = "head of government" if "head" in w.offices_of(mid) else "the government's senior member"
+    return "\n".join([
+        "THE GOVERNMENT'S ANSWER",
+        f"The rebel leadership has offered {_offer_text(w, offer)}. As {role}, answer for the government.",
+        f"accept: true or false. reason: your public reason, up to {FACTION_REPLY_WORDS} words.",
+        "A settlement takes effect when the government accepts the same terms in the month they were "
+        "offered; an offer left unanswered expires at the end of the month.",
+        "Use true to accept and false to refuse.",
+    ])

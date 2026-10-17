@@ -199,8 +199,8 @@ class AnActThatTheTargetDoesNotReceive(unittest.TestCase):
         w = world()
         fixed = actions.normalize_motion_v2(w, REFUSED_D3)
         message = motion_actions.repair_request(w, motion_actions.conflict(w, {**fixed, "proposer": "A"}))
-        self.assertIn("MOTION_ACTION_MISMATCH", message)
-        self.assertIn(f"Acts the engine can address to the Veleria: {VELERIA_ACCEPTS}.", message)
+        self.assertIn("its text and its 'action' describe different things", message)
+        self.assertIn(f"Acts that can be addressed to Veleria: {VELERIA_ACCEPTS}.", message)
         self.assertIn("trade_talks", message)
 
 

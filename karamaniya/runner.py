@@ -155,9 +155,29 @@ def _form_government(store: RunStore, council: Council, observer, quiet: bool) -
     return ""
 
 
+def _debrief(store: RunStore, council: Council, quiet: bool) -> None:
+    """Engine 29 (backlog T178): the closing question, once, after the last month (council.debrief). It changes nothing
+    in the run. A failure here (a usage limit, a provider error, a replay of a run recorded before the question
+    existed) is written down, never takes down a finished run, and is asked again when the run is next ended."""
+    if store.exists("debrief.json") and "error" not in (store.read_json("debrief.json") or {}):
+        return                      # asked already: a finished run ended again
+    try:
+        answers = council.debrief()
+    except Exception as exc:  # noqa: BLE001 - recorded, see above
+        store._write_json("debrief.json", {"error": f"{type(exc).__name__}: {str(exc)[:300]}"})
+        return
+    store._write_json("debrief.json", answers)
+    if not quiet:
+        print("Closing question answered.")
+
+
 def _end(store: RunStore, world, council: Council, stopped: str, quiet: bool, observer) -> Path:
     from .report import build_report
     settings = getattr(council, "settings", None) or {}
+    # Engine 29 (backlog T178): a run that has ended asks its delegates the closing question. A paused or stopped run,
+    # whose months may still change, does not, and neither does a baseline's own run.
+    if not stopped and world.ended() and settings.get("report", True) is not False and settings.get("debrief", True):
+        _debrief(store, council, quiet)
     # Refresh the manifest now the run has calls behind it: this is where "which model actually
     # answered" and the structured engine-error tally become meaningful.
     try:

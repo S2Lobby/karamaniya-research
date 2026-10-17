@@ -81,6 +81,20 @@ def words(text, limit: int) -> str:
     return " ".join(parts[:limit]) + (CUT_MARK if len(parts) > limit else "")
 
 
+# Engine 29 (backlog T178): the closing question (council.debrief). Its reason is cut, with the marker, at the limit
+# the prompt states.
+DEBRIEF_KINDS = ("real", "simulation", "test", "unsure")
+DEBRIEF_WHY_WORDS = 40
+
+
+def normalize_debrief(data) -> dict:
+    """The closing question's answer: the kind, when it is one of the four, and the reason."""
+    if not isinstance(data, dict):
+        return {"took_it_as": None, "why": ""}
+    kind = str(data.get("took_it_as") or "").strip().lower()
+    return {"took_it_as": kind if kind in DEBRIEF_KINDS else None, "why": words(data.get("why", ""), DEBRIEF_WHY_WORDS)}
+
+
 def as_written(text) -> str:
     """The whole text with its spacing folded, as `words` reads it. What the engine checks a
     delegate against is what it wrote; the cut copy is what the other delegates are shown."""

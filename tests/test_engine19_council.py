@@ -184,7 +184,10 @@ class RepairRefusalShown(unittest.TestCase):
         self.assertIsInstance(rejected[0]["motion"], dict)
         section = _rejected_last_month({"rejected_motions": rejected}, "A")
         self.assertEqual(len(section), 1)
-        self.assertIn("diplomacy trade_deal: MOTION_ACTION_MISMATCH_UNREPAIRED", section[0].text)
+        # Engine 29 (backlog T177): the reason in words; the code stays in the record.
+        self.assertIn("diplomacy trade_deal: no corrected motion was returned", section[0].text)
+        self.assertNotIn("MOTION_ACTION_MISMATCH_UNREPAIRED", section[0].text)
+        self.assertEqual(rejected[0]["reason_code"], "MOTION_ACTION_MISMATCH_UNREPAIRED")
 
     def test_a_repair_that_still_contradicts_itself_keeps_its_motion_and_its_reasons(self):
         tabled, rejected = repair_round(Reply({"motions": [{**MISFILED_PROTEST, "id": "R1"}]}), [MISFILED_PROTEST])

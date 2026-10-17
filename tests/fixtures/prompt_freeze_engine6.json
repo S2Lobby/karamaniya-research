@@ -1,234 +1,234 @@
 {
  "about": "Fingerprints of every prompt in a 4-month run of council.scripted.toml, seed 1, produced by the engine-6 code (AGENT_PROMPT 6, WORLD_ENGINE 6; the engine-5 prompts are those of tag engine-5, commit 27d7534). A default run must reproduce them exactly: see tests/test_prompt_freeze.py. Regenerate only with a deliberate AGENT_PROMPT bump: python tools/prompt_freeze.py --write.",
- "engine": "agent prompt 24, world engine 27",
+ "engine": "agent prompt 26, world engine 29",
  "months": 4,
  "config": "council.scripted.toml",
  "seed": 1,
- "system_prompt_sha256": "797629be7190d3be0a39db65eddd0b8981b6a4978b0b99b218058b02d8164062",
+ "system_prompt_sha256": "ae17fce0eb16c2bc8a94439c08ebd8d223b1399db33a9319eeb00f0b179b03ae",
  "prompts": [
   [
    0,
    "decision",
    "A",
    1,
-   "1bef904964dc7c7040bfd1928c2929656904ed4518d9cb2562b95b5b52264868"
+   "cf788b57f7bcce37ee0713389deb93db4e42f62b35ac219e33c57263e65b2620"
   ],
   [
    0,
    "decision",
    "B",
    1,
-   "74d4dc7432899c3ef7d9b060d28398f09b80e78715b23a759009a59ba9c72272"
+   "acbe3334542f91b2de08c9ae8dc20f536564d10238678ff93feb2d0a6bb41da6"
   ],
   [
    0,
    "decision",
    "C",
    1,
-   "2b1cad09b5dfe0285261145c7aa22d1958a70630bd91f653a7259bc6c92ff572"
+   "6eafc08ecae2d7dbe2c37a0251a93acf35a9cf9f43de210768290b48aa2a7bf3"
   ],
   [
    0,
    "decision",
    "D",
    1,
-   "3fc0784215ca040a67bf8cd1c8cc9639dfc4c1c631e199076b1943143a673288"
+   "95e21262943e9a94c9f20c0d2de91578063239856acfe583af0c05a252d06af7"
   ],
   [
    0,
    "decision",
    "E",
    1,
-   "c0e84c2876e6c402e7ad38c2e68c04c1cf27f001b9ba5c6863034aa703c1d19f"
+   "44fff8a6dc8baed92da5d6cb1c5f0b5634a83883a5c45e498ca8952e58487cb6"
   ],
   [
    0,
    "foreign",
    "dorsania",
    1,
-   "15b97b57c7c7a6c8b662394b30521dfa2b5f65e267e8756557a8e29a7c2fe4b0"
+   "fcd8c6e28ff4edf9a6f1cc84eef32d3c7bdb9fbe4157ce1f6763faa15f90f803"
   ],
   [
    0,
    "foreign",
    "veleria",
    1,
-   "88413e90dd70ca192a128af698b5abb1f2ea9a07516ca13faa6b2ca79be06f77"
+   "00e86b1f23b168981e91abb947f83239bf916eb1b47d980a5f87e7ba561998a9"
   ],
   [
    0,
    "formation_proposal",
    "A",
    1,
-   "9c7bc11f5d5cb305228d4c4d0f042566a7bb3fce2dc2f55848c10e338c9f2d22"
+   "9427e66c4c6abf824d26e8a3561fc0d8adc664f18ff87324f586944cfcb62f54"
   ],
   [
    0,
    "formation_proposal",
    "B",
    1,
-   "c1d5f625542a7d00aef5ed5adac2f9bc9342db019efaef877fcf6aa03400e7bf"
+   "3ab7293676443d82174ef2bbd39d243ecacc59a666690e95ab0fa348bc39b6f2"
   ],
   [
    0,
    "formation_proposal",
    "C",
    1,
-   "a26c3cfb557d47e712081b85f2c68dd430d2b60bd93af61019f638f9f3913380"
+   "87d590d10b11fdf25df693e6f0f345834efc5791d5f6639569b005ad0af78909"
   ],
   [
    0,
    "formation_proposal",
    "D",
    1,
-   "9d6699c3fab92e18255a7afc5e15d544f554143c498d7f8e9385dc65c6d7e075"
+   "89e2fdcb32c0e576d72323d417a705a3b8f890b3475fc6eda4a967eac42ba5c0"
   ],
   [
    0,
    "formation_proposal",
    "E",
    1,
-   "784d4faa4a52d3894777ef99785db3863520f3bbfb871ce6adada0c4c39940fb"
+   "607bb96530f5443a0c251e9791885b81545f3a4543f9918d7f10448a5bf673ad"
   ],
   [
    0,
    "formation_vote",
    "A",
    1,
-   "c297971442209ec325735a0b9e10e93654c691faaca7199c6344f538ccc101bc"
+   "f3821e704f8eb3e7432e22b3ca488b9016302068bb6eaaf933b05c215c010dc6"
   ],
   [
    0,
    "formation_vote",
    "B",
    1,
-   "43bf03b7cd1e51cac90ba1687d4217c6979903992f94da8b76ed7a8ef7c8a3bf"
+   "c4ea625e52ff19bc46cf0910c33d1482b11a062128e96fd9f1fbb4eb4ac1610c"
   ],
   [
    0,
    "formation_vote",
    "C",
    1,
-   "e126c2e8f8140a6dd2f6f0bb9007e0579408ea25d1d2236beba3043774722cff"
+   "fea99b3c781caacc469a62a884058ee37ecd16539f935fa7f5bf616669447ddc"
   ],
   [
    0,
    "formation_vote",
    "D",
    1,
-   "f657f2f55386c926fa2005aad589faa3d38646367366ada5be6229cfa3f08f34"
+   "7327a0910694548566f587299a691976fb18450fa133f836f31a4a1c59dbcca8"
   ],
   [
    0,
    "formation_vote",
    "E",
    1,
-   "3d2a2fa188c484d1b94635d0d50993f1ca3ef26776737d741dddb18fb13ab8b0"
+   "80d9992e80614f1b7c4c4e47649796ec42e32ce6d9a722c7bf1c4344daca7d28"
   ],
   [
    0,
    "founding_diagnosis",
    "A",
    1,
-   "0eebf0fc2b405a16e65960ad3c768e4eed6566e914d6f9bed4ccb9b5e4c79b4c"
+   "51312906246b5b58801aba903ad15c0266ab2dc4bb30a2a8f46b070b13366e45"
   ],
   [
    0,
    "founding_diagnosis",
    "B",
    1,
-   "811bdb2f5581124d9094a085be7a3dab0332c3d7c8518f8bfecd511844caedd0"
+   "ed27f066b1b40d3ec048e15e9cc5a51c8d2961eb89ed1a2edb73b9984f265cad"
   ],
   [
    0,
    "founding_diagnosis",
    "C",
    1,
-   "97554e40a6b3822ab0fcbb8b4881b8c70d8ce6b7524cadeab0555b388441f6e4"
+   "6b91cbe267d34fd86d4e6b138d9a68a514a940f66527c3b48ff90f5dfafbd66e"
   ],
   [
    0,
    "founding_diagnosis",
    "D",
    1,
-   "f2f3369088e1c15dae0ddaa08d9ddcd0c1a5cb531a52d48b5c9ae8795a47b6cf"
+   "c316287039a12f10321b66b54c52b6a953f7690de8e4ef26155cbeb6ebd5ccc5"
   ],
   [
    0,
    "founding_diagnosis",
    "E",
    1,
-   "7ccbf0518c297d9665ad2b74d00e7a21b7ded89e5035a10c3170dccf1b3b9cbe"
+   "ffe400e245cdc0af486326271dcd95b21d0526a27311a6b4eb7ca3c292cda881"
   ],
   [
    0,
    "revision",
    "A",
    1,
-   "0be7b9cbe5db986a8bba4d29d3a4aad79fe9f230c4b295d01c6c15901982e04a"
+   "e0caaf6ac07fb048c82c018df9eed1e94b6034d241722ac95aeb01b3d9b0294b"
   ],
   [
    0,
    "revision",
    "B",
    1,
-   "80ba5f4113368947032ed17247b85551d78158d508af09d39c9e99684b45718d"
+   "5d849cf6da9c9bce533784fbbeffd9cce1abcde4276aad8e864a138e9084f969"
   ],
   [
    0,
    "revision",
    "C",
    1,
-   "4e32a1cf286b7a2354ba424571655bac5e2a01876fc6340f8ebaad1c9c2eec22"
+   "01ee2acead0d633f3cd394f4b3b7b4d14268ad4a42c1540c681120a51379a0f3"
   ],
   [
    0,
    "revision",
    "D",
    1,
-   "468faa95fe401ec0ef476447b7876a022a0e8689480c87ef6fcef58081b81e99"
+   "ee8b3233e9df2323493fe023d2a0db81d2eca0ea5bae7d3b694e505dccf58718"
   ],
   [
    0,
    "revision",
    "E",
    1,
-   "21b61def057feb0f45a0bcfb264aca10b49369e15f069f2912fb13b3f7ef0939"
+   "575ea671a58d14c9061c32a1ad496c61abdeff7ff5cfe4fbc9bd5f9dc46e2a0b"
   ],
   [
    0,
    "session",
    "A",
    1,
-   "04163c4062d34f7c54b243449ce453c089f6d330c498bd07936e3a45cca280d9"
+   "ca9d6a3bc63827c74147df0a6d1dac85bc415f3e85ee50b342da4331360fc77e"
   ],
   [
    0,
    "session",
    "B",
    1,
-   "e46d5e8bae2c924bce8293573bff47ed65dc1af9d84100274158128559e2bb44"
+   "6f036e5a468d07acb97d35dbfb8070c5ea38c0e606d40eb5f9de7ec487aa91a0"
   ],
   [
    0,
    "session",
    "C",
    1,
-   "de5c7da16b2d6e85c85f71979e36006ff3fd6d265cafa5a9ef5c325e53155833"
+   "e00b2e3090ca610f5d3d73097204c4b943aa90de5bffd0a51916ef534eb83db1"
   ],
   [
    0,
    "session",
    "D",
    1,
-   "5efb24fbf6fe9113e6499840790898b61c78cb01ba3e0b8bbcc08ebfec561574"
+   "6e5b49ff44bd6776e81484f69c778289040eaa694bcd50d763f8a10ab6974409"
   ],
   [
    0,
    "session",
    "E",
    1,
-   "e8ecb6f5817293d4d2c863a9ad5f6f8b5dea7604f6d3e2e8b6f23f4821549dff"
+   "744913f32e16d353fc4ebbb95a3743a74a5f06af2612e8391c3cdec2006954d6"
   ],
   [
    0,
@@ -270,287 +270,322 @@
    "decision",
    "A",
    1,
-   "04e86f608b6139d56d925719db68e5a83226a2af0a13c5167d0988ff987d385a"
+   "a5195ddd397b5fecf81f57f65632c6431f7a3c2bdf0b16de055b7c9543de40c2"
   ],
   [
    1,
    "decision",
    "B",
    1,
-   "06600e5ffcada254f0c2ad541a2d626923930734eb80b6c7701b81ded16d9d7c"
+   "4526595798bfba37b93d1ddc4e6fa8ad0f7629def2fe71e50c037bfe6888a108"
   ],
   [
    1,
    "decision",
    "C",
    1,
-   "79b28dafd5b9375e451e83e5abd5f55d0bb2aec1339ca942c70f9c3873abec7e"
+   "8ee7bf110fc6919e6078d587be5b5b989737ce102b0b35a715cfeeaa87dc05d9"
   ],
   [
    1,
    "decision",
    "D",
    1,
-   "7eaa7947a90ff9c83fa0c8e8f47fe6c74abb0c8ce449059ae1ec67779a405f86"
+   "4e8b96c80cd0e83ae8c693e942aa43a9fe7038cc1a432d7f90a6e89f7d05a17c"
   ],
   [
    1,
    "decision",
    "E",
    1,
-   "f250ef9053b9042fd7a8f4b28db2e3f10bbb42eb10cf4be5e934cf0154af03c9"
+   "456c172e30c568d35ef5f80e4c6acb19089a62bc1b26577c76e2663e926d137c"
   ],
   [
    1,
    "foreign",
    "dorsania",
    1,
-   "f0c1e66b48e5da73c150e694ef43953681efcf76260a7c3827299c8df42aa373"
+   "715ec238018a7804d1b3cb8c0debd54181565a5be2737b9e9c48b8d937dd10dd"
   ],
   [
    1,
    "foreign",
    "veleria",
    1,
-   "db6ff94ee0d39d0912d5a814b7e9f9a376d94cc812d42d17b3e7da5cd709ffed"
+   "82e51e8ebf5c1a6f6370311f0b07b9c67b8f594966325ebd5bef212ea3716887"
   ],
   [
    1,
    "session",
    "A",
    1,
-   "cc980b7795631333f5c1617ff319bf199819ff09c71a03d5f7af47e03bbfe79d"
+   "2909351360aa6284ed168646f4afda3d2dfbc666d3ddf8e688de7fbf67b74adf"
   ],
   [
    1,
    "session",
    "B",
    1,
-   "a1ded713f07e866a4617a5be8882bd32098824fff25e86ad26a96d58c76f3c71"
+   "620dd09504521568cfc898322191c34f9a6ceb7f2bc6d9bf95a0938aa6090202"
   ],
   [
    1,
    "session",
    "C",
    1,
-   "8c9d58b1587d128dca0b083f01013cf2287215ec950b99b6a85891d303ddfe1c"
+   "aff89446f03fb7fd25555c6020db59aa4b46a9c5178a5cf632a2bf71b6ef8013"
   ],
   [
    1,
    "session",
    "D",
    1,
-   "fcf23ac0e26d6e3fd7e1835012ccade8c93008bd0b1333ad5ab60001fa883942"
+   "7ff7616b82a9289dedd0eae3804fc86973fb3dd9c6aad47de618e2010173ed86"
   ],
   [
    1,
    "session",
    "E",
    1,
-   "c07da0d6fc68ca5d6c9234d0e9ed17156d75c6183d301082c2c264974da3691d"
+   "dde8209faf57d549833e1427d86aeb46aec5bca2ea4d66045545777655db72ce"
   ],
   [
    2,
    "decision",
    "A",
    1,
-   "cf0aa97b6f775b5327696f4a24fc60a81d1d816896bb83e5b4c6f8fb145c0e63"
+   "e5195aa4feed84854abc8c383e22dc37ac25450c73d8b13f6ba18247826aa5cf"
   ],
   [
    2,
    "decision",
    "B",
    1,
-   "029668ae917f6506788fdfa1a84ad01d247c884eab59dc1b7c434d4a17ae291a"
+   "c01aaee504956599841b85e126a0691362232e37d073bd50d0becfa3e1b457e2"
   ],
   [
    2,
    "decision",
    "C",
    1,
-   "26a81926357ab381594ec50c6a93ff29ddfb0b1fd835b38119a598018561ebf2"
+   "c6793cbacb6b9c5f268e775ef1318888ef6e776d00e5b6731e2f8c80942337ca"
   ],
   [
    2,
    "decision",
    "D",
    1,
-   "bb8ef6b509be54111abe6259e8b9c4a23b253a6fea8f92d47109a260dbc9f43f"
+   "33f20e56b76ef889f83351ad5519c4c11264d905ac15cd0372c66a87dad45086"
   ],
   [
    2,
    "decision",
    "E",
    1,
-   "13eab07dfa64ad21a38856993bb772ac2e1116a7912a6064b9d1d652c2745697"
+   "1d31f2489b71534ed91bcf21617d906443bf130c895704976bb9b7e2cbe7088b"
   ],
   [
    2,
    "foreign",
    "dorsania",
    1,
-   "2c4c5fe92780e7ea1b99fc71875cc6efb24fefb084ded8b5dafbe16054f2d471"
+   "0592b45281e8af7f0e0fdd7c9c0e10e3ee26fa13acb9750f1aaee7fc4bbd255e"
   ],
   [
    2,
    "foreign",
    "veleria",
    1,
-   "c047dd02c219ba2d7b66a1c8905fc999d8d18b4e404deb4ca34556a7dbee3607"
+   "175ad1a18b37849533a8679feee4f06f9e73282ff3d6a6c22ab41057dafa54db"
   ],
   [
    2,
    "revision",
    "A",
    1,
-   "56ee491176bad426e383f1589d420ba901f33392e3293a87a2f5db0f9dae3c25"
+   "16cf330c8648f1949d3ffa9b139be093d8b93153585cbb9a89a2a9f4f8fd2df3"
   ],
   [
    2,
    "revision",
    "B",
    1,
-   "6fdb66872000b75d74e6c7132dc395dce052d29fffad226263e64dd2b64d7375"
+   "1404cb21e8227d13c07b04a165a78b46bbad46d388c8596e98ab12299d4ec3a2"
   ],
   [
    2,
    "revision",
    "C",
    1,
-   "aeb79347dba176b4cb9de8aefbdd603f852492cf651b27ea63143010b3a8a0fc"
+   "211c03d969d658983772aeb0f186b7a67f656caca3c39dffba8964b933a8dc10"
   ],
   [
    2,
    "revision",
    "D",
    1,
-   "abb91e48fdf42d64402763ccdb036a750a0d7b365c0bc95f7b242717dfaec62c"
+   "51e5c70fbf6498548d6de5bb7ccaf5e3fba0d84ee68bc5d8891d912ce7edbb32"
   ],
   [
    2,
    "revision",
    "E",
    1,
-   "4ed383759f75e669d213c3d65127d05eb141ac385e2ee1583130095653fc6d04"
+   "0d28b04577464aab2e3aaafd46742cbff18e972c71cf6b9c68dc8e9436e7d851"
   ],
   [
    2,
    "session",
    "A",
    1,
-   "a744f89203cd9596ea14e97c1d3b783a81e49c65d364ad2322dac102f227b1e4"
+   "6751792eb990b54974ff7d2fbb8bb9a4a503652c7b68a26bbfe5f235e41314fd"
   ],
   [
    2,
    "session",
    "B",
    1,
-   "567334fffb5f6c34d39c46e79d7b18a0ec3c3b9505ed5b823efc97ea5cdc9bb9"
+   "b63960a1cd0651fcd628a93dda92a0249ef12c9d463633dc28c7316aacb47b6f"
   ],
   [
    2,
    "session",
    "C",
    1,
-   "37add30e58da0bd4116bb03f104d42e427a9d8e7818b6a922e6570bd798d12d5"
+   "64c24334881b5333be083d146c70434f61edd311c910ccfb898a7e197f0b84a2"
   ],
   [
    2,
    "session",
    "D",
    1,
-   "ae578a87e771a1d153bb5b25baa2d65632531dbe37f080ccc81453f3a5ad8cb7"
+   "8d5c464a76eefbd757ff368227de99cdc733f918cac91b6d822616341056271d"
   ],
   [
    2,
    "session",
    "E",
    1,
-   "5b7c58d896ede5c1c98d9876bca9b028ca7d4dc8522b6b6f102be19ba23bc532"
+   "1047c7a1b8dd1fdce113d79c0c6e2ec109a75ee5b909f5e02c39a254c4524a48"
   ],
   [
    3,
    "decision",
    "A",
    1,
-   "26c5d62f789f216a4ef0985c8fd43fe3c9e9c049b38a25c2452693905999a9b8"
+   "a9a7f3894ee480345eb278195160cda371ba6b7dfef0178b9896ef1969b169ad"
   ],
   [
    3,
    "decision",
    "B",
    1,
-   "009b659fa4cb34a05ae3105f38f9443097e6cc01390facea4b397fcf2e31ef1c"
+   "7f6605ef24cfe7cfe225df21a9589a038390a427af0abe28a90ce7e68e76ee1e"
   ],
   [
    3,
    "decision",
    "C",
    1,
-   "222f1c644b4d48bc90d472ae383d2fc0846e792b72cd1a2ebcd4b93a8c62c46e"
+   "cd2263e6bc75a49da59d3f7c670db8bf235434c15c8473ddcf6d474d5ee10824"
   ],
   [
    3,
    "decision",
    "D",
    1,
-   "c89934cbf1793d5b529dda4427c7ee703e8aa99918ca2da54cca6b6a6723c0cf"
+   "5480d55cc289f2c6e93bdb4ce32f067779505a7033a320067895c9466168674d"
   ],
   [
    3,
    "decision",
    "E",
    1,
-   "69376575a50f7238c1fa6231ae38098b59852a6303eedd7e2773a187c0556b7b"
+   "5f700dba3d7a95ea0cfc3baa7f0c080f2d5cf1e70214474455de93c7aaed3c6f"
   ],
   [
    3,
    "foreign",
    "dorsania",
    1,
-   "64ba173aa4b7293ec139983f97e2ec662c952513e44a07e2f13fe01fad9e13b4"
+   "77f71b6f72866869e4c34b32fe502084079bcc53a7f3a6656abf06bfb9e7c1a9"
   ],
   [
    3,
    "foreign",
    "veleria",
    1,
-   "b75d080992e2265b2e694778a728cfa07ec33118b5d2ac426f1890b4987e9dcc"
+   "14c1931f42da77650e1b35f0922202da0f0d38ec645e264bfa00bbf6bfc903e9"
   ],
   [
    3,
    "session",
    "A",
    1,
-   "86aa942ca9878b867ebedb32819d3b5f7777be7331274cabd7382a762e65709c"
+   "25732b823ef2f386c7edc61b7ca3e0c098fe8c7282b51a32c159802aac6619f0"
   ],
   [
    3,
    "session",
    "B",
    1,
-   "9ec9d15bd23e101cbee13a56068c0736b5373e97ea8cbb31435692132b1bb981"
+   "2971b90f5b13828aca789f8f212b7d43ad3b874efc0a38fb709c845af0537e49"
   ],
   [
    3,
    "session",
    "C",
    1,
-   "5b6efeffcc5853318091e11f7839481d219d24455957b43b390f09b5c75ba80e"
+   "7654d2f964f781d25e61f23808da20a8987cfa86453de875a7413ce9849a2f21"
   ],
   [
    3,
    "session",
    "D",
    1,
-   "37d8e1181407ba50109f01aef234ad0935c18303d1cfa98cd786d41f4f3f4f2a"
+   "f05c5c761635b8f048cdc48f4f5c8ecfd5d58dce08a96a722e95caf65259d73a"
   ],
   [
    3,
    "session",
    "E",
    1,
-   "4020a4bdc7d963e80476ba8103b46478bafef7db793c6e3edd6949458ccde966"
+   "98b6f31d377ef768016270b58ca18f0fdf7d2e3e152c8725000050444700ce73"
+  ],
+  [
+   4,
+   "debrief",
+   "A",
+   1,
+   "3efd6eb1b8f8a8bf7329180202bbdf5af2d526129b8316ebe715d8f9411675dd"
+  ],
+  [
+   4,
+   "debrief",
+   "B",
+   1,
+   "3efd6eb1b8f8a8bf7329180202bbdf5af2d526129b8316ebe715d8f9411675dd"
+  ],
+  [
+   4,
+   "debrief",
+   "C",
+   1,
+   "3efd6eb1b8f8a8bf7329180202bbdf5af2d526129b8316ebe715d8f9411675dd"
+  ],
+  [
+   4,
+   "debrief",
+   "D",
+   1,
+   "3efd6eb1b8f8a8bf7329180202bbdf5af2d526129b8316ebe715d8f9411675dd"
+  ],
+  [
+   4,
+   "debrief",
+   "E",
+   1,
+   "3efd6eb1b8f8a8bf7329180202bbdf5af2d526129b8316ebe715d8f9411675dd"
   ]
  ]
 }

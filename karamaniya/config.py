@@ -129,7 +129,8 @@ def normalize_config(raw: dict, source: str = "") -> dict:
     # writes its report, and each decision answers the monthly forecast panel (forecasts.py). The same-seed
     # baselines (baseline.py) run after a run with at least one model seat; true runs them for a council of
     # stand-ins too, false never.
-    for key in ("baseline", "report", "forecast_panel"):
+    # Engine 29 adds debrief, the closing question once a run has ended (runner._debrief): absent means asked.
+    for key in ("baseline", "report", "forecast_panel", "debrief"):
         if key in run:
             if not isinstance(run[key], bool):
                 raise ValueError(f"{key} must be true or false")

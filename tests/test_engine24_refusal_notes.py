@@ -125,7 +125,7 @@ class RefusedMessagesAreTold(unittest.TestCase):
                                    "kind": "summons", "reason": "unknown communication kind 'summons'"}]}, "A")
         text = section[0].text
         self.assertTrue(text.startswith("YOUR MOTIONS NOT TABLED LAST MONTH (the reason each was refused):\n"))
-        self.assertIn("- set_policy tax 0.5: UNKNOWN_LEVER - unknown policy lever 'tax'", text)
+        self.assertIn("- set_policy tax 0.5: unknown policy lever 'tax'", text)
         self.assertIn("YOUR PRIVATE MESSAGES AND COMMUNICATIONS NOT SENT LAST MONTH", text)
         self.assertIn("- communication to public: unknown communication kind 'summons'", text)
 

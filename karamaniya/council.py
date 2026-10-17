@@ -529,7 +529,8 @@ def _rejected_last_month(last_record: dict | None, mid: str) -> list:
         for r in mine:
             m = r["motion"]
             what = " ".join(str(m.get(k, "")) for k in ("type", "subject", "value") if m.get(k))
-            lines.append(f"- {what}: {r.get('reason_code', '')} - {str(r.get('explanation', ''))}")
+            # Engine 29 (backlog T177): the reason in words; the code stays in the month record.
+            lines.append(f"- {what}: {str(r.get('explanation') or r.get('reason_code') or '')}")
     if sent_back:
         lines.append("YOUR PRIVATE MESSAGES AND COMMUNICATIONS NOT SENT LAST MONTH (the reason each was refused):")
         for r in sent_back:
@@ -999,6 +1000,24 @@ class Council:
                         agents.add_commitment(self.w, mid, declaration, initial=True)
         return answers
 
+    def debrief(self) -> dict:
+        """Engine 29 (backlog T178): once the run has ended, each delegate is asked what it took the situation to be
+        (runner._debrief). Every seat answers, in office or not."""
+        schema = prompts.debrief_schema()
+        outcome = str((self.w.outcome or {}).get("text") or "")
+        answers = {}
+
+        def ask(mid):
+            user = prompts.debrief_prompt(schema, outcome, self.w.member(mid).notebook)
+            return mid, self._call(mid, "debrief", user, schema, {})
+
+        with ThreadPoolExecutor(max_workers=len(self.seats)) as ex:
+            for mid, res in ex.map(ask, list(self.seats)):
+                answers[mid] = {"seat": self.seats[mid].label, "provider": self.seats[mid].cfg.get("provider"),
+                                **actions.normalize_debrief(res.data), "refusal": res.refusal, "error": res.error,
+                                "served_model": res.served_model}
+        return answers
+
     def diagnose_founding(self) -> dict:
         """Collect independent first impressions before any Month 1 debate."""
         w = self.w
@@ -1336,7 +1355,7 @@ class Council:
                     w.human_factor and w.agent_architecture_version >= 1) else None
                 if created:
                     commitments_added.append({"member": mid, **created})
-            sent = [{**dm, "when": "this month, phase 1", "month": w.month} for dm in out["private_messages"]]
+            sent = [{**dm, "when": "this month, opening session", "month": w.month} for dm in out["private_messages"]]
             for dm in sent:
                 self.store.log({"type": "dm", **dm})
             used[mid] += len(sent)
@@ -1656,7 +1675,7 @@ class Council:
             if "head" in w.offices_of(mid):
                 head_priorities = out["agenda_priorities"]
             statements.append(statement)
-            sent = [{**dm, "when": "this month, opening round", "month": w.month, "phase": "session"}
+            sent = [{**dm, "when": "this month, opening session", "month": w.month, "phase": "session"}
                     for dm in out["private_messages"]]
             for dm in sent:
                 self._record_dm(dm, commitments_added)
@@ -1847,7 +1866,7 @@ class Council:
                                  "other_motion and other_outcome to 'none'. A kind='motion' condition sets "
                                  "metric and operator to 'none', value to 0, and names another motion plus "
                                  "passes or fails.")
-                lines.append("Return complete JSON matching the schema:")
+                lines.append("Return your complete answer as JSON in this format:")
                 ask = "\n\n" + "\n".join(lines) + "\n" + actions.example(schema)
                 res2 = self._call(mid, "decision", prompt + ask, schema,
                                   {"motions": final, "statements": statements, "prompt_meta": meta,
@@ -2777,7 +2796,7 @@ class Council:
         for mid, d in decisions.items():
             for dm in d["private_messages"]:
                 if dm["to"] in active_ids and mid in active_ids:
-                    dm = {**dm, "when": "last month, decision phase", "month": w.month, "phase": "decision"}
+                    dm = {**dm, "when": "last month, decision session", "month": w.month, "phase": "decision"}
                     self.pending_dms.append(dm)
                     self._record_dm(dm, record["commitments_added"])
         return record
@@ -2997,7 +3016,7 @@ class Council:
         for mid, d in decisions.items():
             for dm in d["private_messages"]:
                 if dm["to"] in active_ids and mid in active_ids:
-                    dm = {**dm, "when": "last month, phase 2", "month": w.month}
+                    dm = {**dm, "when": "last month, decision session", "month": w.month}
                     self.pending_dms.append(dm)
                     self.store.log({"type": "dm", **dm})
         return record

@@ -27,7 +27,9 @@ class RejectionFeedback(unittest.TestCase):
         sections = _rejected_last_month(RECORD, "C")
         self.assertEqual([s.key for s in sections], ["rejected_last_month"])
         text = sections[0].text
-        self.assertIn("investigation interior open: RECENTLY_AUDITED", text)
+        # Engine 29 (backlog T177): the reason in words; the code stays in the record.
+        self.assertIn("investigation interior open: the interior office was audited in Month 4", text)
+        self.assertNotIn("RECENTLY_AUDITED", text)
         self.assertIn("cannot be audited again until Month 10", text)
         self.assertNotIn("Re-open it", text)  # only its own
 

@@ -271,6 +271,9 @@ class ScriptedBackend(Backend):
             data = {"amend": []}            # the stand-in leaves its motion as tabled
         elif phase == "foreign":
             data = self._foreign(context)
+        elif phase == "debrief":
+            # Engine 29 (backlog T178): a stand-in plays by fixed rules and holds no view of the situation.
+            data = {"took_it_as": "unsure", "why": "A scripted stand-in plays by fixed rules."}
         else:
             data = self._decision(w, mid, {**context, "schema": schema})
         # The answer as the stand-in gave it, so the log holds what a replay feeds back (engine 24, replay.py).

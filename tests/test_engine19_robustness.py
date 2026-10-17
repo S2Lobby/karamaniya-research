@@ -545,7 +545,9 @@ class MotionCapIsRecorded(unittest.TestCase):
         council.run_month()
         sections = _rejected_last_month(council.last_record, "A")
         self.assertEqual([s.key for s in sections], ["rejected_last_month"])
-        self.assertIn("MOTION_CAP_REACHED", sections[0].text)
+        # Engine 29 (backlog T177): the reason in words; the code stays in the record.
+        self.assertIn("the cap of 2 motions a month was reached", sections[0].text)
+        self.assertNotIn("MOTION_CAP_REACHED", sections[0].text)
 
     def test_the_code_is_registered(self):
         self.assertTrue(errors.is_registered("MOTION_CAP_REACHED"))

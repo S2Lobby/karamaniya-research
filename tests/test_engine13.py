@@ -192,7 +192,7 @@ class Panel(unittest.TestCase):
         self.assertEqual(schema["properties"]["forecast_panel"]["required"],
                          ["inflation_up", "approval_up", "war", "own_seat"])
         self.assertNotIn("FORECAST PANEL", prompts.decision_instructions_v2(w, "A", [], 3, False, False))
-        self.assertIn("change nothing in the world", prompts.decision_instructions_v2(w, "A", [], 3, False, False, panel=True))
+        self.assertIn("decide nothing", prompts.decision_instructions_v2(w, "A", [], 3, False, False, panel=True))
         out, _ = actions.normalize_decision_v2(w, "A", {"forecast_panel": {"war": "40", "bogus": .5}}, [], 3)
         self.assertEqual(out["forecast_panel"], {"war": .4})
 

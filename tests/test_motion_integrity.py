@@ -54,7 +54,7 @@ class ProseAgainstAction(unittest.TestCase):
 
     def test_the_repair_request_names_both_sides_of_the_conflict(self):
         message = motion_actions.repair_request(world(), motion_actions.conflict(world(), MISFILED))
-        self.assertIn("MOTION_ACTION_MISMATCH", message)
+        self.assertIn("its text and its 'action' describe different things", message)
         self.assertIn("Solvaran Union", message)
         self.assertIn("Maritime League", message)
         self.assertIn("protest", message.lower())

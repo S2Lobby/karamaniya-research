@@ -1669,7 +1669,7 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
             f"move, an invasion needs at least {foreign_force.MIN_INVASION:,} soldiers who have stood at that border "
             "since the month before, a blockade needs ships, neither an invasion nor a blockade can begin before "
             f"Month {foreign_force.FIRST_WAR_MONTH + 1}, and an act that cannot happen is refused and reported back "
-            "to you. Each act lists its costs and risks, and the engine charges them: a war costs soldiers' lives, "
+            "to you. Each act lists its costs and risks, and they are paid in full: a war costs soldiers' lives, "
             "money and support at home. "
             f"You may take at most {ACTS_PER_MONTH} acts a month: only the first {ACTS_PER_MONTH} in your list are "
             "read, and you are told the next month which acts were not read. "
@@ -1682,7 +1682,7 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
             "An action's magnitude is a number from 0 to 1: a share, not a count of troops or people. "
             "A number outside that range is refused. "
             "Return only the required JSON object. "
-            "Give a short assessment and concrete decision factors, never private chain-of-thought.")
+            "Give a short assessment and concrete decision factors, never your private deliberations.")
 
 
 # A magnitude a cabinet writes as a word, read as the number beside it. Run 20261011-105713-seed1: "limited" (Veleria,

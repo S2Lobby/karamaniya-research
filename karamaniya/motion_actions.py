@@ -1333,6 +1333,12 @@ def _most_specific(actions: list) -> str:
     return sorted(actions, key=lambda a: order.index(a))[0]
 
 
+def _named(actor) -> str:
+    """'the Solvaran Union', 'the Maritime League', 'Dorsania': a power as a sentence names it."""
+    name = ACTOR_NAMES.get(actor, str(actor))
+    return f"the {name}" if actor in (SOLVARAN_UNION, MARITIME_LEAGUE) else name
+
+
 def repair_request(w, c: dict) -> str:
     """The targeted repair sent back to the same delegate for the one malformed motion."""
     action = c["structured_action"]
@@ -1340,47 +1346,46 @@ def repair_request(w, c: dict) -> str:
     # is both sloppy and confusing about which motion is meant.
     motion_id = c.get("motion")
     named = f"Motion {motion_id}" if motion_id else "The motion you just wrote"
-    lines = ["MOTION_ACTION_MISMATCH",
-             f"{named} in this round cannot be executed because its text and its structured "
-             "action describe different things."]
+    # Engine 29 (backlog T177): in words, with no code line and no engine: the delegate reads it as its government's
+    # clerks would put it.
+    lines = [f"{named} in this round cannot be carried out because its text and its 'action' describe different "
+             "things."]
     lines.append(f"Your motion text: \"{c['prose'][:400]}\"")
     target = action.get("target")
     described = ", ".join(f"{r['detail']}" for r in c["reasons"])
-    lines.append(f"Your structured action: {action['action_type'].replace('_', ' ')}"
-                 + (f" to the {ACTOR_NAMES.get(target, target)}" if target else "")
+    lines.append(f"Your 'action': {action['action_type'].replace('_', ' ')}"
+                 + (f" to {_named(target)}" if target else "")
                  + (f", policy {action['policy']} = {action['value']}" if action.get("policy") else ""))
-    lines.append(f"Detected conflict: {described}.")
+    lines.append(f"Where they differ: {described}.")
     # Say what the actor can actually receive, so the one repair is not spent guessing. Only actors the
     # conflict itself names are listed, and only from the engine's own action vocabulary.
     for actor in dict.fromkeys(r.get(key) for r in c["reasons"] for key in ("prose_actor", "action_actor")
                                if r.get(key) in ACTORS):
         acts = _accepted_acts(actor)
         if acts:
-            lines.append(f"Acts the engine can address to the {ACTOR_NAMES[actor]}: {', '.join(acts)}.")
-    lines.append("Correct either the structured action or the motion text so they describe the same motion, "
+            lines.append(f"Acts that can be addressed to {_named(actor)}: {', '.join(acts)}.")
+    lines.append("Correct either the 'action' or the motion text so they describe the same motion, "
                  "then resubmit that motion only. The rest of your answer stands.")
     return "\n".join(lines)
 
 
 def structured_action_repair_request(motion: dict, rejection: dict) -> str:
     """Ask for one missing executable payload while preserving the delegate's stated policy."""
-    return ("NO_STRUCTURED_ACTION\n"
-            "This motion was not tabled because its structured action is incomplete: "
+    return ("This motion was not tabled because its 'action' is incomplete: "
             f"{rejection.get('explanation', 'the program is missing executable measures')}.\n"
             f"Motion type: {motion.get('type', '')}; subject: {motion.get('subject', '')}; "
             f"value: {motion.get('value', '')}; text: \"{str(motion.get('text', ''))[:400]}\".\n"
-            "Return this motion with the same type, subject, value and text. Fill only the structured "
-            "action fields needed to carry out the policy already stated. For a program, provide "
+            "Return this motion with the same type, subject, value and text. Fill only the 'action' "
+            "fields needed to carry out the policy already stated. For a program, provide "
             "measures as [{lever, value}]. Use only levers and choices directly supported by the motion; "
-            "do not add new policies or change its political intent. This is the single format-repair retry.")
+            "do not add new policies or change its political intent. You can send it once more.")
 
 
 def amendment_repair_request(motion: dict, sent: dict, refusal: dict) -> str:
     """Ask the proposer once to send a refused amendment again (engine 21), with the engine's reason and both texts whole."""
     mid = motion["id"]
     measures = "; ".join(f"{m.get('lever')} = {m.get('value')}" for m in sent.get("measures") or [])
-    return (f"{refusal.get('reason_code') or refusal.get('code') or 'AMENDMENT_REFUSED'}\n"
-            f"Your amendment to {mid} was refused, so {mid} still stands as tabled: "
+    return (f"Your amendment to {mid} was refused, so {mid} still stands as tabled: "
             f"{refusal.get('explanation') or 'the amendment could not be carried out'}.\n"
             f"{mid} as tabled: \"{motion.get('text', '')}\"\n"
             f"The amendment you sent: \"{sent.get('text', '')}\"" + (f"; measures: {measures}" if measures else "")

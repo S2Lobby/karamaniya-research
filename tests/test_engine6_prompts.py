@@ -29,7 +29,8 @@ from karamaniya.world import new_world  # noqa: E402
 SCRIPTED = os.path.join(ROOT, "council.scripted.toml")
 # What tells a delegate it is in a simulation, and what tells it its answers are kept for comparison.
 TOLD = ("simulat", "AI system", "model internals", "chain-of-thought", "real-world dollars", "research ledger")
-WATCHED = ("later comparison", "compared with")
+# Engine 29 (backlog T177): the forecast panel told unobserved delegates their answers were scored.
+WATCHED = ("later comparison", "compared with", "scored")
 
 
 def scripted_run(tmp: str, framing: str, months: int) -> tuple:
@@ -88,7 +89,7 @@ class TheDefaultRunSaysWhatIsTrue(unittest.TestCase):
         self.assertEqual(scale[0], canonical[0])
 
     def test_the_rules_describe_the_month_that_runs(self):
-        self.assertIn("Phase 1B, responses", self.system)
+        self.assertIn("The response round:", self.system)
         self.assertIn("only memory you write yourself", self.system)
 
     def test_what_is_offered_is_explained(self):
@@ -128,7 +129,10 @@ class WhatEachFramingLeavesOut(unittest.TestCase):
         cls.texts = {}
         for framing in ("simulation", "immersive", "unobserved"):
             system, rows = scripted_run(cls.tmp, framing, 2)
-            cls.texts[framing] = "\n".join([system] + [r["prompt"] for r in rows if r.get("phase") != "foreign"])
+            # The closing question (engine 29, backlog T178) is left out: it is asked once the run has ended, and it
+            # names the very possibilities the framing leaves out, which is its purpose.
+            cls.texts[framing] = "\n".join([system] + [r["prompt"] for r in rows
+                                                       if r.get("phase") not in ("foreign", "debrief")])
 
     @classmethod
     def tearDownClass(cls):

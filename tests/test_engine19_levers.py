@@ -222,7 +222,9 @@ class ValuesOutsideTheirRangeAreRefusedNotClamped(unittest.TestCase):
         record = {"rejected_motions": [{"member": "A", "motion": {"type": "set_policy", "subject": "military",
                                                                   "value": "0.8", "text": mo["text"]}, **detail}]}
         text = _rejected_last_month(record, "A")[0].text
-        self.assertIn("VALUE_OUT_OF_RANGE", text)
+        # Engine 29 (backlog T177): the author reads the reason in words; the code is the record's.
+        self.assertIn("outside the range this setting takes", text)
+        self.assertNotIn("VALUE_OUT_OF_RANGE", text)
         self.assertIn("0.5% to 20%", text)
 
 

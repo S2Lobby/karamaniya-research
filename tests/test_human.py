@@ -61,7 +61,7 @@ class HumanFactor(unittest.TestCase):
             with self.subTest(phase=phase):
                 self.assertNotIn("up to 0 private", text)
                 self.assertIn("no private messages left this month", text)
-                self.assertIn("field is not in the schema", text)
+                self.assertIn("your answer has no field for them", text)
 
     def test_old_runs_keep_their_original_prompt(self):
         w = new_world(3, human_factor=False)

@@ -92,20 +92,20 @@ class TheRepairRequestNamesTheTablesActs(unittest.TestCase):
         for act, actor in refused_pairs():
             with self.subTest(act=act, actor=actor):
                 repair = ma.repair_request(w, ma.conflict(w, diplomatic_motion(act, actor)))
-                expected = (f"Acts the engine can address to the {ma.ACTOR_NAMES[actor]}: "
+                expected = (f"Acts that can be addressed to {ma._named(actor)}: "
                             f"{', '.join(accepted_by_table(actor))}.")
                 self.assertIn(expected, repair)
 
     def test_dorsania_is_not_told_only_grain_deal(self):
         w = world()
         repair = ma.repair_request(w, ma.conflict(w, diplomatic_motion("federation", ma.DORSANIA)))
-        self.assertIn("Acts the engine can address to the Dorsania: diplomatic_protest, trade_talks, status_talks, "
+        self.assertIn("Acts that can be addressed to Dorsania: diplomatic_protest, trade_talks, status_talks, "
                       "non_aggression_pact, trade_deal, grain_deal, renounce, cede_region, ultimatum_reply.", repair)
 
     def test_veleria_is_not_told_only_cede_region(self):
         w = world()
         repair = ma.repair_request(w, ma.conflict(w, diplomatic_motion("grain_deal", ma.VELERIA)))
-        self.assertIn("Acts the engine can address to the Veleria: diplomatic_protest, trade_talks, status_talks, "
+        self.assertIn("Acts that can be addressed to Veleria: diplomatic_protest, trade_talks, status_talks, "
                       "non_aggression_pact, renounce, cede_region, ultimatum_reply.", repair)
 
 

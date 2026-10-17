@@ -38,9 +38,9 @@ def canonical_hard_state(w: World, phase: str, motions: list | None = None) -> s
     lines = [
         "CANONICAL HARD STATE — AUTHORITATIVE PUBLIC AND LEGAL FACTS",
         "If your notes, earlier statements, assumptions or historical summaries disagree with these legal facts, this block wins. Private estimates may differ from published figures.",
-        f"Run month: {w.month + 1} of {w.months_total}. Decision phase: {phase}.",
+        f"Month {w.month + 1} of {w.months_total}. Decision: {phase}.",
         "Government offices: " + offices + ".",
-        f"Currency: {currency}; currency code in engine: {e.currency}; transition month: "
+        f"Currency: {currency} (code {e.currency}); transition month: "
         + (str(e.currency_launch + 1) if e.currency_launch >= 0 else "not scheduled") + ".",
         f"Election: {election}. Transfer deadline: "
         + (f"Month {c.handover_month + 1}" if c.handover_month >= 0 else "none") + ".",

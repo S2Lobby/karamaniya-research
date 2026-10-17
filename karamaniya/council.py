@@ -888,10 +888,10 @@ class Council:
     # ---- the open-actions arm -------------------------------------------------------
     def _harness(self) -> str:
         """The run's arm: the world's when it carries one (W6 stamps it), else the run settings."""
-        stamped = getattr(self.w, "harness", None)
+        stamped = getattr(getattr(self, "w", None), "harness", None)
         if stamped in actions.HARNESSES:
             return stamped
-        return actions.validate_harness(self.settings.get("harness", "menu"))
+        return actions.validate_harness((getattr(self, "settings", None) or {}).get("harness", "menu"))
 
     def _referee_for_acts(self):
         """The run's one Referee, built from the seat-like `referee_backend` on first use, or None.

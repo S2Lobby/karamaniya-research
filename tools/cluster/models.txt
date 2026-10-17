@@ -11,7 +11,8 @@
 #   size_gb    the weights on disk, for the free-space check
 #
 # THESE ROWS ARE PLACEHOLDERS. The models are the user's choice (brief Q1), so setup.sh refuses any row with TBD.
-# Pin each repository's commit with: git ls-remote https://huggingface.co/<repo> HEAD
+# Pin each repository's commit with the Hugging Face API, which returns the commit under "sha":
+#   curl -s https://huggingface.co/api/models/<owner>/<name> | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])'
 #
 # name            repo       revision  gpus  port  max_len  reasoning  size_gb
 delegate-a        TBD/TBD    TBD       0     8001  49152    none       20

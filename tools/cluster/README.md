@@ -23,6 +23,26 @@ The last section says what is verified and what is not. Read it before you spend
    no defaults, on purpose. A Month-36 election can extend a run by up to four months, so plan for 40.
 4. **Thinking or not.** The estimate in step 1 shows both. Thinking traces are much slower.
 
+## Why vLLM, not Ollama
+
+The study needs many long prompts at once: 50 trajectories, 9-25k input tokens a call, one server per model. I compared
+the two on what their own sources state, and picked vLLM.
+
+- **Memory.** Ollama's default is one parallel request per model (`OLLAMA_NUM_PARALLEL`, from its config source). Its
+  FAQ says the memory it reserves scales with the parallel slots times the context length, so fifty slots at a 40k
+  context reserve far more than a card holds. vLLM's README says it manages attention memory with PagedAttention, so
+  the room goes to the tokens in use.
+- **Batching.** vLLM's README lists continuous batching, chunked prefill and prefix caching. The flags the kit uses
+  exist in vLLM 0.31.0: `--max-num-seqs`, `--enable-prefix-caching`, `--reasoning-parser`.
+- **Weights.** vLLM loads the Hugging Face weights at a pinned commit, which is the artefact a paper cites. Ollama pulls
+  its own builds by tag.
+- **The engine.** The existing ollama backend sizes prompts from `num_ctx` (12,288 by default), so long study prompts
+  would be trimmed. The openai_compat backend has no such limit and needs no change.
+- **The cost of the choice.** A heavier install (CUDA wheels, 16-20 GB of weights per model) and a fast-moving version,
+  so the version is pinned in `setup.sh` and recorded in the manifest.
+
+Nothing was measured on either. The rehearsal (step 3) measures vLLM on the box.
+
 ## Step 1: estimate the time and cost
 
     python tools/cluster/estimate.py
@@ -159,7 +179,8 @@ Nothing on the box is precious until it is on your machine. Make the copies as y
    `no-pty,no-port-forwarding`). Put only the private key on the box.
 2. Your machine must accept SSH from the instance. On Windows, enable the OpenSSH server (Optional Features). The
    instance's address changes with each rental, so you may need a relay on a server you control, or a reverse tunnel.
-3. Start the sync before the run (or set `SYNC_DEST` and `SYNC_KEY`, and `launch.sh` starts it for you):
+3. Start the sync before the run (or set `SYNC_DEST` and `SYNC_KEY`, and `launch.sh` starts it for you). The key path
+   must contain no spaces, because rsync splits the ssh command itself:
 
        SYNC_DEST=you@your-host:/path/to/studies SYNC_KEY=~/kara_sync bash tools/cluster/sync.sh ~/studies/s1 &
 
@@ -237,6 +258,9 @@ Nothing on the box is precious until it is on your machine. Make the copies as y
   and 1792 GB/s (NVIDIA's page); RTX 4090 at 24 GB (NVIDIA's page).
 - The study runner: `plan` writes 50 rows (run in a scratch copy), and `run --dry-run` refuses this base commit with
   exit code 2, because the commit lacks the two options.
+- The commands the kit runs: `vllm serve [model_tag] [options]` (vLLM 0.31.0's serve entrypoint);
+  `snapshot_download(repo_id=, revision=, local_dir=)` (huggingface_hub's source); `rsync --mkpath` (rsync's NEWS: added
+  in 3.2.3).
 - `estimate.py`, `bench.py` and the seat block: 33 tests pass, the seat block is accepted by the engine's config code,
   and it builds an `openai_compat` backend on 127.0.0.1 with no key.
 - `setup.sh`, `launch.sh` and `sync.sh`: syntax checked. Their refusal paths were run here, and they created nothing.
@@ -246,7 +270,7 @@ Nothing on the box is precious until it is on your machine. Make the copies as y
 - Everything on a box: the package install, the download, vLLM starting, the health checks, the manifest, and the
   behaviour of `launch.sh` past its checks.
 - The throughput model: the efficiency factors `mfu` and `bw_eff` are assumptions, and the rehearsal replaces them.
-- The rsync behaviour: the excludes and `--mkpath` (rsync 3.2.3 or later), and a real copy over ssh.
+- The rsync behaviour: the `.env` excludes, and a real copy over ssh. (`--mkpath` is in rsync 3.2.3 and later, see below.)
 - The GPU specifications for the RTX PRO 6000 BF16 rate (500 TFLOPS, derived from NVIDIA's FP4 figure) and for the
   RTX 4090 bandwidth (1008 GB/s) and BF16 rate (165 TFLOPS, FP32 accumulate). These are marked UNVERIFIED in
   `estimate.py`.

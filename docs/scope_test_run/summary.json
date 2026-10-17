@@ -1,0 +1,92 @@
+{
+ "study": "opinion_diffusion",
+ "socioverse_root": "C:\\Users\\litle\\Karamaniya\\karamaniya-test\\_vendor\\SocioVerse2",
+ "socioverse_version": "0.2.0",
+ "llm": "stub",
+ "model": "stub",
+ "stub": true,
+ "stub_mix": {
+  "valid_json": 60,
+  "bare_float": 15,
+  "unparsed_reply": 15,
+  "empty_reply": 5,
+  "call_error": 5
+ },
+ "stub_duckdb": true,
+ "storage": "in-memory store; panel rows built by SocioVerse2's build_panel_rows",
+ "steps": 4,
+ "seed": 42,
+ "agents": 12,
+ "prompt_lang": "zh",
+ "decisions": 48,
+ "counts": {
+  "valid_json": 37,
+  "bare_float": 4,
+  "unparsed_reply": 3,
+  "empty_reply": 3,
+  "call_error": 1
+ },
+ "other_sources": {},
+ "fallbacks": 7,
+ "fallback_share": 0.1458,
+ "quiet_replacements": 3,
+ "quiet_replacement_share": 0.0625,
+ "quiet_share_of_model_answers": 0.0682,
+ "model_answers": 44,
+ "lenient_parses": 4,
+ "lenient_parse_share": 0.0833,
+ "fallback_matches_rule": 7,
+ "fallback_rule_disagreements": 0,
+ "panel_fields": [
+  "action_kind",
+  "action_payload",
+  "agent_id",
+  "state",
+  "step"
+ ],
+ "panel_payload_fields": [
+  "opinion"
+ ],
+ "source_in_panel": false,
+ "panel_rows": 60,
+ "metrics": [
+  {
+   "mean_opinion": 0.5,
+   "opinion_std": 0.2877,
+   "frac_above_0_5": 0.5,
+   "step": 0
+  },
+  {
+   "mean_opinion": 0.5176,
+   "opinion_std": 0.285,
+   "frac_above_0_5": 0.5,
+   "step": 1
+  },
+  {
+   "mean_opinion": 0.5228,
+   "opinion_std": 0.2558,
+   "frac_above_0_5": 0.5,
+   "step": 2,
+   "events": "media pressure ramps up at the campaign step"
+  },
+  {
+   "mean_opinion": 0.5469,
+   "opinion_std": 0.2316,
+   "frac_above_0_5": 0.5,
+   "step": 3
+  },
+  {
+   "mean_opinion": 0.5688,
+   "opinion_std": 0.2192,
+   "frac_above_0_5": 0.5833,
+   "step": 4
+  }
+ ],
+ "examples": {
+  "unparsed_reply": "I remain undecided; the neighbours do not move me enough to give a figure.",
+  "valid_json": "{\"opinion\": 0.165, \"reason\": \"stub reply 54\"}",
+  "empty_reply": "",
+  "bare_float": "I heard the neighbours and would put myself near 0.092, though not firmly.",
+  "call_error": "[StubTransportError: simulated transport failure]"
+ }
+}

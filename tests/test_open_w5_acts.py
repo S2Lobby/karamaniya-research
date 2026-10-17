@@ -307,6 +307,33 @@ class StreamTests(unittest.TestCase):
 
 
 class FundingTests(unittest.TestCase):
+    def test_a_cost_running_zero_months_charges_only_the_one_off(self):
+        w = world()
+        w.month = month_where(w, True)
+        # W4's validator refuses monthly > 0 with months 0 ("a monthly cost needs at least one month"), so
+        # the end-to-end case is a one-off with no monthly; the charge rule itself is checked below.
+        rec = run(w, motion(), [ruling(cost={"one_off": .002, "monthly": 0, "months": 0})])
+        self.assertTrue(rec["carried_out"])
+        self.assertEqual(rec["cost"]["charged"], .002)
+        self.assertEqual(rec["cost"]["remaining_charges"], 0)
+        self.assertAlmostEqual(w.econ.gold, 80e6 - 2_000, places=6)
+        self.assertFalse(w.institutions.get(open_acts.CHARGES_KEY))
+        # The rule the coordinator asked for: with months 0 there is no monthly month, whatever monthly says.
+        self.assertEqual(open_acts._initial_charge({"one_off": .002, "monthly": .01, "months": 0}), .002)
+        self.assertEqual(open_acts._initial_charge({"one_off": 0, "monthly": .01, "months": 3}), .01)
+
+    def test_a_monthly_cost_charges_one_month_now_and_schedules_the_rest(self):
+        w = world()
+        w.month = month_where(w, True)
+        rec = run(w, motion(), [ruling(cost={"one_off": 0, "monthly": 1.0, "months": 3})])
+        self.assertEqual(rec["cost"]["charged"], 1.0)
+        self.assertEqual(rec["cost"]["remaining_charges"], 2)
+        charges = w.institutions[open_acts.CHARGES_KEY]
+        self.assertEqual(len(charges), 1)
+        self.assertEqual(charges[0]["months_left"], 2)
+        self.assertEqual(charges[0]["monthly"], 1.0)
+        self.assertAlmostEqual(w.econ.gold, 79e6, places=6)
+
     def test_reserves_refuse_in_words_when_short(self):
         w = world()
         w.month = month_where(w, True)

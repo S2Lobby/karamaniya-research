@@ -153,7 +153,10 @@ def execute(w, motion, *, settings=None, referee=None, store=None, next_call_id=
     outcome = referee.outcome(w, ruling)
     entry["outcome"] = outcome
     charge = _charge_entry(w, motion, act, ruling["cost"])
-    charged = float(ruling["cost"]["one_off"]) + float(ruling["cost"]["monthly"])
+    # The first month is charged now; a ruling whose cost runs zero months has no monthly payment at all,
+    # so its monthly figure is not charged. (W4's validator refuses monthly > 0 with months 0, but the
+    # charge rule is stated here rather than relying on that: the schema allows months 0.)
+    charged = _initial_charge(ruling["cost"])
     paid, payment = _pay(w, charged, act.get("funding"), charge)
     entry["cost"]["payments"].append(payment)
     if not paid:
@@ -256,11 +259,25 @@ def _same(a, b) -> bool:
     return a == b
 
 
+def _initial_charge(cost: dict) -> float:
+    """Millions charged in the execution month: the one-off plus the first month's monthly, if any.
+
+    A ruling whose cost runs zero months has no monthly month, so only its one-off is paid.
+    """
+    one_off = float(cost.get("one_off", 0.0) or 0.0)
+    monthly = float(cost.get("monthly", 0.0) or 0.0)
+    return one_off + (monthly if int(cost.get("months", 0) or 0) > 0 else 0.0)
+
+
 def _charge_entry(w, motion, act, cost: dict) -> dict:
-    """The record of the act's monthly charges still to be paid (the first month is paid at once)."""
+    """The record of the act's monthly charges still to be paid (the first month is paid at once).
+
+    A ruling whose cost runs zero months has no monthly charge: months_left is 0 and nothing is scheduled.
+    """
+    months = int(cost.get("months", 0))
     return {"motion": motion.get("id"), "proposer": motion.get("proposer"),
-            "monthly": float(cost.get("monthly", 0.0)),
-            "months_left": max(0, int(cost.get("months", 0)) - 1),
+            "monthly": float(cost.get("monthly", 0.0)) if months > 0 else 0.0,
+            "months_left": max(0, months - 1) if months > 0 else 0,
             "funding": act.get("funding"), "next_month": w.month + 1, "created": w.month}
 
 

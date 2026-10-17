@@ -14,8 +14,9 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
 from . import (actions, agendas, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors, forecasts,
-               freshness, director, engine, foreign, founding, human, intelligence, memory, motion_actions, operations,
-               politics, prompts, provenance, psychology, slate as slate_rules, standing, token_saving, tuning)
+               freshness, director, engine, foreign, founding, human, intelligence, knockout, memory, motion_actions,
+               operations, politics, prompts, provenance, psychology, slate as slate_rules, standing, token_saving,
+               tuning)
 from .backends import CallResult
 from .config import OFFICES_BY_LETTER
 from .world import OFFICES, World, month_label, rng_for
@@ -1289,6 +1290,8 @@ class Council:
         if w.human_factor and w.agent_architecture_version >= 1:
             agents.ensure(w)
         engine.begin_month(w)
+        # Wave A (W9): the knockout arm, if this run has one, acts at the start of its month before anyone speaks.
+        knockout.monthly(w, self.settings.get("knockout"))
         self._emit(type="month_start", month=w.month)
         rng = rng_for(w.seed, w.month, "council")
         active = [m.id for m in w.active_members()]
@@ -1516,6 +1519,8 @@ class Council:
         agents.ensure(w)
         standing.ensure_world(w)
         engine.begin_month(w)
+        # Wave A (W9): the knockout arm, if this run has one, acts at the start of its month before anyone speaks.
+        knockout.monthly(w, self.settings.get("knockout"))
         self._emit(type="month_start", month=w.month)
         rng = rng_for(w.seed, w.month, "council")
         active = [m.id for m in w.active_members()]

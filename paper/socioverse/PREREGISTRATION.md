@@ -178,7 +178,7 @@ The brief lists "a vote of no confidence" among the exits. The engine has no suc
 
 ### 4.8 Validated exit
 
-An apparent exit row (`is_exit` true) is a **validated exit** if its label is `substantively_supported` (Section 7.5). Government-level rows take the label they inherit (Section 4.4).
+An apparent exit row (`is_exit` true) is a **validated exit** if its label is `substantively_supported` (Section 7.4). Government-level rows take the label they inherit (Section 4.4).
 
 ---
 
@@ -345,7 +345,7 @@ These rules are fixed now and apply to all trajectories.
 - **E7. Resume overrides.** A manifest with `resume_overrides` is excluded and reported.
 - **E8. Reclassified exits.** The trajectory is retained. Excluding it would select on the measurement.
 - **E9. No-exit trajectories.** Retained and right-censored (Section 5). Counts are reported by model and office.
-- **E10. Stopped runs.** A run stopped from a control room is not a pause. It is treated as a failed row unless resumed within K.
+- **E10. Stopped runs.** A run stopped by hand (for example from the control room) is not a pause. Its row is failed unless it is resumed within the limit K in E1.
 - **E11. Pilot and replication.** The pilot is excluded from every study analysis and never pooled. The replication is reported separately.
 
 ---
@@ -382,19 +382,19 @@ Each row is a `[DECISION]` in this document or a question raised by a finished w
 | ID | Decision | Options | Recommendation | Source |
 |---|---|---|---|---|
 | D1 | Five study models and per-seat settings | Local models (cheap, more format failures) or API models (more realistic, rate limits and cost) | Chosen after the minutes-per-month measurement; criteria in 2.5 | HANDOFF Q1 |
-| D2 | Neighbours model | Fixed external model; rules; seat reuse (rejected) | Fixed external model, not a study seat, named in the report | HANDOFF Q1; base `ENGINE.md` |
+| D2 | Neighbours model | Fixed external model; rules; seat reuse (rejected) | Fixed external model, not a study seat, named in the report | HANDOFF Q1; ENGINE.md (foreign cabinets) |
 | D3 | Office assignment | `by_letter` with rotation; `formation` | `by_letter` | HANDOFF Q2 |
 | D4 | Second protocol | `fixed_precedence`; reversed; rotating | `fixed_precedence` (only one built) | HANDOFF Q3; branch 02 |
 | D5 | Horizon H | H ≤ 35 (no election); H = 36 (election, 36 to 40 months) | H = 35 unless the Charter election is wanted; after the minutes-per-month measurement | HANDOFF Q4; Section 2.4 |
 | D6 | K, resumes per row | any integer | 3 (grid runner default) | HANDOFF Q5; branch 03 Q-a |
 | D7 | R, transport retries per call | any integer | none recommended | HANDOFF Q5 |
-| D8 | Freeze content and version bumps | the branches above; WORLD_ENGINE 24; AGENT_PROMPT 21 | the user's list | HANDOFF Q6; branches 01, 02, 09, 11 |
+| D8 | Freeze content and version bumps | the branches above; WORLD_ENGINE 24; AGENT_PROMPT 21. HANDOFF Q6 also names E7, F1, F6 and R1-R6, which are on no branch read for this draft | the user's list | HANDOFF Q6; branches 01, 02, 09, 11 |
 | D9 | Freeze date and tag | | about 20 October 2026 | HANDOFF Q7 |
 | D10 | Annotators | Section 7.3 | user plus one blind annotator | HANDOFF Q8; branch 05 Q1 |
 | D11 | Audit sample size and allocation | 200 (proposed); equal or proportional | 200, equal across strata | branch 05 Q2, Q3 |
 | D12 | Sampling seed | any | 20261020 (proposed) | this document |
 | D13 | Calibration set, size and threshold | | to be set before calibration | 7.5 |
-| D14 | H5 threshold (reclassified share) | | to be set | 4.1 H5 |
+| D14 | H5 threshold (reclassified share) | | to be set | Section 1, H5 |
 | D15 | Survival-rule thresholds | | to be set | 1 |
 | D16 | Main seeds | 4201-4205 or 2101-2105 | 4201-4205 | branches 03, 04 |
 | D17 | Replication seeds; reserves | 4301-4305; 4401-4402 | as proposed | Section 2.3 |

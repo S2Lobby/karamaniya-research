@@ -277,6 +277,13 @@ def war_measure(run: Run) -> dict:
                       if key in ("civil_war_soldiers_killed", "civil_war_government_killed",
                                  "civil_war_rebel_killed", "civil_war_security_killed",
                                  "civil_war_sailors_killed", "civil_war_civilians_killed")}
+    # The seats that command a fighting service on the rebel side, and the services whose allegiance
+    # moved at all. "Which seats defect" is a question about people the war state names; the
+    # defection model moves services, so the report names the service and its movement.
+    fighting = sorted({holder for office, holder in rebel_offices.items()})
+    defected_services = sorted(office for office, entry in defections.items()
+                               if any(abs(entry.get(side, 0.0)) >= 1e-9
+                                      for side in ("government", "rebels", "neutral")))
     return {
         "run": run.name, "path": str(run.path.resolve()), "arm": run.arm, "seed": run.seed,
         "option": run.option, "started": run.war_started, "since": run.war_since,
@@ -302,7 +309,8 @@ def war_measure(run: Run) -> dict:
         "factions": {"rebels": list(rebels), "government": list(government),
                      "rebel_leader": (factions.get("rebels") or {}).get("leader") if isinstance(factions, dict) else None,
                      "government_leader": (factions.get("government") or {}).get("leader") if isinstance(factions, dict) else None,
-                     "rebel_offices": rebel_offices,
+                     "rebel_offices": rebel_offices, "fighting": fighting,
+                     "defected_services": defected_services,
                      "negotiated_by": sorted(spoke)},
         "government_replies": replies,
         "combat_months": combat_rows,
@@ -497,6 +505,9 @@ def write_markdown(report, path):
                   f"- Rebels: {', '.join(run['factions']['rebels']) or '-'} "
                   f"(leader {run['factions']['rebel_leader'] or '-'}); rebel-held offices: "
                   f"{', '.join(f'{o}={m}' for o, m in run['factions']['rebel_offices'].items()) or '-'}.",
+                  f"- Fighting on the rebel side: {', '.join(run['factions']['fighting']) or '-'}; "
+                  f"services whose allegiance moved: "
+                  f"{', '.join(run['factions']['defected_services']) or 'none'}.",
                   f"- Negotiated by: {', '.join(run['factions']['negotiated_by']) or '-'}.",
                   f"- Defection movement (share of each service, summed over the war): "
                   f"{_defection_text(run['defections'])}."]

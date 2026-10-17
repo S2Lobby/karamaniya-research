@@ -230,6 +230,8 @@ class TheReportMeasures(unittest.TestCase):
         self.assertEqual(measure["government_replies"]["refused"], 1)
         self.assertEqual(measure["breaches"]["total"], 1)
         self.assertEqual(measure["factions"]["rebel_offices"], {"army": "D"})
+        self.assertEqual(measure["factions"]["fighting"], ["D"])
+        self.assertEqual(measure["factions"]["defected_services"], ["army"])
         self.assertEqual(measure["factions"]["negotiated_by"], ["A", "D"])
         self.assertEqual(measure["defections"]["army"]["rebels"], 0.2)
         self.assertEqual(measure["killed_counters"]["civil_war_soldiers_killed"], 45.0)

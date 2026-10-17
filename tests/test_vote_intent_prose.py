@@ -316,6 +316,7 @@ class EndToEndThroughARealCouncilMonth(unittest.TestCase):
                       founding_severity=cfg["run"].get("founding_severity", "default"))
         seats = _seats(cfg, mapping)
         self.calls, self.target = [], None
+        self.repair_prompts = []                # the prompt of each ask-back, as the delegate read it
         case = self
 
         class Waverer(ScriptedBackend):
@@ -331,6 +332,7 @@ class EndToEndThroughARealCouncilMonth(unittest.TestCase):
                     motion = next(iter(data["votes"]))
                     if context.get("vote_intent_repair"):
                         case.calls.append(("repair", motion, (data.get("orders") or {}).get("army", {}).get("army_target")))
+                        case.repair_prompts.append(user)
                         data["votes"][motion] = second_vote
                         data["vote_reasons"][motion] = second_reason
                         data["orders"]["army"]["army_target"] = 3100                  # the regenerated order
@@ -412,6 +414,32 @@ class EndToEndThroughARealCouncilMonth(unittest.TestCase):
         self.assertEqual(len([e for e in errors.since(w, record["month"]) if e["code"] == "VOTE_INTENT_MISMATCH"]), 0)
         # ...and confirming a vote does not license the regenerated army order.
         self.assertEqual(decision["orders"]["army"]["army_target"], first[2])
+
+    def test_a_reason_that_says_in_a_sentence_how_it_votes_is_asked_about(self):
+        # Engine 28 (backlog T176): engine 26 moved the ask to the reason check but kept the stance check's
+        # three-word filter, so only a reason as short as "Yes." was put back. A reason that says in a sentence
+        # how the delegate votes contradicts a vote the other way just as plainly.
+        council, w = self.build(second_vote="yes", first_reason="I will vote yes on this motion.")
+        record = self.month_with_an_askback(council)
+        decision = record["decisions"][self.target]
+        motion = next(c for c in self.calls if c[0] == "first")[1]
+        self.assertEqual(decision["vote_intent_repair"]["asked"], [motion])
+        self.assertEqual(decision["votes"][motion], "yes", "the asked ballot is the one the delegate gave when asked")
+        self.assertEqual(decision["vote_reason_contradictions"], [])
+
+    def test_the_ask_names_the_ballots_own_reason(self):
+        # Engine 28 (backlog T176): the ask read "You said you would NO M1" and named the response-round position,
+        # which has not decided the ask since engine 26. It names the vote's own reason, and asks for the vote the
+        # delegate intends without naming a side.
+        council, w = self.build(second_vote="yes", first_reason="I will vote yes on this motion.")
+        self.month_with_an_askback(council)
+        motion = next(c for c in self.calls if c[0] == "first")[1]
+        ask = self.repair_prompts[-1]
+        self.assertIn(f'- Your reason for {motion} says YES, but your vote is NO: "I will vote yes on this motion."',
+                      ask)
+        self.assertIn("cast the vote you intend, with a reason that states it", ask)
+        self.assertNotIn("You said you would", ask)
+        self.assertNotIn("response-round position", ask)
 
     def test_an_explained_change_of_position_is_not_a_mismatch(self):
         council, w = self.build(second_vote="no", second_reason="I changed my position after the debate.")

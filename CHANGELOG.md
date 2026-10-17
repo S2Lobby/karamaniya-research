@@ -4,6 +4,24 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 28
+
+`WORLD_ENGINE` 28, `AGENT_PROMPT` 25 (psychology 8 and error taxonomy 6 unchanged): the ballot repair ask does what the
+engine 26 entry said it does (backlog T176). A default scripted run's prompts are unchanged (`tools/prompt_freeze.py`).
+
+- **Every ballot that contradicts its own reason is asked about.** Engine 26 moved the ask that puts a ballot back to
+  its delegate onto the reason check (T155), but kept the stance check's filter: a contradicting reason of three words
+  or more was not asked about. Only a reason as short as "No." was put back; a yes vote whose reason reads "I will vote
+  no on this motion." was recorded as VOTE_INTENT_MISMATCH and never asked. The filter was written for the stance
+  check, where a longer reason argued its way past a provisional response-round stance; a reason that states the other
+  verdict argues for it. Now every such ballot is asked about. The reason check flags none of the 1,517 recorded yes or
+  no ballots, so the ask stays rare.
+- **The ask names the vote's own reason.** Its text still named the response-round position, and with the reason check
+  it read "You said you would NO M2". It now reads "Your reason for M2 says NO, but your vote is YES" and asks the
+  delegate to cast the vote it intends, with a reason that states it, without saying which. A conditional vote whose
+  condition does not test what its reason refers to is asked about as before, under the same heading.
+- **The submission package is rebuilt** on this release (`docs/PACKAGING.md`).
+
 ## World engine 27
 
 `WORLD_ENGINE` 27, `AGENT_PROMPT` 24 (psychology 8 and error taxonomy 6): wave 3 — domestic state media,
@@ -86,6 +104,10 @@ neighbours' system prompts change (`tools/prompt_freeze.py`).
 - **The response round's schema allows one public communication.** The prompt asked for one and the reader kept one,
   while the schema allowed two (the second was refused with a note since engine 25; 211 came after the one the round
   reads in the recorded runs). An opening still allows two.
+
+As first published, this entry said the ballot repair ask fires whenever the ballot's own reason states the other
+verdict. Its code asked only when that reason was under three words, and the ask's text still named the response-round
+position; engine 28 fixes both (T176).
 
 ## World engine 25
 

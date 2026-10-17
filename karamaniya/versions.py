@@ -116,7 +116,11 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # kinds, and name the addressees of the six widened diplomacy pairs. A default scripted run's council prompts and
 # its neighbours' system prompts change (the motion list, the settings block, the communication list and the
 # cabinet system prompt); the prompt fixture is rewritten on purpose.
-AGENT_PROMPT = 24
+# 25 goes with world engine 28 (backlog T176). The ballot repair ask names the vote's own reason: "Your reason for
+# M2 says NO, but your vote is YES", and asks for the vote the delegate intends, with a reason that states it. Engine 26
+# moved the ask to the reason check (T155) but kept its old text, which named the response-round position and read
+# "You said you would NO M2". A default scripted run's prompts are unchanged.
+AGENT_PROMPT = 25
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose
@@ -319,7 +323,11 @@ PSYCHOLOGY = 8
 # talks to Veleria and Dorsania; trade talks to Veleria, the League and Dorsania; a trade deal to Dorsania) have
 # handlers, and `demand` and `warning` join the public communication kinds. See docs/PROPAGANDA_STATE.md,
 # docs/PROPAGANDA_UNION.md and docs/WIDER_DIPLOMACY.md.
-WORLD_ENGINE = 27
+# 28 (backlog T176): every ballot whose own reason states the other verdict is put back to its delegate. Engine 26
+# moved the ask to the reason check (T155) but kept the stance check's three-word filter, so only a reason as short as
+# "No." was asked about: "I will vote no on this motion." with a yes vote was recorded as VOTE_INTENT_MISMATCH and
+# never asked. The reason check flags none of the 1,517 recorded yes or no ballots, so the ask stays rare.
+WORLD_ENGINE = 28
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

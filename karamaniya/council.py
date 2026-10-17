@@ -47,13 +47,6 @@ _EXPLAINED = re.compile(
     r"amend(?:ed|ment)|conditional|only\s+if|unless|would\s+support|rather\s+than|instead|"
     r"concern|flaw|risk|defect|incomplete|duplicat|map(?:s)?\s+to|error)\b", re.I)
 
-# Whether a delegate is ASKED about such a ballot is a separate question from whether it is recorded.
-# A ballot with a reason of this many words is the delegate's final decision, even when it differs
-# from a provisional response-round stance, and sending the delegate back to reaffirm it was costing
-# a call and a rewritten ballot. It is still recorded as a mismatch, because the reason argues
-# against the motion without saying the position changed.
-_ARGUED_REASON_WORDS = 3
-
 
 # An explicit reversal, which is narrower than an explanation: the ballot's own words say the
 # position changed ("I withdraw my support", "given X, I now oppose", "my condition was not met").
@@ -288,8 +281,34 @@ def _reason_verdict(reason) -> str | None:
 
 def _repair_ask_clashes(decision: dict, motions: list | None = None) -> list:
     """The ballots put back to the delegate: the reason-based contradictions (engine 26, backlog T155) and a
-    conditional vote whose condition does not test the safeguard its reason states."""
+    conditional vote whose condition does not test the safeguard its reason states. Each is asked about, whatever
+    the reason's length (engine 28, backlog T176)."""
     return _reason_contradictions(decision) + _conditional_reason_clashes(decision, motions)
+
+
+def _repair_ask_lines(asked: list) -> list:
+    """The ask-back's lines for the ballots in _repair_ask_clashes (engine 28, backlog T176).
+
+    Engine 26 moved the ask to the reason check but kept the stance check's text: it named the response-round position
+    and read "You said you would NO M1". A ballot is now named with its own reason, and the delegate is asked for the
+    vote it intends, never told which."""
+    lines = ["These votes do not match the public reason you gave for them:"]
+    for c in asked:
+        if c["code"] == "VOTE_INTENT_MISMATCH":
+            lines.append(f"- Your reason for {c['motion']} says {c['stance'].upper()}, but your vote is "
+                         f"{c['vote'].upper()}: \"{c['reason']}\".")
+        else:
+            lines.append(f"- {c['motion']} tests {c['metric']}, but your reason refers "
+                         f"to {', '.join(c['reason_metrics'])}: \"{c['reason']}\". "
+                         + (f"Motion conflict: {'; '.join(c['motion_conflicts'])}."
+                            if c.get("motion_conflicts") else ""))
+    if any(c["code"] == "VOTE_INTENT_MISMATCH" for c in asked):
+        lines.append("Where a reason and its vote disagree, cast the vote you intend, with a reason that states it.")
+    if any(c["code"] != "VOTE_INTENT_MISMATCH" for c in asked):
+        lines.append("Where a condition does not match its reason, confirm your vote or make its condition match the "
+                     "reason. If no available condition can test your safeguard, choose yes, no or abstain instead "
+                     "of conditional.")
+    return lines
 
 
 def _reason_contradictions(decision: dict) -> list:
@@ -1793,12 +1812,11 @@ class Council:
             clashes = (_vote_intent_clashes(revisions.get(mid, {}), out)
                        + _conditional_reason_clashes(out, final))
             # What the delegate is asked about: a ballot whose own reason states the other verdict, and a
-            # conditional vote whose condition does not test the safeguard its reason states. A ballot that
-            # argues its way to a different vote (see _ARGUED_REASON_WORDS) stays in the record and is not
-            # queried: an ask-back is an intervention in what the delegate does.
-            asked = [c for c in _repair_ask_clashes(out, final)
-                     if c["code"] != "VOTE_INTENT_MISMATCH"
-                     or len(str(c.get("reason", "")).split()) < _ARGUED_REASON_WORDS]
+            # conditional vote whose condition does not test the safeguard its reason states. Engine 26 also
+            # skipped a contradicting reason of three words or more, a filter written for the stance check (a
+            # long reason there argued its way past a provisional stance); a reason that states the other
+            # verdict argues for it, so since engine 28 every one is asked about (backlog T176).
+            asked = _repair_ask_clashes(out, final)
             repair = None
             if asked or ballot_repairs:
                 # One scoped repair gives the delegate a chance to correct malformed ballots and
@@ -1806,20 +1824,7 @@ class Council:
                 lines = ["Your final ballot needs correction. Review only the listed motions and keep "
                          "every unlisted vote and field unchanged."]
                 if asked:
-                    lines.append("Your vote also conflicts with your response-round position or its "
-                                 "condition does not match your public reason:")
-                    for c in asked:
-                        if c["code"] == "VOTE_INTENT_MISMATCH":
-                            lines.append(f"- You said you would {c['stance'].upper()} {c['motion']}, but "
-                                         f"your vote is {c['vote'].upper()}: \"{c['reason']}\".")
-                        else:
-                            lines.append(f"- {c['motion']} tests {c['metric']}, but your reason refers "
-                                         f"to {', '.join(c['reason_metrics'])}: \"{c['reason']}\". "
-                                         + (f"Motion conflict: {'; '.join(c['motion_conflicts'])}."
-                                            if c.get("motion_conflicts") else ""))
-                    lines.append("For each conflict, confirm your vote or make its condition match the "
-                                 "reason. If no available condition can test your safeguard, choose yes, "
-                                 "no or abstain instead of conditional.")
+                    lines += _repair_ask_lines(asked)
                 if ballot_repairs:
                     lines.append("These ballots failed validation:")
                     for needed in ballot_repairs:
@@ -1899,7 +1904,7 @@ class Council:
             problems.extend(out.pop("validation_problems", []))
             out["vote_intent_clashes"] = clashes
             # What the record calls VOTE_INTENT_MISMATCH: the final vote against its own reason (T144). The stance list
-            # above is only what the repair ask uses, so the two can differ.
+            # above is kept in the record only (the ask uses the reason check since engine 26), so the two can differ.
             out["vote_reason_contradictions"] = _reason_contradictions(out)
             if repair:
                 out["vote_intent_repair"] = repair

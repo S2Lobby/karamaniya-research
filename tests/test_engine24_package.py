@@ -85,7 +85,8 @@ class BuildAndSmokeTests(unittest.TestCase):
     def test_the_manifest_is_pinned_to_the_commit_and_names_the_versions(self):
         head = package.resolve_commit("HEAD")
         self.assertEqual(self.manifest["commit"], head)
-        self.assertEqual(self.manifest["versions"]["world_engine"], 27)
+        # At least: the package was first built on engine 27, and each release since records its own number.
+        self.assertGreaterEqual(self.manifest["versions"]["world_engine"], 27)
         self.assertIn("agent_prompt", self.manifest["versions"])
         self.assertTrue(all(len(entry["sha256"]) == 64 for entry in self.manifest["files"]))
 

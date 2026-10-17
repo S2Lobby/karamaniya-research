@@ -1876,6 +1876,11 @@ class Council:
                 answers.append(res2.data)
                 names = sorted({c["motion"] for c in asked} | {r["motion"] for r in ballot_repairs})
                 first = out
+                # T149: a repair answer's private messages are the delegate's own words. They are sent like the
+                # decision answer's (queued, arriving next month) within what is left of the turn's allowance;
+                # each past it is refused with a reason the sender is told next month, never dropped silently.
+                repair_sent, repair_refused = actions.repair_messages(
+                    w, mid, res2.data, left, len(first.get("private_messages") or []))
                 if fixed.get("votes"):
                     # The answer is a fresh generation, not an edit, and the question was about these
                     # ballots only: take them from it and nothing else.
@@ -1910,6 +1915,13 @@ class Council:
                               "first_ballot": {m: first["votes"].get(m) for m in names}, "repair_ballot": None,
                               "first_clashes": asked,
                               "note": "the repair answer carried no ballot; the answer first given stands"}
+                if repair_sent:
+                    out["private_messages"] = list(out.get("private_messages") or []) + repair_sent
+                    repair["messages_sent"] = [{"to": dm["to"], "text": dm["text"], "kind": dm.get("kind")}
+                                               for dm in repair_sent]
+                if repair_refused:
+                    out["refused_messages"] = list(out.get("refused_messages") or []) + repair_refused
+                    repair["messages_refused"] = repair_refused
             # Read off the ballot as it stands, before the engine adds its own findings to it.
             cuts = actions.text_cuts(out, *answers)
             _fallback_unresolved_conditional(out, clashes)
@@ -2462,17 +2474,24 @@ class Council:
                 last["coalition"] = "failed"
                 w.event("coalition", "Coalition talks failed; the handover goes ahead.", importance=2)
 
-    def _check_grounding(self, results: list) -> list:
-        """Targeted fact-grounding problems on final free text; never a silent rewrite."""
-        notes = []
+    def _check_grounding(self, results: list) -> tuple[list, list]:
+        """Targeted fact-grounding problems on final free text; never a silent rewrite.
+
+        Returns the flags, and the figures the check could not tie to a metric, per statement (T156). An
+        untied figure is not an error: it is left unjudged, and the month record keeps it so the diagnostic
+        can be read without re-running the check."""
+        notes, untied = [], []
         for mid, _res, out, _problems in results:
             for field in ("statement", "notes"):
-                claim = motion_actions.check_numeric_grounding(self.w, mid, str(out.get(field, "")))
+                figures = []
+                claim = motion_actions.check_numeric_grounding(self.w, mid, str(out.get(field, "")), figures)
+                if figures:
+                    untied.append({"member": mid, "field": field, "unverifiable": figures})
                 if claim:
                     notes.append({"member": mid, "field": field, **claim})
                     self._emit(type="numeric_grounding", month=self.w.month, member=mid,
                                code=claim["code"], detail=claim["detail"], text=claim["repair"])
-        return notes
+        return notes, untied
 
     def _resolve_v2(self, decisions: dict, final: list, scheduled: list, statements: list, order: list, calls: list,
                     opening_values: dict, pre_positions: dict, commitments_added: list, election_pending: bool) -> dict:
@@ -2482,7 +2501,7 @@ class Council:
         # with a directive the office holder had already been told to follow.
         prior_directives = dict(w.const.directives)
         prior_bounds = dict(w.const.directive_bounds or {})
-        grounding = self._check_grounding(
+        grounding, grounding_unverifiable = self._check_grounding(
             [(mid, None, {"statement": next((s.get("statement", "") for s in statements if s.get("member") == mid), ""),
                           "notes": (decisions.get(mid) or {}).get("notes", "")}, []) for mid in decisions])
         # Words that say a past condition still holds, checked against the record as it stood when they were written.
@@ -2495,7 +2514,7 @@ class Council:
                   "agent_architecture_version": w.agent_architecture_version, "stale_claims": stale,
                   "statements": statements, "motions": [], "coups": [], "defiance": [], "resigned": [], "calls": calls,
                   "pre_positions": dict(pre_positions), "commitments_added": list(commitments_added),
-                  "grounding": grounding,
+                  "grounding": grounding, "grounding_unverifiable": grounding_unverifiable,
                   "decisions": {mid: {k: v for k, v in d.items() if k not in ("private_messages", "refused_messages")}
                                 for mid, d in decisions.items()}}
         # The members who cast this decision's votes are those seated when it was made. A delegate who resigns in the

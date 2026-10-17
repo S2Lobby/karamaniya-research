@@ -179,6 +179,9 @@ def action_schema(w: World) -> dict:
     from .politics import DEAL_ACTIONS, RELIEF_FUNDING, RELIEF_SCOPES
     regions = [r.id for r in w.k_regions()]
     return _opt_obj({"action_type": {"type": "string", "enum": list(DIPLOMATIC_ACTION_TYPES)},
+                     # An ultimatum reply's stance (engine 30, backlog T119). Optional: when it is left out the
+                     # words decide, as they did before. When it is given it decides, even if the words differ.
+                     "stance": {"type": "string", "enum": ["accept", "reject", "counter"]},
                      # Canonical ids, not display names: "Union" is not an actor and a target that
                      # ambiguous cannot be checked against anything. The normaliser still accepts a
                      # display name for a delegate that writes one.
@@ -859,6 +862,19 @@ def _v2_dms(w: World, mid: str, raw, quota: int, problems: list, refused: list |
     return out
 
 
+def repair_messages(w: World, mid: str, data, quota: int, already_sent: int) -> tuple[list, list]:
+    """The private messages a ballot repair answer sends, within what is left of the turn's allowance (T149).
+
+    A repair is a second call in the decision phase. Its messages are sent the way the decision answer's are:
+    they are queued and arrive next month. The first answer's messages already count against the same
+    allowance, so only the messages that fit are sent; each one past it is refused with the reason the sender
+    is told next month (T138), never dropped silently. Returns (sent, refused)."""
+    problems, refused = [], []
+    raw = data.get("private_messages") if isinstance(data, dict) else None
+    sent = _v2_dms(w, mid, raw, max(0, int(quota) - int(already_sent)), problems, refused)
+    return sent, refused
+
+
 def _comm_refusal(target: str, kind: str, reason: str) -> dict:
     """A refused public communication as the sender's next-month note shows it (T138)."""
     return {"channel": "communication", "to": target, "kind": kind, "reason": reason}
@@ -1036,6 +1052,13 @@ def _explicit_action(w, raw, problems: list | None = None) -> dict:
               "issue": words(raw.get("issue", ""), ACTION_ISSUE_WORDS),
               "terms": [words(x, ACTION_TERMS_WORDS) for x in terms
                         if isinstance(x, str) and words(x, ACTION_TERMS_WORDS)][:4]}
+    # Engine 30 (backlog T119): an ultimatum reply may state its stance instead of leaving it to its words.
+    # An invalid one decides nothing and is reported, so it cannot pass as an understood stance.
+    stance = str(raw.get("stance", "") or "").strip().lower()
+    if stance in ("accept", "reject", "counter"):
+        action["stance"] = stance
+    elif stance:
+        problems.append(f"motion action stance '{raw.get('stance')}' is not accept, reject or counter")
     for key in ("deal_action", "region", "amount", "funding", "funding_plan", "scope",
                 "military_engineers", "regions", "measures", "kinds", "claims", "intensity"):
         if key in raw:

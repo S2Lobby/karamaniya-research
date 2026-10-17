@@ -118,6 +118,23 @@ def negates(text: str) -> bool:
     return bool(_NEGATOR.search(_AFFIRMING_IDIOM.sub(" ", str(text or ""))))
 
 
+#: The words that make prose a proposal of talks or a renegotiation (backlog T172). "Renegotiate terms with
+#: Dorsania to secure grain imports" is about talks on the grain trade, not a grain agreement of its own.
+_TALKS_OR_RENEGOTIATION = re.compile(r"\b(?:re)?negotiat\w*|\btalks?\b", re.I)
+#: The structured acts that a talk's prose may name its subject under ("grain imports"): the trade talk and the
+#: trade deal, both of which Dorsania answers with its grain agreement (foreign.dorsania_reply).
+_TALKS_ACTIONS = ("trade_talks", "trade_deal")
+
+
+def names_talks(text: str) -> bool:
+    """Whether prose names talks or renegotiation outside a negated phrase ("no renegotiation")."""
+    body = _AFFIRMING_IDIOM.sub(" ", str(text or ""))
+    for match in _TALKS_OR_RENEGOTIATION.finditer(body):
+        if not _NEGATOR.search(body[max(0, match.start() - 24):match.start()]):
+            return True
+    return False
+
+
 #: Prose that names a foreign act, strongest signal first. Each entry is (action_type, patterns).
 _LAND = r"(?:kessel|dorran|aster|lissen|highlands|region|territor\w*|province)"  # what a cession names (engine 17)
 PROSE_ACTIONS = (
@@ -183,9 +200,12 @@ def structured_action(w, motion: dict) -> dict:
     target = (_canonical_actor(w, raw_target) or raw_target) if raw_target else None
     if kind == "diplomacy":
         target = target or DIPLOMATIC_ACTIONS.get(action_type) or DIPLOMATIC_ACTIONS.get(subject)
+        stance = str(explicit.get("stance") or "").strip().lower()
         return {"action_type": action_type, "target": target, "policy": None,
                 "value": motion.get("value"), "issue": str(explicit.get("issue") or "").strip(),
                 "terms": explicit.get("terms") or explicit.get("demands") or [],
+                # A reply to an ultimatum may carry its stance in the action (engine 30, backlog T119).
+                **({"stance": stance} if stance in ("accept", "reject", "counter") else {}),
                 "kind": kind, "subject": subject}
     if kind == "set_policy":
         return {"action_type": "directive", "target": None, "policy": subject,
@@ -272,6 +292,22 @@ def pays_from_reserves(motion: dict) -> bool:
             sources = [str(plan.get("funding", "")).strip().lower()]
         return "reserves" in sources
     return False
+
+
+#: The loan/credit facility, the one motion kind that raises money into the reserves (backlog T117). It is the path
+#: that raises `w.dip.league_loan_pending`, disbursed by economy.py; no sale motion exists, `military_aid` brings
+#: equipment, and a trade or grain deal changes trade income rather than the gold stock.
+_MONEY_IN_SUBJECTS = {"loan", "loan_request", "credit", "credit_facility", "line_of_credit"}
+
+
+def brings_money_in(motion: dict) -> bool:
+    """Whether executing this motion raises money into the reserves: the loan/credit facility alone."""
+    if str(motion.get("type", "")).strip() != "diplomacy":
+        return False
+    action = motion.get("action") if isinstance(motion.get("action"), dict) else {}
+    spellings = {re.sub(r"[\s\-]+", "_", str(motion.get("subject", "")).strip().lower()),
+                 re.sub(r"[\s\-]+", "_", str(action.get("action_type", "")).strip().lower())}
+    return bool(spellings & _MONEY_IN_SUBJECTS)
 
 
 def _is_non_payment_reserve_floor(cond, motion: dict) -> bool:
@@ -375,8 +411,14 @@ def parse_conditions(text: str, motion_type: str = "", subject: str = "", action
     the engine must test before mutating state. Opinion yields nothing.
 
     Two readings are withheld. A goal is not a floor ("reserves rebuilt above 60M" says what the money is for), and a
-    reserve floor binds only a motion that pays out of the reserves (see pays_from_reserves). With no motion type given,
-    the text is read as text alone.
+    reserve floor on a motion that pays out of the reserves limits the payment (`reserves_after_payment`). With no
+    motion type given, the text is read as text alone.
+
+    T117: a typed motion that pays nothing out of the reserves and brings no money into them cannot leave a
+    different balance behind, so its text floor binds today's balance (`reserves >= value`) and its source says it
+    was read so. A loan/credit facility is the exception: it moves only if the floor is met before its own
+    proceeds arrive, so its text floor stays unread (run 20261011-105713-seed1, Month 8: the 50M loan's own
+    "reserves rebuilt above 60M" blocked it). A structured `reserves` condition already binds today's balance.
     """
     spans = []
     for match in _CONDITION_CLAUSE.finditer(text or ""):
@@ -398,9 +440,15 @@ def parse_conditions(text: str, motion_type: str = "", subject: str = "", action
 
     # Run 20261011-105713-seed1, Month 8: a 50M loan request read "reserves rebuilt above 60M" as a floor on itself.
     # Clauses are read in turn, and the first reserve level that is not a goal is the floor.
-    pays = not motion_type or pays_from_reserves({"type": motion_type, "subject": subject, "action": action})
+    built = {"type": motion_type, "subject": subject, "action": action}
+    pays = not motion_type or pays_from_reserves(built)
+    # T117: a typed motion that pays nothing out and brings no money in leaves today's balance, so its text
+    # floor is today's balance; a loan's own floor is not read at all (see the docstring).
+    money_in = bool(motion_type) and not pays and brings_money_in(built)
+    floor_metric = "reserves_after_payment" if (not motion_type or pays) else "reserves"
+    floor_note = "" if floor_metric == "reserves_after_payment" else " (read as today's balance)"
     floor_hit = None
-    for lead, clause in (spans if pays else []):
+    for lead, clause in (spans if not money_in else []):
         floor_hit = next((m for m in _FLOOR_HIT.finditer(clause)
                           if not _states_a_goal(lead + clause, len(lead) + m.start(), len(lead) + m.end())), None)
         if floor_hit:
@@ -422,7 +470,7 @@ def parse_conditions(text: str, motion_type: str = "", subject: str = "", action
             amount /= 100
         elif not unit and amount < 1e5:
             amount *= 1e6  # bare "55" next to reserves means 55M crowns
-        add("reserves_after_payment", ">=", amount, floor_hit.group(0).strip())
+        add(floor_metric, ">=", amount, floor_hit.group(0).strip() + floor_note)
     if re.search(r"leagu\w*[^.;]{0,40}(credit|loan|tranche)[^.;]{0,40}"
                  r"(clear|arriv|receiv|first|before|prior|condition|release|approv)", joined) or \
        re.search(r"(after|once|when)[^.;]{0,40}leagu\w*[^.;]{0,40}(credit|loan|tranche)", joined) or \
@@ -582,9 +630,11 @@ def evaluate_conditions(w, conditions: list, motion: dict | None = None) -> list
     results = []
     for cond in conditions or []:
         metric = cond.get("metric")
-        # A reserve floor on a motion that pays nothing out of reserves is not tested, and cannot block it: the balance
-        # such a motion leaves is today's, so a loan needing its own proceeds to reach the floor would block itself
-        # (run 20261011-105713-seed1, Month 8). It is recorded as not applicable, so the record shows why.
+        # A structured "reserves after payment" floor on a motion that pays nothing out of reserves is not tested,
+        # and cannot block it: the balance such a motion leaves is today's, so a loan needing its own proceeds to
+        # reach the floor would block itself (run 20261011-105713-seed1, Month 8). It is recorded as not applicable,
+        # so the record shows why. A floor read from the text of a non-payment, non-loan motion is a different
+        # condition: it binds today's balance as `reserves >= value` (T117), and is tested like any other.
         if motion is not None and _is_non_payment_reserve_floor(cond, motion):
             results.append({**cond, "met": True, "observed": None, "applies": False,
                             "reason": "not applicable: this motion pays nothing out of reserves"})
@@ -1135,6 +1185,12 @@ def conflict(w, motion: dict) -> dict | None:
         return _text_action_conflict(w, motion, action)
     text = str(motion.get("text", ""))
     intent = prose_intent(w, text)
+    said = intent["actions"]
+    # T172: when the text names talks or renegotiation and the structured act is a trade talk or trade deal, the
+    # structured act decides which act the motion is. "Renegotiate terms with Dorsania to secure grain imports"
+    # (run b1-s1003, Month 3, Delegate A) names grain as the subject of the talks; the prose reader's grain_deal
+    # was not a second act, and refusing the motion as a disagreement read the noun as the act.
+    structured_wins = action["action_type"] in _TALKS_ACTIONS and names_talks(text)
     reasons = []
     named = intent["addressed"]
     if len(named) == 1 and action.get("target") and named[0] != action["target"]:
@@ -1166,14 +1222,17 @@ def conflict(w, motion: dict) -> dict | None:
         # such label as a contradiction was rejecting a large share of sound motions on a wording
         # technicality, which is harness friction rather than a genuine disagreement about the act.
         norm = re.sub(r"[\s\-]+", "_", str(declared).strip().lower())
+        # Under the talks rule the structured act also wins over a subject that states the talks' subject
+        # ("grain_deal" for a renegotiation): the prose and the subject agree with each other, not against it.
         if norm in ACT_NAMES and norm not in (str(motion.get("subject", "")).lower(),
-                                              str(action["action_type"]).lower()):
+                                              str(action["action_type"]).lower()) \
+                and not (structured_wins and norm in said):
             reasons.append({"code": "DECLARED_SUBJECT_CONTRADICTS_ACTION", "declared": declared,
                             "action_type": action["action_type"],
                             "detail": f"the motion's own subject says {declared}, but its action says "
                                       f"{action['action_type'].replace('_', ' ')}"})
-    said = intent["actions"]
-    if said and action["action_type"] not in said and not _answers_an_ultimatum(action, text):
+    if said and action["action_type"] not in said and not _answers_an_ultimatum(action, text) \
+            and not structured_wins:
         # "protest" and "trade deal" are different acts even when both are sent abroad.
         closest = _most_specific(said)
         reasons.append({"code": "ACTION_MISMATCH", "prose_action": closest,
@@ -1774,16 +1833,29 @@ def _segment_span(text: str, start: int, end: int, figures=()) -> tuple:
     return lo, hi
 
 
+#: A coordination that starts another item: a metric named after it belongs to that item, not to the figure before
+#: it. T96: "grain-route interdiction risk at 2-12/100 and fleet readiness at 30-42/100" tied the 2-12 to the
+#: readiness named after the "and".
+_ITEM_BREAK_AFTER = re.compile(r"\b(?:and|or|but|plus)\b", re.I)
+
+
 def _owners(text: str, claim: dict, sentence_keys: frozenset, figures=()) -> frozenset:
     """The metric a figure is judged against (engine 19, tied locally for T144): the metric its own segment names,
     the nearest before it, else the nearest after it. A segment that names none ties the figure to nothing, and the figure
     is unverifiable, not judged. The sentence does not decide it: "Economy: output 82, unemployment 10%" does not make the
-    82 an unemployment figure, and "Army actual 36.5k vs Union 98k" does not tie the 36.5k to the Union's force (T144)."""
+    82 an unemployment figure, and "Army actual 36.5k vs Union 98k" does not tie the 36.5k to the Union's force (T144).
+    A metric after a coordination ("... and fleet readiness at") belongs to the next item (T96)."""
     if not sentence_keys:
         return frozenset()
     lo, hi = _segment_span(text, claim["start"], claim["end"], figures)
     keys = _metric_before(text[lo:claim["start"]]) & sentence_keys
-    return keys or (_metric_after(text[claim["end"]:hi]) & sentence_keys)
+    if keys:
+        return keys
+    suffix = text[claim["end"]:hi]
+    cut = _ITEM_BREAK_AFTER.search(suffix)
+    if cut:
+        suffix = suffix[:cut.start()]
+    return _metric_after(suffix) & sentence_keys
 
 
 def _as_percent_points(text: str, claim: dict, key: str) -> dict:
@@ -2054,12 +2126,29 @@ def _states_a_fact(text: str, claim: dict) -> bool:
     return not _FLOW_AFTER.match(after)
 
 
+#: A one-sided comparison the figure states. "Reserves are above 15M" bounds the state below: it is true whenever
+#: the balance is at or above 15M. It was judged as a level of exactly 15M and flagged (T96). The negated forms come
+#: before their positive forms so "no more than" is not read as "more than".
+_BOUND_BEFORE = re.compile(
+    r"\b(?:(?P<upper>below|under|less\s+than|lower\s+than|at\s+most|no\s+more\s+than|up\s+to|not\s+exceeding)|"
+    r"(?P<lower>above|over|more\s+than|greater\s+than|higher\s+than|at\s+least|no\s+less\s+than|exceeding|"
+    r"upwards?\s+of))\s*$", re.I)
+
+
+def _claim_bound(text: str, claim: dict) -> str | None:
+    """"lower" or "upper" when the words just before the figure bound it one way, else None."""
+    match = _BOUND_BEFORE.search(text[max(0, claim["start"] - 30):claim["start"]])
+    if not match:
+        return None
+    return "lower" if match.group("lower") else "upper"
+
+
 def check_numeric_grounding(w, mid: str, text: str, unverifiable: list | None = None) -> dict | None:
     """A precise statistic with no available source is sent back, not silently kept.
 
     T144: a figure is judged only when its own segment ties it to one metric, and to one side for a troop
     figure. A figure that cannot be tied is unverifiable, not an error: it is not flagged, and it is appended to
-    `unverifiable` when the caller passes a list (the replay audit counts those; the month record keeps flags only)."""
+    `unverifiable` when the caller passes a list (the month record keeps those, T156)."""
     if not text or not text.strip():
         return None
     lowered = text.lower()
@@ -2122,8 +2211,13 @@ def check_numeric_grounding(w, mid: str, text: str, unverifiable: list | None = 
             if key in RATIO_KEYS and not ratio:
                 continue
             # A range is grounded when the truth lies inside it, within the band; a single figure is the range of one.
+            # A one-sided comparison ("above 15M", "below 15M") is true on its own side of the figure (T96).
             low_bound, high_bound = min(claim.get("lo", value), value), max(claim.get("lo", value), value)
-            if low_bound - band <= truth <= high_bound + band:
+            bound = _claim_bound(text, claim)
+            grounded = (truth >= low_bound - band if bound == "lower" else
+                        truth <= high_bound + band if bound == "upper" else
+                        low_bound - band <= truth <= high_bound + band)
+            if grounded:
                 continue
             shortage = ratio and key in ("food_ratio", "hunger") and (
                 shortage_talk or claim["noun"] in ("shortage", "shortfall"))

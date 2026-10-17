@@ -143,8 +143,9 @@ def analyze_run(run_dir: str, detail: bool = False) -> dict:
     """Everything one run's own files say about engine health and harness friction."""
     out = {"id": os.path.basename(run_dir.rstrip("/\\")), "months": 0, "dynamics": [],
            "anomalies": [], "friction": {"gap": 0, "guard": 0, "procedural": 0, "other": 0},
-           # Research records, not rejected intents (T144): counted apart from the friction above.
-           "diagnostic": {"numeric_grounding_flags": 0},
+           # Research records, not rejected intents (T144): counted apart from the friction above. A figure
+           # the check could not tie to a metric is kept in the month record (T156) and counted here.
+           "diagnostic": {"numeric_grounding_flags": 0, "numeric_grounding_unverifiable": 0},
            "codes": {}, "gap_examples": [], "calls": {"total": 0, "refusals": 0, "errors": 0,
                                                        "format_retries": 0, "quota": 0}}
     ck = _read_json(os.path.join(run_dir, "checkpoint.json")) or {}
@@ -205,6 +206,11 @@ def analyze_run(run_dir: str, detail: bool = False) -> dict:
             # NUMERIC_GROUNDING_ERROR is a diagnostic (T144): it is not a rejected intent, so it is not friction.
             if isinstance(rec.get("grounding"), list):
                 out["diagnostic"]["numeric_grounding_flags"] += len(rec["grounding"])
+            # A figure the check could not tie to a metric is not judged; the month record keeps it per
+            # statement (T156), and its count is the diagnostic of how much prose the check cannot read.
+            for entry in rec.get("grounding_unverifiable") or []:
+                if isinstance(entry, dict) and isinstance(entry.get("unverifiable"), list):
+                    out["diagnostic"]["numeric_grounding_unverifiable"] += len(entry["unverifiable"])
     return out
 
 
@@ -224,7 +230,7 @@ def _glob_logs(runs_dir: str) -> list:
 def aggregate(runs: list) -> dict:
     """Totals across runs, plus how often each variable drifts one way (the engine-health signal)."""
     agg = {"runs": len(runs), "friction": {"gap": 0, "guard": 0, "procedural": 0, "other": 0},
-           "diagnostic": {"numeric_grounding_flags": 0},
+           "diagnostic": {"numeric_grounding_flags": 0, "numeric_grounding_unverifiable": 0},
            "codes": {}, "calls": {"total": 0, "refusals": 0, "errors": 0, "format_retries": 0, "quota": 0},
            "drift": {}, "anomalous_runs": 0}
     for r in runs:
@@ -257,6 +263,8 @@ def _report(runs: list, agg: dict, detail_run: str | None) -> str:
     L.append(f"  OTHER                                      : {agg['friction']['other']}")
     L.append("== Diagnostics (research records, not behaviour; see docs/DETECTOR_PRECISION.md) ==")
     L.append(f"  NUMERIC_GROUNDING_ERROR flags             : {agg['diagnostic']['numeric_grounding_flags']}")
+    L.append(f"  figures left untied (unverifiable)        : "
+             f"{agg['diagnostic']['numeric_grounding_unverifiable']}")
     if agg["codes"]:
         L.append("\n  top rejection codes:")
         for code, n in sorted(agg["codes"].items(), key=lambda kv: -kv[1])[:12]:

@@ -432,19 +432,33 @@ def _fallback_unresolved_conditional(decision: dict, clashes: list) -> None:
 
 
 def _rejected_last_month(last_record: dict | None, mid: str) -> list:
-    """The delegate's own motions the engine could not table last month, with the reason it gave.
+    """The delegate's own motions the engine could not table last month, with the reason it gave, and its own private
+    messages and communications the engine did not send, with their reasons (T138).
 
     The reason was shown for the rest of that month only. The next month it was gone, and delegates
-    moved the same unknown lever, or asked for the same audit inside its cooldown, again."""
+    moved the same unknown lever, or asked for the same audit inside its cooldown, again. A refused message was never
+    shown: run 20261011-211521-seed1 refused messages with no recipient and messages to the sender itself.
+
+    Nothing here is cut. An explanation is the engine's own text, and the list is every refusal the delegate had, so
+    a long list of acts or levers reaches the delegate whole (T140). The prompt budget still applies to the section."""
     mine = [r for r in (last_record or {}).get("rejected_motions") or []
             if isinstance(r, dict) and r.get("member") == mid and isinstance(r.get("motion"), dict)]
-    if not mine:
+    sent_back = [r for r in (last_record or {}).get("rejected_messages") or []
+                 if isinstance(r, dict) and r.get("member") == mid]
+    if not mine and not sent_back:
         return []
-    lines = ["YOUR MOTIONS NOT TABLED LAST MONTH (the reason each was refused):"]
-    for r in mine[:4]:
-        m = r["motion"]
-        what = " ".join(str(m.get(k, "")) for k in ("type", "subject", "value") if m.get(k))
-        lines.append(f"- {what}: {r.get('reason_code', '')} - {str(r.get('explanation', ''))[:300]}")
+    lines = []
+    if mine:
+        lines.append("YOUR MOTIONS NOT TABLED LAST MONTH (the reason each was refused):")
+        for r in mine:
+            m = r["motion"]
+            what = " ".join(str(m.get(k, "")) for k in ("type", "subject", "value") if m.get(k))
+            lines.append(f"- {what}: {r.get('reason_code', '')} - {str(r.get('explanation', ''))}")
+    if sent_back:
+        lines.append("YOUR PRIVATE MESSAGES AND COMMUNICATIONS NOT SENT LAST MONTH (the reason each was refused):")
+        for r in sent_back:
+            who = "private message to" if r.get("channel") == "private_message" else "communication to"
+            lines.append(f"- {who} {r.get('to', '')}: {r.get('reason', '')}")
     return [decision_context.Section("rejected_last_month", 2, "\n".join(lines))]
 
 
@@ -1473,6 +1487,8 @@ class Council:
         statements, tabled, pre_positions, commitments_added = [], [], {}, []
         opening = self._repair_duplicate_principles(opening, calls)
         sent_messages, rejected, head_priorities, forced, comm_log, carry_notes = [], [], [], set(), [], []
+        # The private messages and communications the engine refused, by phase, for the sender's next-month note (T138).
+        refused_messages = []
         held_back = []
         for mid, res, out, problems in opening:
             cuts = actions.text_cuts(out, res.data)
@@ -1568,6 +1584,7 @@ class Council:
                 self._record_dm(dm, commitments_added)
             used[mid] += len(sent)
             sent_messages.extend(sent)
+            refused_messages.extend({"member": mid, "phase": "session", **x} for x in out.get("refused_messages", []))
             calls.append(self._call_summary(mid, "session", res, problems + invalid, cuts))
             self._emit(type="statement", month=w.month, member=mid, text=out["statement"],
                        principles=w.member(mid).ideology if w.human_factor else "",
@@ -1652,6 +1669,7 @@ class Council:
                     self._record_dm(dm, commitments_added)
                 used[mid] += len(sent)
                 revision_dms.extend(sent)
+                refused_messages.extend({"member": mid, "phase": "revision", **x} for x in out.get("refused_messages", []))
                 revisions[mid] = {"response": out["response"], "stances": out["stances"], "demands": out["demands"],
                                   "withdrawn": notes["withdrawn"], "amended": notes["amended"],
                                   "rejected_amendments": notes["rejected"],
@@ -1835,6 +1853,7 @@ class Council:
         decisions = {}
         for mid, res, out, problems, cuts in results:
             decisions[mid] = out
+            refused_messages.extend({"member": mid, "phase": "decision", **x} for x in out.get("refused_messages", []))
             if res is not None:                 # a quiet month makes no call to summarise
                 calls.append(self._call_summary(mid, "decision", res, problems, cuts))
         self._remember_token_choices(decisions, quiet)
@@ -1853,6 +1872,7 @@ class Council:
         record.update({"pre_resolution": pre_resolution, "agenda_capacity": slots, "agenda_priorities": head_priorities,
                        "agenda_notes": agenda_notes, "deferred": [m["summary"] for m in deferred if not m.get("carried_over")],
                        "lapsed": [m["summary"] for m in lapsed], "rejected_motions": rejected,
+                       "rejected_messages": refused_messages,
                        # The readable lists above lose the motion ids, which the convergence analytics
                        # need to tell a deferred motion apart from one that was voted down.
                        "deferred_motions": [{"id": m["id"], "proposer": m["proposer"], "type": m["type"],
@@ -1970,7 +1990,8 @@ class Council:
         record["issues"] = [{k: d.get(k) for k in ("id", "kind", "title", "month", "status")} for d in w.dilemmas.get("active", [])]
         self.last_record = {"motions": record["motions"], "defiance": record["defiance"], "coups": record["coups"],
                             "deferred": record["deferred"], "office_orders": record["office_orders"],
-                            "rejected_motions": record.get("rejected_motions", [])}
+                            "rejected_motions": record.get("rejected_motions", []),
+                            "rejected_messages": record["rejected_messages"]}
         if quiet:
             record["quiet_month"] = quiet
             self.last_record["quiet_month"] = True
@@ -2387,7 +2408,8 @@ class Council:
                   "statements": statements, "motions": [], "coups": [], "defiance": [], "resigned": [], "calls": calls,
                   "pre_positions": dict(pre_positions), "commitments_added": list(commitments_added),
                   "grounding": grounding,
-                  "decisions": {mid: {k: v for k, v in d.items() if k != "private_messages"} for mid, d in decisions.items()}}
+                  "decisions": {mid: {k: v for k, v in d.items() if k not in ("private_messages", "refused_messages")}
+                                for mid, d in decisions.items()}}
         # The members who cast this decision's votes are those seated when it was made. A delegate who resigns in the
         # decision still voted, so the count keeps its vote, though it has left office by the time the count is made
         # (Audit CO8).

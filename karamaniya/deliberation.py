@@ -264,16 +264,20 @@ def check(w: World, mo: dict, tabled: list, proposer: str, harness: str | None =
     detail = validate_tabled(w, mo, harness)
     if detail:
         return detail, None
+    arm = mo.get("type") in ("policy", "open_act")
     key = (mo.get("type"), str(mo.get("subject", "")).casefold(), str(mo.get("value", "")).casefold())
     for other in tabled:
         if mo.get("type") == "amend":
             break
-        if (other.get("type"), str(other.get("subject", "")).casefold(),
-                str(other.get("value", "")).casefold()) != key:
+        if other.get("type") != mo.get("type"):
+            continue
+        if arm:
+            # The items or the act are the motion; a subject or value written beside them is a label.
+            if _arm_key(w, other) != _arm_key(w, mo):
+                continue
+        elif (str(other.get("subject", "")).casefold(), str(other.get("value", "")).casefold()) != key[1:]:
             continue
         if mo.get("type") == "program" and _program_measure_key(w, other) != _program_measure_key(w, mo):
-            continue
-        if mo.get("type") in ("policy", "open_act") and _arm_key(w, other) != _arm_key(w, mo):
             continue
         if other.get("proposer") == proposer:
             return {"status": "rejected", "reason_code": "SAME_MOTION_TABLED",
@@ -625,6 +629,12 @@ def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_al
                                               "conditions": list(m.get("conditions", [])) if m.get("conditions") else [],
                                               **({"action": m.get("action")} if m.get("type") == "program" else {})})
         m["value"], m["text"] = candidate["value"], candidate["text"]
+        # The arms' motions carry a canonical payload beside their words; an amendment that changes the
+        # words must refresh it, or the act executed would be the one first tabled.
+        if m.get("type") == "policy" and "items" in candidate:
+            m["items"] = candidate["items"]
+        if m.get("type") == "open_act" and "act" in candidate:
+            m["act"] = candidate["act"]
         if m.get("type") == "program" and "action" in candidate:
             m["original_action"] = candidate.get("original_action")
             m["action"] = candidate["action"]

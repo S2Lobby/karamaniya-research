@@ -249,8 +249,8 @@ POLICY_PARAGRAPH = (
     "  - set_lever: lever and value. The setting is held at that value while the item's condition holds and its "
     "schedule runs. When the policy ends, the setting returns to the value it had before, unless a later decision "
     "changed it, in which case the hold ends and the record says it was superseded.\n"
-    "  - transfer: amount, target and funding. An amount is millions of crowns a month; the money is paid to the "
-    "group the target names.\n"
+    "  - transfer: amount, target and funding. An amount is a positive number of millions of crowns a month; the "
+    "money is paid to the group the target names.\n"
     "  - public_works: amount, target (one region) and funding. The money repairs damage and logistics and lowers "
     "unemployment there, with a lag of one to two months.\n"
     "  - commission: mandate, amount and funding. A standing body works on its mandate each month.\n"
@@ -267,9 +267,10 @@ POLICY_PARAGRAPH = (
 OPEN_ACT_PARAGRAPH = (
     "- open_act: at most one a delegate a month, counted as one of its two motions. Its text, at most 60 words, says "
     "what the government does; action.office names the office that carries it out (head, treasury, interior, army or "
-    "navy). action.budget is optional: {amount, months}, where amount is millions of crowns a month and months is 1 "
-    "to 24; a budget needs funding, which is reserves, borrowing or cut:<setting> for military, police, welfare, "
-    "health_edu or farm_support. The act is debated and voted like any other motion; after it passes, what it "
+    "navy). action.budget is optional: {amount, months}, where amount is a positive number of millions of crowns a "
+    "month and months is 1 to 24; a budget needs funding, which is reserves, borrowing or cut:<setting> for "
+    "military, police, welfare, health_edu or farm_support. The act is debated and voted like any other motion; "
+    "after it passes, what it "
     "achieves is worked out from its words, the office and the money, within what the state and that office can do."
 )
 

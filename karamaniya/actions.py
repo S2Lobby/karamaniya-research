@@ -14,8 +14,8 @@ from .motion_actions import ACTION_TO_SUBJECT, DIPLOMATIC_ACTIONS as DIPLOMATIC_
 from .politics import (BOOLS, CONSTITUTION_FIELDS, DIPLOMACY, ENUMS, LEVER_OFFICE, MEDIA_CLAIM_METRICS,
                        MEDIA_INTENSITIES, MEDIA_KINDS, MEDIA_MAX_CLAIMS, MOTION_TYPES,
                        SHARES, V2_MOTION_TYPES, _bare, canonical_diplomacy_subject, canonical_funding,
-                       canonical_lever, canonical_office, label, lever_bounds, loan_amount_of, parse_loan_amount,
-                       patronage_subject, policy_value)
+                       canonical_lever, canonical_office, fmt_value, label, lever_bounds, loan_amount_of,
+                       parse_loan_amount, patronage_subject, policy_value)
 from .world import ARMED_OFFICES, CLASSES, IDENTITIES, OFFICES, World
 
 STATEMENT_WORDS = 150
@@ -1060,7 +1060,7 @@ def motion_summary(w: World, mo: dict) -> str:
             amount = entry.get("amount")
             money = f"{amount:g}M a month" if isinstance(amount, (int, float)) else "money"
             if instrument == "set_lever":
-                parts.append(f"set {entry.get('lever')} to {entry.get('value')}")
+                parts.append(f"set {entry.get('lever')} to {fmt_value(entry.get('value'))}")
             elif instrument == "transfer":
                 parts.append(f"transfer {money} to {entry.get('target')}")
             elif instrument == "public_works":

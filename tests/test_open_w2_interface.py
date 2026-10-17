@@ -140,6 +140,27 @@ class TheLanguageArmOffersPolicy(unittest.TestCase):
         self.assertIn("condition", fields)
         self.assertTrue(any("cut:military" == value for value in fields["funding"]["enum"]))
 
+    def test_a_model_answer_is_read_into_the_motion(self):
+        w = world()
+        # A model may write the item list at the top level rather than under action, as media fields were
+        # sometimes written; it is read into the action once, without guessing any item's contents.
+        raw = {"type": "policy", "text": "Ration food while supplies are short.",
+               "items": [{"instrument": "set_lever", "lever": "rationing", "value": "on", "months": 4}]}
+        motion = actions.normalize_motion_v2(w, raw)
+        self.assertEqual(motion["action"]["items"][0]["instrument"], "set_lever")
+        self.assertIsNone(refusal(w, motion, harness="language"))
+
+    def test_the_summary_reads_in_world_words(self):
+        w = world()
+        motion = policy([item(instrument="set_lever", lever="rationing", value="on", months=6),
+                         item(instrument="transfer", amount=12, target="class:farmers", funding="reserves",
+                              months=3)])
+        self.assertIsNone(refusal(w, motion, harness="language"))
+        text = actions.motion_summary(w, motion)
+        self.assertIn("set rationing to on", text)
+        self.assertIn("transfer 12M a month to class:farmers", text)
+        self.assertNotRegex(text, r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+")
+
     def test_the_prompt_states_every_limit(self):
         text = prompts.system_prompt("simulation", harness="language")
         for phrase in ("one to four items", "start_in is 0 to 6", "months is 1 to 24",
@@ -203,6 +224,28 @@ class TheOpenArmOffersOpenActs(unittest.TestCase):
         self.assertEqual(act["budget"], {"amount": 5.0, "months": 3})
         self.assertEqual(act["funding"], "borrowing")
         self.assertEqual(act["text"], motion["text"])
+
+    def test_a_model_answer_is_read_into_the_motion(self):
+        w = world()
+        raw = {"type": "open_act", "text": "The navy escorts merchant shipping through the northern approaches.",
+               "office": "navy", "budget": {"amount": 2, "months": 2}, "funding": "reserves"}
+        motion = actions.normalize_motion_v2(w, raw)
+        self.assertEqual(motion["action"]["office"], "navy")
+        self.assertIsNone(refusal(w, motion, harness="open"))
+        self.assertEqual(motion["act"]["office"], "navy")
+        self.assertEqual(motion["act"]["budget"], {"amount": 2.0, "months": 2})
+
+    def test_an_amendment_refreshes_the_canonical_act(self):
+        w = world()
+        motion = open_act("The treasury pays the grain suppliers.")
+        motion["id"], motion["proposer"] = "M1", "A"
+        self.assertIsNone(refusal(w, motion, harness="open"))
+        notes = deliberation.apply_revisions(
+            w, "A", {"amend": [{"motion_id": "M1", "value": "", "text": "The navy escorts merchant shipping."}]},
+            [motion], [motion], harness="open")
+        self.assertEqual(notes["amended"], ["M1"])
+        self.assertEqual(motion["act"]["text"], "The navy escorts merchant shipping.")
+        self.assertEqual(actions.open_act_of(w, motion)["text"], "The navy escorts merchant shipping.")
 
     def test_one_open_act_a_delegate_a_month(self):
         w = world()

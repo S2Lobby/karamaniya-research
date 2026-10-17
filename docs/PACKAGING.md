@@ -66,8 +66,17 @@ It runs the engine's five scripted seats for one month, calls no model, and writ
 Measured on 2026-10-17 from `C:\Users\litle\Karamaniya\karamaniya-test\wave3-package` with Python 3.12.10:
 
 ```
-RUN RESULT HERE
+built dist\karamaniya-trust-submission-732a1b31.zip (1,143,619 bytes, 143 files, commit 732a1b31, versions
+      {'world_engine': 26, 'agent_prompt': 23, 'error_taxonomy': 5, 'psychology': 8, 'agent_architecture': 2})
+clean-machine smoke: exit 0, 144 files, 4.5s, checkpoints ['runs\\package-smoke-seed1\\checkpoint.json']
+command: <temp>\.venv-smoke\Scripts\python.exe -m karamaniya simulate council.scripted.toml --runs 1 --months 1
+         --prefix package-smoke
 ```
+
+The extracted package's run manifest recorded `world_engine_version: 26`, the five scripted seats A-E, seed 1 and
+the outcome `survived`; the package's own checks found no forbidden path, no `.env`, no secret and no SHA-256
+mismatch (143 files listed, 144 zip entries including `PACKAGE_MANIFEST.json`). `python -m unittest
+tests.test_engine24_package -v` ran 9 tests, OK, including this build and smoke.
 
 The unit tests are `python -m unittest tests.test_engine24_package -v`. The integration class builds from `HEAD`
 and runs the smoke; it skips until the package files are committed, because the build reads a commit.

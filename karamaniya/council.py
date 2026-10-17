@@ -665,6 +665,30 @@ def _audit_state(snapshot: dict, approval: float | None = None) -> dict:
 INTERCEPT = {"low": 0.0, "medium": 0.12, "high": 0.3}
 
 
+def speaking_order(w: World, active: list, rng, action_order: str = "seeded_shuffle") -> list:
+    """The order the council speaks in this month: the publication order of the openings, and the order of the
+    response round (brief 9.S3).
+
+    The shuffle is drawn under either protocol; fixed_precedence then throws its copy away. So the month's stream is
+    advanced exactly as it always was, and every later draw of the month (the interception draws in Council._deliver
+    above all) is the same whichever protocol runs. Only the order differs.
+    """
+    order = list(active)
+    rng.shuffle(order)
+    if action_order == "seeded_shuffle":
+        return order
+    if action_order != "fixed_precedence":
+        raise ValueError(f"action_order must be 'seeded_shuffle' or 'fixed_precedence', not {action_order!r}")
+    # The office holders first, in OFFICES order; a member who holds two offices speaks once, at the first. A holder
+    # who has left is not in `active` and is skipped. The rest follow in letter order.
+    held = []
+    for office in OFFICES:
+        holder = w.const.offices.get(office)
+        if holder in active and holder not in held:
+            held.append(holder)
+    return held + sorted(mid for mid in active if mid not in held)
+
+
 class RunPaused(Exception):
     """A seat could not take its turn. The month is abandoned (nothing of it is saved) and replayed
     when the run is resumed, so no member silently abstains for a whole month."""
@@ -1160,8 +1184,7 @@ class Council:
         rng = rng_for(w.seed, w.month, "council")
         active = [m.id for m in w.active_members()]
         brief = briefing.public(w, self.last_record)
-        order = active[:]
-        rng.shuffle(order)
+        order = speaking_order(w, active, rng, self.settings.get("action_order", "seeded_shuffle"))
         quota = int(self.settings.get("dm_per_turn", 3))
         inbox = {mid: [] for mid in active}
         intercepted = {mid: [] for mid in active}
@@ -1402,8 +1425,7 @@ class Council:
                 return []
             _, own = token_saving.briefing_for(full_brief, (w.member(mid).agent_state or {}).get("read_requests"))
             return [decision_context.Section("briefing_requested", 3, own)] if own else []
-        order = active[:]
-        rng.shuffle(order)
+        order = speaking_order(w, active, rng, self.settings.get("action_order", "seeded_shuffle"))
         quota = int(self.settings.get("dm_per_turn", 3))
         inbox = {mid: [] for mid in active}
         intercepted = {mid: [] for mid in active}

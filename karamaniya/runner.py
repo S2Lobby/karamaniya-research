@@ -223,6 +223,10 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
     cfg = config if isinstance(config, dict) else load_config(config)
     cfg = {**cfg, "run": dict(cfg["run"])}
     check_office_assignment(cfg["run"], len(cfg["seats"]))
+    if "civil_war" in cfg["run"]:
+        # Wave C: an explicit arm is checked before any folder or checkpoint is written.
+        from .civil_war import validate_option as validate_civil_war
+        cfg["run"]["civil_war"] = validate_civil_war(cfg["run"]["civil_war"])
     if check:
         _require_seats(cfg, observer, "started")
     run = cfg["run"]

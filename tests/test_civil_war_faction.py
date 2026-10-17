@@ -589,6 +589,36 @@ class ThePrompt(unittest.TestCase):
             self.assertIn(phrase, prompt)
 
 
+class TheRunOption(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="cw-faction-option-")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _config(self, arm: str | None) -> dict:
+        cfg = load_config(SCRIPTED)
+        run = {**cfg["run"], "tokens": {}, "foreign_cabinets": False}
+        if arm is not None:
+            run["civil_war"] = arm
+        return {"run": run, "seats": cfg["seats"]}
+
+    def test_a_bad_arm_is_refused_before_the_run_folder_is_written(self):
+        from karamaniya import runner
+        with self.assertRaises(ValueError):
+            runner.new_run(self._config("maybe"), runs_dir=self.tmp, name="bad", months=1, seed=1,
+                           quiet=True, check=False)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "bad")))
+
+    def test_the_manifest_records_the_arm_only_when_it_is_on(self):
+        from karamaniya import manifest
+        cfg = self._config("on")
+        on = new_world(1, 1, civil_war_option="on")
+        self.assertEqual(manifest.build(on, cfg).get("civil_war"), "on")
+        off = new_world(1, 1)
+        self.assertNotIn("civil_war", manifest.build(off, cfg))
+
+
 class TheRunReplays(unittest.TestCase):
     """A scripted run recorded with a war replays from its own log, faction calls and all."""
 

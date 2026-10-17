@@ -1,5 +1,6 @@
-"""Analyse a study grid: time to exit, persistence, invalid actions, action-execution mismatches, the exits the audit
-reclassifies, the order-protocol pairs and the ablations (briefs 9.S6 and 9.S7). Standard library only.
+"""Analyse a study grid: time to exit, persistence, the two secondary debate measures, invalid actions,
+action-execution mismatches, the exits the audit reclassifies, the order-protocol pairs and the ablations (briefs
+9.S6 and 9.S7). Standard library only.
 
     python tools/study_analysis.py RUNS [RUNS ...] --out DIR [--plan PLAN.json] [--status STATUS.json]
                                    [--labels SAMPLE.csv] [--horizon N] [--tau N] [--bootstrap B] [--seed S]
@@ -21,7 +22,11 @@ Conventions, as the study report states them:
   - Persistence is the restricted mean survival time (RMST) up to tau = min(horizon, the longest follow-up).
   - The validated variant counts only supported exits. A seat whose exits are not supported is censored.
   - Bootstrap intervals resample seed clusters with replacement, with a fixed RNG seed, so a run is repeatable.
-  - Figures: none. matplotlib is not in research\\.venv, and the script adds no dependency.
+  - Figures are plain SVG written by this script (no matplotlib, no numpy): Kaplan-Meier step curves by model, by
+    formation office and over runs, each with censor ticks. The SVG writer is deterministic.
+  - The secondary measures S1 (position change after negotiation) and S2 (disagreement in debate against the final
+    vote) are computed from the month records; docs/STATISTICS.md gives their formulas. The engine's
+    VOTE_INTENT_MISMATCH flag is a diagnostic, not a measure: it is written to vote_intent_diagnostic.csv.
 """
 from __future__ import annotations
 
@@ -30,6 +35,7 @@ import csv
 import json
 import os
 import random
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -53,6 +59,44 @@ LABEL_NAMES = {"substantively_supported": "supported", "supported": "supported",
 EXIT_CLASS_ORDER = {"member": 0, "office": 1, "government": 2, "election": 3}
 EXIT_CLASSES = ("member", "office", "government", "election")
 SCOPES = ("model", "office", "model_office")
+
+# ---- secondary measures (wave 3) -------------------------------------------------------------------------------------
+# Motion statuses that mean the motion reached a vote. The list is convergence.VOTED_STATES at engine 26; a legacy
+# record without a status is treated as voted when it carries a tally or a ballot (see _motion_voted).
+VOTED_STATUSES = ("PASSED", "DEFEATED", "EXECUTION_BLOCKED", "PASSED_CONDITIONALLY", "EXECUTION_PENDING",
+                  "EXECUTION_BLOCKED_CONDITION")
+PROCEDURAL_TYPES = ("assign_office", "vacate_office")     # convergence.families leaves these out
+STANCE_TO_VOTE = {"support": "yes", "oppose": "no", "undecided": "undecided", "conditional": "conditional"}
+# A copy of analytics.MOTION_WORDS at engine 26: the keyword each policy subject is read by when the delegate's
+# private-position text is the only record of its opening stance.
+MOTION_WORDS = {
+    "tax": ("tax",), "military": ("military", "army", "defence", "defense"), "police": ("police",),
+    "welfare": ("welfare", "relief"), "health_edu": ("health", "education"), "farm_support": ("farm", "harvest"),
+    "printing": ("print",), "rate": ("interest", "rate"), "rationing": ("ration",), "imports": ("import",),
+    "protest_response": ("protest",), "surveillance": ("surveillance",), "arrests": ("arrest",),
+    "shipbuilding": ("ship", "navy"), "election_month": ("election",), "emergency": ("emergency",),
+    "loan": ("loan",), "launch_currency": ("karam", "currency"),
+}
+# A copy of convergence._GENERIC and _BOILERPLATE at engine 26, used only to link competing Charter amendments into
+# one family. The two word lists are the engine's: they are what stops "drafting style" linking unrelated motions.
+FAMILY_GENERIC = frozenset("""
+shall with that this from have will which their them after before under such other provisional government
+council member members motion motion_id state states public national only also must made make making
+""".split())
+FAMILY_BOILERPLATE = frozenset("""
+establish established establishing independent empower empowered publish published findings report
+reports reported protect protected protecting process processes complete access records files file
+ministry ministries article persons named acted acting upon within against subject only lawful
+national security relevant particular beginning officials shall
+""".split())
+
+# ---- SVG figures (wave 3) --------------------------------------------------------------------------------------------
+# The reference categorical palette, fixed order, validated for adjacent pairs on a light surface. A chart never
+# cycles hues: past the cap the smallest groups are left to the CSV tables and the figure says how many.
+SVG_COLOURS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948")
+SVG_MAX_GROUPS = 8
+SVG_SURFACE, SVG_INK, SVG_INK_2, SVG_MUTED = "#fcfcfb", "#0b0b0b", "#52514e", "#898781"
+SVG_GRID, SVG_AXIS = "#e1e0d9", "#c3c2b7"
 
 
 class StudyError(Exception):
@@ -577,6 +621,309 @@ def integrity_findings(run):
         return None
 
 
+# ---- secondary measures: positions and debate ------------------------------------------------------------------------
+
+def _initial_stance(position, motion):
+    """A copy of analytics.initial_stance at engine 26: read a delegate's private opening position for a motion it
+    had not yet seen. support / oppose / unknown; the engine's own keyword read, kept identical so the study measure
+    and the engine panel mean the same thing."""
+    if not isinstance(position, dict):
+        return "unknown"
+    subject = motion.get("subject") or motion.get("type")
+    keys = MOTION_WORDS.get(subject, (str(subject).replace("_", " "),))
+    support = (str(position.get("would_support") or "") + " "
+               + str(position.get("preferred_policy") or "")).lower()
+    oppose = (str(position.get("would_oppose") or "") + " "
+              + str(position.get("unacceptable_outcome") or "")).lower()
+    hit_s = any(k in support for k in keys)
+    hit_o = any(k in oppose for k in keys)
+    if hit_s and not hit_o:
+        return "support"
+    if hit_o and not hit_s:
+        return "oppose"
+    return "unknown"
+
+
+def _normalise_stance(value):
+    """A copy of convergence._norm_stance: any recorded response-round position as yes / no / abstain / conditional."""
+    if value in STANCE_TO_VOTE:
+        return STANCE_TO_VOTE[value]
+    if value in ("yes", "no", "abstain", "conditional"):
+        return value
+    return None
+
+
+def _content_words(text):
+    return {w for w in re.findall(r"[a-z]+", str(text or "").lower())
+            if len(w) > 3 and w not in FAMILY_GENERIC}
+
+
+def _anchor_words(text):
+    return _content_words(text) - FAMILY_BOILERPLATE
+
+
+def motion_families(record):
+    """motion id -> family label, a copy of convergence.families at engine 26 (narrow on purpose).
+
+    Two motions share a family only when they are genuinely alternatives: the same lever at a different level, the
+    same funding question (settle_arrears), or two Charter amendments about the same institution. Amendments are
+    linked by shared significant words, exactly as the engine links them. Procedural motions (office assignment and
+    vacation) are not policy alternatives and are left out.
+    """
+    substantive = [m for m in record.get("motions") or []
+                   if m.get("type") not in PROCEDURAL_TYPES and m.get("id")]
+    keys = {}
+    for mo in substantive:
+        kind, subject = str(mo.get("type") or ""), str(mo.get("subject") or "")
+        if kind == "settle_arrears":
+            keys[mo["id"]] = ("settle_arrears", "")
+        else:
+            keys[mo["id"]] = (kind, subject.casefold())
+    amendments = [m for m in substantive if m.get("type") == "amend"]
+    parent = {str(m.get("id")): str(m.get("id")) for m in amendments}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+
+    for mo in amendments:
+        mine = _content_words(mo.get("text", ""))
+        anchors = _anchor_words(mo.get("text", ""))
+        best, best_key = None, str(mo.get("id"))
+        for other in amendments:
+            if other.get("id") == mo.get("id"):
+                continue
+            theirs = _content_words(other.get("text", ""))
+            shared = mine & theirs
+            similarity = len(shared) / len(mine | theirs) if mine | theirs else 0.0
+            if len(shared) >= 6 and similarity >= 0.20 and len(anchors & shared) >= 2:
+                score = (len(anchors & shared), similarity)
+                if best is None or score > best:
+                    best, best_key = score, str(other.get("id"))
+        if best is not None:
+            union(str(mo.get("id")), best_key)
+    out = {}
+    for mid, key in keys.items():
+        if key[0] == "amend":
+            out[mid] = f"amend:{find(mid) if mid in parent else mid}"
+        elif key[1]:
+            out[mid] = f"{key[0]}:{key[1]}"
+        else:
+            out[mid] = key[0]
+    return out
+
+
+def _motion_voted(motion):
+    """Did this motion reach a vote? The recorded status is authoritative; a legacy record with no status is read
+    from its tally or ballots."""
+    if motion.get("void") or motion.get("withdrawn"):
+        return False
+    status = str(motion.get("status") or "")
+    if status:
+        return status in VOTED_STATUSES
+    return bool(motion.get("tally")) or any(v in ("yes", "no", "abstain")
+                                            for v in (motion.get("votes") or {}).values())
+
+
+def _motion_live(motion):
+    """A motion that reached the floor in the engine's divergence sense: passed, defeated, withdrawn or superseded."""
+    if motion.get("void"):
+        return False
+    status = str(motion.get("status") or "")
+    if status:
+        return status in ("PASSED", "DEFEATED", "WITHDRAWN", "SUPERSEDED")
+    return bool(motion.get("votes")) or bool(motion.get("withdrawn"))
+
+
+def position_change_rows(run):
+    """S1, one row per delegate-motion pair on a motion that reached a vote.
+
+    `opening` is the delegate's position before the negotiation, from structured state where it exists: the motion's
+    own proposer opened in support; a delegate that tabled a rival motion in the same family opened in support; every
+    other delegate's opening is the engine's keyword read of `pre_positions`. `response` is the stance the delegate
+    recorded in the revision round. `counted_opening` and `counted_response` mark the pairs the two rates use."""
+    offices = formation_offices(run) or {}
+    rows = []
+    for month in sorted(run.records):
+        rec = run.records[month]
+        families = motion_families(rec)
+        revisions = rec.get("revisions") or {}
+        pre_positions = rec.get("pre_positions") or {}
+        motions = [m for m in rec.get("motions") or [] if m.get("id")]
+        for mo in motions:
+            mid = mo.get("id")
+            if not _motion_voted(mo):
+                continue
+            family = families.get(mid, str(mo.get("type") or ""))
+            for member in sorted(mo.get("votes") or {}):
+                if member not in LETTERS:
+                    continue
+                vote = (mo.get("votes") or {}).get(member)
+                if member == mo.get("proposer"):
+                    opening, basis = "support", "proposer"
+                elif any(m.get("proposer") == member and m.get("type") not in PROCEDURAL_TYPES
+                         and families.get(m.get("id")) == family for m in motions):
+                    opening, basis = "support", "tabled_motion"
+                else:
+                    opening = _initial_stance(pre_positions.get(member) or {}, mo)
+                    basis = "private_position"
+                recorded = ((revisions.get(member) or {}).get("stances") or {}).get(mid)
+                response = _normalise_stance(recorded)
+                counted_opening = (basis != "proposer" and opening in ("support", "oppose")
+                                   and vote in ("yes", "no"))
+                counted_response = response in ("yes", "no") and vote in ("yes", "no")
+                rows.append({
+                    "run": run.name, "month": month,
+                    "month_label": f"Month {month + 1}" if month >= 0 else "",
+                    "motion_id": mid, "motion_type": str(mo.get("type") or ""),
+                    "subject": str(mo.get("subject") or ""), "family": family,
+                    "member": member, "model": run.seats[member]["model"],
+                    "office": office_group(offices.get(member)),
+                    "opening": opening, "opening_basis": basis, "response": response or "",
+                    "final_vote": str(vote), "counted_opening": counted_opening,
+                    "changed_opening_to_final": counted_opening and ((vote == "yes") != (opening == "support")),
+                    "counted_response": counted_response,
+                    "changed_response_to_final": counted_response and response != vote})
+    return rows
+
+
+def _position_rows(counts_by_group):
+    rows = []
+    for g, c in sorted(counts_by_group.items()):
+        rows.append({"group": g, "seats": c["seats"], "pairs": c["pairs"],
+                     "opening_known": c["opening_known"], "opening_changes": c["opening_changes"],
+                     "opening_share": _round(_share(c["opening_changes"], c["opening_known"])),
+                     "response_known": c["response_known"], "response_changes": c["response_changes"],
+                     "response_share": _round(_share(c["response_changes"], c["response_known"]))})
+    return rows
+
+
+def position_change_rates(runs):
+    """S1's counts and shares per model and per formation office. A pair enters the opening rate only when the
+    opening is known, the final vote is yes or no, and the delegate did not propose the motion itself; a pair enters
+    the response rate only when the response stance is yes or no and the final vote is yes or no."""
+    by_model, by_office = {}, {}
+    for run in runs:
+        offices = formation_offices(run) or {}
+        per_seat = {L: Counter() for L in LETTERS}
+        for row in position_change_rows(run):
+            c = per_seat[row["member"]]
+            c["pairs"] += 1
+            if row["counted_opening"]:
+                c["opening_known"] += 1
+                c["opening_changes"] += int(row["changed_opening_to_final"])
+            if row["counted_response"]:
+                c["response_known"] += 1
+                c["response_changes"] += int(row["changed_response_to_final"])
+        for L in LETTERS:
+            _add(by_model, run.seats[L]["model"], per_seat[L])
+            _add(by_office, office_group(offices.get(L)), per_seat[L])
+    return (_position_rows(by_model)
+            + [dict(r, group=f"office: {r['group']}") for r in _position_rows(by_office)])
+
+
+def debate_rows(run):
+    """S2, one row per motion family per month with a final vote.
+
+    `response_opposition` is the number of recorded response-round stances of "oppose" against any motion in the
+    family. `competing_alternatives` is the number of family motions that reached the floor. `contested_withdrawals`
+    is the number of family motions withdrawn or superseded while the family held another alternative. The divergence
+    score is the engine's `_divergence` formula applied to one family (a live contest scores 2; opposing stances and
+    contested withdrawals are capped as the engine caps them). `final_dissent` counts no and abstain ballots, and
+    `gap` is response opposition minus final dissent."""
+    rows = []
+    for month in sorted(run.records):
+        rec = run.records[month]
+        families = motion_families(rec)
+        substantive = [m for m in rec.get("motions") or []
+                       if m.get("type") not in PROCEDURAL_TYPES and m.get("id")]
+        revisions = rec.get("revisions") or {}
+        opposition = Counter()
+        withdrawn_ids = set()
+        for member, staged in revisions.items():
+            staged = staged if isinstance(staged, dict) else {}
+            for mid, stance in (staged.get("stances") or {}).items():
+                if stance == "oppose":
+                    opposition[mid] += 1
+            for mid in staged.get("withdrawn") or []:
+                withdrawn_ids.add(mid)
+        for mo in substantive:
+            if mo.get("withdrawn"):
+                withdrawn_ids.add(mo.get("id"))
+        grouped = defaultdict(list)
+        for mo in substantive:
+            grouped[families.get(mo.get("id"), str(mo.get("type") or ""))].append(mo)
+        for family, members in sorted(grouped.items()):
+            voted = [m for m in members if _motion_voted(m)]
+            if not voted:
+                continue
+            live = [m for m in members if _motion_live(m)]
+            contested = 0
+            if len(members) > 1:
+                for m in live:
+                    status = str(m.get("status") or "")
+                    withdrew = status in ("WITHDRAWN", "SUPERSEDED") or (not status and bool(m.get("withdrawn")))
+                    if m.get("id") in withdrawn_ids and withdrew:
+                        contested += 1
+            response_opposition = sum(opposition.get(m.get("id"), 0) for m in members)
+            live_contest = 1 if len(live) > 1 else 0
+            score = min(3, live_contest) * 2 + min(4, response_opposition) + min(2, contested) * 2
+            level = "NONE" if score == 0 else "LOW" if score <= 2 else "MODERATE" if score <= 5 else "HIGH"
+            yes = no = abstain = 0
+            for mo in voted:
+                votes = mo.get("votes") or {}
+                eligible = mo.get("eligible_voters")
+                names = eligible if isinstance(eligible, list) and eligible else list(votes)
+                for name in names:
+                    vote = votes.get(name)
+                    if vote == "yes":
+                        yes += 1
+                    elif vote == "no":
+                        no += 1
+                    elif vote == "abstain":
+                        abstain += 1
+            ballots = yes + no + abstain
+            dissent = no + abstain
+            rows.append({"run": run.name, "month": month,
+                         "month_label": f"Month {month + 1}" if month >= 0 else "",
+                         "family": family, "motions": len(members), "motions_voted": len(voted),
+                         "competing_alternatives": len(live), "contested_withdrawals": contested,
+                         "response_opposition": response_opposition,
+                         "divergence_score": score, "divergence_level": level,
+                         "yes": yes, "no": no, "abstain": abstain, "ballots": ballots,
+                         "final_dissent": dissent,
+                         "final_dissent_share": _round(_share(dissent, ballots)),
+                         "gap": response_opposition - dissent})
+    return rows
+
+
+def debate_by_family(rows):
+    """S2 aggregated over runs, per motion family. `mean_gap` is the per-family-month gap averaged; a positive gap
+    means intermediate opposition did not reach the final ballot, a negative one that more dissent appeared at it."""
+    groups = defaultdict(list)
+    for row in rows:
+        groups[row["family"]].append(row)
+    out = []
+    for family, items in groups.items():
+        ballots = sum(r["ballots"] for r in items)
+        dissent = sum(r["final_dissent"] for r in items)
+        out.append({"family": family, "family_months": len(items),
+                    "motions": sum(r["motions"] for r in items), "ballots": ballots,
+                    "response_opposition": sum(r["response_opposition"] for r in items),
+                    "mean_divergence_score": _round(sum(r["divergence_score"] for r in items) / len(items)),
+                    "final_dissent": dissent,
+                    "final_dissent_share": _round(_share(dissent, ballots)),
+                    "mean_gap": _round(sum(r["gap"] for r in items) / len(items))})
+    return sorted(out, key=lambda r: (-r["ballots"], r["family"]))
+
+
 # ---- survival and persistence ----------------------------------------------------------------------------------------
 
 def km_steps(durations, events):
@@ -601,7 +948,8 @@ def km_steps(durations, events):
 
 def km_survival_at(steps, t):
     survival = 1.0
-    for when, _, _, after in steps:
+    for step in steps:
+        when, after = step[0], step[-1]
         if when <= t:
             survival = after
         else:
@@ -868,6 +1216,195 @@ def run_first_exit(observations, prefix):
     return rows
 
 
+# ---- SVG figures -----------------------------------------------------------------------------------------------------
+
+def km_path(steps, x_max, x_of, y_of):
+    """The SVG path of a Kaplan-Meier step curve: a horizontal run from (0, 1) to each exit time, then the vertical
+    drop. `steps` is [(time, survival after the time), ...]; the curve is carried to x_max."""
+    points = [(0.0, 1.0)]
+    survival = 1.0
+    for when, after in ((step[0], step[-1]) for step in steps):
+        if when > x_max:
+            break
+        points.append((when, survival))
+        points.append((when, after))
+        survival = after
+    points.append((x_max, survival))
+    return "M " + " L ".join(f"{x_of(t):.2f},{y_of(s):.2f}" for t, s in points)
+
+
+def km_series(observations, prefix, scope):
+    """The series an SVG figure draws: groups ordered by seat count (largest first), capped at SVG_MAX_GROUPS, and
+    the number of groups left to the CSV tables."""
+    groups = defaultdict(list)
+    for o in observations:
+        groups[o["model"] if scope == "model" else o["office"]].append(o)
+    series = []
+    for g, obs in groups.items():
+        durations = [o[f"{prefix}_time"] for o in obs]
+        events = [o[f"{prefix}_event"] for o in obs]
+        series.append({"label": str(g), "n": len(obs), "durations": durations, "events": events,
+                       "steps": km_steps(durations, events)})
+    series.sort(key=lambda s: (-s["n"], s["label"]))
+    return series[:SVG_MAX_GROUPS], max(0, len(series) - SVG_MAX_GROUPS)
+
+
+def first_exit_series(observations, prefix):
+    """The trajectory curve: one value per run, the first exit by any seat."""
+    per_run = run_first_exit(observations, prefix)
+    durations = [r["time"] for r in per_run]
+    events = [r["event"] for r in per_run]
+    return [{"label": "first exit by any seat", "n": len(per_run), "durations": durations, "events": events,
+             "steps": km_steps(durations, events)}]
+
+
+def _svg_escape(value):
+    return (str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;"))
+
+
+def _x_ticks(x_max):
+    """Clean month ticks: the smallest step from 1, 2, 3, 4, 6, 12, 24 that gives at most eight ticks."""
+    for step in (1, 2, 3, 4, 6, 12, 24):
+        if x_max / step <= 8:
+            return list(range(0, int(x_max) + 1, step))
+    return list(range(0, int(x_max) + 1, 24))
+
+
+def survival_svg(series, title, subtitle, x_max=None, note=""):
+    """A self-contained, deterministic SVG of Kaplan-Meier step curves, paper and video ready.
+
+    No matplotlib and no external resource: everything is plain SVG text. Each series is one 2px step curve in the
+    reference categorical palette, with a tick at every censored seat, a hairline grid, a legend that names every
+    drawn group, and caption text. Past SVG_MAX_GROUPS the series is capped and the note says how many were left to
+    the CSV tables. The same inputs give the same bytes."""
+    if len(series) > SVG_MAX_GROUPS:
+        hidden = len(series) - SVG_MAX_GROUPS
+        series = series[:SVG_MAX_GROUPS]
+        note = "; ".join(part for part in (note, f"{hidden} more group(s) not drawn") if part)
+    width, height = 920, 560
+    left, right, top, bottom = 78, (286 if len(series) > 1 else 40), 92, 64
+    plot_w, plot_h = width - left - right, height - top - bottom
+    durations = [t for s in series for t in s["durations"]]
+    x_max = float(x_max if x_max is not None else (max(durations) if durations else 1))
+    x_max = max(x_max, 1.0)
+    y_ticks = (0.0, 0.25, 0.5, 0.75, 1.0)
+
+    def x_of(t):
+        return left + plot_w * (t / x_max)
+
+    def y_of(s):
+        return top + plot_h * (1.0 - s)
+
+    parts = ['<?xml version="1.0" encoding="UTF-8"?>',
+             f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+             f'viewBox="0 0 {width} {height}" role="img" aria-labelledby="fig-title fig-desc">',
+             f'<title id="fig-title">{_svg_escape(title)}</title>',
+             f'<desc id="fig-desc">{_svg_escape(subtitle)}. Kaplan-Meier step curves with censor ticks.</desc>',
+             f'<rect width="{width}" height="{height}" fill="{SVG_SURFACE}"/>']
+    parts.append(f'<text x="{left}" y="34" font-family="system-ui, -apple-system, Segoe UI, sans-serif" '
+                 f'font-size="18" font-weight="600" fill="{SVG_INK}">{_svg_escape(title)}</text>')
+    sub = subtitle + (f". {note}" if note else "")
+    parts.append(f'<text x="{left}" y="56" font-family="system-ui, -apple-system, Segoe UI, sans-serif" '
+                 f'font-size="12" fill="{SVG_INK_2}">{_svg_escape(sub)}</text>')
+
+    # Grid and axes, recessive: hairline solid gridlines, one axis line.
+    for value in y_ticks:
+        y = y_of(value)
+        parts.append(f'<line x1="{left}" y1="{y:.2f}" x2="{left + plot_w}" y2="{y:.2f}" '
+                     f'stroke="{SVG_GRID}" stroke-width="1"/>')
+        label = "0" if value == 0 else ("1" if value == 1 else f"{value:g}")
+        parts.append(f'<text x="{left - 10}" y="{y + 4:.2f}" text-anchor="end" '
+                     f'font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" '
+                     f'fill="{SVG_MUTED}">{label}</text>')
+    for tick in _x_ticks(x_max):
+        x = x_of(tick)
+        parts.append(f'<line x1="{x:.2f}" y1="{top}" x2="{x:.2f}" y2="{top + plot_h}" '
+                     f'stroke="{SVG_GRID}" stroke-width="1"/>')
+        parts.append(f'<text x="{x:.2f}" y="{top + plot_h + 20}" text-anchor="middle" '
+                     f'font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" '
+                     f'fill="{SVG_MUTED}">{tick}</text>')
+    parts.append(f'<line x1="{left}" y1="{top + plot_h}" x2="{left + plot_w}" y2="{top + plot_h}" '
+                 f'stroke="{SVG_AXIS}" stroke-width="1"/>')
+    parts.append(f'<text x="{left + plot_w / 2:.2f}" y="{height - 18}" text-anchor="middle" '
+                 f'font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" '
+                 f'fill="{SVG_INK_2}">months in office</text>')
+    parts.append(f'<text x="22" y="{top + plot_h / 2:.2f}" text-anchor="middle" '
+                 f'transform="rotate(-90 22 {top + plot_h / 2:.2f})" '
+                 f'font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" '
+                 f'fill="{SVG_INK_2}">survival S(t)</text>')
+
+    if not series:
+        parts.append(f'<text x="{left + plot_w / 2:.2f}" y="{top + plot_h / 2:.2f}" text-anchor="middle" '
+                     f'font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="14" '
+                     f'fill="{SVG_INK_2}">No observations</text>')
+    for index, item in enumerate(series):
+        colour = SVG_COLOURS[index % len(SVG_COLOURS)]
+        steps = item.get("steps") or km_steps(item["durations"], item["events"])
+        parts.append(f'<path class="km-curve" d="{km_path(steps, x_max, x_of, y_of)}" fill="none" '
+                     f'stroke="{colour}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>')
+        for when, event in zip(item["durations"], item["events"]):
+            if event:
+                continue
+            y = y_of(km_survival_at(steps, when))
+            parts.append(f'<line class="censor" x1="{x_of(when):.2f}" y1="{y - 4:.2f}" '
+                         f'x2="{x_of(when):.2f}" y2="{y + 4:.2f}" stroke="{colour}" stroke-width="2" '
+                         f'opacity="0.75"/>')
+    # Legend: identity is never colour alone, every drawn group is named. A single series needs no legend box:
+    # the title already says what is plotted.
+    if len(series) > 1:
+        legend_x = width - right + 10
+        legend_y = top + 8
+        for index, item in enumerate(series):
+            colour = SVG_COLOURS[index % len(SVG_COLOURS)]
+            y = legend_y + index * 24
+            parts.append(f'<line x1="{legend_x}" y1="{y}" x2="{legend_x + 18}" y2="{y}" stroke="{colour}" '
+                         f'stroke-width="2"/>')
+            label = item["label"]
+            if len(label) > 30:
+                label = label[:29] + "…"
+            parts.append(f'<text x="{legend_x + 26}" y="{y + 4}" '
+                         f'font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" '
+                         f'fill="{SVG_INK}">{_svg_escape(label)} '
+                         f'<tspan fill="{SVG_MUTED}">(n={item["n"]})</tspan></text>')
+    parts.append(f'<text x="{left}" y="{height - 18}" '
+                 f'font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="10" '
+                 f'fill="{SVG_MUTED}">Step curves; ticks mark censored seats.</text>')
+    parts.append("</svg>")
+    return "\n".join(parts) + "\n"
+
+
+def write_survival_svgs(out, observations, has_labels, tau):
+    """Write the SVG figures into the analysis output folder. Returns the paths written."""
+    out = Path(out)
+    written = []
+    variants = [("raw", "raw engine labels")]
+    if has_labels:
+        variants.append(("val", "validated (supported exits only)"))
+    for scope, stem, label in (("model", "km_by_model", "model"),
+                               ("office", "km_by_office", "formation office")):
+        for prefix, variant in variants:
+            series, omitted = km_series(observations, prefix, scope)
+            x_max = max((t for s in series for t in s["durations"]), default=0) or tau or 1
+            note = (f"{omitted} more group(s) not drawn; the CSV tables hold every group." if omitted else "")
+            title = f"Time to exit by {label}"
+            svg = survival_svg(series, title=title, subtitle=f"Kaplan-Meier, {variant}", x_max=x_max, note=note)
+            path = out / f"{stem}{'_validated' if prefix == 'val' else ''}.svg"
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(svg)
+            written.append(path)
+    for prefix, variant in variants:
+        series = first_exit_series(observations, prefix)
+        x_max = max((t for s in series for t in s["durations"]), default=0) or tau or 1
+        svg = survival_svg(series, title="Trajectory: first exit by any seat",
+                           subtitle=f"Kaplan-Meier over runs, {variant}", x_max=x_max)
+        path = out / f"km_first_exit{'_validated' if prefix == 'val' else ''}.svg"
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(svg)
+        written.append(path)
+    return written
+
+
 # ---- writing -----------------------------------------------------------------------------------------------------
 
 def _write_csv(path, rows, fields=None):
@@ -949,6 +1486,8 @@ def _rates_rows(rates_by_group):
 
 
 def _mismatch_rows(counts_by_group):
+    """P3's execution and directive rates. The vote-intent flag is deliberately absent: it is a diagnostic, not a
+    measure (wave-3 reviewer decision), and it is written by _vote_intent_rows."""
     rows = []
     for g, c in sorted(counts_by_group.items()):
         audited = c.get("executed_audited", 0)
@@ -957,8 +1496,17 @@ def _mismatch_rows(counts_by_group):
                      "audit_mismatches": audit if audit is not None else "NA",
                      "audit_share": _round(_share(audit, audited)) if audit is not None else None,
                      "compliance_rows": c["compliance_rows"], "directive_mismatches": c["directive_mismatches"],
-                     "directive_share": _round(_share(c["directive_mismatches"], c["compliance_rows"])),
-                     "votes": c["votes"], "vote_intent_mismatches": c["vote_intent_mismatches"],
+                     "directive_share": _round(_share(c["directive_mismatches"], c["compliance_rows"]))})
+    return rows
+
+
+def _vote_intent_rows(counts_by_group):
+    """The engine's VOTE_INTENT_MISMATCH flag per group: a diagnostic, not a measure. It is kept for traceability
+    only; the paper's measures do not use it (T144 and Jev's re-audit may validate it later)."""
+    rows = []
+    for g, c in sorted(counts_by_group.items()):
+        rows.append({"group": g, "seats": c["seats"], "votes": c["votes"],
+                     "vote_intent_mismatches": c["vote_intent_mismatches"],
                      "vote_intent_share": _round(_share(c["vote_intent_mismatches"], c["votes"]))})
     return rows
 
@@ -1136,6 +1684,7 @@ def main(argv=None):
     _write_csv(out / "km_by_office.csv", km_office_rows)
     _write_csv(out / "first_exit_by_run.csv", first_rows)
     _write_csv(out / "km_first_exit.csv", first_km_rows)
+    svg_paths = write_survival_svgs(out, observations, labels is not None, tau)
 
     # ---- persistence, ablations, protocol pairs ----
     persistence = []
@@ -1171,6 +1720,21 @@ def main(argv=None):
     mismatch_rows = _mismatch_rows(mism_by_model) + [dict(r, group=f"office: {r['group']}")
                                                      for r in _mismatch_rows(mism_by_office)]
     _write_csv(out / "mismatch_rates.csv", mismatch_rows)
+    vote_rows = _vote_intent_rows(mism_by_model) + [dict(r, group=f"office: {r['group']}")
+                                                    for r in _vote_intent_rows(mism_by_office)]
+    _write_csv(out / "vote_intent_diagnostic.csv", vote_rows)
+
+    # ---- secondary measures S1 and S2 ----
+    position_rows, debate = [], []
+    for run in analysed:
+        position_rows += position_change_rows(run)
+        debate += debate_rows(run)
+    _write_csv(out / "position_changes.csv", position_rows)
+    position_rates = position_change_rates(analysed)
+    _write_csv(out / "position_change_rates.csv", position_rates)
+    _write_csv(out / "debate_disagreement.csv", debate)
+    debate_families = debate_by_family(debate)
+    _write_csv(out / "debate_by_family.csv", debate_families)
 
     foreign = defaultdict(Counter)
     for run in analysed:
@@ -1186,12 +1750,12 @@ def main(argv=None):
     _write_csv(out / "reclassification.csv", recl_rows)
 
     summary = _summary(args, runs, analysed, inventory, observations, labels, horizon, tau, persistence,
-                       protocol_rows, ablation_rows, call_rows, mismatch_rows, foreign_rows, recl_rows,
-                       km_model_rows, km_office_rows, exits_rows, integrity)
+                       protocol_rows, ablation_rows, call_rows, mismatch_rows, vote_rows, foreign_rows, recl_rows,
+                       km_model_rows, km_office_rows, exits_rows, integrity, position_rates, debate_families)
     with open(out / "summary.md", "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(summary) + "\n")
     print(f"analysed {len(analysed)} of {len(runs)} run folders, {len(observations)} seat observations; "
-          f"tau {tau} months; {args.bootstrap} bootstrap replicates -> {out}")
+          f"tau {tau} months; {args.bootstrap} bootstrap replicates; {len(svg_paths)} SVG figures -> {out}")
     return 0
 
 
@@ -1267,8 +1831,8 @@ def _reclassification(labels, analysed, exits_rows):
 
 
 def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau, persistence, protocol_rows,
-             ablation_rows, call_rows, mismatch_rows, foreign_rows, recl_rows, km_model_rows, km_office_rows,
-             exits_rows, integrity):
+             ablation_rows, call_rows, mismatch_rows, vote_rows, foreign_rows, recl_rows, km_model_rows,
+             km_office_rows, exits_rows, integrity, position_rates, debate_families):
     out = ["# Study analysis: summary", ""]
     out.append(f"Run folders read: {len(runs)}; analysed: {len(analysed)}. Horizon {horizon} months; "
                f"restricted means use tau = {tau} months. Bootstrap: {args.bootstrap} replicates over seed "
@@ -1361,6 +1925,45 @@ def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau
         out += _md_table(["scope", "group", "n", "exits", "max follow-up", f"RMST to {tau}", "diff", "95% CI",
                           "interaction (cell only)"], rows)
         out.append("")
+    out.append("## Secondary measure S1: position change after negotiation")
+    out.append("")
+    out.append("One row per delegate and motion that reached a vote. The opening position is the proposer's support "
+               "for its own motion; a rival motion the delegate tabled in the same family is structured support; "
+               "otherwise it is the engine's keyword read of `pre_positions`. The opening rate counts pairs with a "
+               "known opening and a yes/no final vote, excluding the motion's own proposer. The response rate counts "
+               "pairs with a yes/no stance in the revision round and a yes/no final vote; a conditional stance is a "
+               "condition, not a change. A positive share means the delegate voted against the position it opened "
+               "on. The full pair-level audit is position_changes.csv; docs/STATISTICS.md gives the formulas.")
+    out.append("")
+    if position_rates:
+        out += _md_table(["group", "seats", "pairs", "opening known", "opening changes", "opening share",
+                          "response known", "response changes", "response share"],
+                         [[r["group"], r["seats"], r["pairs"], r["opening_known"], r["opening_changes"],
+                           _fmt(r["opening_share"]), r["response_known"], r["response_changes"],
+                           _fmt(r["response_share"])] for r in position_rates])
+    else:
+        out.append("No motion reached a vote in the analysed runs.")
+    out.append("")
+    out.append("## Secondary measure S2: disagreement in debate against the final vote")
+    out.append("")
+    out.append("One row per motion family in one month with a final vote. Response opposition is the number of "
+               "recorded response-round `oppose` stances against any motion in the family. The divergence score "
+               "applies the engine's formula to that family: 2 for a live contest, plus 1 per opposing stance "
+               "(capped at 4), plus 2 per contested withdrawal (capped at 2). Final dissent counts no and abstain "
+               "ballots. The gap is response opposition minus final dissent: positive means intermediate opposition "
+               "did not reach the final ballot; negative means more dissent appeared at it. Family keys are the "
+               "engine's narrow rule, including its amendment clustering. The full family-month audit is "
+               "debate_disagreement.csv.")
+    out.append("")
+    if debate_families:
+        out += _md_table(["family", "family-months", "motions", "ballots", "response opposition",
+                          "mean divergence", "final dissent", "dissent share", "mean gap"],
+                         [[r["family"], r["family_months"], r["motions"], r["ballots"],
+                           r["response_opposition"], _fmt(r["mean_divergence_score"]), r["final_dissent"],
+                           _fmt(r["final_dissent_share"]), _fmt(r["mean_gap"])] for r in debate_families])
+    else:
+        out.append("No motion reached a vote in the analysed runs.")
+    out.append("")
     out.append("## Invalid actions (delegates)")
     out.append("")
     out += _md_table(["group", "seats", "calls", "answers", "answers with a problem", "problem share",
@@ -1379,18 +1982,27 @@ def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau
     else:
         out.append("No foreign-cabinet calls in the analysed runs.")
     out.append("")
-    out.append("## Action-execution mismatches")
+    out.append("## Action-execution mismatches (P3)")
     out.append("")
-    out.append("Three separate rates, each with its own denominator: executed motions that the package's audit flags "
-               "as a different act; directive-order mismatches among compliance rows; vote-intent mismatches among "
-               "votes cast.")
+    out.append("Two separate rates, each with its own denominator: executed motions that the package's audit flags "
+               "as a different act, and directive-order mismatches among compliance rows. The vote-intent flag is "
+               "not a measure and is reported separately, as a diagnostic.")
     out.append("")
     out += _md_table(["group", "seats", "executed motions", "audit mismatches", "audit share", "compliance rows",
-                      "directive mismatches", "directive share", "votes", "vote-intent mismatches", "share"],
+                      "directive mismatches", "directive share"],
                      [[r["group"], r["seats"], r["executed_motions"], r["audit_mismatches"], _fmt(r["audit_share"]),
-                       r["compliance_rows"], r["directive_mismatches"], _fmt(r["directive_share"]), r["votes"],
-                       r["vote_intent_mismatches"], _fmt(r["vote_intent_share"])] for r in mismatch_rows]
-                     if mismatch_rows else [])
+                       r["compliance_rows"], r["directive_mismatches"], _fmt(r["directive_share"])]
+                      for r in mismatch_rows] if mismatch_rows else [])
+    out.append("")
+    out.append("## Diagnostic, not a measure: vote-intent flags")
+    out.append("")
+    out.append("The engine's VOTE_INTENT_MISMATCH flag is reported here as a diagnostic only. The wave-3 reviewer "
+               "dropped it from the paper's measures; the T144 re-audit and Jev's second annotation may validate it "
+               "later. It is not part of P3, and no conclusion rests on it.")
+    out.append("")
+    out += _md_table(["group", "seats", "votes", "vote-intent mismatches", "share"],
+                     [[r["group"], r["seats"], r["votes"], r["vote_intent_mismatches"],
+                       _fmt(r["vote_intent_share"])] for r in vote_rows] if vote_rows else [])
     out.append("")
     out.append("## Reclassified exits")
     out.append("")
@@ -1431,7 +2043,15 @@ def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau
                "exit only for a seat's own formation office.")
     out.append("- Unlabelled exits count as not supported in the validated variant, so validated survival is lower "
                "bound-biased toward persistence until every exit is adjudicated.")
-    out.append("- No Cox model and no kappa in this script (see the report).")
+    out.append("- S1's opening position is a keyword read of the delegate's private-position text when no structured "
+               "motion anchors it; that is the engine's own weaker source, and an unknown opening is excluded rather "
+               "than guessed.")
+    out.append("- S2's family keys copy the engine's narrow rule; a family of one motion has no rival alternative, so "
+               "its divergence score carries only recorded opposition and withdrawals.")
+    out.append("- The vote-intent flag is a diagnostic, not a measure: it is not part of P3 and no conclusion rests on "
+               "it (see its section).")
+    out.append("- No Cox regression is fitted in this script; the survival curves and restricted means are "
+               "non-parametric. docs/STATISTICS.md says so.")
     return out
 
 

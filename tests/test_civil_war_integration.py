@@ -11,7 +11,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from karamaniya import civil_war, civil_war_combat, engine, society  # noqa: E402
+from karamaniya import civil_war, civil_war_combat, engine, politics, society  # noqa: E402
 from karamaniya.world import new_world  # noqa: E402
 
 
@@ -68,6 +68,28 @@ class APartitionedRunCountsAsAnExit(unittest.TestCase):
         import study_analysis
         self.assertIn("partitioned", exit_audit.OUTCOME_EXIT_TYPES)
         self.assertIn("partitioned", study_analysis.OUTCOME_EXIT_TYPES)
+
+
+class AWarSuspendsTheHandover(unittest.TestCase):
+    def _world(self, on: bool):
+        w = new_world(1, 36)
+        w.const.handover_month = w.month
+        w.civil_war_option = "on" if on else "off"
+        if on:
+            w.civil_war = {"since": w.month, "factions": {}, "contested": []}
+        return w
+
+    def test_a_running_war_suspends_the_handover(self):
+        w = self._world(True)
+        politics.monthly_checks(w)
+        self.assertNotEqual((w.outcome or {}).get("type"), "voted_out")
+        self.assertEqual(w.const.handover_month, -1)
+        self.assertTrue(w.active_members())
+
+    def test_without_a_war_the_handover_still_ends_the_run(self):
+        w = self._world(False)
+        politics.monthly_checks(w)
+        self.assertEqual((w.outcome or {}).get("type"), "voted_out")
 
 
 class TheMilitiaPathStandsDownDuringAWar(unittest.TestCase):

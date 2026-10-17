@@ -2929,11 +2929,20 @@ def monthly_checks(w: World) -> None:
     if not w.ended() and c.election_month == w.month and not c.elected:
         _election(w, rng)
     if not w.ended() and c.handover_month == w.month and w.active_members():
-        for m in w.active_members():
-            remove_member(w, m.id, "voted_out")
-        w.outcome = {"type": "voted_out", "month": w.month,
-                     "text": "The Provisional Government handed power to the elected Constituent Assembly."}
-        w.event("handover", w.outcome["text"], importance=3)
+        from . import civil_war
+        if civil_war.running(w):
+            # A civil war that began in this month's split handover suspends the lawful handover: the
+            # government the war is fought over stays in office, and the run continues. Without this the
+            # handover ended the run as voted_out with the war state still running (C5 sweep, seed 4).
+            c.handover_month = -1
+            w.event("handover_suspended",
+                    "The election handover is suspended while the civil war runs.", importance=3)
+        else:
+            for m in w.active_members():
+                remove_member(w, m.id, "voted_out")
+            w.outcome = {"type": "voted_out", "month": w.month,
+                         "text": "The Provisional Government handed power to the elected Constituent Assembly."}
+            w.event("handover", w.outcome["text"], importance=3)
     if not w.ended():
         _revolution(w, rng)
     if not w.ended():

@@ -140,6 +140,10 @@ class Run:
     def war_outcome(self):
         if isinstance(self.state, dict) and isinstance(self.state.get("outcome"), dict):
             return self.state["outcome"]
+        # A checkpoint recorded before C4 kept the war's outcome only in the run's own outcome,
+        # and only for the terminal cases. Read it back rather than call such a war "running".
+        if (self.outcome or {}).get("type") in END_LABELS:
+            return self.outcome
         return None
 
     @property
@@ -344,7 +348,7 @@ def _merge_counts(counts) -> dict:
         if isinstance(item, dict):
             for key, value in item.items():
                 out[key] = out.get(key, 0) + value
-        elif isinstance(item, int):
+        elif isinstance(item, (int, str)) and item is not None:
             out[item] = out.get(item, 0) + 1
     return out
 

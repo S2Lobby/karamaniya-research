@@ -5,17 +5,21 @@
     python tools/civil_war_sweep.py --root runs/cw-sweep --summary-only  # re-read the runs on disk
 
 Every run is a council of rule-following stand-ins (`karamaniya/backends/scripted.py`); no model is
-called and no API key is read. The arms are the ones `karamaniya/baseline.py` already defines:
+called and no API key is read. The quiet arms are `karamaniya/baseline.py`'s:
 
   passive  a council that forms a government and then does nothing;
   scripted the five mixed stand-ins of council.scripted.toml;
-  dove     five dove stand-ins (the military is never raised);
-  hawk     five hawk stand-ins (the handover coup plotter).
+  dove     five dove stand-ins (the military is never raised).
 
-Each arm runs twice on the same seed: `kitchen` with `run.civil_war = "on"` and its twin with the
+The stress arm is the scripted coup plotter (`plotter`): one hawk holding the army against four
+seats that resist the handover, which is the shape in which the failed-coup trigger can be
+reached. `hawk` (baseline.py's all-hawk council) is kept as a diagnostic: every armed office there
+is held by a stand-aside hawk, so the handover is a total takeover and the trigger cannot fire.
+
+Each arm runs twice on the same seed: the on run with `run.civil_war = "on"` and its twin with the
 arm absent (`"off"`), so `tools/civil_war_report.py` can compare the war against the same run
-without it. The quiet arms must start zero wars; the hawk arm is the stress arm whose band the C-1
-decisions memo set at 10-40% of runs.
+without it. The quiet arms must start zero wars; the plotter arm is the stress arm whose band the
+C-1 decisions memo set at 10-40% of runs.
 
 Results, per run and per arm, are written to `<root>/sweep.json` and `<root>/sweep.md`. The
 coordinator starts one process per seed (the plan's rule) and waits for all of them; the children
@@ -57,7 +61,6 @@ PLOTTER_SEATS = (("hawk", "army"), ("loyalist", "head"), ("democrat", "treasury"
 # and 10-40% of the hawk stress runs do.
 HAWK_BAND = (0.10, 0.40)
 MONTHS = 36
-SMOKE_MONTHS = 36
 
 
 def run_name(seed: int, arm: str, option: str) -> str:

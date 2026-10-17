@@ -44,6 +44,10 @@ def make_backend(cfg: dict) -> Backend:
     if provider == "systemone":
         from .systemone import SystemOneBackend
         return SystemOneBackend(cfg)
+    if provider == "replay":
+        # Not in PROVIDERS: the control room offers that list as models to pick, and a replay is a tool, not a model.
+        from .replay import ReplayBackend
+        return ReplayBackend(cfg)
     raise ValueError(f"unknown provider '{provider}'. Known: {', '.join(PROVIDERS)}")
 
 

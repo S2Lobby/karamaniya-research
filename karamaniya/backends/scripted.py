@@ -17,6 +17,7 @@ came up and the all-hawk army stayed at 28,000.
 """
 from __future__ import annotations
 
+import json
 import time
 
 from .. import foreign_force, resolve
@@ -272,7 +273,10 @@ class ScriptedBackend(Backend):
             data = self._foreign(context)
         else:
             data = self._decision(w, mid, {**context, "schema": schema})
-        return CallResult(data=data, raw="(scripted)", served_model=self.model)
+        # The answer as the stand-in gave it, so the log holds what a replay feeds back (engine 24, replay.py).
+        # It used to be the placeholder "(scripted)", which left a scripted run nothing to replay.
+        raw = json.dumps(data, ensure_ascii=False, default=str) if data is not None else ""
+        return CallResult(data=data, raw=raw, served_model=self.model)
 
     def _founding_diagnosis(self, w: World) -> dict:
         from ..founding import public_profile

@@ -67,7 +67,7 @@ adjustable_params:
   - survey
   - max_cost_usd
 status: draft
-maintainer: ""
+maintainer: "S2Lobby"
 demonstrates:
   - legacy-seam
   - multi-round-messaging

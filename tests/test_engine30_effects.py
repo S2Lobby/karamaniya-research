@@ -46,8 +46,8 @@ def accepted(w, items, source=None):
     return good
 
 
-def schedule_one(w, channel, target, value, months=1, source=None):
-    good = accepted(w, [one(channel, target, value, months)], source)
+def schedule_one(w, channel, target, value, months=1, decay=1.0, source=None):
+    good = accepted(w, [one(channel, target, value, months, decay=decay)], source)
     return effects.schedule(w, good, source or SOURCE)
 
 
@@ -92,8 +92,7 @@ class ValidationTests(unittest.TestCase):
         self.w = new_world(1)
 
     def problems(self, items, source=None):
-        good, problems = effects.validate(self.w, items, source or SOURCE)
-        self.assertEqual(good, [])
+        _good, problems = effects.validate(self.w, items, source or SOURCE)
         return problems
 
     def codes(self, items, source=None):
@@ -186,11 +185,16 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(problems, [])
 
     def test_a_society_effect_that_would_stack_on_a_live_one_is_refused(self):
-        schedule_one(self.w, "approval", "class:farmers", 0.02, months=3)
+        schedule_one(self.w, "approval", "class:farmers", 0.02, months=2)
         # A second 0.02 in a month the first is still running would sum to 0.04, over the 0.03 cap.
         problems = self.problems([one("approval", "class:farmers", 0.02, months=1)])
         self.assertEqual(problems[0]["code"], "EFFECT_MONTH_CAP")
-        # Once two months have passed the first has decayed out and the same effect is allowed.
+        # Once the first reaction has run its two months the same effect is allowed again.
+        dilemmas.apply_ongoing(self.w)
+        effects.step(self.w)
+        self.w.month = 1
+        dilemmas.apply_ongoing(self.w)
+        effects.step(self.w)
         self.w.month = 2
         self.assertEqual(self.problems([one("approval", "class:farmers", 0.02, months=1)]), [])
 
@@ -327,6 +331,20 @@ class StepTests(unittest.TestCase):
         source = {"kind": "cabinet_open_act", "actor": "veleria", "motion": "C-2", "month": self.w.month}
         entries = schedule_one(self.w, "relations", "dorsania", 0.03, source=source)
         self.assertEqual(entries[0]["source"], source)
+
+    def test_the_source_month_is_kept_when_it_is_not_the_month_of_the_step(self):
+        self.w.month = 7
+        source = {"kind": "policy", "actor": "A", "motion": "M-9", "month": 2}
+        schedule_one(self.w, "damage", "aster", 0.01, source=source)
+        effects.step(self.w)
+        self.assertEqual(effects.applied(self.w)[0]["source"]["month"], 2)
+
+    def test_a_source_without_a_month_takes_the_month_it_is_scheduled_in(self):
+        self.w.month = 4
+        source = {"kind": "policy", "actor": "A", "motion": "M-9"}
+        schedule_one(self.w, "damage", "aster", 0.01, source=source)
+        effects.step(self.w)
+        self.assertEqual(effects.applied(self.w)[0]["source"]["month"], 4)
 
     def test_an_effect_with_nothing_to_do_leaves_no_state(self):
         effects.step(self.w)

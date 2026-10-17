@@ -51,6 +51,13 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         fiscal = economy.fiscal(w, prod, trade)
         economy.money_and_prices(w, prod)
         military.update(w, fiscal)
+        # Wave A (engine 30): the effect bus applies and records this month's scheduled effects. It runs after the
+        # economy has produced and priced the month and before society reads incomes, hunger and regional state:
+        # public reactions have already been folded in by dilemmas.apply_ongoing above, the income and hunger
+        # modifiers are needed by society.update below, and the stock deltas are not recomputed away by the fiscal
+        # step that has just run. See karamaniya/effects.py for the full reasoning.
+        from . import effects
+        effects.step(w)
         society.update(w, prod, fiscal)
         # Wave 3: the state media line, after the month's economy and society have moved, so its claims are
         # measured against the world people are living in and its effects land in this month's snapshot.
@@ -370,3 +377,9 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
         },
         "police": m.police.size,
     })
+    from . import effects
+    applied = effects.applied(w)
+    if applied:
+        # Wave A (engine 30): what the effect bus applied this month, by channel, target and source. Left out
+        # entirely when nothing was applied, so a default run's history rows are exactly engine 29's.
+        w.history[-1]["effects_applied"] = applied

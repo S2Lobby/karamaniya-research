@@ -109,6 +109,16 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "MEDIA_CLAIMS_WITHOUT_FIGURES": ("motion", "info", "Claims were given without the claim_figures kind."),
     "MEDIA_MISSING_INTENSITY": ("motion", "info", "A media_campaign names no intensity."),
     "MEDIA_MISSING_TEXT": ("motion", "info", "A media_campaign has no text."),
+    # -- effect bus (engine 30, Wave A W1) -------------------------------------------------
+    "EFFECT_UNKNOWN_CHANNEL": ("action", "info", "An effect names a channel the effect bus does not have."),
+    "EFFECT_UNKNOWN_TARGET": ("action", "info", "An effect is aimed at a target its channel cannot reach."),
+    "EFFECT_OVER_CAP": ("action", "info", "A single effect moves a channel further than its per-entry cap allows."),
+    "EFFECT_MONTH_CAP": ("action", "info", "Effects on one channel and target sum beyond the month's cap."),
+    "EFFECT_BAD_VALUE": ("action", "info", "An effect's value, or its decay, is not a usable number."),
+    "EFFECT_BAD_MONTHS": ("action", "info", "An effect's duration is not a whole number of at least one month."),
+    "EFFECT_TOO_MANY_MONTHS": ("action", "info", "An effect lasts longer than its channel allows."),
+    "EFFECT_UNKNOWN_SOURCE": ("action", "info", "An effect's source is not a policy, an open act or a "
+                                                "neighbour's open act."),
     # -- foreign ---------------------------------------------------------------------------
     "FOREIGN_ACTION_DUPLICATE": ("foreign", "warning", "A foreign action's effects were already applied."),
     "FOREIGN_ACTION_INVALID": ("foreign", "info", "A foreign cabinet proposed an act outside its action space."),

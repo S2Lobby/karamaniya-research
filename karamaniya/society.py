@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 
 from .economy import REQUISITION, labor
+from . import effects as effect_bus
 from . import regional
 from .military import _kill_civilians, _merge, occupy
 from .world import BASE_INDEP, World, clamp, rng_for
@@ -20,6 +21,17 @@ CLASS_TERM = {"elite": 0.05, "middle": 0.02, "workers": -0.02, "farmers": 0.0}
 EXIT = {"open": 1.0, "restricted": 0.4, "closed": 0.06}
 PRESS_BLOCK = {"free": 0.0, "restricted": 0.3, "censored": 0.65}
 MINORITY_OPP = {"equal": 0.0, "restricted": 0.4, "interned": 1.0}
+
+
+def _where(table: dict, region: str, ident: str | None = None, cls: str | None = None) -> float:
+    """The modifier a reaction table gives a group: everyone, its region, its identity and its class add up.
+
+    Engine 30 (Wave A) added the class term for the effect bus's class targets, and the same helper reads the bus's
+    income and hunger modifier tables. A table with no matching key contributes nothing, exactly as before.
+    """
+    return (table.get("*", 0.0) + table.get(region, 0.0)
+            + (table.get(f"ident:{ident}", 0.0) if ident else 0.0)
+            + (table.get(f"class:{cls}", 0.0) if cls else 0.0))
 
 
 def months_of_prices(w: World) -> int:
@@ -157,11 +169,14 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
 
     region_of = {r.id: r for r in w.regions}
     mods = (w.dilemmas.get("modifiers") or {}) if w.agent_architecture_version >= 2 else {}
-    def mod(kind, region, ident=None):
+    income_mods = effect_bus.modifiers(w, "income")
+    hunger_mods = effect_bus.modifiers(w, "hunger")
+    def mod(kind, region, ident=None, cls=None):
         # Engine 17: a modifier can also be aimed at one identity ("ident:karamanian"), for reactions
         # that divide the country by who people are rather than where they live (public_mood.py).
+        # Engine 30: or at one class ("class:farmers"), for a transfer or a reaction aimed at a class.
         table = mods.get(kind) or {}
-        return table.get("*", 0.0) + table.get(region, 0.0) + (table.get(f"ident:{ident}", 0.0) if ident else 0.0)
+        return _where(table, region, ident, cls)
     # Engine 17, recording only: the named terms of each group's opinion target, averaged over the population.
     # The target below is left exactly as it was; see watch.py.
     from . import watch
@@ -171,6 +186,11 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
         u = prod["unemployment"].get(p.region, {})
         p.unemployment = {"workers": u.get("workers", 0.06), "middle": u.get("middle", 0.05),
                           "farmers": 0.02, "elite": 0.01}[p.cls]
+        # Engine 30 (Wave A): a transfer's food side is a capped modifier on hunger, applied before this month's
+        # deaths, opinion and migration read it. economy.trade_and_food set hunger above from the month's rations.
+        hunger_mod = _where(hunger_mods, p.region, p.ident, p.cls)
+        if hunger_mod:
+            p.hunger = clamp(p.hunger + hunger_mod, 0.0, 1.0)
         if p.cls == "workers":
             inc = real_wage * (1 - p.unemployment) / 0.94 * tax_idx
         elif p.cls == "middle":
@@ -182,6 +202,10 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
         else:
             inc = gdp_idx * tax_idx ** 1.5 * (0.9 if pol.capital_controls else 1.0)
         inc *= 1 + regional.income_boost(w, p.region)
+        # Engine 30 (Wave A): a transfer's money side is a capped modifier on the income the group is moving
+        # toward, read from the effect bus's table. It changes the target, not the stock directly, so income keeps
+        # its usual half-step relaxation toward it.
+        inc += _where(income_mods, p.region, p.ident, p.cls)
         p.income = clamp(p.income + 0.5 * (inc - p.income), 0.05, 3.0)
         p.savings *= 1 - CASH_SHARE[p.cls] * max(0.0, e.infl) / (1 + max(0.0, e.infl))
 
@@ -210,7 +234,7 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
             rep += 0.1
         if p.ident == "vell":
             rep += {"equal": 0.0, "restricted": 0.3, "interned": 0.8}[c.minority]
-        rep += r.repression_event + mod("repression", p.region, p.ident)
+        rep += r.repression_event + mod("repression", p.region, p.ident, p.cls)
         p.repression = clamp(rep)
 
         front = dip.war and r.front != "" and dip.union_front.get(r.front, 0) > 0
@@ -239,7 +263,7 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
                   + legit + rally - ww + ident_term + CLASS_TERM[p.cls] + wel - scandal - 0.25 * occ
                   + (own_appeal if p.cls in ("workers", "farmers")
                      else -0.6 * own_appeal if p.cls in ("middle", "elite") else 0.0)
-                  + mod("approval", p.region, p.ident) * 4)
+                  + mod("approval", p.region, p.ident, p.cls) * 4)
         if tally is not None:
             # The same terms as the target above, one at a time, for recording only (nothing here feeds back).
             tally.add(p.size, {
@@ -261,7 +285,7 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
                 "occupation": -0.25 * occ,
                 "ownership": (own_appeal if p.cls in ("workers", "farmers")
                               else -0.6 * own_appeal if p.cls in ("middle", "elite") else 0.0),
-                "modifiers": mod("approval", p.region, p.ident) * 4,
+                "modifiers": mod("approval", p.region, p.ident, p.cls) * 4,
             }, target)
         p.approval = clamp(p.approval + 0.18 * (target - p.approval) + rng.gauss(0, 0.004), 0.01, 0.99)
 
@@ -272,7 +296,7 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
                     - (0.4 * opp if p.ident == "vell" else 0.0)
                     - (0.1 * p.repression if p.ident == "imperial" else 0.0)
                     + 0.3 * (health - 0.06)
-                    + mod("indep", p.region, p.ident) * 4)
+                    + mod("indep", p.region, p.ident, p.cls) * 4)
         p.indep = clamp(p.indep + 0.12 * (i_target - p.indep), 0.01, 0.99)
 
         smuggled = dip.arms_smuggling and p.region in ("kessel", "dorran")
@@ -283,9 +307,9 @@ def update(w: World, prod: dict, fiscal: dict) -> None:
                          - (0.15 if defending and p.ident != "imperial" else 0.0)
                          - social_relief
                          + (own_griev if p.cls in ("middle", "elite") else 0.0)
-                         + mod("grievance", p.region, p.ident) * 4, 0.0, 1.2)
+                         + mod("grievance", p.region, p.ident, p.cls) * 4, 0.0, 1.2)
         p.grievance += 0.25 * (g_target - p.grievance)
-        p.fear += 0.25 * (clamp(p.repression * 0.9 + mod("fear", p.region, p.ident) * 4) - p.fear)
+        p.fear += 0.25 * (clamp(p.repression * 0.9 + mod("fear", p.region, p.ident, p.cls) * 4) - p.fear)
         p.unrest = clamp(p.grievance * (1 - 0.75 * p.fear))
 
     if tally is not None:

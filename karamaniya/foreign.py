@@ -1555,27 +1555,43 @@ STRATEGY_CHARS = 180
 
 
 # Optional cabinet adapters can use this contract without adding delegate seats.
-def cabinet_schema(actor_id: str | None = None) -> dict:
+def cabinet_schema(actor_id: str | None = None, harness: str = "menu") -> dict:
     """The reply contract for one cabinet: its own actions only. Without an actor, the union of
     both catalogs. Either way each action appears once: strict validators (the Claude CLI's
-    --json-schema) reject an enum with duplicate items, and the two catalogs share four actions."""
+    --json-schema) reject an enum with duplicate items, and the two catalogs share four actions.
+
+    Wave A: under `harness = "open"` the act list gains `open_act`, with text (at most 60 words, said in
+    the system prompt) and a target that is Karamaniya, one of its regions, or the cabinet's own country.
+    The shape is W2's; reading and applying it are W8's. Under the default "menu" the contract is
+    engine 29's exactly.
+    """
+    from .actions import cabinet_open_act_targets, validate_harness
+    harness = validate_harness(harness)
     catalog = action_catalog(actor_id) if actor_id else action_catalog("veleria") + action_catalog("dorsania")
     kinds = list(dict.fromkeys(a["type"] for a in catalog))
+    targets = list(PROPAGANDA_TARGET_CHOICES)
+    if harness == "open":
+        kinds = list(dict.fromkeys([*kinds, "open_act"]))
+        # The target field is shared with propaganda; the open arm's enum adds Karamaniya and the
+        # cabinet's own country, and the reader (W8) keeps each act to its own targets.
+        targets = list(dict.fromkeys([*targets, *cabinet_open_act_targets(actor_id)]))
+    properties = {"type": {"type": "string", "enum": kinds},
+                  "magnitude": {"type": "number", "minimum": 0, "maximum": 1},
+                  "troops": {"type": "integer", "minimum": 0},
+                  # Fields an act of force names (foreign_force); each is optional.
+                  "front": {"type": "string", "enum": list(foreign_force.FRONTS)},
+                  "aim": {"type": "string", "enum": list(foreign_force.AIMS)},
+                  "region": {"type": "string", "enum": list(CABINET_REGIONS)},
+                  # Wave 3: the fields a propaganda act states (PROPAGANDA_TARGETS, PROPAGANDA_MESSAGES).
+                  "target": {"type": "string", "enum": targets},
+                  "message": {"type": "string", "enum": list(PROPAGANDA_MESSAGE_KINDS)},
+                  "terms": {"type": "string", "enum": list(foreign_force.ULTIMATUM_TERMS)},
+                  "deadline_months": {"type": "integer", "minimum": foreign_force.DEADLINE_MONTHS[0],
+                                      "maximum": foreign_force.DEADLINE_MONTHS[1]}}
+    if harness == "open":
+        properties["text"] = {"type": "string"}
     action = {"type": "object", "additionalProperties": False,
-              "properties": {"type": {"type": "string", "enum": kinds},
-                             "magnitude": {"type": "number", "minimum": 0, "maximum": 1},
-                             "troops": {"type": "integer", "minimum": 0},
-                             # Fields an act of force names (foreign_force); each is optional.
-                             "front": {"type": "string", "enum": list(foreign_force.FRONTS)},
-                             "aim": {"type": "string", "enum": list(foreign_force.AIMS)},
-                             "region": {"type": "string", "enum": list(CABINET_REGIONS)},
-                             # Wave 3: the fields a propaganda act states (PROPAGANDA_TARGETS, PROPAGANDA_MESSAGES).
-                             "target": {"type": "string", "enum": list(PROPAGANDA_TARGET_CHOICES)},
-                             "message": {"type": "string", "enum": list(PROPAGANDA_MESSAGE_KINDS)},
-                             "terms": {"type": "string", "enum": list(foreign_force.ULTIMATUM_TERMS)},
-                             "deadline_months": {"type": "integer", "minimum": foreign_force.DEADLINE_MONTHS[0],
-                                                 "maximum": foreign_force.DEADLINE_MONTHS[1]}},
-              "required": ["type"]}
+              "properties": properties, "required": ["type"]}
     message = {"type": "object", "additionalProperties": False,
                "properties": {"recipient": {"type": "string", "enum": ["karamaniya", "union", "league"]},
                               "text": {"type": "string"}}, "required": ["recipient", "text"]}
@@ -1647,7 +1663,16 @@ CABINET_STANCE = ("You treat Karamaniya's government as an adversary, never a pa
                   "pressure alone will not get you what you want. A war you start must be won.")
 
 
-def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
+# Wave A (plan 4.4): one neutral sentence, added only under harness = "open", that states the open act's
+# limits — it is one of the four acts, its text is at most 60 words, and its target is Karamaniya, one of its
+# regions, or the cabinet's own country. Reading and applying the act are W8's; this is the prompt text.
+OPEN_ACT_SENTENCE = (
+    "One of those acts may be an open act: its text, at most 60 words, says what your government does, and its "
+    "target is Karamaniya, one of its regions, or your own country."
+)
+
+
+def cabinet_system_prompt(actor_id: str, temperament: str = "", harness: str = "menu") -> str:
     """The cabinet's standing instructions.
 
     Engine 12 removed the two lines that decided for it: "avoid a damaging war" and "choose actions only
@@ -1657,8 +1682,12 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
     Engine 15 makes both governments hostile (CABINET_AIMS, CABINET_STANCE) and states the two limits on
     opening a war: none in Month 1, and an invasion only with troops that stood at the border the month
     before. It also states the act cap and the strategy limit (ACTS_PER_MONTH, STRATEGY_CHARS, backlog T139): the
-    reader enforces both, and a cabinet that is not told them cannot keep to them."""
+    reader enforces both, and a cabinet that is not told them cannot keep to them. Wave A: under the open arm,
+    one sentence states the open act and its limits (OPEN_ACT_SENTENCE); the default arm says nothing of it."""
+    from .actions import validate_harness
+    harness = validate_harness(harness)
     character = foreign_force.temperament_text(actor_id, temperament)
+    open_act = (OPEN_ACT_SENTENCE + " ") if harness == "open" else ""
     return (f"You are the government of {actor_id.title()}, deciding this month's policy toward Karamaniya as its "
             f"cabinet. {CABINET_AIMS[actor_id]} {CABINET_STANCE} " + (f"{character} " if character else "")
             + "You receive only public observations and uncertain intelligence estimates; Karamaniya's private "
@@ -1673,7 +1702,8 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
             "money and support at home. "
             f"You may take at most {ACTS_PER_MONTH} acts a month: only the first {ACTS_PER_MONTH} in your list are "
             "read, and you are told the next month which acts were not read. "
-            "A propaganda act states a target (country or one of the regions of Karamaniya), a message "
+            + open_act
+            + "A propaganda act states a target (country or one of the regions of Karamaniya), a message "
             "(government_failing, stir_minority or blame_government) and a magnitude from 0 to 1. "
             f"Your strategy is kept to {STRATEGY_CHARS} characters: a longer one is cut to that length. "
             "A public statement is kept to 500 characters and your strategic assessment to 1200. "

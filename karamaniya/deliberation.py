@@ -13,6 +13,7 @@ metric or on another motion's fate, and say what happens if the condition fails.
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 from difflib import SequenceMatcher
@@ -113,6 +114,22 @@ def topic(mo: dict) -> str:
         return "oversight"
     if t == "emergency_measure":
         return "emergency"
+    if t == "policy":
+        # A policy takes the topic of its first set_lever item, as a programme takes its first measure's;
+        # a policy with no lever is debated under "other" unless its money is the Treasury's.
+        action = mo.get("action") if isinstance(mo.get("action"), dict) else {}
+        items = action.get("items") if isinstance(action.get("items"), list) else []
+        first = next((item for item in items if isinstance(item, dict)), {})
+        office = LEVER_OFFICE.get(canonical_lever(str(first.get("lever", ""))))
+        instrument = str(first.get("instrument", ""))
+        if office:
+            return {"treasury": "fiscal", "interior": "policing", "army": "military",
+                    "navy": "navy"}.get(office, "other")
+        return "fiscal" if instrument in ("transfer", "public_works", "commission") else "other"
+    if t == "open_act":
+        action = mo.get("action") if isinstance(mo.get("action"), dict) else {}
+        return {"treasury": "fiscal", "interior": "policing", "army": "military",
+                "navy": "navy"}.get(str(action.get("office", "")), "other")
     return "other"
 
 
@@ -185,27 +202,94 @@ def _program_measure_key(w: World, motion: dict) -> tuple:
     return tuple(sorted(pairs, key=lambda item: (str(item[0]), repr(item[1]))))
 
 
-def check(w: World, mo: dict, tabled: list, proposer: str) -> tuple[dict | None, dict | None]:
-    """(rejection, warning) for one tabled motion."""
+def _policy_measure_key(w: World, motion: dict) -> tuple:
+    """Canonical executable policy payload, independent of item ordering.
+
+    The programme key's shape, one level down: each item is its canonical fields, and the items are
+    sorted, so re-tabling the same policy in another order is the same motion. W3's execution_key hashes
+    this beside the month (motion_actions.execution_key's programme branch).
+    """
+    from . import actions
+    return tuple(sorted(json.dumps(entry, sort_keys=True, ensure_ascii=False)
+                        for entry in actions.policy_items_of(w, motion)))
+
+
+def _open_act_key(w: World, motion: dict) -> tuple:
+    """Canonical open act: its words, the office that carries it out, and the money it spends."""
+    from . import actions
+    act = actions.open_act_of(w, motion)
+    budget = act.get("budget") or {}
+    return (" ".join(str(act.get("text") or "").split()).casefold(), str(act.get("office") or ""),
+            budget.get("amount"), budget.get("months"), str(act.get("funding") or ""))
+
+
+def _arm_key(w: World, motion: dict):
+    """The duplicate key for the types an arm adds, else None (the engine's own type/subject/value key)."""
+    kind = str(motion.get("type", ""))
+    if kind == "policy":
+        return _policy_measure_key(w, motion)
+    if kind == "open_act":
+        return _open_act_key(w, motion)
+    return None
+
+
+def validate_tabled(w: World, motion: dict, harness: str | None = None) -> dict | None:
+    """The tabling check for any motion type.
+
+    The arms' own types go to the W2 reader (actions.validate_new_motion), which writes their canonical
+    payload; every other type keeps politics.validate_motion_detail exactly. `harness=None` reads the
+    run's arm from the world (actions.harness_of), so a world W6 stamps with its arm needs no threading.
+    """
+    from . import actions
+    if harness is None:
+        harness = actions.harness_of(w)
+    if str(motion.get("type", "")) in actions.offered_motion_types(harness):
+        return actions.validate_new_motion(w, motion, harness)
+    return validate_motion_detail(w, motion)
+
+
+def check(w: World, mo: dict, tabled: list, proposer: str, harness: str | None = None) -> tuple[dict | None, dict | None]:
+    """(rejection, warning) for one tabled motion.
+
+    `harness` is the run's arm (actions.HARNESSES). None reads it from the world; under "menu" this is
+    engine 29's check exactly.
+    """
+    from . import actions
+    if harness is None:
+        harness = actions.harness_of(w)
     if w.agent_architecture_version >= 2 and not str(mo.get("text", "") or "").strip():
         return {"status": "rejected", "reason_code": "EMPTY_MOTION_TEXT",
                 "explanation": "a motion needs non-empty text stating the policy the council will vote on",
                 "related_state": {}}, None
-    detail = validate_motion_detail(w, mo)
+    detail = validate_tabled(w, mo, harness)
     if detail:
         return detail, None
     key = (mo.get("type"), str(mo.get("subject", "")).casefold(), str(mo.get("value", "")).casefold())
     for other in tabled:
-        if (other.get("type"), str(other.get("subject", "")).casefold(), str(other.get("value", "")).casefold()) == key \
-                and mo.get("type") != "amend":
-            if mo.get("type") == "program" and _program_measure_key(w, other) != _program_measure_key(w, mo):
-                continue
-            if other.get("proposer") == proposer:
-                return {"status": "rejected", "reason_code": "SAME_MOTION_TABLED",
-                        "explanation": "you already tabled this motion this month", "related_state": {}}, None
-            return None, {"code": "COSPONSOR", "explanation": f"the same measure was tabled by {other.get('proposer')}; "
-                                                               "it is heard once, with both of you as sponsors",
-                          "cosponsor_of": other.get("id")}
+        if mo.get("type") == "amend":
+            break
+        if (other.get("type"), str(other.get("subject", "")).casefold(),
+                str(other.get("value", "")).casefold()) != key:
+            continue
+        if mo.get("type") == "program" and _program_measure_key(w, other) != _program_measure_key(w, mo):
+            continue
+        if mo.get("type") in ("policy", "open_act") and _arm_key(w, other) != _arm_key(w, mo):
+            continue
+        if other.get("proposer") == proposer:
+            return {"status": "rejected", "reason_code": "SAME_MOTION_TABLED",
+                    "explanation": "you already tabled this motion this month", "related_state": {}}, None
+        return None, {"code": "COSPONSOR", "explanation": f"the same measure was tabled by {other.get('proposer')}; "
+                                                           "it is heard once, with both of you as sponsors",
+                      "cosponsor_of": other.get("id")}
+    # The open act's per-delegate limit is a tabling rule, not a reading rule. A second, different act in the
+    # same month is refused with the reason; the same act twice is caught above as the same motion, which is
+    # the more useful thing to tell its author.
+    if mo.get("type") == "open_act" and any(
+            other.get("type") == "open_act" and other.get("proposer") == proposer for other in tabled):
+        return {"status": "rejected", "reason_code": "OPEN_ACT_LIMIT",
+                "explanation": ("a delegate may table one open act a month; you already have one on this "
+                                "month's agenda"),
+                "related_state": {"limit": 1}}, None
     warning = None
     red = redundancy(w, mo, tabled)
     if red and red["level"] == "duplicate":
@@ -269,7 +353,7 @@ def allocate(w: World, motions: list, head_priorities: list, forced: set, carrie
     return procedural + scheduled, deferred, notes
 
 
-def carried_over(w: World) -> list:
+def carried_over(w: World, harness: str | None = None) -> list:
     """Deferred motions still valid this month, with their executable conditions refreshed.
 
     A deferred conditional motion keeps its vote history but re-derives conditions from its
@@ -296,7 +380,7 @@ def carried_over(w: World) -> list:
             continue
         if w.member(m["proposer"]).status != "active":
             continue
-        if validate_motion_detail(w, m):
+        if validate_tabled(w, m, harness):
             continue
         carried = {**m, "carried_over": True}
         carried["conditions"] = motion_actions.motion_conditions(carried)
@@ -306,13 +390,14 @@ def carried_over(w: World) -> list:
     return keep
 
 
-def coalesce_carried(w: World, candidate: dict, carried: list, proposer: str) -> dict | None:
+def coalesce_carried(w: World, candidate: dict, carried: list, proposer: str,
+                     harness: str | None = None) -> dict | None:
     """Renew a deferred motion without consuming another agenda slot.
 
     A sponsor may update its wording; another delegate becomes a co-sponsor. Distinct
     Charter amendments still remain distinct motions.
     """
-    if validate_motion_detail(w, candidate):
+    if validate_tabled(w, candidate, harness):
         return None
     from . import motion_actions
     for motion in carried:
@@ -322,6 +407,12 @@ def coalesce_carried(w: World, candidate: dict, carried: list, proposer: str) ->
             old = " ".join(str(motion.get("text", "")).casefold().split())
             new = " ".join(str(candidate.get("text", "")).casefold().split())
             if not old or not new or SequenceMatcher(None, old, new).ratio() <= .7:
+                continue
+        elif candidate.get("type") == "policy":
+            if _policy_measure_key(w, candidate) != _policy_measure_key(w, motion):
+                continue
+        elif candidate.get("type") == "open_act":
+            if _open_act_key(w, candidate) != _open_act_key(w, motion):
                 continue
         elif (str(candidate.get("subject", "")).casefold(), str(candidate.get("value", "")).casefold()) != \
                 (str(motion.get("subject", "")).casefold(), str(motion.get("value", "")).casefold()):
@@ -353,7 +444,7 @@ def coalesce_carried(w: World, candidate: dict, carried: list, proposer: str) ->
             # A renewal is the same carried motion only if its words and executable payload still
             # form one valid act. In particular, changing a diplomatic target must replace the
             # target in the structured action as well as in the prose that delegates vote on.
-            if validate_motion_detail(w, updated) or motion_actions.conflict(w, updated):
+            if validate_tabled(w, updated, harness) or motion_actions.conflict(w, updated):
                 return None
             conditions = motion_actions.motion_conditions(
                 {**updated, "conditions": candidate.get("conditions") or []})
@@ -444,7 +535,8 @@ def resolve_mutual_withdrawals(motions: list) -> list:
 
 
 # ---- the revision round (spec 33) ---------------------------------------------------------------
-def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_all: list) -> dict:
+def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_all: list,
+                    harness: str | None = None) -> dict:
     """Withdrawals and amendments of a delegate's own motions after hearing the council."""
     notes = {"withdrawn": [], "amended": [], "rejected": [], "rejected_withdrawals": []}
     own = {m["id"]: m for m in motions if m["proposer"] == mid or mid in m.get("cosponsors", [])}
@@ -519,7 +611,7 @@ def apply_revisions(w: World, mid: str, revision: dict, motions: list, tabled_al
                 and candidate.get("conditions", m.get("conditions")) == m.get("conditions") \
                 and same_program_measures:
             continue
-        detail = validate_motion_detail(w, candidate)
+        detail = validate_tabled(w, candidate, harness)
         if detail:
             refuse(m, {"motion": m["id"], **detail})
             continue

@@ -7,15 +7,16 @@ guessed, and every drop is recorded so the report can show format problems per m
 """
 from __future__ import annotations
 
+import math
 import re
 
 from .motion_actions import ACTION_TO_SUBJECT, DIPLOMATIC_ACTIONS as DIPLOMATIC_ACTION_TYPES
 from .politics import (BOOLS, CONSTITUTION_FIELDS, DIPLOMACY, ENUMS, LEVER_OFFICE, MEDIA_CLAIM_METRICS,
                        MEDIA_INTENSITIES, MEDIA_KINDS, MEDIA_MAX_CLAIMS, MOTION_TYPES,
                        SHARES, V2_MOTION_TYPES, _bare, canonical_diplomacy_subject, canonical_funding,
-                       canonical_lever, canonical_office, label, loan_amount_of, parse_loan_amount,
+                       canonical_lever, canonical_office, label, lever_bounds, loan_amount_of, parse_loan_amount,
                        patronage_subject, policy_value)
-from .world import ARMED_OFFICES, OFFICES, World
+from .world import ARMED_OFFICES, CLASSES, IDENTITIES, OFFICES, World
 
 STATEMENT_WORDS = 150
 DM_WORDS = 80
@@ -40,6 +41,50 @@ DECISION_FACTOR_WORDS = 14  # each decision factor; up to four are read
 ACTION_ISSUE_WORDS = 20     # a motion action's issue at stake
 ACTION_TERMS_WORDS = 20     # each term a motion action demands; up to four are read
 MAX_MOTIONS = 2
+
+# ---- Wave A: the open-actions arms ---------------------------------------------------------------
+# `harness` is the run's arm (plan 4.6): "menu" is engine 29 exactly, "language" adds the `policy`
+# motion, and "open" adds `open_act` for delegates and cabinets too. It is not stored on the world yet
+# (W6 adds the run option); every function here takes it explicitly, defaulting to "menu", and
+# `harness_of(w)` is the bridge the call sites use once the world carries it. Nothing an arm adds is
+# offered, validated or read by a menu run.
+HARNESSES = ("menu", "language", "open")
+HARNESS_MOTION_TYPES = {"menu": (), "language": ("policy",), "open": ("policy", "open_act")}
+
+# The policy language (plan 4.2). These are the reader's limits, and the prompt states each of them.
+POLICY_INSTRUMENTS = ("set_lever", "transfer", "public_works", "commission")
+POLICY_MANDATES = ("anti_corruption", "food_distribution", "reconstruction", "minority_liaison", "statistics")
+# The settings a `cut:<lever>` funding source may lower: the shares the state spends each month. The tax rate,
+# money printing and the interest rate are not spending, so a cut cannot name them.
+SPENDING_LEVERS = ("military", "police", "welfare", "health_edu", "farm_support")
+POLICY_SPENDING = ("transfer", "public_works", "commission")
+POLICY_MAX_ITEMS = 4
+POLICY_START_IN = (0, 6)
+POLICY_MONTHS = (1, 24)
+OPEN_ACT_WORDS = 60
+OPEN_ACT_MONTHS = (1, 24)
+
+
+def validate_harness(value) -> str:
+    """The arm, checked. An unknown arm is a configuration error, not a silent default."""
+    if value not in HARNESSES:
+        raise ValueError(f"harness must be one of {HARNESSES}, not {value!r}")
+    return value
+
+
+def harness_of(w: World) -> str:
+    """The run's arm, read from `w.harness` when W6 stores it, else "menu" (engine 29).
+
+    W6 sets `world.harness` from the validated `harness` run option; W3/W4/W5 can call this instead of
+    threading the value through every call. A checkpoint written before the option existed has no
+    attribute and reads as "menu".
+    """
+    return validate_harness(getattr(w, "harness", "menu"))
+
+
+def offered_motion_types(harness: str = "menu") -> tuple:
+    """The motion types this arm adds to engine 29's own list (none under "menu")."""
+    return HARNESS_MOTION_TYPES[validate_harness(harness)]
 
 
 def public_statement_preview(raw: str) -> str:
@@ -166,19 +211,357 @@ def _opt_obj(props: dict) -> dict:
     return {"type": "object", "properties": props, "additionalProperties": False}
 
 
+# ---- Wave A: policy motions and open acts --------------------------------------------------------
+# The interface W3 (policy semantics), W4 (referee), W5 (open acts) and W6 (the arms) consume:
+#   offered_motion_types(harness)        the types an arm adds
+#   motion_schema(w, ..., harness=)      the answer contract, with the new shapes only under their arm
+#   validate_new_motion(w, mo, harness)  the tabling check; writes mo["items"] / mo["act"] canonical payloads
+#   policy_items_of(w, mo) / open_act_of(w, mo)   the canonical payload, validated or as tabled
+#   deliberation._policy_measure_key / _open_act_key   order-independent duplicate keys (W3's execution_key)
+# `_reject` matches politics._reject's shape, so a refusal travels the council's existing path.
+
+def _reject(code: str, explanation: str, **related) -> dict:
+    return {"status": "rejected", "reason_code": code, "explanation": explanation,
+            "related_state": related}
+
+
+def _whole_number(raw):
+    """A whole number a model meant, or None. Accepts 6 and 6.0 and "6"; never a bool or a fraction."""
+    if isinstance(raw, bool) or raw is None:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return int(value) if math.isfinite(value) and value == int(value) else None
+
+
+def _positive_amount(raw):
+    """Millions of crowns a month: a positive, finite number, or None."""
+    if isinstance(raw, bool) or raw is None:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) and value > 0 else None
+
+
+def _region_ids(w: World, controlled_only: bool = False) -> list:
+    return [r.id for r in w.regions if r.nation == "karamaniya"
+            and (not controlled_only or r.controller == "karamaniya")]
+
+
+def policy_target_choices(w: World) -> list:
+    """Every target a policy item may name: everyone, a region, an identity or a class."""
+    return ["*", *_region_ids(w), *[f"ident:{x}" for x in IDENTITIES], *[f"class:{x}" for x in CLASSES]]
+
+
+def policy_funding_choices() -> list:
+    return ["reserves", "borrowing", *[f"cut:{lever}" for lever in SPENDING_LEVERS]]
+
+
+def _canonical_target(w: World, raw):
+    """The group or place a target names, in the engine's canonical spelling, or None."""
+    text = re.sub(r"\s+", " ", str(raw or "").strip().lower()).strip(" .;:,")
+    if text in ("*", "all", "everyone", "everybody", "public", "the public", "karamaniya"):
+        return "*"
+    for region in w.regions:
+        if region.nation == "karamaniya" and text in (region.id, region.name.lower()):
+            return region.id
+    match = re.match(r"^(ident|class)[:_\s-]+([a-z_]+)$", text)
+    if match:
+        kind, name = match.group(1), re.sub(r"[\s-]+", "_", match.group(2))
+        if name in (IDENTITIES if kind == "ident" else CLASSES):
+            return f"{kind}:{name}"
+    # "farmers" or "vell" without its prefix is unambiguous in this vocabulary and is read as what it means.
+    if text in CLASSES:
+        return f"class:{text}"
+    if text in IDENTITIES:
+        return f"ident:{text}"
+    return None
+
+
+def _is_region_id(w: World, target: str) -> bool:
+    return any(r.nation == "karamaniya" and r.id == target for r in w.regions)
+
+
+def canonical_policy_funding(raw):
+    """reserves, borrowing, or cut:<spending setting>, or None. Aliases are understood, never guessed."""
+    text = re.sub(r"[\s\-]+", "_", str(raw or "").strip().lower())
+    if text in ("reserves", "reserve", "gold", "treasury", "the_treasury"):
+        return "reserves"
+    if text in ("borrowing", "bonds", "domestic_bonds", "credit"):
+        return "borrowing"
+    match = re.match(r"^cut[: _-]+(.+)$", text)
+    if match:
+        lever = canonical_lever(match.group(1))
+        if lever in SPENDING_LEVERS:
+            return f"cut:{lever}"
+    return None
+
+
+def _canonical_condition(raw):
+    """(condition, problem) for one policy item's condition. One condition, tested at the start of each month."""
+    from .motion_actions import CONDITION_METRICS, canonical_metric_value
+    if not isinstance(raw, dict):
+        return None, "a condition is an object {metric, operator, value}"
+    metric = str(raw.get("metric", "")).strip()
+    if metric not in CONDITION_METRICS:
+        return None, (f"unknown condition metric '{metric}'; the metrics are "
+                      + ", ".join(CONDITION_METRICS))
+    operator = str(raw.get("operator", "")).strip()
+    if operator not in (">=", "<=", "=="):
+        return None, "a condition's operator is >=, <= or =="
+    try:
+        value = canonical_metric_value(metric, float(raw.get("value")))
+    except (TypeError, ValueError):
+        return None, f"the condition value '{raw.get('value', '')}' is not a number"
+    if not math.isfinite(value):
+        return None, f"the condition value '{raw.get('value', '')}' is not a number"
+    return {"metric": metric, "operator": operator, "value": value}, None
+
+
+def policy_item_schema(w: World) -> dict:
+    """One item of a policy motion. A field an instrument does not use is left out."""
+    from .motion_actions import CONDITION_METRICS
+    return _opt_obj({
+        "instrument": {"type": "string", "enum": list(POLICY_INSTRUMENTS)},
+        "lever": {"type": "string", "enum": list(LEVER_OFFICE)},
+        "value": {"type": "string"},
+        "amount": {"type": "number"},
+        "target": {"type": "string", "enum": policy_target_choices(w)},
+        "mandate": {"type": "string", "enum": list(POLICY_MANDATES)},
+        "condition": _obj({"metric": {"type": "string", "enum": list(CONDITION_METRICS)},
+                           "operator": {"type": "string", "enum": [">=", "<=", "=="]},
+                           "value": {"type": "number"}}),
+        "start_in": {"type": "integer", "minimum": POLICY_START_IN[0], "maximum": POLICY_START_IN[1]},
+        "months": {"type": "integer", "minimum": POLICY_MONTHS[0], "maximum": POLICY_MONTHS[1]},
+        "funding": {"type": "string", "enum": policy_funding_choices()},
+    })
+
+
+def _canonical_policy_item(w: World, raw, text: str) -> tuple:
+    """(canonical item, refusal) for one policy item. The limits are the prompt's own, in the same words."""
+    if not isinstance(raw, dict):
+        return None, _reject("POLICY_LIMIT", "each policy item is an object naming an instrument")
+    instrument = re.sub(r"[\s\-]+", "_", str(raw.get("instrument", "")).strip().lower())
+    if instrument not in POLICY_INSTRUMENTS:
+        return None, _reject("POLICY_UNKNOWN_INSTRUMENT",
+                             f"unknown instrument '{raw.get('instrument', '')}'; the instruments are set_lever, "
+                             "transfer, public_works and commission",
+                             allowed=list(POLICY_INSTRUMENTS))
+    entry = {"instrument": instrument}
+    if instrument == "set_lever":
+        lever = canonical_lever(str(raw.get("lever", "")).strip())
+        if lever not in LEVER_OFFICE:
+            return None, _reject("POLICY_BAD_TARGET",
+                                 f"'{raw.get('lever', '')}' is not a setting the council can direct",
+                                 lever=raw.get("lever", ""))
+        value, _note = policy_value(lever, _bare(raw.get("value", "")), text)
+        if value is None:
+            allowed = (f"one of {', '.join(ENUMS[lever])}" if lever in ENUMS
+                       else "a number in the range the setting takes")
+            return None, _reject("POLICY_BAD_TARGET",
+                                 f"'{raw.get('value', '')}' is not a value {lever} takes; it takes {allowed}",
+                                 lever=lever)
+        bounds = lever_bounds(lever)
+        if bounds is not None and not bounds[0] - 1e-9 <= value <= bounds[1] + 1e-9:
+            return None, _reject("POLICY_BAD_TARGET",
+                                 f"{lever} {raw.get('value', '')} is outside the range this setting takes "
+                                 f"({bounds[0]:g} to {bounds[1]:g})", lever=lever)
+        entry["lever"], entry["value"] = lever, value
+    elif instrument == "transfer":
+        target = _canonical_target(w, raw.get("target"))
+        if target is None:
+            return None, _reject("POLICY_BAD_TARGET",
+                                 f"'{raw.get('target', '')}' is not a target a transfer can pay: *, a region, "
+                                 "ident:<identity> or class:<class>",
+                                 allowed=policy_target_choices(w))
+        entry["target"] = target
+    elif instrument == "public_works":
+        target = _canonical_target(w, raw.get("target"))
+        if target is None or not _is_region_id(w, target):
+            return None, _reject("POLICY_BAD_TARGET",
+                                 f"public works need one region of Karamaniya; '{raw.get('target', '')}' is "
+                                 "not one", regions=_region_ids(w))
+        entry["target"] = target
+    elif instrument == "commission":
+        mandate = re.sub(r"[\s\-]+", "_", str(raw.get("mandate", "")).strip().lower())
+        if mandate not in POLICY_MANDATES:
+            return None, _reject("POLICY_BAD_TARGET",
+                                 f"unknown commission mandate '{raw.get('mandate', '')}'; the mandates are "
+                                 + ", ".join(POLICY_MANDATES), allowed=list(POLICY_MANDATES))
+        entry["mandate"] = mandate
+    start_in = _whole_number(raw.get("start_in", 0))
+    if start_in is None or not POLICY_START_IN[0] <= start_in <= POLICY_START_IN[1]:
+        return None, _reject("POLICY_BAD_SCHEDULE",
+                             f"start_in is a whole number of months from {POLICY_START_IN[0]} to "
+                             f"{POLICY_START_IN[1]}; 0 means this month", start_in=raw.get("start_in"))
+    months = _whole_number(raw.get("months"))
+    if months is None or not POLICY_MONTHS[0] <= months <= POLICY_MONTHS[1]:
+        return None, _reject("POLICY_BAD_SCHEDULE",
+                             f"months is a whole number from {POLICY_MONTHS[0]} to {POLICY_MONTHS[1]}",
+                             months=raw.get("months"))
+    entry["start_in"], entry["months"] = start_in, months
+    condition = raw.get("condition")
+    if condition not in (None, "", {}, []):
+        parsed, problem = _canonical_condition(condition)
+        if problem:
+            return None, _reject("POLICY_BAD_CONDITION", problem)
+        entry["condition"] = parsed
+    if instrument in POLICY_SPENDING:
+        amount = _positive_amount(raw.get("amount"))
+        if amount is None:
+            return None, _reject("POLICY_UNFUNDED",
+                                 f"a {instrument.replace('_', ' ')} needs an amount: a positive number of "
+                                 "millions of crowns a month", instrument=instrument)
+        funding = canonical_policy_funding(raw.get("funding"))
+        if funding is None:
+            return None, _reject("POLICY_UNFUNDED",
+                                 f"a {instrument.replace('_', ' ')} needs funding: reserves, borrowing, or "
+                                 "cut:<setting> for " + ", ".join(SPENDING_LEVERS)
+                                 + f"; '{raw.get('funding', '')}' is none of them",
+                                 instrument=instrument, allowed=policy_funding_choices())
+        entry["amount"], entry["funding"] = amount, funding
+    return entry, None
+
+
+def _policy_rejection(w: World, motion: dict) -> dict | None:
+    action = motion.get("action") if isinstance(motion.get("action"), dict) else {}
+    items = action.get("items", motion.get("items"))
+    if not isinstance(items, list) or not 1 <= len(items) <= POLICY_MAX_ITEMS:
+        count = len(items) if isinstance(items, list) else 0
+        return _reject("POLICY_LIMIT",
+                       f"a policy carries 1 to {POLICY_MAX_ITEMS} items; this one carried {count}",
+                       max_items=POLICY_MAX_ITEMS)
+    text = as_written(motion.get("text", ""))
+    canonical = []
+    for raw in items:
+        entry, problem = _canonical_policy_item(w, raw, text)
+        if problem:
+            return problem
+        canonical.append(entry)
+    motion["items"] = canonical
+    return None
+
+
+def _open_act_rejection(w: World, motion: dict) -> dict | None:
+    action = motion.get("action") if isinstance(motion.get("action"), dict) else {}
+    text = as_written(motion.get("text", ""))
+    if not text:
+        return _reject("OPEN_ACT_MISSING_TEXT",
+                       "an open act needs its text: what the government does, at most 60 words")
+    count = len(text.split())
+    if count > OPEN_ACT_WORDS:
+        return _reject("OPEN_ACT_TOO_LONG",
+                       f"an open act's text is at most {OPEN_ACT_WORDS} words; this one is {count}",
+                       words=count, limit=OPEN_ACT_WORDS)
+    office = canonical_office(str(action.get("office") or motion.get("office") or ""))
+    if office not in OFFICES:
+        return _reject("OPEN_ACT_UNKNOWN_OFFICE",
+                       f"an open act names the office that carries it out: {', '.join(OFFICES)}",
+                       allowed=list(OFFICES))
+    raw_budget = action.get("budget", motion.get("budget"))
+    budget, funding = None, None
+    if raw_budget not in (None, "", {}, []):
+        if not isinstance(raw_budget, dict):
+            return _reject("OPEN_ACT_BAD_BUDGET",
+                           "a budget is {amount, months}: amount in millions of crowns a month, months "
+                           "from 1 to 24")
+        amount = _positive_amount(raw_budget.get("amount"))
+        months = _whole_number(raw_budget.get("months"))
+        if amount is None or months is None or not OPEN_ACT_MONTHS[0] <= months <= OPEN_ACT_MONTHS[1]:
+            return _reject("OPEN_ACT_BAD_BUDGET",
+                           "a budget is {amount, months}: amount a positive number of millions of crowns a "
+                           "month, months a whole number from 1 to 24", budget=raw_budget)
+        funding = canonical_policy_funding(action.get("funding", motion.get("funding")))
+        if funding is None:
+            return _reject("OPEN_ACT_UNFUNDED",
+                           "a budget needs funding: reserves, borrowing, or cut:<setting> for "
+                           + ", ".join(SPENDING_LEVERS), allowed=policy_funding_choices())
+        budget = {"amount": amount, "months": months}
+    motion["act"] = {"text": text, "office": office, "budget": budget, "funding": funding}
+    return None
+
+
+def validate_new_motion(w: World, motion: dict, harness: str = "menu") -> dict | None:
+    """The tabling check for the types an arm adds, or None when this reader does not own the type.
+
+    On success the canonical payload is written onto the motion (`items` for a policy, `act` for an open
+    act), as validate_motion_detail writes a programme's `measures`. Tabling calls this only for a type
+    `offered_motion_types(harness)` names; every other type stays with validate_motion_detail.
+    """
+    kind = str(motion.get("type", ""))
+    if kind not in offered_motion_types(harness):
+        return None
+    return _policy_rejection(w, motion) if kind == "policy" else _open_act_rejection(w, motion)
+
+
+def policy_items_of(w: World, motion: dict) -> list:
+    """A policy's canonical items, from a validated motion or read best-effort from one as tabled."""
+    items = motion.get("items")
+    if isinstance(items, list):
+        return items
+    action = motion.get("action") if isinstance(motion.get("action"), dict) else {}
+    text = as_written(motion.get("text", ""))
+    out = []
+    for raw in action.get("items") or []:
+        entry, _problem = _canonical_policy_item(w, raw, text)
+        if entry:
+            out.append(entry)
+    return out
+
+
+def open_act_of(w: World, motion: dict) -> dict:
+    """An open act's canonical payload, from a validated motion or read best-effort from one as tabled."""
+    act = motion.get("act")
+    if isinstance(act, dict):
+        return act
+    action = motion.get("action") if isinstance(motion.get("action"), dict) else {}
+    raw_budget = action.get("budget")
+    budget = None
+    if isinstance(raw_budget, dict):
+        amount, months = _positive_amount(raw_budget.get("amount")), _whole_number(raw_budget.get("months"))
+        if amount is not None and months is not None:
+            budget = {"amount": amount, "months": months}
+    return {"text": as_written(motion.get("text", "")),
+            "office": canonical_office(str(action.get("office") or "")),
+            "budget": budget, "funding": canonical_policy_funding(action.get("funding"))}
+
+
+def cabinet_open_act_targets(actor_id: str | None = None) -> tuple:
+    """What a cabinet's open act may name: Karamaniya, one of its regions, or its own country.
+
+    The cabinet's owner (W8) reads the act; this is the vocabulary its schema offers, in one place, so
+    the schema, the sentence the cabinet is told and the reader cannot drift apart.
+    """
+    countries = [actor_id] if actor_id else ["veleria", "dorsania"]
+    return tuple(["karamaniya", *_region_ids_from_table(), *countries])
+
+
+def _region_ids_from_table() -> list:
+    from .world import KARAMANIYA_REGIONS
+    return [row[0] for row in KARAMANIYA_REGIONS]
+
+
 def _dm_schema(targets: list) -> dict:
     return {"type": "array", "items": _obj({"to": {"type": "string", "enum": targets},
                                             "text": {"type": "string"}})}
 
 
-def action_schema(w: World) -> dict:
-    """The explicit act of a foreign-policy motion, so it cannot be executed as a different one."""
+def action_schema(w: World, harness: str = "menu") -> dict:
+    """The explicit act of a foreign-policy motion, so it cannot be executed as a different one.
+
+    Under `language` it also carries a policy's items; under `open` it also carries the office and the
+    optional budget and funding of an open act. Under "menu" it is engine 29's object exactly.
+    """
     from .motion_actions import ACTOR_NAMES
     # Optional, and only meaningful on a foreign-policy motion: an interior directive has no target
     # country. The instructions say so; leaving it out is not an error.
     from .politics import DEAL_ACTIONS, RELIEF_FUNDING, RELIEF_SCOPES
     regions = [r.id for r in w.k_regions()]
-    return _opt_obj({"action_type": {"type": "string", "enum": list(DIPLOMATIC_ACTION_TYPES)},
+    props = {"action_type": {"type": "string", "enum": list(DIPLOMATIC_ACTION_TYPES)},
                      # Canonical ids, not display names: "Union" is not an actor and a target that
                      # ambiguous cannot be checked against anything. The normaliser still accepts a
                      # display name for a delegate that writes one.
@@ -213,7 +596,20 @@ def action_schema(w: World) -> dict:
                          "metric": {"type": "string", "enum": list(MEDIA_CLAIM_METRICS)},
                          "value": {"type": "string"}})},
                      "intensity": {"type": "string", "enum": list(MEDIA_INTENSITIES)},
-                     "military_engineers": {"type": "boolean"}})
+                     "military_engineers": {"type": "boolean"}}
+    if "policy" in offered_motion_types(harness):
+        props["items"] = {"type": "array", "minItems": 1, "maxItems": POLICY_MAX_ITEMS,
+                          "items": policy_item_schema(w)}
+    if "open_act" in offered_motion_types(harness):
+        props["office"] = {"type": "string", "enum": list(OFFICES)}
+        props["budget"] = _obj({"amount": {"type": "number"},
+                                "months": {"type": "integer", "minimum": OPEN_ACT_MONTHS[0],
+                                           "maximum": OPEN_ACT_MONTHS[1]}})
+        # The same field relief uses; an open arm's budget may draw on the policy sources too. Relief
+        # validation still keeps relief to its own four sources.
+        props["funding"] = {"type": "string", "enum": list(dict.fromkeys([*RELIEF_FUNDING,
+                                                                         *policy_funding_choices()]))}
+    return _opt_obj(props)
 
 
 def condition_schema() -> dict:
@@ -233,25 +629,30 @@ def condition_schema() -> dict:
                       "required": ["metric", "operator", "value"]}}
 
 
-def motion_schema(w: World, with_emergency: bool = False) -> dict:
-    """One tabled motion. Shared by the opening round and by the targeted repair of a bad one."""
-    kinds = list(MOTION_TYPES) + (list(V2_MOTION_TYPES) if with_emergency else [])
+def motion_schema(w: World, with_emergency: bool = False, harness: str = "menu") -> dict:
+    """One tabled motion. Shared by the opening round and by the targeted repair of a bad one.
+
+    `harness` adds the arm's motion types (actions.offered_motion_types) and the fields they use; under
+    the default "menu" it is engine 29's schema exactly.
+    """
+    kinds = (list(MOTION_TYPES) + (list(V2_MOTION_TYPES) if with_emergency else [])
+             + list(offered_motion_types(harness)))
     return _obj({"type": {"type": "string", "enum": kinds},
                  "subject": {"type": "string"}, "value": {"type": "string"},
-                 "text": {"type": "string"}, "action": action_schema(w),
+                 "text": {"type": "string"}, "action": action_schema(w, harness),
                  "conditions": condition_schema()})
 
 
-def repair_schema(w: World, limit: int) -> dict:
+def repair_schema(w: World, limit: int, harness: str = "menu") -> dict:
     """The answer to a MOTION_ACTION_MISMATCH: the corrected motions, and nothing else."""
     return {"type": "object", "additionalProperties": False, "required": ["motions"],
-            "properties": {"motions": {"type": "array", "items": motion_schema(w),
+            "properties": {"motions": {"type": "array", "items": motion_schema(w, harness=harness),
                                        "minItems": 1, "maxItems": max(1, limit)}}}
 
 
-def session_schema(w: World, mid: str) -> dict:
+def session_schema(w: World, mid: str, harness: str = "menu") -> dict:
     others = [m.id for m in w.active_members() if m.id != mid] or [mid]
-    motion = motion_schema(w)
+    motion = motion_schema(w, harness=harness)
     promise = _obj({"to": {"type": "string", "enum": ["public", *others]},
                     "text": {"type": "string"}, "condition": {"type": "string"}})
     props = {"private_position": {"type": "string"},
@@ -651,6 +1052,25 @@ def motion_summary(w: World, mo: dict) -> str:
         from . import audits
         office = audits.office_of(s) or s
         return f"close the audit of the {office}" if audits.parse_action(v) == "close" else f"audit the {office}"
+    if t == "policy":
+        # In-world words: the council, a colleague or the public reads this, never a field name or a code.
+        parts = []
+        for entry in policy_items_of(w, mo):
+            instrument = entry.get("instrument")
+            amount = entry.get("amount")
+            money = f"{amount:g}M a month" if isinstance(amount, (int, float)) else "money"
+            if instrument == "set_lever":
+                parts.append(f"set {entry.get('lever')} to {entry.get('value')}")
+            elif instrument == "transfer":
+                parts.append(f"transfer {money} to {entry.get('target')}")
+            elif instrument == "public_works":
+                parts.append(f"public works in {entry.get('target')} at {money}")
+            elif instrument == "commission":
+                parts.append(f"a commission on {str(entry.get('mandate', '')).replace('_', ' ')} at {money}")
+        return "policy: " + ("; ".join(parts) or "no items")
+    if t == "open_act":
+        office = open_act_of(w, mo).get("office")
+        return f"open act carried out by {office or 'an unnamed office'}"
     return t
 
 
@@ -736,11 +1156,11 @@ def _share_schema(w: World, mid: str, others: list) -> dict | None:
                       "with": {"type": "string", "enum": ["council", *others]}}), 3)
 
 
-def session_schema_v2(w: World, mid: str, dm_left: int = DM_PER_PHASE) -> dict:
+def session_schema_v2(w: World, mid: str, dm_left: int = DM_PER_PHASE, harness: str = "menu") -> dict:
     from .deliberation import TOPICS
     from .intelligence import REQUEST_TOPICS
     others = [m.id for m in w.active_members() if m.id != mid] or [mid]
-    motion = motion_schema(w, with_emergency=True)
+    motion = motion_schema(w, with_emergency=True, harness=harness)
     motion["properties"]["force_agenda"] = {"type": "boolean"}
     motion["required"].append("force_agenda")
     promise = _obj({"to": {"type": "string", "enum": ["public", *others]}, "text": {"type": "string"},
@@ -976,6 +1396,16 @@ def normalize_motion_v2(w: World, raw: dict, problems: list | None = None) -> di
             value = raw.get(key)
             if key not in mo["action"] and value not in (None, "", [], {}):
                 mo["action"][key] = value
+    if mo["type"] == "policy":
+        # A policy's items are one structured list; they may be written at the top level as a program's
+        # measures sometimes were. Read them into the action once, without guessing any item's contents.
+        if "items" not in mo["action"] and raw.get("items") not in (None, "", [], {}):
+            mo["action"]["items"] = raw["items"]
+    if mo["type"] == "open_act":
+        for key in ("office", "budget", "funding"):
+            value = raw.get(key)
+            if key not in mo["action"] and value not in (None, "", [], {}):
+                mo["action"][key] = value
     explicit = raw.get("conditions") if isinstance(raw.get("conditions"), list) else []
     clean = []
     for c in explicit:
@@ -1036,8 +1466,12 @@ def _explicit_action(w, raw, problems: list | None = None) -> dict:
               "issue": words(raw.get("issue", ""), ACTION_ISSUE_WORDS),
               "terms": [words(x, ACTION_TERMS_WORDS) for x in terms
                         if isinstance(x, str) and words(x, ACTION_TERMS_WORDS)][:4]}
+    # Wave A: `items` is a policy's payload, and `office`/`budget` an open act's. They are copied here
+    # whichever motion type carries them; only the arms' own types read them, and under the default arm
+    # the types are not offered, so engine 29's answers are unchanged.
     for key in ("deal_action", "region", "amount", "funding", "funding_plan", "scope",
-                "military_engineers", "regions", "measures", "kinds", "claims", "intensity"):
+                "military_engineers", "regions", "measures", "kinds", "claims", "intensity",
+                "items", "office", "budget"):
         if key in raw:
             value = raw[key]
             if key == "regions":

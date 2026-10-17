@@ -109,6 +109,22 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "MEDIA_CLAIMS_WITHOUT_FIGURES": ("motion", "info", "Claims were given without the claim_figures kind."),
     "MEDIA_MISSING_INTENSITY": ("motion", "info", "A media_campaign names no intensity."),
     "MEDIA_MISSING_TEXT": ("motion", "info", "A media_campaign has no text."),
+    # -- open actions (Wave A, W2) ----------------------------------------------------------
+    # The tabling refusals of the `policy` motion and the delegate `open_act` (plan 4.2-4.3). Each is raised by
+    # actions.validate_new_motion under the arm that offers the type, and travels the council's usual rejection path.
+    "POLICY_UNKNOWN_INSTRUMENT": ("motion", "info", "A policy item names an instrument the policy language does not have."),
+    "POLICY_BAD_TARGET": ("motion", "info", "A policy item aims at a lever, target, mandate or value it cannot have."),
+    "POLICY_BAD_CONDITION": ("motion", "info", "A policy item's condition is not one the engine can test."),
+    "POLICY_BAD_SCHEDULE": ("motion", "info", "A policy item's start_in or months is outside its stated range."),
+    "POLICY_UNFUNDED": ("motion", "info", "A spending policy item has no amount or no valid funding."),
+    "POLICY_LIMIT": ("motion", "info", "A policy motion does not carry the stated one to four items."),
+    "OPEN_ACT_TOO_LONG": ("motion", "info", "An open act's text is longer than the stated 60 words."),
+    "OPEN_ACT_MISSING_TEXT": ("motion", "info", "An open act has no text saying what the government does."),
+    "OPEN_ACT_UNKNOWN_OFFICE": ("motion", "info", "An open act names no office, or one that does not exist."),
+    "OPEN_ACT_BAD_BUDGET": ("motion", "info", "An open act's budget is not a positive amount and 1 to 24 months."),
+    "OPEN_ACT_UNFUNDED": ("motion", "info", "An open act with a budget has no valid funding."),
+    "OPEN_ACT_LIMIT": ("motion", "info", "A delegate tabled more than one open act in a month."),
+    "OPEN_ACT_BAD_TARGET": ("foreign", "info", "A cabinet's open act names a target outside Karamaniya, its regions and its own country."),
     # -- foreign ---------------------------------------------------------------------------
     "FOREIGN_ACTION_DUPLICATE": ("foreign", "warning", "A foreign action's effects were already applied."),
     "FOREIGN_ACTION_INVALID": ("foreign", "info", "A foreign cabinet proposed an act outside its action space."),

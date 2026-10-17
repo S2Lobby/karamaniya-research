@@ -62,7 +62,17 @@ class StubTests(unittest.TestCase):
         self.assertGreater(errors, 0)
 
 
-@unittest.skipUnless((VENDOR / "socioverse" / "__init__.py").is_file(), "vendored SocioVerse2 is not present")
+def _vendor_importable() -> bool:
+    """The vendored checkout is present and its dependencies can be imported. The vendor lives outside the
+    repository (CI has no copy), and a plain engine environment has no pydantic, so both are skips, not errors."""
+    if not (VENDOR / "socioverse" / "__init__.py").is_file():
+        return False
+    import importlib.util
+    return importlib.util.find_spec("pydantic") is not None
+
+
+@unittest.skipUnless(_vendor_importable(),
+                     "vendored SocioVerse2 or its pydantic dependency is not present")
 class IntegrationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="scope-test-"))

@@ -123,7 +123,9 @@ CHANNELS: dict[str, dict] = {
         "why": "the rail blockade cuts .10 and relief restores it; .05 is one instrument's monthly step.",
     },
     "admin_capacity": {
-        "state": "Economy.admin_capacity for '*', or the named office's capability in w.institutions['capacity']",
+        "state": "Economy.admin_capacity for '*', or the named office's capability in w.institutions['capacity'] "
+                 "(standing.update_capacity rebuilds that table at each council session, so an office effect "
+                 "lasts until the rebuild)",
         "targets": "admin",
         "unit": "share of the administration working (0 to 1)",
         "cap": .02, "month_cap": .02, "max_months": MAX_MONTHS,
@@ -131,7 +133,8 @@ CHANNELS: dict[str, dict] = {
                "instrument.",
     },
     "confidence": {
-        "state": "Economy.confidence",
+        "state": "Economy.confidence (economy.money_and_prices recomputes it each month, so an effect is visible "
+                 "until the next fiscal step, which is why the bus applies it after that step)",
         "targets": "any",
         "unit": "lenders' confidence (0 to 1)",
         "cap": .01, "month_cap": .01, "max_months": MAX_MONTHS,
@@ -246,7 +249,7 @@ def _normalize_source(w: World, source: dict | None) -> tuple[dict, dict | None]
             "month": int(month)}, None
 
 
-def _stacking(w: World, channel: str, target: str, value: float, months: int) -> float:
+def _stacking(w: World, channel: str, target: str, value: float) -> float:
     """The largest total this effect and the live bus reactions on the same target would make in one month.
 
     Decay only shrinks a reaction, so the current values added at full strength are an upper bound; that is
@@ -325,7 +328,7 @@ def validate(w: World, effects: list, source: dict | None) -> tuple[list, list]:
                                      f"month; the limit is {spec['month_cap']:g}."))
             continue
         if channel in SOCIETY_CHANNELS:
-            total = _stacking(w, channel, target, value, months)
+            total = _stacking(w, channel, target, value)
             if total > spec["month_cap"] + 1e-9:
                 problems.append(_problem("EFFECT_MONTH_CAP", index,
                                          f"Effects on {channel} at '{target}' would sum to {total:g} in a month "
@@ -369,7 +372,7 @@ def schedule(w: World, accepted: list, source: dict | None) -> list:
     return stored
 
 
-def _apply(w: World, channel: str, target: str, amount: float, entry: dict) -> None:
+def _apply(w: World, channel: str, target: str, amount: float) -> None:
     """Apply one non-society effect to its state. The registry's targets were checked by `validate`."""
     if channel == "damage":
         region = w.region(target)
@@ -437,7 +440,10 @@ def step(w: World) -> None:
             continue
         spec = CHANNELS.get(channel)
         if spec is None:
-            # A checkpoint from a registry this build does not know: fail closed, do not guess a channel.
+            # A checkpoint from a registry this build does not know: fail closed, do not guess a channel, but
+            # leave the fact in the run's error log rather than dropping it silently.
+            errors.record(w, "EFFECT_UNKNOWN_CHANNEL",
+                          f"A scheduled effect on the unknown channel '{channel}' was dropped.")
             continue
         value = float(entry.get("value", 0.0))
         key = (channel, target)
@@ -449,7 +455,7 @@ def step(w: World) -> None:
                 table = modifiers[channel]
                 table[target] = round(table.get(target, 0.0) + amount, 5)
             else:
-                _apply(w, channel, target, amount, entry)
+                _apply(w, channel, target, amount)
             used[key] = round(used.get(key, 0.0) + abs(amount), 5)
             applied.append({"channel": channel, "target": target, "value": amount,
                             "source": dict(entry.get("source") or {})})

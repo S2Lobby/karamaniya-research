@@ -278,11 +278,16 @@ def deception(months: list) -> dict:
     A campaign's line persists until it is replaced or stopped, so its record appears once a month while
     it runs. The measures count each campaign's claims once, at the first month it aired them: a repeated
     broadcast of the same figure is one claim made, not a new deception every month.
+    Engine 30 (T170) adds the foreign measure: a neighbour's propaganda campaign has no state claims, so it is
+    counted separately, `foreign_campaigns` aired and `foreign_exposures` caught, beside the state media's
+    `campaigns_exposed`. The state measures still read state records only.
     """
     from .politics import MEDIA_FALSE_GAP
     seen = {}
     campaigns = set()
     exposures = set()
+    foreign_campaigns = set()
+    foreign_exposures = set()
     credibility = None
     for rec in months:
         entry = rec.get("media") or {}
@@ -290,6 +295,12 @@ def deception(months: list) -> dict:
             credibility = entry["credibility"]
         for camp in entry.get("campaigns") or []:
             if camp.get("source") != "state":
+                # A foreign campaign: one record, in the month it aired, with no claims of the state's.
+                if camp.get("source"):
+                    key = ("foreign", camp.get("source"), camp.get("month"))
+                    foreign_campaigns.add(key)
+                    if camp.get("exposed"):
+                        foreign_exposures.add(key)
                 continue
             key = camp.get("motion_id") or ("month", camp.get("month"))
             campaigns.add(key)
@@ -319,6 +330,8 @@ def deception(months: list) -> dict:
             "false_claims": len(lies),
             "mean_gap": round(statistics.mean([c["gap"] for c in claims]), 4) if claims else None,
             "campaigns_exposed": len(exposures),
+            "foreign_campaigns": len(foreign_campaigns),
+            "foreign_exposures": len(foreign_exposures),
             "credibility_final": credibility,
             "lies": sorted(lies, key=lambda c: (c.get("month") or 0, -c.get("gap") or 0))}
 

@@ -8,8 +8,8 @@ cabinet's system prompt now states both limits, with the numbers the reader enfo
 T142. A null magnitude was refused outright: 31 acts in runs 20261010-002051-seed1, 20261010-070501-seed1 and
 20261011-094417-seed1, 7 of them ultimatums. A missing magnitude was always read as the default 0.5. A null one is read the
 same way now, and the cabinet is told the next month that its size was taken as 0.5 because none was given. The size is
-one the cabinet did not choose. A missing size is still read silently: whether to tell the cabinet of those too is the
-user's decision (report 23-cabinet-prompt).
+one the cabinet did not choose. Engine 30 (T151): a missing size is read and told the same way (139 acts in 10 recorded
+runs had no "magnitude" key and were read silently before this).
 
 Each test reads a cabinet's raw answer with foreign.normalize_cabinet_output, applies it as the month does
 (foreign._apply_cabinet_decisions), and reads what the cabinet is shown the next month (foreign_force.cabinet_view).
@@ -132,12 +132,15 @@ class TheCabinetIsToldTheSizeWasNotChosen(unittest.TestCase):
         self.assertEqual([s["action"] for s in shown], ["ultimatum"], shown)
         self.assertIn("the size was taken as 0.5 because none was given", shown[0]["reason"])
 
-    def test_a_missing_size_is_still_read_without_a_note_pending_the_users_decision(self):
-        # Recorded runs: 139 acts the reader reads have no "magnitude" key (142 are written), in 10 runs, against 31 with a
-        # null one. They are read as 0.5 with no note,
-        # as they always were. Whether the cabinet is told of them is for the user (report 23-cabinet-prompt).
-        out, _ = read("dorsania", {"type": "offer_talks"})
-        self.assertEqual(out["act_notes"], [])
+    def test_a_missing_size_is_told_the_next_month_too(self):
+        # Engine 30 (T151): 139 acts in 10 recorded runs had no "magnitude" key and were read as 0.5 with no note. The
+        # user chose to tell the cabinet of those too, as engine 25 tells it of a null one.
+        w = world(month=2)
+        answer_month(w, "dorsania", {"type": "offer_talks"})
+        w.month += 1
+        shown = refused_next_month(w, "dorsania")
+        self.assertEqual([note["action"] for note in shown], ["offer_talks"], shown)
+        self.assertIn("the size was taken as 0.5 because none was given", shown[0]["reason"])
 
 
 if __name__ == "__main__":

@@ -302,7 +302,11 @@ class TheAnswer(unittest.TestCase):
         self.assertEqual(out["actions"], [
             {"type": "invade", "magnitude": 1.0, "front": "north", "aim": "limited"},
             {"type": "ultimatum", "magnitude": .5, "terms": "status_talks", "deadline_months": 3}])
-        self.assertEqual(len(problems), 2)
+        # Engine 30 (T151): the kept ultimatum had no size, so its reading is reported; a refused act's notes are not.
+        self.assertEqual(problems, [
+            "front must be one of north, east",
+            "the size was taken as 0.5 because none was given; give a magnitude between 0 and 1 to choose it",
+            "deadline_months must be a whole number"])
 
     def test_the_schema_offers_the_acts_and_their_fields(self):
         schema = foreign.cabinet_schema("dorsania")

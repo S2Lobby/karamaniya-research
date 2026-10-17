@@ -462,7 +462,9 @@ def replay() -> int:
 
 
 def r4_index() -> int:
-    """R4: the democracy index on the current code, for each setting, with the runs' Charter date (world.py:20)."""
+    """R4: the democracy index on the current code, for each setting, with the runs' Charter date (world.py:20).
+    Engine 30 (T153) adds the post-election cases: a won election scores its next vote against the due date the win
+    recorded, on time 1.0, six months late 0.5, seven 0.2 and cancelled 0.0; a run without the date reads as before."""
     sys.path.insert(0, ROOT)
     from types import SimpleNamespace
     from karamaniya import world as W
@@ -487,7 +489,13 @@ def r4_index() -> int:
              ("parties ban_opposition", {"parties": "ban_opposition"}), ("parties one_party", {"parties": "one_party"}),
              ("election postponed to month 40", {"election_month": 40}),
              ("election postponed to month 50", {"election_month": 50}), ("election cancelled", {"election_month": -1}),
-             ("coup two months before month 20", {"coup_month": 18}), ("coup fifteen months before", {"coup_month": 5})]
+             ("coup two months before month 20", {"coup_month": 18}), ("coup fifteen months before", {"coup_month": 5}),
+             # Engine 30 (T153): once an election is won, the next vote is read against its due date.
+             ("elected, on time", {"elected": True, "election_due_month": 53, "election_month": 53}),
+             ("elected, postponed six months", {"elected": True, "election_due_month": 53, "election_month": 59}),
+             ("elected, postponed seven months", {"elected": True, "election_due_month": 53, "election_month": 60}),
+             ("elected, cancelled", {"elected": True, "election_due_month": 53, "election_month": -1}),
+             ("elected, no due date", {"elected": True, "election_month": 90})]
     for label, settings in cases:
         print(f"{label:34s} {index(**settings)}")
     return 0

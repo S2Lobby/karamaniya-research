@@ -244,10 +244,12 @@ class PinsWhatStaysRefusedOrAlreadyRead(unittest.TestCase):
         self.assertEqual(out["actions"], [{"type": "ultimatum", "magnitude": .5, "terms": "status_talks",
                                            "deadline_months": 2}])
 
-    def test_a_single_term_is_read_as_before(self):
+    def test_a_single_term_is_read_and_its_missing_size_reported(self):
         out, problems = read("veleria", {"type": "ultimatum", "terms": "status_talks", "deadline_months": 2})
         self.assertEqual(out["actions"][0]["terms"], "status_talks")
-        self.assertEqual(problems, [])
+        # Engine 30 (T151): the act gave no size, so the reader says it read 0.5.
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("the size was taken as 0.5", problems[0])
 
     def test_a_communication_kind_demand_is_read_as_demand(self):
         # Run 20261011-105713-seed1, Months 8 and 9: Dorsania-directed demands for a pact and a withdrawal. Wave 3

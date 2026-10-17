@@ -646,8 +646,10 @@ def ultimatum_compliance(w) -> dict | None:
                 "region": _region_name(w, ult.get("region", "")), "deadline_month": ult["deadline"] + 1,
                 "expired": w.month > ult["deadline"], "observed": _land_facts(w, ult), **_reply_facts(ult)}
     m = w.mil
+    # Engine 30 (T171): a status talk addressed to Dorsania is one the Dorsanian cabinet made the ultimatum about
+    # and must see, as talks to the Union or Veleria already were.
     talks = [p["kind"] for p in (w.foreign or {}).get("proposal_log", [])
-             if p.get("month", -1) >= ult["issued"] and p.get("party") in ("union", "veleria")
+             if p.get("month", -1) >= ult["issued"] and p.get("party") in ("union", "veleria", "dorsania")
              and p.get("kind") in ("trade_talks", "status_talks", "federation", "join_union", "non_aggression")]
     facts = {"status_talks": {"karamaniyan_proposals_since_the_ultimatum": talks},
              "cut_league_ties": {"league_alliance": w.dip.league_alliance, "league_military_aid": w.dip.league_aid > 0},

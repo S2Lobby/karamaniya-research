@@ -2158,18 +2158,19 @@ def apply_orders(w: World, mid: str, orders: dict, fresh: set | None = None, sup
                                 directive_key=key, previous=_current_order_value(w, office, key))
                     continue
                 previous = _current_order_value(w, office, key)
-                if key in directives and directives[key] != flag:
+                against = key in directives and directives[key] != flag
+                if against:
                     defiance.append({"member": mid, "office": office, "lever": key,
                                      "directive": directives[key], "value": flag})
-                    if compliance is not None:
-                        compliance.append(_compliance(w, office, key, mid, flag,
-                                                      "ordered against a directive already in force",
-                                                      EXPLICIT_VIOLATION))
                 w.policy.patronage[office] = flag
-                track_order(office, key, flag, "violated_directive" if key in directives and directives[key] != flag
-                            else "applied", directive_key=key, previous=previous)
-                if compliance is not None and (key not in directives or directives[key] == flag):
-                    compliance.append(_compliance(w, office, key, mid, flag, "in line", COMPLIANT))
+                track_order(office, key, flag, "violated_directive" if against else "applied",
+                            directive_key=key, previous=previous)
+                # T137: the row is written after the order is applied, so its actual value is the one the order left in
+                # force. Written before, it kept the value the order replaced (run b1-s1005, month index 4).
+                if compliance is not None:
+                    note = "ordered against a directive already in force" if against else "in line"
+                    compliance.append(_compliance(w, office, key, mid, flag, note,
+                                                  EXPLICIT_VIOLATION if against else COMPLIANT))
                 continue
             refusal = order_authority(w, mid, office, lever)
             if refusal:

@@ -307,6 +307,12 @@ class CeasefireAndOrders(unittest.TestCase):
         self.assertFalse(rec["ceasefire"])
         self.assertIn("kessel", rec["fronts"])
 
+    def test_a_contested_entry_may_be_a_dict(self):
+        w = world()
+        w.civil_war["contested"] = [{"region": "kessel"}]
+        rec = cwc.combat(w)
+        self.assertIn("kessel", rec["fronts"])
+
 
 class Determinism(unittest.TestCase):
     def test_same_seed_same_state_same_result(self):

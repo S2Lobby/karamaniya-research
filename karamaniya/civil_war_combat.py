@@ -145,7 +145,7 @@ def combat(w: World, rng=None) -> dict | None:
         # A paused war (intensity 0) still lets allegiance drift; it fights nothing.
         state["last_combat"] = record
         return record
-    contested = sorted({str(rid) for rid in (state.get("contested") or [])})
+    contested = _contested_ids(state)
     n_fronts = max(1, len(contested))
     men_lost = {office: {"government": 0.0, "rebels": 0.0} for office in OFFICES}
     loss_equivalent = {"government": 0.0, "rebels": 0.0}
@@ -358,6 +358,17 @@ def _loss_men(profile: dict, loss_equivalent: float) -> dict:
         return {}
     return {office: loss_equivalent * p["equivalent"] / total / EQUIVALENT[office]
             for office, p in profile.items()}
+
+
+def _contested_ids(state: dict) -> list:
+    """The contested region ids in a stable order; a dict entry may carry `region` or `id`."""
+    ids = set()
+    for entry in (state.get("contested") or []):
+        if isinstance(entry, dict):
+            entry = entry.get("region") or entry.get("id")
+        if entry is not None:
+            ids.add(str(entry))
+    return sorted(ids)
 
 
 def _progress_of(state: dict, rid: str) -> float:
@@ -589,7 +600,7 @@ def _change_control(w: World, state: dict, region, winner: str, record: dict, rn
                 importance=3, region=region.id)
     moved = _flee(w, region, winner, rng)
     state.setdefault("progress", {}).pop(region.id, None)
-    state["contested"] = [rid for rid in (state.get("contested") or []) if rid != region.id]
+    state["contested"] = [rid for rid in _contested_ids(state) if rid != region.id]
     record["control_changes"].append({"region": region.id, "from": previous, "to": region.controller,
                                       "routed": bool(routed), "fought": bool(fought),
                                       "refugees": round(moved)})

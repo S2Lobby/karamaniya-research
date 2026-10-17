@@ -800,7 +800,7 @@ def democracy_index(w: World) -> float:
                         for name in (w.institutions.get("emergency_measures") or {}))
                   + PARTIES_PENALTY.get(c.parties, 0.0)
                   + (BROADCAST_JAM_PENALTY if getattr(w.policy, "foreign_broadcasts", "open") == "jammed" else 0.0)
-                  + (MEDIA_CAPTURE_PENALTY if (w.media or {}).get("capture") else 0.0))
+                  + (MEDIA_CAPTURE_PENALTY if (getattr(w, "media", None) or {}).get("capture") else 0.0))
     return clamp(base - repression)
 
 

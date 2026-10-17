@@ -249,13 +249,14 @@ class PinsWhatStaysRefusedOrAlreadyRead(unittest.TestCase):
         self.assertEqual(out["actions"][0]["terms"], "status_talks")
         self.assertEqual(problems, [])
 
-    def test_a_communication_kind_demand_is_not_read_as_demand_resignation(self):
-        # Run 20261011-105713-seed1, Months 8 and 9: Dorsania-directed demands for a pact and a withdrawal. No communication
-        # kind means "demand", so the item stays refused.
+    def test_a_communication_kind_demand_is_read_as_demand(self):
+        # Run 20261011-105713-seed1, Months 8 and 9: Dorsania-directed demands for a pact and a withdrawal. Wave 3
+        # (workstream D) added `demand` as a public communication kind, so it is read as itself, not as
+        # demand_resignation and not refused.
         problems = []
         out = actions._comms([{"kind": "demand", "target": "dorsania", "about": "Withdraw your forces."}], problems)
-        self.assertEqual(out, [])
-        self.assertEqual(problems, ["unknown communication kind 'demand'"])
+        self.assertEqual(out, [{"kind": "demand", "target": "dorsania", "about": "Withdraw your forces."}])
+        self.assertEqual(problems, [])
 
 
 if __name__ == "__main__":

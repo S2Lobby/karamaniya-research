@@ -98,6 +98,17 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "NUMERIC_GROUNDING_ERROR": ("motion", "warning", "A precise figure was asserted that the speaker could not know."),
     "VOTE_INTENT_MISMATCH": ("motion", "warning", "A final ballot is the other way from the plain verdict its own reason states (a diagnostic, not a behaviour measure; backlog T144)."),
     "CONDITION_EXECUTION_MISMATCH": ("motion", "warning", "A condition the council accepted was not attached to the motion, or execution would have broken it."),
+    # -- state media (engine 27, wave 3 A) -------------------------------------------------
+    "MEDIA_MISSING_KINDS": ("motion", "info", "A media_campaign names no kind."),
+    "MEDIA_UNKNOWN_KIND": ("motion", "info", "A media_campaign kind is not one of the four the engine has."),
+    "MEDIA_MISSING_CLAIMS": ("motion", "info", "A media_campaign with claim_figures names no claims."),
+    "MEDIA_TOO_MANY_CLAIMS": ("motion", "info", "A media_campaign names more than three claims."),
+    "MEDIA_BAD_CLAIM": ("motion", "info", "A media_campaign claim is not a {metric, value} pair."),
+    "MEDIA_UNKNOWN_CLAIM_METRIC": ("motion", "info", "A media_campaign claim names a metric the canonical state does not publish."),
+    "MEDIA_BAD_CLAIM_VALUE": ("motion", "info", "A media_campaign claim value is not a number."),
+    "MEDIA_CLAIMS_WITHOUT_FIGURES": ("motion", "info", "Claims were given without the claim_figures kind."),
+    "MEDIA_MISSING_INTENSITY": ("motion", "info", "A media_campaign names no intensity."),
+    "MEDIA_MISSING_TEXT": ("motion", "info", "A media_campaign has no text."),
     # -- foreign ---------------------------------------------------------------------------
     "FOREIGN_ACTION_DUPLICATE": ("foreign", "warning", "A foreign action's effects were already applied."),
     "FOREIGN_ACTION_INVALID": ("foreign", "info", "A foreign cabinet proposed an act outside its action space."),

@@ -237,7 +237,9 @@ def load_run(path):
     run.horizon = run_cfg.get("months", seeds.get("months_total"))
     run.office_assignment = run_cfg.get("office_assignment") or None
     run.action_order = run_cfg.get("action_order") or None
-    run.foreign_cabinets = bool(run_cfg.get("foreign_cabinets", True))
+    # Every engine-written config names the setting; a run folder that does not (a synthetic fixture, or a
+    # rules-only run) did not declare cabinet calls, so it cannot have borrowed delegate seats.
+    run.foreign_cabinets = bool(run_cfg.get("foreign_cabinets", False))
     backend = run_cfg.get("foreign_cabinet_backend")
     run.foreign_cabinet_backend = dict(backend) if isinstance(backend, dict) else {}
     run.mapping = dict(config.get("mapping") or {L: run.seats[L]["label"] for L in LETTERS})

@@ -328,7 +328,9 @@ PROVENANCE = 1
 # VALUE_OUT_OF_RANGE, MOTION_CAP_REACHED, ANSWER_UNREADABLE and registers BAD_LOAN_AMOUNT, which was refused unregistered.
 # 5 (engine 23) registers NO_ULTIMATUM and ULTIMATUM_NOT_FROM_TARGET, the refusals of engine 22's ultimatum_reply, which
 # were recorded as UNREGISTERED_ERROR_CODE.
-ERROR_TAXONOMY = 5
+# 6 (engine 27) registers the ten media_campaign refusals (MEDIA_*), raised by validate_motion_detail and recorded
+# unregistered until now.
+ERROR_TAXONOMY = 6
 
 
 def stamp(agent_architecture: int = AGENT_ARCHITECTURE) -> dict:

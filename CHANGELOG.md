@@ -6,7 +6,7 @@ task-by-task record with the tests behind each item.
 
 ## World engine 27
 
-`WORLD_ENGINE` 27, `AGENT_PROMPT` 24 (psychology 8 and error taxonomy 5 unchanged): wave 3 — domestic state media,
+`WORLD_ENGINE` 27, `AGENT_PROMPT` 24 (psychology 8 and error taxonomy 6): wave 3 — domestic state media,
 the Union's propaganda and the counter, wider diplomacy, and the study and submission tools (backlog T163-T175).
 A default scripted run's council prompts and its neighbours' system prompts change (`tools/prompt_freeze.py`).
 

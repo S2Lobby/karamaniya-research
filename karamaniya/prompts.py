@@ -470,8 +470,10 @@ OPERATIONS_HELP = {
                 "food)",
     "interior": "focus (public_order raises fear; civil_rights eases grievances and lowers police morale a little; "
                 "regional_outreach eases grievances more; smuggling breaks up arms smuggling over a few months; "
-                "election_security guards polling stations when an attack on the vote is threatened) and focus_region "
-                "(where, or none)",
+                "election_security guards polling stations when an attack on the vote is threatened), focus_region "
+                "(where, or none), and media_intensity (off stops the current line; low carries it out at low "
+                "intensity; medium carries it out at medium; high carries it out at high; a value other than the "
+                "council's line is recorded as defiance)",
     "army": "training_focus (readiness trains the army; border_works fortifies both fronts; civil_support feeds the "
             "hungry and costs training)",
     "navy": "patrol_pattern (sea_lanes reassures merchant shipping; ports improves the capital's port; coastal has no "

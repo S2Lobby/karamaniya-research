@@ -200,6 +200,77 @@ def d2_rows() -> list:
     return rows
 
 
+# ---- D4: an office holder's order against a council directive -----------------------------------------------------
+def decision_calls(log: str) -> dict:
+    """(month index, member) -> the raw text of the last decision-phase answer."""
+    out = {}
+    with open(log, encoding="utf-8") as f:
+        for line in f:
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if rec.get("type") == "call" and rec.get("phase") == "decision":
+                out[(rec.get("month"), rec.get("member"))] = str(rec.get("raw", ""))
+    return out
+
+
+def raw_order(raw: str, office: str, lever: str):
+    """What the delegate wrote for the lever, read from its raw answer. A patronage order is one key, 'patronage'."""
+    key = "patronage" if lever.startswith("patronage") else lever
+    try:
+        return json.loads(raw).get("orders", {}).get(office, {}).get(key, "(absent)")
+    except (ValueError, AttributeError):
+        return "(unparsed)"
+
+
+def directive_in_force(prompt: str, lever: str) -> str:
+    """The value the decision prompt gives for the lever under 'Current directives:' (the month's opening state).
+    Values are cut at ';' only: a decimal point is part of the value (0.2), not the end of the list."""
+    for line in (prompt or "").splitlines():
+        if line.startswith("Current directives:"):
+            m = re.search(r"(?<![\w])" + re.escape(lever) + r" = ([^;]+)", line)
+            return m.group(1).strip().rstrip(".") if m else "(not listed)"
+    return "(no directives line)"
+
+
+def d4_rows() -> list:
+    rows = []
+    for run, log in run_logs():
+        prompts = None
+        calls = None
+        for rec in month_records(log):
+            if not rec.get("defiance"):
+                continue
+            if prompts is None:
+                prompts, calls = decision_prompts(run), decision_calls(log)
+            m = rec.get("month")
+            for d in rec.get("defiance") or []:
+                mid, lever, office = d.get("member"), d.get("lever"), d.get("office")
+                comp = next((c for c in rec.get("compliance") or []
+                             if c.get("member") == mid and c.get("lever") == lever), {})
+                order = next((o for o in rec.get("office_orders") or []
+                              if o.get("member") == mid and o.get("lever") == lever), {})
+                family = "patronage" if lever.startswith("patronage") else lever
+                touching = []
+                for mo in rec.get("motions") or []:
+                    if family in json.dumps(mo, ensure_ascii=False):
+                        touching.append(f"{mo.get('id')} {mo.get('type')}/{mo.get('subject')} "
+                                        f"{mo.get('execution_status')}: {str(mo.get('result'))[:70]}")
+                rows.append({
+                    "run": run, "month_no": m + 1, "month_name": rec.get("label", ""), "member": mid,
+                    "office": office, "lever": lever, "directive": d.get("directive"), "order": d.get("value"),
+                    "directive_open": directive_in_force(prompts.get((m, mid), ""), lever),
+                    "order_raw": raw_order(calls.get((m, mid), "{}"), office, lever),
+                    "compliance_status": comp.get("compliance_status", ""), "compliance_note": comp.get("note", ""),
+                    "order_status": order.get("status", ""), "executed": order.get("actual_value", ""),
+                    "motions_touching_lever": " | ".join(touching),
+                })
+    for i, row in enumerate(rows, 1):
+        row["flag_id"] = f"D4-{i:03d}"
+    return rows
+
+
 # ---- writing and scoring ------------------------------------------------------------------------------------------
 def write_csv(path: str, rows: list, fields: list) -> None:
     with open(path, "w", encoding="utf-8", newline="\n") as f:
@@ -238,6 +309,15 @@ def extract() -> int:
                "motion_text", "passed", "tally", "stance", "vote", "source", "statement", "vote_condition",
                "reason_full"])
     print(f"D2 flags: {len(d2)}")
+    d4 = d4_rows()
+    write_csv(os.path.join(OUT, "D4_evidence_all14.csv"), d4,
+              ["flag_id", "run", "month_no", "month_name", "member", "office", "lever", "directive", "order",
+               "directive_open", "order_raw", "compliance_status", "compliance_note", "order_status", "executed",
+               "motions_touching_lever"])
+    levers = {}
+    for row in d4:
+        levers[row["lever"]] = levers.get(row["lever"], 0) + 1
+    print(f"D4 defiance records: {len(d4)}; by lever: {levers}")
     return 0
 
 
@@ -280,6 +360,15 @@ def score() -> int:
                          ["flag_id", "run", "month_no", "member", "motion", "motion_type", "motion_subject",
                           "stance", "vote", "statement", "reason_full", "label", "reason"])
     print("D2 (precision: TRUE_MISMATCH of decided):", tally(labels, "TRUE_MISMATCH", "FALSE_POSITIVE"))
+    labels = join_labels(os.path.join(OUT, "D4_evidence_all14.csv"), os.path.join(OUT, "D4_labels_14.csv"),
+                         os.path.join(OUT, "D4_labelled_14.csv"),
+                         ["flag_id", "run", "month_no", "member", "office", "lever", "directive", "order",
+                          "directive_open", "order_raw", "compliance_status", "order_status", "executed",
+                          "motions_touching_lever", "label", "reason"])
+    counts = {}
+    for row in labels:
+        counts[row["label"]] = counts.get(row["label"], 0) + 1
+    print("D4 (counts, not a precision):", {"labelled": len(labels), **counts})
     return 0
 
 

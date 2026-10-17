@@ -511,6 +511,14 @@ class ThroughTheCouncil(unittest.TestCase):
         applied = row.get("effects_applied") or []
         self.assertTrue(any(rec.get("source", {}).get("kind") == "open_act" for rec in applied))
 
+    def test_the_next_month_briefing_reports_the_act(self):
+        month = next(m for m in self.months if any(x["type"] == "open_act" for x in m["motions"]))
+        later = [p for p in self.prompts if p.get("month") == month["month"] + 1]
+        self.assertTrue(later)
+        self.assertTrue(any("OPEN ACTS CARRIED OUT LAST MONTH" in (p.get("prompt") or "")
+                            for p in later))
+        self.assertTrue(any("The public was told:" in (p.get("prompt") or "") for p in later))
+
     def test_the_referee_calls_are_logged_with_phase_and_member(self):
         ref_calls = [c for c in self.calls if c.get("phase") == "referee"]
         self.assertTrue(ref_calls)

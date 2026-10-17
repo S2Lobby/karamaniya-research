@@ -2,6 +2,7 @@
 import http.client
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -15,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from karamaniya import envfile  # noqa: E402
 from karamaniya import gui  # noqa: E402
+from karamaniya.backends import make_backend  # noqa: E402
 from karamaniya.gui import Controller, compare, comparative_notes, make_server  # noqa: E402
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -431,6 +433,21 @@ class JevAnnotation(unittest.TestCase):
                         "s-knockout-office", "s-knockout-month", "s-civil-war"):
             self.assertIn('id="' + element + '"', html)
         self.assertIn("function jevAnnotate", html)
+
+    def test_the_judge_panel_offers_jev_on_openrouters_decisions_api(self):
+        # The panel's "jev" choice writes JEV_JUDGE with JEV_MODEL into judge_backends. The engine has to read
+        # that as a Jev judge posting to OpenRouter's Decisions endpoint on the OpenRouter key.
+        html = (Path(HERE) / "karamaniya" / "gui.html").read_text(encoding="utf-8")
+        self.assertIn('["jev", ...Object.keys(PROVIDERS)]', html)
+        block = re.search(r"const JEV_JUDGE = \{(.*?)\};", html, re.S).group(1)
+        route = dict(re.findall(r'(\w+): "([^"]*)"', block))
+        model = re.search(r'const JEV_MODEL = "([^"]+)"', html).group(1)
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
+            backend = make_backend({**route, "model": model})
+        self.assertEqual(route["provider"], "systemone")
+        self.assertEqual(backend.base_url + backend.path, "https://openrouter.ai/api/alpha/decisions")
+        self.assertEqual(backend.model, "typesafe/jev-latest")
+        self.assertEqual(backend.api_key, "test-key")
 
 
 if __name__ == "__main__":

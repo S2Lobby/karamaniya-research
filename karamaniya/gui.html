@@ -510,9 +510,9 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             <div class="field"><span>&nbsp;</span><label class="check"><input type="checkbox" id="s-judge"> Evaluator models observe the run (judges, outside the government)</label></div>
             <div id="judge-fields" hidden>
               <label class="field"><span>Judge provider</span><select id="s-judge-provider"></select></label>
-              <label class="field"><span>Judge model</span><input type="text" id="s-judge-model" placeholder="e.g. jev-latest, qwen3.5:9b" spellcheck="false" autocomplete="off"></label>
+              <label class="field"><span>Judge model</span><input type="text" id="s-judge-model" placeholder="e.g. qwen3.5:9b; jev fills in typesafe/jev-latest" spellcheck="false" autocomplete="off"></label>
               <label class="field"><span>Ask every (months)</span><input type="number" id="s-judge-every" min="1" max="12" step="1" value="1"></label>
-              <p class="pnote">Judges see the same public record the delegates see and answer typed questions: will the government survive to the end, how will it end, how severe is it, is the evidence enough. Their probabilities are scored against what actually happened, so the report shows each judge's accuracy, not just its opinion. Up to three judges; a second and third are added in the council file.</p>
+              <p class="pnote">Judges see the same public record the delegates see and answer typed questions: will the government survive to the end, how will it end, how severe is it, is the evidence enough. Their probabilities are scored against what actually happened, so the report shows each judge's accuracy, not just its opinion. Up to three judges; a second and third are added in the council file. Provider "jev" is TypeSafe's Jev through OpenRouter's Decisions API, on your OpenRouter key.</p>
             </div>
           </div>
           <p class="pnote">Each member has a seeded private disposition and a different evidence dossier. No office or political priority is preassigned; compare first diagnoses, stated principles and later choices in Inspect.</p>
@@ -763,6 +763,11 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
   const STAND_IN_PERSONAS = ["democrat", "technocrat", "hawk", "loyalist", "opportunist"];
   const PERSONAS = [...STAND_IN_PERSONAS, "dove"];
   const DEEPSEEK_ROUTE = { base_url: "https://api.deepseek.com/anthropic", api_key_env: "DEEPSEEK_API_KEY" };
+  // Jev (TypeSafe's System One model) is an evaluator, never a seat, so only the judge panel offers it. Its choice
+  // writes a systemone judge on OpenRouter's Decisions API, the annotator's route, so it needs the OpenRouter key.
+  const JEV_JUDGE = { provider: "systemone", base_url: "https://openrouter.ai/api/alpha", path: "/decisions",
+                      api_key_env: "OPENROUTER_API_KEY" };
+  const JEV_MODEL = "typesafe/jev-latest";
   const PRESETS = [
     ["Claude", { label: "claude-opus-5.5", provider: "claude_cli", model: "claude-opus-5-5", effort: "medium" }],
     ["GPT", { label: "gpt-5.6-terra", provider: "codex_cli", model: "gpt-5.6-terra", effort: "medium" }],
@@ -1041,11 +1046,12 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     $("s-problems").value = (r.founding_problems || []).join(", ");
     $("custom-problems-field").hidden = $("s-scenario").value !== "custom";
     const jsel = $("s-judge-provider");
-    if (!jsel.options.length) put(jsel, Object.keys(PROVIDERS).map(p => { const o = el("option", null, p); o.value = p; return o; }));
+    if (!jsel.options.length) put(jsel, ["jev", ...Object.keys(PROVIDERS)].map(p => {
+      const o = el("option", null, p === "jev" ? "jev (Jev on OpenRouter)" : p); o.value = p; return o; }));
     const j0 = (r.judge_backends || [])[0] || {};
     $("s-judge").checked = !!r.judge;
     $("judge-fields").hidden = !r.judge;
-    jsel.value = j0.provider || "ollama";
+    jsel.value = j0.provider === "systemone" ? "jev" : (j0.provider || "ollama");
     $("s-judge-model").value = j0.model || "";
     $("s-judge-every").value = Math.max(1, Math.min(12, +r.judge_every_months || 1));
     renderFoundingPreview();
@@ -1125,12 +1131,19 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     $("s-seed").addEventListener("change", renderFoundingPreview);
     for (const [id, key] of [["s-survey", "survey"], ["s-shuffle", "shuffle_seats"], ["s-parallel", "parallel_decisions"], ["s-human", "human_factor"]])
       $(id).addEventListener("change", ev => { S.cfg.run[key] = ev.target.checked; markDirty(); renderEstimate(); });
-    // Judges: one evaluator model from the panel; a second and third live in the council file.
+    // Judges: one evaluator model from the panel; a second and third live in the council file, and an edit here
+    // keeps them. A Jev judge already in the file keeps its own route (TypeSafe's API, say); a new one goes through
+    // OpenRouter.
     function syncJudge() {
       const provider = $("s-judge-provider").value;
       const model = $("s-judge-model").value.trim();
+      const backs = S.cfg.run.judge_backends || [];
       S.cfg.run.judge = true;
-      if (provider && model) S.cfg.run.judge_backends = [{ provider: provider, model: model, label: model }];
+      let first = null;
+      if (provider === "jev")
+        first = { ...(backs[0] && backs[0].provider === "systemone" ? backs[0] : JEV_JUDGE), model: model || JEV_MODEL, label: "Jev" };
+      else if (provider && model) first = { provider: provider, model: model, label: model };
+      if (first) S.cfg.run.judge_backends = [first, ...backs.slice(1)];
       else delete S.cfg.run.judge_backends;
       S.cfg.run.judge_every_months = Math.max(1, Math.min(12, +$("s-judge-every").value || 1));
     }
@@ -1140,7 +1153,12 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
       else { delete S.cfg.run.judge; delete S.cfg.run.judge_backends; delete S.cfg.run.judge_every_months; }
       markDirty(); renderEstimate();
     });
-    $("s-judge-provider").addEventListener("change", () => { if (S.cfg.run.judge) syncJudge(); markDirty(); });
+    $("s-judge-provider").addEventListener("change", ev => {
+      const m = $("s-judge-model");
+      if (ev.target.value === "jev" && !/^typesafe\//.test(m.value.trim())) m.value = JEV_MODEL;
+      else if (ev.target.value !== "jev" && /^typesafe\/jev/.test(m.value.trim())) m.value = "";
+      if (S.cfg.run.judge) syncJudge(); markDirty();
+    });
     $("s-judge-model").addEventListener("input", () => { if (S.cfg.run.judge) syncJudge(); markDirty(); });
     $("s-judge-every").addEventListener("change", () => { if (S.cfg.run.judge) syncJudge(); markDirty(); });
   }

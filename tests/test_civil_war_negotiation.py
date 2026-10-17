@@ -145,6 +145,18 @@ class Ceasefire(unittest.TestCase):
         self.assertEqual(state(w)["breaches"][-1]["reason"], "attack")
         self.assertEqual(state(w)["breaches"][-1]["order"], "attack")
 
+    def test_the_order_breach_helper_is_the_one_c3_calls_before_combat(self):
+        w = war_world()
+        civil_war.ceasefire(w, "government")
+        civil_war.ceasefire(w, "rebels")
+        state(w)["orders"] = {"government": {"aster": "attack"}}
+        result = civil_war.orders_break_ceasefire(w)
+        self.assertTrue(result["ok"])
+        self.assertFalse(civil_war.ceasefire_active(w))
+        self.assertEqual(state(w)["breaches"][-1]["side"], "government")
+        # A second call finds no ceasefire in force.
+        self.assertIsNone(civil_war.orders_break_ceasefire(w))
+
     def test_a_refused_offer_is_recorded_and_does_not_hold(self):
         w = war_world()
         civil_war.ceasefire(w, "government")

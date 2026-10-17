@@ -60,9 +60,9 @@ negotiation and the ends (C4). The state above gains, on first use:
   pending); a call from the other side, or ``ceasefire(..., accept=True)``, accepts it and sets
   ``ceasefire = {"active": True, "broken": False, ...}``, the flag C2's combat reads. A bare
   truthy value also reads as holding, as C2's own ``ceasefire_active`` does. ``breach(w, side)``
-  breaks it and records the breach; ``check_end`` also breaks it on an ``attack`` order in
-  ``w.civil_war["orders"]`` (C3 should call ``breach`` before combat, so the attack is not
-  silently ignored).
+  breaks it and records the breach; ``orders_break_ceasefire(w)`` is the call C3/the lead makes
+  after the faction phase fills ``orders`` and before combat. ``check_end`` also breaks it on an
+  ``attack`` order as a backstop.
 - **Settlement.** ``offer(w, side, terms)`` and ``respond(w, side, offer_id/terms, accept)`` work
   the closed list: ``amnesty``, ``power_sharing`` (named offices divided), ``regional_autonomy``
   (a named region), ``forces`` (``integrate`` or ``disarm``), and ``election_date`` (a month
@@ -1191,6 +1191,19 @@ def _break_from_orders(w, current) -> None:
             if str(order).strip().lower() == "attack":
                 return breach(w, side, "attack", order="attack", target=str(target))
     return None
+
+
+def orders_break_ceasefire(w):
+    """Break a ceasefire when C3's ``w.civil_war["orders"]`` carry an attack.
+
+    Call this after the faction phase fills the orders and before C2's combat runs; otherwise the
+    attack is stopped by the flag that is still in force. ``check_end`` calls it as a backstop.
+    Returns the breach record, or None.
+    """
+    current = _live_state(w)
+    if current is None:
+        return None
+    return _break_from_orders(w, current)
 
 
 # ---- C4: the ends ---------------------------------------------------------------------------

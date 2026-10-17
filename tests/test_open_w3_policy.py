@@ -21,7 +21,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from karamaniya import actions, calibration, effects, engine, errors, motion_actions, policy, politics  # noqa: E402
-from karamaniya.world import OFFICES, World, new_world  # noqa: E402
+from karamaniya.world import World, new_world  # noqa: E402
 
 GDP = 552_676_524.75       # starting monthly output, for the cut-share arithmetic (see new_world)
 
@@ -632,6 +632,18 @@ class CompatibilityAndDeterminismTests(unittest.TestCase):
         policy.monthly(loaded)
         self.assertNotIn("policies", loaded.institutions)
         self.assertNotIn("policy_record", loaded.institutions)
+
+    def test_a_checkpoint_with_a_live_hold_round_trips_and_still_restores(self):
+        w = policy_world(22)
+        adopt(w, [set_lever("rationing", True, months=3)])
+        engine.step(w)
+        self.assertTrue(w.policy.rationing)
+        loaded = World.from_dict(w.to_dict())
+        self.assertEqual(len(policy.active(loaded)), 1)
+        engine.step(loaded)
+        engine.step(loaded)
+        engine.step(loaded)
+        self.assertFalse(loaded.policy.rationing, "the restored value survives the checkpoint")
 
     def test_two_identical_runs_with_every_instrument_match_month_by_month(self):
         def run():

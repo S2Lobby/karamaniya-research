@@ -16,6 +16,8 @@ directive is no longer the one the hold wrote, which is recorded as superseded.
 `transfer` pays a group each month. The money is charged through the engine's funding paths (reserves,
 borrowing, or a cut to a spending setting) and reaches the people through the effect bus's `income` and
 `hunger` channels and through `grievance` and `approval` reactions, all scaled per head on the target.
+The money channels land in the month it is paid; the two public reactions are folded in by the next
+month's society step, as every reaction scheduled after that step's fold is.
 The scales are synthetic and documented below.
 
 `public_works` spends money in one region. Each month's payment buys a repair that lands through the bus
@@ -178,6 +180,11 @@ def adopt(w, motion: dict) -> str:
     items = actions.policy_items_of(w, motion)
     if not items:
         return "no policy item could be read from the motion; nothing was adopted"
+    conflict = motion_actions._policy_conflict(items)
+    if conflict:
+        # The tabling reader has already refused the shapes it owns; a direct call (a scripted stand-in, a
+        # replay) reaches the same verdict rather than adopting a contradictory policy.
+        return f"policy not adopted: {conflict['detail']}"
     store = state(w)
     parts = []
     for index, raw in enumerate(items):

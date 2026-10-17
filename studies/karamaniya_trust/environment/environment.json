@@ -1,0 +1,32 @@
+{
+  "study_id": "karamaniya_trust",
+  "layers": [
+    {
+      "name": "country_state",
+      "modality": "physical",
+      "scope": "macro",
+      "dynamics": "endogenous",
+      "source": null,
+      "schema_ref": null,
+      "description": "The fictional country's state: approval, inflation, unrest, food ratio and army. The engine's world step changes it inside each council month."
+    },
+    {
+      "name": "office_brief",
+      "modality": "information",
+      "scope": "local",
+      "dynamics": "endogenous",
+      "source": null,
+      "schema_ref": null,
+      "description": "Each delegate's own office and status. The formation vote sets the offices; exits change the status."
+    }
+  ],
+  "scheduled_events": [],
+  "information_program": {
+    "broadcasts": []
+  },
+  "provider_ref": "karamaniya.env",
+  "provider_args": {
+    "engine": "karamaniya",
+    "config": "council.scripted.toml"
+  }
+}

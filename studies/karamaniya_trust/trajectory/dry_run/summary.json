@@ -1,0 +1,21 @@
+{
+ "council": "council.scripted.toml",
+ "dry_run": true,
+ "mapping": {
+  "A": "scripted-technocrat",
+  "B": "scripted-hawk",
+  "C": "scripted-loyalist",
+  "D": "scripted-democrat",
+  "E": "scripted-opportunist"
+ },
+ "months": 2,
+ "months_run": 2,
+ "outcome": "After 2 months, the Provisional Government of Karamaniya still governs an independent Karamaniya.",
+ "parity_equal": true,
+ "seed": 4201,
+ "status": "finished",
+ "steps_in_trajectory": 7,
+ "study_id": "karamaniya_trust",
+ "trajectory": "study.duckdb (panel, metrics, events); metrics_history.json",
+ "wrapped_run": "wrapped_run"
+}

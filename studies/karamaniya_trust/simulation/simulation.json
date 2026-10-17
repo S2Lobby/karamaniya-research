@@ -1,0 +1,16 @@
+{
+  "study_id": "karamaniya_trust",
+  "n_steps": 36,
+  "seed": 4201,
+  "warm_start": null,
+  "decision_ref": "karamaniya.council_month",
+  "decision_args": {},
+  "collector_ref": "karamaniya.metrics",
+  "collector_args": {},
+  "interaction_rounds": 1,
+  "engine_args": {
+    "memory_window": 8
+  },
+  "store_ref": "duckdb",
+  "store_args": {}
+}

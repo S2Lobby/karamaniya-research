@@ -1,0 +1,14 @@
+{
+ "equal": true,
+ "legacy_run": "legacy_run",
+ "months": 2,
+ "months_run_legacy": 2,
+ "months_run_wrapped": 2,
+ "per_month_equal": [
+  true,
+  true
+ ],
+ "seed": 4201,
+ "world_equal": true,
+ "wrapped_run": "wrapped_run"
+}

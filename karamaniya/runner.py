@@ -10,7 +10,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .backends import make_backend
-from .config import SEAT_IDS, check_office_assignment, load_config
+from .config import (SEAT_IDS, check_knockout, check_office_assignment, check_referee_backend,
+                     load_config)
 from .council import Council, RunPaused, Seat
 from . import manifest
 from .storage import RunStore
@@ -75,6 +76,18 @@ def _seat_outlooks(world) -> dict:
         return seat_outlooks(world)
     except Exception:
         return {}
+
+
+def apply_run_options(world, run: dict):
+    """Stamp the run's arm on the world, so `actions.harness_of(w)` reads it at every call site.
+
+    World is a dataclass of the state a checkpoint keeps; the arm is a run option, not world state, so it is set on
+    the live object rather than serialized (a checkpoint written before the option has no attribute and reads as
+    "menu"). Both new_run and resume_run call this before the council builds a prompt or checks a motion.
+    """
+    from .actions import validate_harness
+    world.harness = validate_harness(run.get("harness", "menu"))
+    return world
 
 
 def _stage_spend_recovery(store: RunStore, meta: dict, amount: float) -> dict:
@@ -223,6 +236,10 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
     cfg = config if isinstance(config, dict) else load_config(config)
     cfg = {**cfg, "run": dict(cfg["run"])}
     check_office_assignment(cfg["run"], len(cfg["seats"]))
+    # A dict config bypasses load_config, so the arms are checked here too: an open run without its referee is
+    # refused before the first call, as the control room expects of every option.
+    check_referee_backend(cfg["run"], cfg["seats"])
+    check_knockout(cfg["run"])
     if check:
         _require_seats(cfg, observer, "started")
     run = cfg["run"]
@@ -257,6 +274,7 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
                       founding_problems=run.get("founding_problems"),
                       agent_architecture_version=architecture, tuning=run.get("tuning"),
                       trait_baselines=baselines, ballot=run.get("ballot", "open"))
+    apply_run_options(world, run)
     # The manifest is written before the first call, so a run that dies early is still readable.
     store._write_json("manifest.json", manifest.build(world, {**cfg, "mapping": mapping}))
     council = Council(world, _seats(cfg, mapping), run, store, observer=observer)
@@ -316,6 +334,7 @@ def resume_run(run_dir, quiet=False, observer=None, stop_event=None, live_report
     if check:
         _require_seats(cfg, observer, "resumed")
     world, council_state, meta = store.load_checkpoint()
+    apply_run_options(world, cfg.get("run") or {})
     # If a month was interrupted by a crash rather than by a clean pause, its log lines are still
     # there and the replay would write a second copy of them. Cut back to where the logs stood when
     # the last month actually finished. Preserve any logged call cost before truncating those
@@ -494,12 +513,16 @@ def _loop(store: RunStore, world, council: Council, run: dict, quiet: bool, obse
 
 def seats_to_check(cfg: dict) -> list:
     """The council's seats, and the model that plays the foreign cabinets when a run gives them one:
-    it is called every month too, and a broken one would leave both cabinets idle for the whole run."""
+    it is called every month too, and a broken one would leave both cabinets idle for the whole run.
+    The referee is added under the open arm, where it is called and required."""
     seats = list(cfg["seats"])
     run = cfg.get("run") or {}
     backend = run.get("foreign_cabinet_backend")
     if backend and run.get("foreign_cabinets", True):
         seats.append({**backend, "label": f"{backend.get('label') or backend['provider']} (foreign cabinets)"})
+    referee = run.get("referee_backend")
+    if referee and run.get("harness") == "open":
+        seats.append({**referee, "label": f"{referee.get('label') or referee['provider']} (referee)"})
     return seats
 
 

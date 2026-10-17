@@ -28,7 +28,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from karamaniya import civil_war, engine, politics  # noqa: E402
-from karamaniya.world import ARMED_OFFICES, OFFICES, World, new_world  # noqa: E402
+from karamaniya.world import ARMED_OFFICES, World, new_world  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OFF_MONTH_FIXTURE = os.path.join(ROOT, "tests", "fixtures", "civil_war_off_month.json")

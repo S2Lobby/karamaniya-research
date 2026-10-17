@@ -249,7 +249,7 @@ def start(w, cause: str, plotters=None, stances=None, divisions=None):
     ``plotters`` is the coup leader and everyone marked ``join`` (resolve_coups' set);
     ``stances`` may supply the joiners directly. ``divisions`` is the coup record's
     ``anticipated_response`` split, reused so the trigger and the state judge the same numbers.
-    Returns the state, or None when the arm is off or a war is already running.
+    Returns the state; a running war's state is returned unchanged; None when the arm is off.
     """
     if not enabled(w):
         return None

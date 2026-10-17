@@ -966,7 +966,7 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
         # The cabinet decided this month: the Union's own rules do not also decide on war or a blockade
         # for it (director._union_forces, director._deadline_policy).
         w.foreign.setdefault("cabinet_month", {})[actor_id] = w.month
-        strategy = str(decision.get("strategy") or "").strip()[:180]
+        strategy = str(decision.get("strategy") or "").strip()[:STRATEGY_CHARS]
         if strategy:
             positions[actor_id]["strategy"] = strategy
         support = decision.get("union_position")
@@ -990,7 +990,7 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
         # your_acts_refused_last_month. Run 20261011-105713-seed1: the reader's refusals stayed in the month record.
         for note in decision.get("act_notes", []):
             _remember(w.foreign, actor_id, "rejected_action", note["reason"], w.month, action={"type": note["type"]})
-        for index, raw in enumerate(decision.get("actions", [])[:4]):
+        for index, raw in enumerate(decision.get("actions", [])[:ACTS_PER_MONTH]):
             action = dict(raw) if isinstance(raw, dict) else raw
             available = max(0, actor["military"]["reserves"]-actor["military"]["active"]*.45) if isinstance(action, dict) else 0
             error = validate_action(actor_id, action, {"mobilized_reserve": available}, w)
@@ -1393,6 +1393,14 @@ def league_month(w) -> None:
     state["history"] = state["history"][-120:]
 
 
+# What a cabinet may send in one answer (backlog T139). The schema, the reader and the system prompt use these numbers,
+# so the limit a cabinet is told is the one the engine enforces. Run 20261011-211521-seed1, Month 1: Veleria's acts past
+# the fourth were not read, and the prompt did not say there was a fourth. Over the recorded answers a strategy was cut at
+# 180 characters in 94 of 200, with no word to the cabinet.
+ACTS_PER_MONTH = 4
+STRATEGY_CHARS = 180
+
+
 # Optional cabinet adapters can use this contract without adding delegate seats.
 def cabinet_schema(actor_id: str | None = None) -> dict:
     """The reply contract for one cabinet: its own actions only. Without an actor, the union of
@@ -1423,7 +1431,7 @@ def cabinet_schema(actor_id: str | None = None) -> dict:
             "properties": {"public_statement": {"type": "string"},
                            "strategic_assessment": {"type": "string"},
                            "strategy": {"type": "string"},
-                           "actions": {"type": "array", "items": action, "maxItems": 4},
+                           "actions": {"type": "array", "items": action, "maxItems": ACTS_PER_MONTH},
                            "diplomatic_messages": {"type": "array", "items": message, "maxItems": 3},
                            "union_position": {"type": ["string", "null"]},
                            "belief_updates": {"type": "array", "items": belief_update, "maxItems": 4},
@@ -1492,7 +1500,8 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
     for the run says how it weighs force; the costs are listed with each act and charged by the engine.
     Engine 15 makes both governments hostile (CABINET_AIMS, CABINET_STANCE) and states the two limits on
     opening a war: none in Month 1, and an invasion only with troops that stood at the border the month
-    before."""
+    before. It also states the act cap and the strategy limit (ACTS_PER_MONTH, STRATEGY_CHARS, backlog T139): the
+    reader enforces both, and a cabinet that is not told them cannot keep to them."""
     character = foreign_force.temperament_text(actor_id, temperament)
     return (f"You are the government of {actor_id.title()}, deciding this month's policy toward Karamaniya as its "
             f"cabinet. {CABINET_AIMS[actor_id]} {CABINET_STANCE} " + (f"{character} " if character else "")
@@ -1505,7 +1514,11 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
             "since the month before, a blockade needs ships, neither an invasion nor a blockade can begin before "
             f"Month {foreign_force.FIRST_WAR_MONTH + 1}, and an act that cannot happen is refused and reported back "
             "to you. Each act lists its costs and risks, and the engine charges them: a war costs soldiers' lives, "
-            "money and support at home. Keep statements and messages concise. Return only the required JSON object. "
+            "money and support at home. "
+            f"You may take at most {ACTS_PER_MONTH} acts a month: the first {ACTS_PER_MONTH} in your list are read, "
+            "and an act after the fourth is not read. You are told the next month which acts were not read. "
+            f"Your strategy is kept to {STRATEGY_CHARS} characters: a longer one is cut to that length. "
+            "Keep statements and messages concise. Return only the required JSON object. "
             "Give a short assessment and concrete decision factors, never private chain-of-thought.")
 
 
@@ -1533,8 +1546,8 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     """Read one act a cabinet wrote. Returns the act to carry out, or None when it is refused, and the reasons.
 
     A refused act gives its refusals. A kept act gives what was read or changed in it: a word read as its number, a
-    region read from its name, the one demand an ultimatum carries. Each reason is a problem in the month's record, and
-    normalize_cabinet_output sends it to the cabinet as a note."""
+    region read from its name, the one demand an ultimatum carries, a null size taken as 0.5. Each reason is a problem
+    in the month's record, and normalize_cabinet_output sends it to the cabinet as a note."""
     # Runs 20261008-130316-seed1 and 20261011-211521-seed1: twelve acts that were valid types were written under "action"
     # instead of "type", and each was refused as an unsupported act. The act is read as the type it names. "type" wins
     # when both are given, and a value that is no act of this cabinet is still refused.
@@ -1549,10 +1562,15 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
     action, changes = {"type": kind}, []
     if named is not None:
         changes.append(f"type '{named}' was read from the key 'action'")
-    # A null magnitude stays refused. Reading it as absent would give the act the default size of 0.5, which the cabinet did
-    # not choose, and that choice is for the user (engine 24 report). Runs 20261010-002051-seed1, 20261010-070501-seed1 and
-    # 20261011-094417-seed1 refused 31 such acts, 7 of them ultimatums.
+    # A null size is read as the default size, as a missing one always was (backlog T142). Runs 20261010-002051-seed1,
+    # 20261010-070501-seed1 and 20261011-094417-seed1 refused 31 such acts, 7 of them ultimatums. The cabinet did not
+    # choose 0.5, so the reading is a change the next month's note carries (normalize_cabinet_output; _READING does not
+    # match it). A missing size is still read without a note, as before: whether to tell the cabinet of those is the
+    # user's decision.
     magnitude = raw.get("magnitude", .5)
+    if magnitude is None:
+        magnitude = .5
+        changes.append("the size was taken as 0.5 because none was given; give a magnitude between 0 and 1 to choose it")
     if isinstance(magnitude, str) and _spaced_lower(magnitude) in MAGNITUDE_WORDS:
         magnitude_read = MAGNITUDE_WORDS[_spaced_lower(magnitude)]
         changes.append(f"magnitude '{magnitude.strip()}' was read as {magnitude_read:g}")
@@ -1666,7 +1684,7 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
     if not isinstance(data, dict):
         return {}, ["cabinet response was not a JSON object"]
     out, problems = {}, []
-    for key, limit in (("public_statement", 500), ("strategic_assessment", 1200), ("strategy", 180)):
+    for key, limit in (("public_statement", 500), ("strategic_assessment", 1200), ("strategy", STRATEGY_CHARS)):
         value = data.get(key, "")
         if isinstance(value, str):
             out[key] = value[:limit]
@@ -1689,10 +1707,12 @@ def normalize_cabinet_output(actor_id: str, data) -> tuple[dict, list[str]]:
         kind = raw.get("type") if isinstance(raw, dict) and isinstance(raw.get("type"), str) else None
         if kind is None and isinstance(raw, dict) and "type" not in raw and isinstance(raw.get("action"), str):
             kind = raw["action"]  # the name the act was written under, for its note (see _read_act)
-        if index >= 4:
-            # A cabinet acts on four things a month (cabinet_schema's maxItems): the rest are not read, and say so.
-            problems.append("only the first 4 acts of a month are read")
-            act_notes.append({"type": kind, "reason": "only the first 4 acts of a month are read; this one was not"})
+        if index >= ACTS_PER_MONTH:
+            # A cabinet acts on a fixed number of things a month (cabinet_schema's maxItems, stated in its prompt): the
+            # rest are not read, and say so.
+            problems.append(f"only the first {ACTS_PER_MONTH} acts of a month are read")
+            act_notes.append({"type": kind,
+                              "reason": f"only the first {ACTS_PER_MONTH} acts of a month are read; this one was not"})
             continue
         act, reasons = _read_act(raw, allowed)
         problems.extend(reasons)

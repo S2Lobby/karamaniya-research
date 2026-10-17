@@ -965,7 +965,10 @@ class Controller:
             world, _c, meta = RunStore(run_dir).load_checkpoint()
         except Exception as exc:
             return {"state": "unreadable", "months_done": 0, "error": f"{type(exc).__name__}: {exc}"}
-        finished = world.ended() or (months and len(world.history) >= months)
+        # Engine 24 (T143): the engine's own end decides, as tools/study_grid.py reads it. A lost Charter election can owe a
+        # handover past the planned months, and the engine then runs up to HANDOVER_EXTENSION more (engine.py); a run that
+        # has reached its planned months is not finished, and a batch restart must resume it, not skip it.
+        finished = world.ended()
         return {"state": "done" if finished else "partial", "months_done": len(world.history),
                 "stopped": (meta or {}).get("stopped", "")}
 

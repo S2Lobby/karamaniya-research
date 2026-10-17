@@ -106,4 +106,6 @@ def _coup(w: World) -> None:
     for mem in w.active_members():
         remove_member(w, mem.id, "officers_coup")
     w.count("coups_succeeded", 1)
+    # Engine 24 (T141): recorded as politics._officers records it, so the democracy index's coup term sees it.
+    w.const.coup_month = w.month
     w.event("officers_coup", w.outcome["text"], importance=3)

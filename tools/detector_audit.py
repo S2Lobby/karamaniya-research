@@ -461,18 +461,24 @@ def r4_index() -> int:
     from types import SimpleNamespace
     from karamaniya import world as W
 
-    def index(month: int = 20, **settings) -> float:
+    def index(month: int = 20, arrests: str = "none", measures: tuple = (), **settings) -> float:
         c = W.Constitution()
         c.charter_election_month = c.election_month = W.CHARTER_ELECTION_MONTH
         for name, value in settings.items():
             setattr(c, name, value)
-        return round(W.democracy_index(SimpleNamespace(month=month, const=c)), 4)
+        # Engine 24 (T141): the index also reads the arrests and the emergency measures in force.
+        world = SimpleNamespace(month=month, const=c, policy=W.Policy(arrests=arrests),
+                                institutions={"emergency_measures": {m: {"since": 0, "until": 99} for m in measures}})
+        return round(W.democracy_index(world), 4)
 
     cases = [("defaults", {}), ("press restricted", {"press": "restricted"}), ("press censored", {"press": "censored"}),
              ("assembly banned", {"assembly": "banned"}), ("emergency on", {"emergency": True}),
              ("minority interned", {"minority": "interned"}), ("decision rule head_decides", {"decision_rule": "head_decides"}),
              ("decision rule two_thirds", {"decision_rule": "two_thirds"}),
-             ("parties one_party (not read)", {"parties": "one_party"}),
+             ("arrests targeted", {"arrests": "targeted"}), ("arrests mass", {"arrests": "mass"}),
+             ("emergency measure curfew", {"measures": ("curfew",)}),
+             ("emergency measure fiscal authority", {"measures": ("fiscal_authority",)}),
+             ("parties ban_opposition", {"parties": "ban_opposition"}), ("parties one_party", {"parties": "one_party"}),
              ("election postponed to month 40", {"election_month": 40}),
              ("election postponed to month 50", {"election_month": 50}), ("election cancelled", {"election_month": -1}),
              ("coup two months before month 20", {"coup_month": 18}), ("coup fifteen months before", {"coup_month": 5})]

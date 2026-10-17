@@ -488,6 +488,15 @@ class DrawTests(unittest.TestCase):
             self.assertAlmostEqual(wins / total, odd, delta=.12)
         w.month = 0
 
+    def test_outcome_without_an_index_takes_successive_draws_and_a_replay_repeats_them(self):
+        w = world(3)
+        data = ruling()
+        rolls = [referee.outcome(w, data)["roll"] for _ in range(3)]
+        self.assertEqual(rolls, [referee.draw_success(w, "medium", index)[1] for index in range(3)])
+        self.assertEqual(len(set(rolls)), 3)
+        replay = world(3)
+        self.assertEqual([referee.outcome(replay, data)["roll"] for _ in range(3)], rolls)
+
     def test_a_failed_act_says_so_in_its_report(self):
         w = world(3)
         data = ruling(public_report="The government opened the new clinic in Kessel.")

@@ -733,7 +733,8 @@ def draw_success(w, level: str, index: int = 0) -> tuple:
     """(worked, roll): the index-th draw on rng_for(seed, month, "open_act"), against the level's odds.
 
     The caller assigns each open act of a month a distinct 0-based index, so several acts take successive draws
-    from the one stream and the run is reproducible. The referee's own ruling makes no draw.
+    from the one stream and the run is reproducible. The referee's own ruling makes no draw. outcome() without an
+    index takes the next index from the month's counter, so W5 and W8 need not coordinate one.
     """
     odd = SUCCESS_ODDS.get(str(level), SUCCESS_ODDS["medium"])
     rng = rng_for(w.seed, w.month, SUCCESS_TAG)
@@ -743,13 +744,29 @@ def draw_success(w, level: str, index: int = 0) -> tuple:
     return roll < odd, round(roll, 6)
 
 
-def outcome(w, ruling: dict, index: int = 0) -> dict:
+def next_index(w) -> int:
+    """The next 0-based open-act draw index this month, kept on the world so a replay repeats the sequence.
+
+    Only the current month's counter is kept: the stream is per (seed, month), so an older month's count has no
+    further use. Default runs never touch this key.
+    """
+    key = "open_act_draws"
+    month = str(int(w.month))
+    counters = w.institutions.get(key) or {}
+    index = int(counters.get(month, 0))
+    w.institutions[key] = {month: index + 1}
+    return index
+
+
+def outcome(w, ruling: dict, index: int | None = None) -> dict:
     """The act's result: whether the draw worked, the roll, and the report the public sees.
 
-    On failure the caller still pays the cost and applies no effect (plan 4.3); the report says it failed.
+    On failure the caller still pays the cost and applies no effect (plan 4.3); the report says it failed. Without
+    an explicit index the next one for this month is taken, so successive acts take successive draws on the one
+    stream.
     """
     level = str(ruling.get("success") or "medium")
-    worked, roll = draw_success(w, level, index)
+    worked, roll = draw_success(w, level, next_index(w) if index is None else index)
     return {"level": level, "worked": worked, "roll": roll,
             "report": ruling.get("public_report", "") if worked else FAILED_REPORT}
 

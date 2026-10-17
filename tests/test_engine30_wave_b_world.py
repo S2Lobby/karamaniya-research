@@ -257,6 +257,28 @@ class B6AForeignCampaignCanBeCaught(unittest.TestCase):
                 self.assertAlmostEqual(caught_changes[key][1],
                                        plain_changes[key][1] * (1.0 - share), places=9)
 
+    def test_a_foreign_campaign_does_not_move_the_state_medias_own_media_stream(self):
+        plain, with_foreign = world(), world()
+        for w in (plain, with_foreign):
+            mo = {"id": "M1", "type": "media_campaign", "subject": "", "value": "",
+                  "text": "The government reports on its work this month.",
+                  "action": {"kinds": ["claim_figures"],
+                             "claims": [{"metric": "inflation", "value": 20.0}], "intensity": "high"},
+                  "proposer": "A", "votes": {"A": "yes", "B": "yes", "C": "no", "D": "yes", "E": "abstain"}}
+            self.assertIsNone(politics.validate_motion(w, mo))
+            politics.apply_motion(w, mo)
+        with mock.patch("karamaniya.foreign.rng_for") as seeded:
+            seeded.return_value.random.return_value = 0.0
+            foreign._apply_propaganda(with_foreign, "veleria", propaganda_action())
+        politics.media_month(plain)
+        politics.media_month(with_foreign)
+        state_plain = plain.media["campaigns"][-1]
+        state_both = with_foreign.media["campaigns"][-1]
+        self.assertEqual((state_plain["source"], state_both["source"]), ("state", "state"))
+        self.assertEqual(state_plain["exposed"], state_both["exposed"])
+        self.assertEqual(state_plain["effects"], state_both["effects"])
+        self.assertEqual(plain.media["credibility"], with_foreign.media["credibility"])
+
     def test_two_campaigns_in_one_month_draw_different_numbers(self):
         w = world()
 

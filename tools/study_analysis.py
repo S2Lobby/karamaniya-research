@@ -1122,15 +1122,20 @@ def main(argv=None):
 
     # ---- observations and survival ----
     _write_csv(out / "seat_observations.csv", [{k: v for k, v in o.items()} for o in observations])
-    km_model_rows, km_office_rows, first_rows = [], [], []
+    km_model_rows, km_office_rows, first_rows, first_km_rows = [], [], [], []
     for prefix in prefix_list:
+        variant = "raw" if prefix == "raw" else "validated"
         km_model_rows += km_rows(observations, prefix, "model")
         km_office_rows += km_rows(observations, prefix, "office")
-        for row in run_first_exit(observations, prefix):
-            first_rows.append({"variant": "raw" if prefix == "raw" else "validated", **row})
+        per_run = run_first_exit(observations, prefix)
+        first_rows += [{"variant": variant, **row} for row in per_run]
+        for when, at_risk, deaths, after in km_steps([r["time"] for r in per_run], [r["event"] for r in per_run]):
+            first_km_rows.append({"variant": variant, "time_month": when, "at_risk": at_risk, "exits": deaths,
+                                  "survival": round(after, 6)})
     _write_csv(out / "km_by_model.csv", km_model_rows)
     _write_csv(out / "km_by_office.csv", km_office_rows)
-    _write_csv(out / "km_first_exit.csv", first_rows)
+    _write_csv(out / "first_exit_by_run.csv", first_rows)
+    _write_csv(out / "km_first_exit.csv", first_km_rows)
 
     # ---- persistence, ablations, protocol pairs ----
     persistence = []
@@ -1314,6 +1319,23 @@ def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau
             out += _md_table(["group", "seats", "exits", "max follow-up", "S(12)", "S(24)", f"S({horizon})",
                               "median"], km_summary(observations, "val", scope, horizon))
             out.append("")
+    out.append("### Trajectory: the first exit by any seat, one value per run (Kaplan-Meier over runs)")
+    out.append("")
+    traj = []
+    for prefix, name in (("raw", "raw engine labels"), ("val", "validated")):
+        if prefix == "val" and labels is None:
+            continue
+        per_run = run_first_exit(observations, prefix) if observations else []
+        steps = km_steps([r["time"] for r in per_run], [r["event"] for r in per_run])
+        follow = max((r["time"] for r in per_run), default=0)
+
+        def at(t, steps=steps, follow=follow):
+            return _fmt(km_survival_at(steps, t)) if follow >= t else "NA"
+        traj.append([name, len(per_run), sum(r["event"] for r in per_run), follow, at(12), at(24), at(horizon),
+                     _fmt(km_median(steps), 0)])
+    out += _md_table(["variant", "runs", "runs with an exit", "max follow-up", "S(12)", "S(24)", f"S({horizon})",
+                      "median"], traj)
+    out.append("")
     out.append("## Persistence")
     out.append("")
     out.append("Effect sizes with bootstrap intervals over seeds, not a league table. Each group's restricted mean "

@@ -429,8 +429,9 @@ class EndToEnd(unittest.TestCase):
                         "--labels", self.labels_file(), "--out", out, "--bootstrap", "20", "--no-integrity"])
         self.assertEqual(code, 0)
         for name in ("summary.md", "run_inventory.csv", "seat_observations.csv", "exits.csv", "km_by_model.csv",
-                     "km_by_office.csv", "km_first_exit.csv", "persistence.csv", "call_rates.csv",
-                     "mismatch_rates.csv", "reclassification.csv", "protocol_pairs.csv", "ablations.csv"):
+                     "km_by_office.csv", "km_first_exit.csv", "first_exit_by_run.csv", "persistence.csv",
+                     "call_rates.csv", "mismatch_rates.csv", "reclassification.csv", "protocol_pairs.csv",
+                     "ablations.csv"):
             self.assertTrue(os.path.isfile(os.path.join(out, name)), name)
         with open(os.path.join(out, "persistence.csv"), encoding="utf-8", newline="") as f:
             rows = list(csv.DictReader(f))
@@ -450,6 +451,7 @@ class EndToEnd(unittest.TestCase):
             text = f.read()
         self.assertIn("## Persistence", text)
         self.assertIn("not a league table", text)
+        self.assertIn("Trajectory", text)
 
     def test_a_plan_row_with_a_wrong_seat_map_stops_the_run(self):
         with open(os.path.join(self.plan_dir, "plan.json"), encoding="utf-8") as f:

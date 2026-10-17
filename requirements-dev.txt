@@ -1,0 +1,8 @@
+# Development-only tools. The engine and the study runtime need nothing here; requirements.txt is
+# only for Claude seats that use the Anthropic API.
+#
+# The authoritative test gate is: python -m unittest discover -s tests -t .
+# For a fast local run:            pip install -r requirements-dev.txt
+#                                  python tools/test_fast.py
+pytest>=9
+pytest-xdist>=3

@@ -776,6 +776,11 @@ on which two runs differ, so a batch reader is not left guessing whether a compa
 python -m unittest discover -s tests -v
 ```
 
+The CI gate is that command on Python 3.12 and 3.13, Linux and Windows. For local iteration on a
+multi-core machine, `requirements-dev.txt` adds pytest and pytest-xdist, and `python tools/test_fast.py`
+runs the same suite in parallel. On an i7-13650HX (20 threads) it ran 3,188 tests in 87 s against 369 s
+single-process; `--dist loadfile` keeps one test module per worker.
+
 They cover world stability and pressure, determinism and save/load, votes and directives, coups, elections
 and handover, a full scripted run with resume, every connector against fake servers and stand-in CLIs
 (including a usage limit that pauses a run and a resume that replays the month), the map, and the control

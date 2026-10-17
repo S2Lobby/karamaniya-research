@@ -62,7 +62,7 @@ class QoderCLIBackend(Backend):
         code, stdout, stderr = cli_common.run(self._command(system), user, self.timeout, cwd=self.workdir)
         try:
             out = json.loads(stdout)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             out = None
         if not isinstance(out, dict):
             detail = (stderr or stdout or "").strip()[:400]

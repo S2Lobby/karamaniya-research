@@ -89,7 +89,9 @@ def extract_json(text):
     try:
         obj = json.loads(t)
         return obj if isinstance(obj, dict) else None
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
+        # Malformed, or nested past the interpreter's limit: either way an unreadable answer,
+        # which the caller re-asks for (engine 19's rule; the RecursionError crashed runs until 24).
         pass
     start, end = t.find("{"), t.rfind("}")
     if start < 0 or end <= start:
@@ -99,7 +101,7 @@ def extract_json(text):
         try:
             obj = json.loads(attempt)
             return obj if isinstance(obj, dict) else None
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             continue
     return None
 

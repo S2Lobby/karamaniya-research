@@ -190,7 +190,7 @@ def json_lines(text: str) -> list:
             continue
         try:
             obj = json.loads(line)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             continue
         if isinstance(obj, dict):
             out.append(obj)

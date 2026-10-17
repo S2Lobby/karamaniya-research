@@ -105,7 +105,7 @@ class OpenAICompatBackend(Backend):
             raise _Http4xx(exc.code, detail) from exc
         except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
             raise TransientError(f"connection error: {exc}") from exc
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, RecursionError) as exc:
             raise TransientError("unreadable response") from exc
 
     def call(self, system: str, user: str, schema: dict, context: dict) -> CallResult:

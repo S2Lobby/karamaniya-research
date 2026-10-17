@@ -250,7 +250,13 @@ PSYCHOLOGY = 8
 # a tax rise tabled as a protest is caught; a broken promise names itself and what broke it; fewer false fact flags.
 # 23 completes it (backlog T112-T116): the review items engine 22's changelog listed without its code doing them.
 # A cabinet's acts filed under another key are reported; a reply to an ultimatum has registered refusal codes.
-WORLD_ENGINE = 23
+# 24 (backlog T120): a deeply nested answer is an unreadable answer, not a fatal crash. In batch rows b1-s1005
+# (Month 6) and b1-s1007 (Month 11) an answer nested past the interpreter's recursion limit raised
+# RecursionError in extract_json, which caught only JSONDecodeError, and the run paused as fatal. The answer is
+# now re-asked once, like any malformed answer (the engine 19 rule, which missed this crash); the same guard
+# covers the provider-body parses (openai_compat, ollama), the CLI line reader (cli_common) and the
+# whole-stdout fallbacks (claude_cli, qoder_cli).
+WORLD_ENGINE = 24
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

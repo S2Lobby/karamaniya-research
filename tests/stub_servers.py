@@ -30,6 +30,8 @@ class StubState:
         self.usage = {}             # extra usage fields, e.g. the cache counts a provider reports
         self.thinking = ""          # reasoning to return: a thinking block, Ollama's thinking field
         self.message_extra = {}     # extra chat-completion message fields, e.g. reasoning_content
+        self.text_override = None   # send this as the answer text verbatim, not json.dumps(state.reply)
+        self.raw_body = None        # send this as the whole reply body verbatim (a broken provider)
 
 
 def _handler(state: StubState):
@@ -38,7 +40,10 @@ def _handler(state: StubState):
             pass
 
         def _send(self, code: int, payload: dict):
-            data = json.dumps(payload).encode()
+            self._send_raw(code, json.dumps(payload))
+
+        def _send_raw(self, code: int, text: str):
+            data = text.encode()
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
@@ -49,7 +54,7 @@ def _handler(state: StubState):
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length) or b"{}")
             state.requests.append((self.path, dict(self.headers), body))
-            text = json.dumps(state.reply)
+            text = state.text_override if state.text_override is not None else json.dumps(state.reply)
             if self.path.endswith("/v1/systemone"):
                 if state.systemone_status != 200:
                     self._send(state.systemone_status, {"error": {"message": state.systemone_error}})
@@ -71,6 +76,9 @@ def _handler(state: StubState):
                                            "cache_read_input_tokens": 0,
                                            "cache_creation_input_tokens": 0, **state.usage}})
             elif self.path.endswith("/chat/completions"):
+                if state.raw_body is not None:
+                    self._send_raw(200, state.raw_body)
+                    return
                 fmt = (body.get("response_format") or {}).get("type")
                 if state.reject_json_schema and fmt == "json_schema":
                     if state.schema_error_in_200:
@@ -85,6 +93,9 @@ def _handler(state: StubState):
                                  "choices": [{"index": 0, "message": msg, "finish_reason": "stop"}],
                                  "usage": {"prompt_tokens": 900, "completion_tokens": 60, **state.usage}})
             elif self.path.endswith("/api/chat"):
+                if state.raw_body is not None:
+                    self._send_raw(200, state.raw_body)
+                    return
                 message = {"role": "assistant", "content": text}
                 if state.thinking:
                     message["thinking"] = state.thinking

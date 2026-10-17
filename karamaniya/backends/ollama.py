@@ -82,6 +82,8 @@ class OllamaBackend(Backend):
         except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
             raise TransientError(f"cannot reach Ollama at {self.base_url} (is `ollama serve` running?): "
                                  f"{exc}") from exc
+        except (json.JSONDecodeError, RecursionError) as exc:
+            raise TransientError("unreadable response") from exc
         return CallResult(data=extract_json(text), raw=text, served_model=out.get("model", self.model),
                           input_tokens=int(out.get("prompt_eval_count", 0)),
                           output_tokens=int(out.get("eval_count", 0)),

@@ -103,7 +103,7 @@ class ClaudeCLIBackend(Backend):
         if out is None and not streaming:
             try:
                 out = json.loads(stdout)      # an older CLI that ignored stream-json
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError):
                 out = None
         thoughts = [t for e in events if e.get("type") == "assistant"
                     for t in reasoning_blocks((e.get("message") or {}).get("content"))]

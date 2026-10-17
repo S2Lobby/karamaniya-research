@@ -6,9 +6,10 @@ its refused motions. Run 20261011-211521-seed1 refused messages with no recipien
 recipient 'None'"), messages sent to the sender, messages with an empty body, and communications of an unknown kind
 ("demand", ""). Those are the refusals the sender now sees, with the reason, the next month.
 
-T140: the note cut each refusal's explanation at 300 characters. In run 20261008-130316-seed1 (Month 5, Delegate C)
-and in run tinytest-mild-sim-r0-s1001 (Month 1, Delegate A) the list of the levers the council can direct was cut
-mid-name ("... navy_mission, offic"). The note now carries each explanation whole, and every refusal of a delegate.
+T140: the note cut each refusal's explanation at 300 characters. In run 20261008-130316-seed1 (Month 6, Delegate C)
+and in run tinytest-mild-sim-r0-s1001 (Month 2, Delegate A) the list of the levers the council can direct was cut
+inside the list (for example "... navy_mission, offic"). The note now carries each explanation whole, and every
+refusal of a delegate. Months are numbered as the census numbers them: the record's month plus one.
 """
 import os
 import shutil
@@ -207,7 +208,7 @@ class RefusalExplanationsAreWhole(unittest.TestCase):
     def test_an_unknown_lever_lists_every_setting_in_the_note(self):
         # The engine's own explanation for a lever with no close match lists the settings the council can direct, about
         # 580 characters. The cut at 300 ended the note inside that list ("... navy_mission, o") in run 20261008-130316-seed1
-        # (Month 5) and in tinytest-mild-sim-r0-s1001 (Month 1).
+        # (Month 6) and in tinytest-mild-sim-r0-s1001 (Month 2).
         from karamaniya import politics
         w = new_world(1, 12, member_ids=list("ABCDE"))
         motion = {"type": "set_policy", "subject": "zq_nonexistent_lever", "value": "high", "text": "Raise it."}

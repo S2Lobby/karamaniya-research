@@ -2,7 +2,7 @@
 reclassifies, the order-protocol pairs and the ablations (briefs 9.S6 and 9.S7). Standard library only.
 
     python tools/study_analysis.py RUNS [RUNS ...] --out DIR [--plan PLAN.json] [--status STATUS.json]
-                                   [--labels SAMPLE.csv] [--horizon N] [--bootstrap B] [--seed S]
+                                   [--labels SAMPLE.csv] [--horizon N] [--tau N] [--bootstrap B] [--seed S]
                                    [--fixed-rotation R] [--complete-only] [--no-integrity]
 
 RUNS are run folders, or folders that hold run folders. With --plan, the rows of the plan are the analysis set: each

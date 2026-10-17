@@ -235,9 +235,10 @@ No election may be scheduled before Month 36.
 Every effect must use one of the channels below, with one of its listed targets. Do not invent a channel, a
 target or a state variable. An effect's value is the change to that state in one month; a negative value moves it
 down. The cost is in millions of crowns: one_off is spent once, monthly for its months, none of the three is
-negative, and the cost's months is a whole number from 0 to 24. The act's budget funds at most its amount a month for its months: the ruling's monthly cost may not
-exceed that amount, its months may not exceed the budget's months, and one_off plus monthly times months may not
-exceed the amount times the budget's months. An act with no budget has no cost.
+negative, and the cost's months is a whole number from 0 to 24. The act's budget funds at most its amount a
+month for its months: the ruling's monthly cost may not exceed that amount, its months may not exceed the
+budget's months, and one_off plus monthly times months may not exceed the amount times the budget's months. An
+act with no budget has no cost.
 
 The public report is what the public would see and hear: plain, in the country's own words, with no figure the
 public does not know. The public does not know exact reserves, office capacity or the government's private

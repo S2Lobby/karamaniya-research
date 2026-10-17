@@ -26,6 +26,7 @@ Engine references are to the code at commit 92f2cfa.
 | `failed_coup` | a failed coup removes the armed plotters | politics.py:2269-2274 |
 | `revolution` | a popular uprising removes every active member | politics.py:2665-2670 |
 | `officers_coup` | an officers' coup, or a plot's coup, removes every active member | politics.py:2685-2688; plots.py:101-107 |
+| `incapacitated` | the knockout arm removes the office holder at the start of the chosen month, with a public in-world announcement | karamaniya/knockout.py (`monthly`) |
 
 ### 1.2 An office is left (exit_class `office`; the delegate stays in the government)
 

@@ -26,8 +26,10 @@ from collections import Counter
 LABELS = ("substantively_supported", "ambiguous", "formatting_or_parser")
 
 # politics.remove_member reasons (member leaves the government; checkpoint status "removed", removed_how = reason).
+# "incapacitated" is the knockout arm (karamaniya/knockout.py): the office holder is removed at the start of the
+# chosen month, with a public in-world event.
 MEMBER_EXIT_HOWS = ("resigned", "expelled", "voted_out", "lost_seat", "coup", "failed_coup", "revolution",
-                    "officers_coup")
+                    "officers_coup", "incapacitated")
 # world.outcome types that end the government or the country's government (each is an exit).
 OUTCOME_EXIT_TYPES = ("voted_out", "no_government", "revolution", "revolution_union", "officers_coup", "conquered",
                       "joined_union", "federation", "reunified_by_vote", "reunified_by_referendum")

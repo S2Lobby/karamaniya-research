@@ -57,6 +57,10 @@ def step(w: World, foreign_decisions: dict | None = None, foreign_prepared: bool
         from . import civil_war, civil_war_combat
         if civil_war.enabled(w):
             civil_war_combat.combat(w)
+            # Wave C (C4): the war's ends are checked once a month, after the fronts have moved: a victory,
+            # a collapse, or a partition after six stalemated months under a ceasefire. C3 breaks a
+            # ceasefire from an attack order before combat; this check is the backstop and the outcome.
+            civil_war.check_end(w)
         society.update(w, prod, fiscal)
         # Wave 3: the state media line, after the month's economy and society have moved, so its claims are
         # measured against the world people are living in and its effects land in this month's snapshot.

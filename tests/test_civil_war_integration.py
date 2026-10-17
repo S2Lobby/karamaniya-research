@@ -11,7 +11,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from karamaniya import civil_war_combat, engine, society  # noqa: E402
+from karamaniya import civil_war, civil_war_combat, engine, society  # noqa: E402
 from karamaniya.world import new_world  # noqa: E402
 
 
@@ -36,6 +36,26 @@ class TheEngineCallsTheCombat(unittest.TestCase):
         w = new_world(1, 36)
         self.assertEqual(w.civil_war_option, "off")
         with mock.patch.object(civil_war_combat, "combat", wraps=civil_war_combat.combat) as called:
+            engine.step(w)
+        self.assertEqual(called.call_count, 0)
+
+
+class TheEngineChecksTheWarsEnds(unittest.TestCase):
+    def test_the_end_check_runs_once_after_combat_when_the_arm_is_on(self):
+        w = new_world(1, 36)
+        w.civil_war_option = "on"
+        calls = []
+        with mock.patch.object(civil_war_combat, "combat",
+                               side_effect=lambda world: calls.append("combat")), \
+                mock.patch.object(civil_war, "check_end",
+                                  side_effect=lambda world: calls.append("check_end")):
+            engine.step(w)
+        self.assertEqual(calls, ["combat", "check_end"])
+
+    def test_with_the_arm_off_the_end_check_is_not_called(self):
+        w = new_world(1, 36)
+        self.assertEqual(w.civil_war_option, "off")
+        with mock.patch.object(civil_war, "check_end", wraps=civil_war.check_end) as called:
             engine.step(w)
         self.assertEqual(called.call_count, 0)
 

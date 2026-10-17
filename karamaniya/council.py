@@ -13,7 +13,7 @@ import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (actions, agendas, agents, analytics, beliefs, briefing, commitments, convergence, decision_context, deliberation, errors, forecasts,
+from . import (actions, agendas, agents, analytics, beliefs, briefing, cabinet_acts, commitments, convergence, decision_context, deliberation, errors, forecasts,
                freshness, director, engine, foreign, founding, human, intelligence, knockout, memory, motion_actions,
                open_acts, operations, politics, prompts, provenance, psychology, slate as slate_rules, standing,
                token_saving, tuning)
@@ -1478,6 +1478,12 @@ class Council:
             contexts = director.prepare_external(w)
             cabinet_decisions, foreign_calls = self._foreign_cabinets(contexts)
             record["foreign_calls"] = foreign_calls
+            # Wave A (engine 30, W8): the cabinets' open acts are ruled, charged and scheduled here, after both
+            # cabinets answered and before engine.step, in the fixed order veleria then dorsania. Under any
+            # other harness this is a no-op, so a menu or language run is byte-identical to engine 29.
+            cabinet_acts.process(w, cabinet_decisions, settings=self.settings,
+                                 referee=self._referee_for_acts(), store=self.store,
+                                 next_call_id=self._next_call_id, names=self.names)
         acted_month = w.month
         engine.step(w, cabinet_decisions, foreign_prepared=self.foreign_enabled)
         # Wave A (engine 30, W5): the month's open acts, as in the version-2 month. Left out when none ran.
@@ -2116,6 +2122,11 @@ class Council:
             contexts = director.prepare_external(w)
             cabinet_decisions, foreign_calls = self._foreign_cabinets(contexts)
             record["foreign_calls"] = foreign_calls
+            # Wave A (engine 30, W8): as in the version-1 month, the cabinets' open acts are carried out after
+            # both cabinets answer and before engine.step.
+            cabinet_acts.process(w, cabinet_decisions, settings=self.settings,
+                                 referee=self._referee_for_acts(), store=self.store,
+                                 next_call_id=self._next_call_id, names=self.names)
         completed_month = record["month"]
         engine.step(w, cabinet_decisions, foreign_prepared=self.foreign_enabled)
         # Wave A (engine 30, W5): the month's open acts, as carried out or refused. The same list is added to
@@ -2908,7 +2919,7 @@ class Council:
         def decide(actor_id):
             seat = self.foreign_seats[actor_id]
             context = contexts[actor_id]
-            schema = foreign.cabinet_schema(actor_id)
+            schema = foreign.cabinet_schema(actor_id, harness=self._harness())
             user = ("=== CURRENT STRATEGIC CONTEXT ===\n" +
                     json.dumps(_rounded(context), ensure_ascii=False, indent=2, default=str) +
                     "\n\nChoose a multi-month strategy and actions for this month. Use only supplied estimates. "
@@ -2916,7 +2927,7 @@ class Council:
             self._emit(type="foreign_call_start", actor=actor_id, month=w.month, seat=seat.label,
                        provider=seat.cfg.get("provider"), model=seat.cfg.get("model"))
             temperament = w.foreign["actors"][actor_id].get("temperament", "")
-            system = foreign.cabinet_system_prompt(actor_id, temperament)
+            system = foreign.cabinet_system_prompt(actor_id, temperament, harness=self._harness())
             if self.names:
                 system, user, schema = self.names.out(system), self.names.out(user), self.names.out_obj(schema)
             result = seat.backend.complete(system, user, schema,
@@ -2943,7 +2954,14 @@ class Council:
             if result.quota:
                 raise RunPaused(actor_id.title(), seat.label, result.error[:300], role="Foreign cabinet")
             try:
-                normalized, problems = foreign.normalize_cabinet_output(actor_id, result.data)
+                # The open arm passes the harness so the reader accepts the cabinet's open_act; the default
+                # arms keep the two-argument call engine 29 made, so recorded stand-ins and callers that
+                # replace the normaliser are unaffected.
+                if self._harness() == "open":
+                    normalized, problems = foreign.normalize_cabinet_output(actor_id, result.data,
+                                                                            harness="open")
+                else:
+                    normalized, problems = foreign.normalize_cabinet_output(actor_id, result.data)
             except Exception as exc:  # noqa: BLE001 - nothing a model sends may end the month (Audit CO2-f)
                 # Read as empty, as a failed call is, so the month goes on; the problem names what broke (read_answer).
                 normalized, problems = {}, [f"answer could not be read ({type(exc).__name__}: {str(exc)[:200]})"]

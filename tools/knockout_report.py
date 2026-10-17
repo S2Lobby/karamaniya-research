@@ -85,7 +85,6 @@ class Run:
         self.world = loaded.get("world") or {}
         self.history = sorted((row for row in self.world.get("history") or [] if isinstance(row, dict)),
                               key=lambda row: row.get("month", -1))
-        self.members = {m.get("id"): m for m in self.world.get("members") or [] if isinstance(m, dict)}
         self.state = ((self.world.get("institutions") or {}).get(knockout.STATE_KEY)
                       if isinstance(self.world.get("institutions"), dict) else None)
         self.records = {}
@@ -99,12 +98,6 @@ class Run:
             self.option = knockout.validate_option(run.get("knockout"))
         except ValueError as exc:
             raise ReportError(f"{self.path}: config.json: {exc}") from exc
-
-    def row(self, month):
-        for row in self.history:
-            if row.get("month") == month:
-                return row
-        return None
 
 
 def detect_knockout(run):
@@ -146,24 +139,32 @@ def months_until_filled(run, office, start):
 
 
 def motion_counts(run, months):
-    """Motions passed and executed in those months. Executed means passed and EXECUTED, as the engine
-    records execution; withdrawn and void motions never count. A month with no record counts zero and is
-    named in `missing`."""
+    """Motions passed and executed in those months, with the monthly rows. Executed means passed and
+    EXECUTED, as the engine records execution; withdrawn and void motions never count. A month with no
+    record counts zero and is named in `missing` and marked in its row."""
     passed = executed = 0
     missing = []
+    rows = []
     for index in months:
         record = run.records.get(index)
         if record is None:
             missing.append(index)
+            rows.append({"month": index, "month_label": month_label(index), "passed": 0, "executed": 0,
+                         "missing": True})
             continue
+        month_passed = month_executed = 0
         for motion in record.get("motions") or []:
             if motion.get("withdrawn") or motion.get("void"):
                 continue
             if motion.get("passed"):
-                passed += 1
+                month_passed += 1
                 if motion.get("execution_status") == "EXECUTED":
-                    executed += 1
-    return {"passed": passed, "executed": executed, "months": list(months), "missing": missing}
+                    month_executed += 1
+        passed += month_passed
+        executed += month_executed
+        rows.append({"month": index, "month_label": month_label(index), "passed": month_passed,
+                     "executed": month_executed, "missing": False})
+    return {"passed": passed, "executed": executed, "months": list(months), "missing": missing, "rows": rows}
 
 
 def _difference(ko, twin):
@@ -346,6 +347,21 @@ def write_markdown(pair, path, band, window):
                  f"{diff['before_passed']:+d} / {diff['before_executed']:+d}",
                  f"{diff['after_passed']:+d} / {diff['after_executed']:+d}"])
     lines += _md_table(["run", "before", "after"], rows)
+    lines += ["", "Per month:", ""]
+    ko_before = pair["motions"]["knockout"]["before"]
+    months = sorted(set(ko_before["months"]) | set(pair["motions"]["knockout"]["after"]["months"]))
+    ko_rows = {row["month"]: row for row in ko_before["rows"] + pair["motions"]["knockout"]["after"]["rows"]}
+    twin_rows = {row["month"]: row
+                 for row in pair["motions"]["twin"]["before"]["rows"] + pair["motions"]["twin"]["after"]["rows"]}
+    rows = []
+    for index in months:
+        left, right = ko_rows.get(index) or {}, twin_rows.get(index) or {}
+        rows.append([month_label(index), "before" if index in ko_before["months"] else "after",
+                     f"{left.get('passed', 0)} / {left.get('executed', 0)}"
+                     + (" (no record)" if left.get("missing") else ""),
+                     f"{right.get('passed', 0)} / {right.get('executed', 0)}"
+                     + (" (no record)" if right.get("missing") else "")])
+    lines += _md_table(["month", "window", "knockout passed / executed", "twin passed / executed"], rows)
     lines += ["", "The knockout month itself is listed in the month table but counts in neither window.",
               "", "## Month by month against the twin (difference in differences)", ""]
     rows = []

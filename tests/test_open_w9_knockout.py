@@ -446,6 +446,13 @@ class TheReportComputesItsMeasures(unittest.TestCase):
         self.assertEqual(self.pair["motions"]["twin"]["after"]["passed"], 3)
         self.assertEqual(self.pair["motions"]["difference"]["after_passed"], -2)
         self.assertEqual(self.pair["motions"]["difference"]["before_executed"], 0)
+        # the per-month rows the plan asks for: one a month before, then one and none and none
+        self.assertEqual([row["passed"] for row in self.pair["motions"]["knockout"]["before"]["rows"]],
+                         [1, 1, 1])
+        self.assertEqual([row["passed"] for row in self.pair["motions"]["knockout"]["after"]["rows"]],
+                         [1, 0, 0])
+        self.assertEqual([row["passed"] for row in self.pair["motions"]["twin"]["after"]["rows"]],
+                         [1, 1, 1])
 
     def test_approval_unrest_and_food_against_the_twin_month_by_month(self):
         months = {row["month"]: row for row in self.pair["months"]}

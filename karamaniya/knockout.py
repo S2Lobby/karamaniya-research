@@ -102,7 +102,13 @@ def monthly(w, option=None):
         return None
     if w.month + 1 != opt["month"]:
         return None
-    state = w.institutions.get(STATE_KEY)
+    # A checkpoint written before institutions existed loads with an empty dict; a hand-edited one could
+    # hold None. The arm keeps its state there, so make sure it is a table before writing.
+    institutions = getattr(w, "institutions", None)
+    if not isinstance(institutions, dict):
+        institutions = {}
+        w.institutions = institutions
+    state = institutions.get(STATE_KEY)
     if isinstance(state, dict) and state.get("engine_month") == w.month:
         # A repeated call in the same month (a resumed month, or a caller that runs twice) must not
         # remove a second holder appointed later that month.
@@ -114,7 +120,7 @@ def monthly(w, option=None):
         # was would be false. The fact is recorded for the report and no event is raised.
         record = {"option": dict(opt), "engine_month": w.month, "office": office, "member": None,
                   "status": "vacant", "event": ""}
-        w.institutions[STATE_KEY] = record
+        institutions[STATE_KEY] = record
         return record
     mid = str(mid)
     text = PUBLIC_EVENTS[office]
@@ -122,7 +128,7 @@ def monthly(w, option=None):
     w.event("incapacitated", text, public=True, importance=3, office=office, member=mid)
     record = {"option": dict(opt), "engine_month": w.month, "office": office, "member": mid,
               "status": "removed", "event": text}
-    w.institutions[STATE_KEY] = record
+    institutions[STATE_KEY] = record
     return record
 
 

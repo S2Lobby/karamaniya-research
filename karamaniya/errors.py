@@ -135,6 +135,17 @@ TAXONOMY: dict[str, tuple[str, str, str]] = {
     "OPEN_ACT_UNFUNDED": ("motion", "info", "An open act with a budget has no valid funding."),
     "OPEN_ACT_LIMIT": ("motion", "info", "A delegate tabled more than one open act in a month."),
     "OPEN_ACT_BAD_TARGET": ("foreign", "info", "A cabinet's open act names a target outside Karamaniya, its regions and its own country."),
+    # -- the referee (Wave A W4) -------------------------------------------------------------
+    # The referee rules an approved open act. Its rulings are validated before anything is scheduled; an invalid
+    # ruling is re-asked once and only a second invalid one fails the act. Every code below travels with the
+    # problems the engine sends back to the referee in words (the sentences never carry the code).
+    "REFEREE_BAD_ANSWER": ("action", "info", "A referee's ruling is not the required shape or value."),
+    "REFEREE_BAD_COST": ("action", "info", "A referee's cost is not three usable numbers."),
+    "REFEREE_OVER_BUDGET": ("action", "info", "A referee's cost does not fit the act's funding."),
+    "REFEREE_FORBIDDEN_ACT": ("action", "info", "A referee made feasible an act that another decision owns."),
+    "REFEREE_CHANNEL_NOT_ALLOWED": ("action", "info", "A cabinet's ruling uses a channel or target it cannot reach."),
+    "REFEREE_TOO_LONG": ("action", "info", "A referee's reason or public report is over its word limit."),
+    "REFEREE_INVALID": ("action", "info", "A referee's ruling was invalid twice, so the act failed."),
     # -- foreign ---------------------------------------------------------------------------
     "FOREIGN_ACTION_DUPLICATE": ("foreign", "warning", "A foreign action's effects were already applied."),
     "FOREIGN_ACTION_INVALID": ("foreign", "info", "A foreign cabinet proposed an act outside its action space."),

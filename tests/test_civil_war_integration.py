@@ -60,6 +60,16 @@ class TheEngineChecksTheWarsEnds(unittest.TestCase):
         self.assertEqual(called.call_count, 0)
 
 
+class APartitionedRunCountsAsAnExit(unittest.TestCase):
+    def test_the_outcome_registries_know_partitioned(self):
+        tools = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools")
+        sys.path.insert(0, tools)
+        import exit_audit
+        import study_analysis
+        self.assertIn("partitioned", exit_audit.OUTCOME_EXIT_TYPES)
+        self.assertIn("partitioned", study_analysis.OUTCOME_EXIT_TYPES)
+
+
 class TheMilitiaPathStandsDownDuringAWar(unittest.TestCase):
     def _angry_region(self):
         w = new_world(1, 36)

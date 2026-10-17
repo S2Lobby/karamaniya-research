@@ -43,7 +43,6 @@ RECORD_KIND = "cabinet_act"
 EXPOSURE_KIND = "cabinet_exposure"
 LIVE_KEY = "cabinet_open_acts_live"
 DRAWS_KEY = "covert_exposure_draws"
-TOLERANCE = 1e-9
 
 
 # ---- state ---------------------------------------------------------------------------------------

@@ -8,8 +8,11 @@ action-execution mismatches, the exits the audit reclassifies, the order-protoco
 
 RUNS are run folders, or folders that hold run folders. With --plan, the rows of the plan are the analysis set: each
 row's run folder must have config.mapping equal to its seat_map and run.seed equal to its seed, or the command stops
-with an error. Without --plan every run folder is analysed, except the scripted-only runs and the runs with no month
-record; run_inventory.csv lists each one left out, with the reason.
+with an error. Without --plan every run folder is analysed, except the scripted-only runs, the runs with no month
+record, runs with a router seat (an auto/router model label, or a seat whose served_models name several models), and
+runs whose neighbour cabinets borrowed delegate seats (no fixed foreign_cabinet_backend); run_inventory.csv lists each
+one left out, with the reason. The last two are wave-3 decisions: a router seat is not one model, and a cabinet that
+changes with the rotation changes the environment.
 
 --labels is the sample CSV that tools/exit_audit.py `sample` writes, once the annotators have filled in the
 `adjudicated` column. substantively_supported (or supported) counts as supported, ambiguous as ambiguous, and
@@ -59,6 +62,10 @@ LABEL_NAMES = {"substantively_supported": "supported", "supported": "supported",
 EXIT_CLASS_ORDER = {"member": 0, "office": 1, "government": 2, "election": 3}
 EXIT_CLASSES = ("member", "office", "government", "election")
 SCOPES = ("model", "office", "model_office")
+# A fixed model identifier per seat is a study requirement (WAVE3_PLAN): a router or auto label answers with different
+# models from call to call, so a model contrast could not be attributed. The pilot had an "auto" seat and an
+# "openrouter/free" seat whose served_models listed two and eight identifiers.
+ROUTER_MODELS = frozenset({"auto", "router", "default", "openrouter/auto", "openrouter/free"})
 
 # ---- secondary measures (wave 3) -------------------------------------------------------------------------------------
 # Motion statuses that mean the motion reached a vote. The list is convergence.VOTED_STATES at engine 26; a legacy
@@ -101,6 +108,46 @@ SVG_GRID, SVG_AXIS = "#e1e0d9", "#c3c2b7"
 
 class StudyError(Exception):
     """A problem with the inputs. The command stops and says what; nothing is skipped silently."""
+
+
+def _router_model(provider: str, model: str) -> str:
+    """Why a seat's configured model is a router or auto label, or "" when it names one model."""
+    if str(provider or "").strip().lower() == "scripted":
+        return ""
+    name = str(model or "").strip().lower()
+    if not name:
+        return "the seat names no model"
+    if name in ROUTER_MODELS or name.endswith("/auto"):
+        return f"the model {name!r} is a router or auto label"
+    return ""
+
+
+def router_seats(run) -> dict:
+    """Letter -> why that seat is not one fixed model, for every seat that is a router. A seat whose served_models
+    list holds more than one identifier answered with several models, so it is a router in fact even when its
+    configured label looks fixed (the pilot's "Dots" seat was configured openrouter/free and served eight)."""
+    out = {}
+    for letter in LETTERS:
+        seat = run.seats.get(letter) or {}
+        why = _router_model(seat.get("provider", ""), seat.get("model", ""))
+        served = sorted({m for m in seat.get("served") or [] if m})
+        if len(served) > 1:
+            more = f"answered with {len(served)} models ({', '.join(served[:3])}{', ...' if len(served) > 3 else ''})"
+            why = f"{why}; {more}" if why else more
+        if why:
+            out[letter] = why
+    return out
+
+
+def borrowed_neighbours(run) -> bool:
+    """Whether the neighbour cabinets were played by delegate seats. The engine's default (foreign_cabinets on,
+    no dedicated foreign_cabinet_backend) plays Veleria and Dorsania with the first two configured seats, which change
+    with the rotation; the study requires one fixed model for both cabinets (brief S4). WAVE3_PLAN excludes the three
+    old runs that borrowed delegate seats from study data."""
+    if not run.foreign_cabinets:
+        return False
+    backend = run.foreign_cabinet_backend or {}
+    return not (isinstance(backend, dict) and backend.get("provider"))
 
 
 # ---- reading run folders ------------------------------------------------------------------------------------------
@@ -147,6 +194,8 @@ class Run:
         self.outcome = {}
         self.stopped = ""
         self.engine = ""                   # the engine versions the run recorded, for the caveats
+        self.foreign_cabinets = True       # the engine's default; false means rules-only neighbours
+        self.foreign_cabinet_backend = {}  # the dedicated model for both cabinets; empty means the seats play them
 
     @property
     def last_month(self):
@@ -188,6 +237,9 @@ def load_run(path):
     run.horizon = run_cfg.get("months", seeds.get("months_total"))
     run.office_assignment = run_cfg.get("office_assignment") or None
     run.action_order = run_cfg.get("action_order") or None
+    run.foreign_cabinets = bool(run_cfg.get("foreign_cabinets", True))
+    backend = run_cfg.get("foreign_cabinet_backend")
+    run.foreign_cabinet_backend = dict(backend) if isinstance(backend, dict) else {}
     run.mapping = dict(config.get("mapping") or {L: run.seats[L]["label"] for L in LETTERS})
     for record in _read_jsonl(folder / "log.jsonl"):
         kind = record.get("type")
@@ -493,7 +545,9 @@ def load_plan(path):
 
 
 def check_plan_row(row, run):
-    """The plan's row must describe the run folder it names, or the grid would be mislabelled."""
+    """The plan's row must describe the run folder it names, or the grid would be mislabelled. A router seat or a
+    borrowed neighbour seat is a plan violation: the grid refuses both, so a planned run carrying one is not this
+    plan's run."""
     if run.mapping != dict(row["seat_map"]):
         raise StudyError(f"{row['name']}: the run's config.mapping {run.mapping} is not the plan's seat_map "
                          f"{row['seat_map']}")
@@ -502,6 +556,14 @@ def check_plan_row(row, run):
     if run.action_order and run.action_order != row["protocol"]:
         raise StudyError(f"{row['name']}: the run's action_order is {run.action_order}, the plan says "
                          f"{row['protocol']}")
+    routers = router_seats(run)
+    if routers:
+        raise StudyError(f"{row['name']}: router seat(s) "
+                         + "; ".join(f"{letter} {why}" for letter, why in sorted(routers.items()))
+                         + "; router seats are excluded from the study")
+    if borrowed_neighbours(run):
+        raise StudyError(f"{row['name']}: the neighbours borrowed delegate seats (no fixed foreign_cabinet_backend); "
+                         "those runs are excluded from study data")
 
 
 def load_status(path):
@@ -1603,8 +1665,21 @@ def main(argv=None):
     horizon = args.horizon or max([r.horizon for r in runs if isinstance(r.horizon, int)] or [DEFAULT_HORIZON])
     analysed, excluded_reason = [], {}
     for run in runs:
+        routers = router_seats(run)
         if run.scripted:
             excluded_reason[run.name] = "scripted-only run (a dry run or a demo: no model seats)"
+        elif routers or borrowed_neighbours(run):
+            # A run can have both faults (the pilot's A seat was an auto router and the cabinets borrowed seats);
+            # report every reason, so the inventory explains the whole exclusion.
+            reasons = []
+            if routers:
+                reasons.append("router seat(s): "
+                               + "; ".join(f"{letter} {why}" for letter, why in sorted(routers.items()))
+                               + " (router seats are excluded from the study)")
+            if borrowed_neighbours(run):
+                reasons.append("the neighbours borrowed delegate seats: no fixed foreign_cabinet_backend "
+                               "(the cabinets were played by seats A and B; excluded from study data)")
+            excluded_reason[run.name] = "; ".join(reasons)
         elif run.last_month == 0:
             excluded_reason[run.name] = "no month record: the run stopped before Month 1"
         elif args.complete_only and not (status_by_run.get(run.name, {}).get("state") == "done" or run.ended
@@ -2037,8 +2112,8 @@ def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau
     out.append("## Caveats")
     out.append("")
     out.append("- Intervals over seeds are only as good as the number of seeds: with a handful of clusters they are wide.")
-    out.append("- The model key is the configured seat model. A seat served by a router answered with several models "
-               "(served_models in run_inventory.csv); those seats are not one model.")
+    out.append("- Router seats are excluded from the analysis (run_inventory.csv names them and the reason); the model "
+               "key is the configured seat model, not whatever a provider happened to serve.")
     out.append("- Office groups use the formation offices. The engine can reassign offices later; that is an office "
                "exit only for a seat's own formation office.")
     out.append("- Unlabelled exits count as not supported in the validated variant, so validated survival is lower "

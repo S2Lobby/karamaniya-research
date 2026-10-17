@@ -15,3 +15,7 @@ research_work/
 runs-bench/
 overnight_logs/
 batches/
+
+# Built artifacts: the submission zip (tools/package.py) and the default scope-test output.
+dist/
+scope_test/

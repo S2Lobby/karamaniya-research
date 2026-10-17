@@ -20,25 +20,29 @@ FORMATION = {"head": "A", "treasury": "B", "interior": "C", "army": "D", "navy":
 
 def write_run(root, name, *, seed=1, mapping=None, months=3, formation=None, log=(), removals=None,
               final_offices=None, outcome=None, elections=(), stopped="", office_assignment=None,
-              action_order=None, scripted=False):
+              action_order=None, scripted=False, run_extra=None, seat_models=None, served=None):
     """A minimal run folder in the shape the engine writes: manifest.json, config.json, checkpoint.json and
-    log.jsonl. removals maps a letter to (month, how); every other member is active at the checkpoint."""
+    log.jsonl. removals maps a letter to (month, how); every other member is active at the checkpoint.
+    run_extra adds [run] settings (foreign cabinets, for example); seat_models overrides a seat's configured
+    model; served overrides the manifest's served_models."""
     mapping = mapping or {L: f"seat-{L}" for L in LETTERS}
     removals = removals or {}
     formation = formation or dict(FORMATION)
     final_offices = final_offices if final_offices is not None else dict(formation)
     provider = "scripted" if scripted else "openrouter"
+    seat_models = seat_models or {}
     d = os.path.join(root, name)
     os.makedirs(d)
-    seats = [{"seat": L, "label": mapping[L], "model": f"model-{mapping[L]}", "provider": provider}
-             for L in LETTERS]
-    run = {"months": months, "seed": seed}
+    models = {L: seat_models.get(L, f"model-{mapping[L]}") for L in LETTERS}
+    seats = [{"seat": L, "label": mapping[L], "model": models[L], "provider": provider} for L in LETTERS]
+    run = {"months": months, "seed": seed, "foreign_cabinets": True,
+           "foreign_cabinet_backend": {"provider": "openai", "model": "neighbours"}, **(run_extra or {})}
     if office_assignment:
         run["office_assignment"] = office_assignment
     if action_order:
         run["action_order"] = action_order
     manifest = {"seeds": {"run_seed": seed, "months_total": months}, "seats": seats,
-                "served_models": {L: [f"model-{mapping[L]}"] for L in LETTERS}}
+                "served_models": served or {L: [models[L]] for L in LETTERS}}
     members = []
     for L in LETTERS:
         if L in removals:
@@ -478,6 +482,68 @@ class EndToEnd(unittest.TestCase):
         self.assertIn("scripted", inventory["dry-one"]["exclusion"])
         self.assertEqual(inventory["no-months"]["included"], "False")
         self.assertIn("no month record", inventory["no-months"]["exclusion"])
+
+    def test_a_run_whose_neighbours_borrowed_delegate_seats_is_left_out(self):
+        # WAVE3_PLAN: the three old runs where the cabinets were played by seats A and B are never study data. The
+        # rule is environmental, not a name list, so a future run without a dedicated backend is caught too.
+        folder = os.path.join(self.root, "neighbours")
+        formation = dict(FORMATION)
+        log = [month(0, formation), month(1, formation), month(2, formation)]
+        dedicated = {"provider": "openai", "model": "gpt-x"}
+        write_run(folder, "borrowed", formation=formation, log=log,
+                  run_extra={"foreign_cabinets": True, "foreign_cabinet_backend": None})
+        write_run(folder, "dedicated", formation=formation, log=log,
+                  run_extra={"foreign_cabinets": True, "foreign_cabinet_backend": dedicated})
+        write_run(folder, "rules-only", formation=formation, log=log,
+                  run_extra={"foreign_cabinets": False})
+        out = os.path.join(self.root, "neighbours-out")
+        self.assertEqual(sa.main([folder, "--out", out, "--bootstrap", "5", "--no-integrity"]), 0)
+        with open(os.path.join(out, "run_inventory.csv"), encoding="utf-8", newline="") as f:
+            inventory = {r["run"]: r for r in csv.DictReader(f)}
+        self.assertEqual(inventory["borrowed"]["included"], "False")
+        self.assertIn("borrowed delegate seats", inventory["borrowed"]["exclusion"])
+        self.assertEqual(inventory["dedicated"]["included"], "True")
+        self.assertEqual(inventory["rules-only"]["included"], "True",
+                         "rules-only cabinets borrow no delegate seats")
+
+    def test_router_seats_and_multi_model_seats_are_left_out(self):
+        folder = os.path.join(self.root, "routers")
+        formation = dict(FORMATION)
+        log = [month(0, formation), month(1, formation), month(2, formation)]
+        dedicated = {"provider": "openai", "model": "gpt-x"}
+        write_run(folder, "auto-seat", formation=formation, log=log, seat_models={"A": "auto"},
+                  run_extra={"foreign_cabinets": True, "foreign_cabinet_backend": dedicated})
+        served = {L: [f"model-seat-{L}"] for L in LETTERS}
+        served["B"] = ["model-one", "model-two"]
+        write_run(folder, "multi-served", formation=formation, log=log, served=served,
+                  run_extra={"foreign_cabinets": True, "foreign_cabinet_backend": dedicated})
+        write_run(folder, "fixed", formation=formation, log=log,
+                  run_extra={"foreign_cabinets": True, "foreign_cabinet_backend": dedicated})
+        out = os.path.join(self.root, "routers-out")
+        self.assertEqual(sa.main([folder, "--out", out, "--bootstrap", "5", "--no-integrity"]), 0)
+        with open(os.path.join(out, "run_inventory.csv"), encoding="utf-8", newline="") as f:
+            inventory = {r["run"]: r for r in csv.DictReader(f)}
+        self.assertEqual(inventory["auto-seat"]["included"], "False")
+        self.assertIn("router", inventory["auto-seat"]["exclusion"])
+        self.assertEqual(inventory["multi-served"]["included"], "False")
+        self.assertIn("answered with 2 models", inventory["multi-served"]["exclusion"])
+        self.assertEqual(inventory["fixed"]["included"], "True")
+
+    def test_check_plan_row_refuses_a_router_or_borrowed_run(self):
+        rule = {"provider": "openai", "model": "gpt-x"}
+        folder = os.path.join(self.root, "plan-guard")
+        formation = dict(FORMATION)
+        write_run(folder, "auto", formation=formation, log=[month(0, formation)], seat_models={"A": "auto"},
+                  run_extra={"foreign_cabinets": True, "foreign_cabinet_backend": rule})
+        write_run(folder, "borrowed", formation=formation, log=[month(0, formation)],
+                  run_extra={"foreign_cabinets": True, "foreign_cabinet_backend": None})
+        row = {"name": "auto", "seed": 1, "rotation": 0, "protocol": "seeded_shuffle",
+               "seat_map": {L: f"seat-{L}" for L in LETTERS}}
+        with self.assertRaisesRegex(sa.StudyError, "router"):
+            sa.check_plan_row(row, sa.load_run(os.path.join(folder, "auto")))
+        row = dict(row, name="borrowed")
+        with self.assertRaisesRegex(sa.StudyError, "borrowed"):
+            sa.check_plan_row(row, sa.load_run(os.path.join(folder, "borrowed")))
 
 
 if __name__ == "__main__":

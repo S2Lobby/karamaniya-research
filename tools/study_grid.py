@@ -48,8 +48,14 @@ status.json (status-dry-run.json for a dry run) is a JSON object keyed by row na
 
 A row is done when its run has ended. A paused row (an engine pause such as a usage limit, or a refused seat) is
 resumed by the next `run`, once per invocation, until it has used --max-resumes resumes; then it is failed. A row
-left "running" by a killed invocation counts as paused. Failed rows are not retried. The exit code is 0 when every
-row is done, 1 when a row failed, 3 when rows are paused or pending, and 2 when the plan was refused.
+left "running" by a killed invocation counts as paused. A seat check that fails for a wrong key or model id is not a
+pause: the runner fails the row at once, without spending a resume (wave-3 decision). Failed rows are not retried.
+The exit code is 0 when every row is done, 1 when a row failed, 3 when rows are paused or pending, and 2 when the
+plan was refused.
+
+A router seat is refused before a plan is written (wave-3 decision): a seat whose model is an auto/router label
+would answer with different models from call to call, so a model effect could not be attributed. A seat with no model
+identifier is refused for the same reason, except a scripted seat, which names a persona instead.
 """
 from __future__ import annotations
 
@@ -84,6 +90,31 @@ ROW_KEYS = ("name", "protocol", "seed", "rotation", "config", "seat_map")
 DRY_PERSONAS = ("democrat", "technocrat", "hawk", "loyalist", "opportunist")  # as council.scripted.toml
 DRY_MONTHS = 2
 DEFAULT_MAX_RESUMES = 3
+# A fixed model identifier per seat is a study requirement (WAVE3_PLAN): a router or auto label answers with different
+# models from call to call, so a model contrast could not be attributed. The pilot had an "auto" seat and an
+# "openrouter/free" seat, and their served_models listed two and eight identifiers.
+ROUTER_MODELS = frozenset({"auto", "router", "default", "openrouter/auto", "openrouter/free"})
+# runner._require_seats raises SystemExit with one of three hints. These two mean a broken login, key or model id:
+# retrying cannot fix that, so the row fails at once instead of spending every resume on it (wave-3 decision).
+PERMANENT_SEAT_HINTS = ("Check the login, key or model id", "fix any other seat errors before retrying")
+
+
+def router_reason(seat: dict) -> str:
+    """Why a seat is not one fixed model, or "" when it names one. Scripted seats name a persona, not a model."""
+    if str(seat.get("provider") or "").strip().lower() == "scripted":
+        return ""
+    model = str(seat.get("model") or "").strip().lower()
+    if not model:
+        return "the seat names no model"
+    if model in ROUTER_MODELS or model.endswith("/auto"):
+        return f"the model {model!r} is a router or auto label, not one fixed model"
+    return ""
+
+
+def seat_start_failure(message: str) -> bool:
+    """Whether a seat-check SystemExit says a seat cannot start for a persistent reason (a wrong key or model id)."""
+    text = str(message or "")
+    return any(hint in text for hint in PERMANENT_SEAT_HINTS)
 
 
 # ---- plan --------------------------------------------------------------------------------------------------
@@ -147,6 +178,11 @@ def plan_study(study_path, out_dir, *, no_study_options: bool = False) -> list:
     base = normalize_config({"run": run, "seat": seats}, str(study_path))
     for seat, normalized in zip(seats, base["seats"]):
         seat["label"] = normalized["label"]
+    for seat in seats:
+        why = router_reason(seat)
+        if why:
+            raise ValueError(f"seat {seat['label']!r}: {why}; the study needs one fixed model per seat "
+                             "(router seats are excluded from the study)")
 
     out.mkdir(parents=True, exist_ok=True)
     (out / "configs").mkdir(exist_ok=True)
@@ -276,7 +312,9 @@ def _settle(run_dir: Path, error):
         note = "" if error is None else f"the engine raised after the run ended: {type(error).__name__}: {error}"
         return "done", note[:500], facts
     if isinstance(error, SystemExit):                 # the engine's seat check refused to start or resume
-        return "paused", (str(error.code) if error.code else "stopped")[:500], facts
+        reason = (str(error.code) if error.code else "stopped")[:500]
+        # A usage limit is temporary and worth a resume; a wrong key or model id is not (wave-3 decision).
+        return ("failed" if seat_start_failure(reason) else "paused"), reason, facts
     if error is not None:
         return "failed", f"{type(error).__name__}: {error}"[:500], facts
     if facts is None:
@@ -411,6 +449,11 @@ def run_plan(plan_path, *, workers: int = 1, max_resumes: int = DEFAULT_MAX_RESU
             cfg = load_config(path)
         except ValueError as exc:
             raise ValueError(f"{row['name']}: {exc}") from exc
+        for seat in cfg["seats"]:                     # a hand-edited config must not smuggle in a router
+            why = router_reason(seat)
+            if why:
+                raise ValueError(f"{row['name']}: seat {seat.get('label')!r}: {why}; router seats are excluded "
+                                 "from the study")
         configs[row["name"]] = (dry_run_config(cfg) if dry_run else str(path), cfg)
     cline = any(seat.get("provider") == "cline_cli" for _, cfg in configs.values() for seat in cfg["seats"])
     if cline and workers > 1 and not dry_run:

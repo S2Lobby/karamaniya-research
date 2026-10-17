@@ -637,6 +637,15 @@ class DefaultsTests(unittest.TestCase):
         # is for a menu propaganda act today; that is the engine-29 behaviour the open arm must preserve.
         self.assertTrue(any("was read as kessel" in problem for problem in default_problems))
 
+    def test_the_decisions_applier_refuses_the_kind_under_menu_and_skips_it_under_open(self):
+        act = {"type": "open_act", "text": "Fund newspapers in the Highlands.", "target": "highlands"}
+        w = world(harness="menu")
+        foreign._apply_cabinet_decisions(w, foreign.positions(w), {"veleria": {"actions": [act]}})
+        self.assertIn("FOREIGN_ACTION_INVALID", {e["code"] for e in w.audit_errors})
+        w = world(harness="open")
+        foreign._apply_cabinet_decisions(w, foreign.positions(w), {"veleria": {"actions": [act]}})
+        self.assertNotIn("FOREIGN_ACTION_INVALID", {e["code"] for e in w.audit_errors})
+
     def test_the_prompt_freeze_still_reports_prompts_unchanged(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("prompt_freeze",

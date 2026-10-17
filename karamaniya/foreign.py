@@ -1100,10 +1100,12 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
             _remember(w.foreign, actor_id, "rejected_action", note["reason"], w.month, action={"type": note["type"]})
         for index, raw in enumerate(decision.get("actions", [])[:ACTS_PER_MONTH]):
             action = dict(raw) if isinstance(raw, dict) else raw
-            if isinstance(action, dict) and action.get("type") == "open_act":
+            if isinstance(action, dict) and action.get("type") == "open_act" \
+                    and getattr(w, "harness", None) == "open":
                 # Wave A W8 (plan 4.4): a cabinet's open act is ruled, charged and scheduled by cabinet_acts after
                 # both cabinets answer and before engine.step. It is not one of this reader's acts, so it must not
-                # be applied here or recorded as FOREIGN_ACTION_INVALID.
+                # be applied here or recorded as FOREIGN_ACTION_INVALID. Under any other arm the kind does not
+                # exist and an open_act is refused as an unsupported action, exactly as engine 29 refused it.
                 continue
             available = max(0, actor["military"]["reserves"]-actor["military"]["active"]*.45) if isinstance(action, dict) else 0
             error = validate_action(actor_id, action, {"mobilized_reserve": available}, w)

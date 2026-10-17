@@ -152,6 +152,24 @@ class BatchRowsStayFinished(unittest.TestCase):
         self.assertEqual([e for e in events if e["type"] == "started"], [])   # the complete run is not started again
         self.assertEqual([it["status"] for it in self.stored("e4-again")], ["done"])
 
+    def test_while_a_row_runs_the_view_shows_it_as_running_and_the_rows_around_it_as_stored(self):
+        c = Controller(self.root, self.runs)
+        seen = {}
+
+        def observe(event):
+            # row b's run is starting: row a has finished, row b is running, row c has not started. The statuses
+            # are copied now: the view must not change under the test while the batch goes on.
+            if event["type"] == "started" and event["run_id"] == "e4-live-b":
+                view = c.batch_state()
+                seen["statuses"] = [it.get("status") for it in view["items"]]
+                seen["running"] = view["running"]
+            Controller.observer(c, event)
+
+        c.observer = observe
+        self.run_batch(c, "e4-live", [_row("e4-live-a"), _row("e4-live-b"), _row("e4-live-c")])
+        self.assertEqual(seen["statuses"], ["done", "running", None])
+        self.assertTrue(seen["running"])
+
 
 if __name__ == "__main__":
     unittest.main()

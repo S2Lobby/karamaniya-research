@@ -10,7 +10,8 @@ from __future__ import annotations
 import re
 
 from .motion_actions import ACTION_TO_SUBJECT, DIPLOMATIC_ACTIONS as DIPLOMATIC_ACTION_TYPES
-from .politics import (BOOLS, CONSTITUTION_FIELDS, DIPLOMACY, ENUMS, LEVER_OFFICE, MOTION_TYPES,
+from .politics import (BOOLS, CONSTITUTION_FIELDS, DIPLOMACY, ENUMS, LEVER_OFFICE, MEDIA_CLAIM_METRICS,
+                       MEDIA_INTENSITIES, MEDIA_KINDS, MEDIA_MAX_CLAIMS, MOTION_TYPES,
                        SHARES, V2_MOTION_TYPES, _bare, canonical_diplomacy_subject, canonical_funding,
                        canonical_lever, canonical_office, label, loan_amount_of, parse_loan_amount,
                        patronage_subject, policy_value)
@@ -191,6 +192,13 @@ def action_schema(w: World) -> dict:
                      # stimulus programme. Each measure is one lever the council can direct plus a value.
                      "measures": {"type": "array", "minItems": 1, "items": _obj({
                          "lever": {"type": "string"}, "value": {"type": "string"}})},
+                     # A state media campaign (wave 3): the kinds of line, the claims it makes (only with
+                     # claim_figures, up to three) and how hard it runs. Off stops the current line.
+                     "kinds": {"type": "array", "items": {"type": "string", "enum": list(MEDIA_KINDS)}},
+                     "claims": {"type": "array", "maxItems": MEDIA_MAX_CLAIMS, "items": _obj({
+                         "metric": {"type": "string", "enum": list(MEDIA_CLAIM_METRICS)},
+                         "value": {"type": "string"}})},
+                     "intensity": {"type": "string", "enum": list(MEDIA_INTENSITIES)},
                      "military_engineers": {"type": "boolean"}})
 
 
@@ -594,6 +602,15 @@ def motion_summary(w: World, mo: dict) -> str:
         return f"relief for {place_text}: {amount} ({scope}), funded by {funding}{engineers}"
     if t == "constitution":
         return f"constitution: {s} = {v}"
+    if t == "media_campaign":
+        payload = mo.get("action") if isinstance(mo.get("action"), dict) else {}
+        intensity = str(payload.get("intensity", "")).strip() or "?"
+        if intensity == "off":
+            return "stop the state media campaign"
+        kinds = ", ".join(str(x).replace("_", " ") for x in payload.get("kinds") or []) or "state media"
+        claims = "; ".join(f"{c.get('metric')}={c.get('value')}" for c in payload.get("claims") or []
+                           if isinstance(c, dict))
+        return f"state media campaign ({kinds}; {intensity})" + (f": {claims}" if claims else "")
     if t == "amend":
         return f"amend the Charter: \"{label(mo.get('text', ''), 160)}\""
     if t == "expel":
@@ -938,6 +955,13 @@ def normalize_motion_v2(w: World, raw: dict, problems: list | None = None) -> di
         from . import audits
         mo["subject"] = audits.office_of(mo["subject"]) or mo["subject"]
         mo["value"] = audits.parse_action(mo["value"]) or mo["value"]
+    if mo["type"] == "media_campaign":
+        # A model may write the campaign's fields at the top level instead of inside `action`. They are
+        # read into the action once, so validation and execution see the same motion.
+        for key in ("kinds", "claims", "intensity"):
+            value = raw.get(key)
+            if key not in mo["action"] and value not in (None, "", [], {}):
+                mo["action"][key] = value
     explicit = raw.get("conditions") if isinstance(raw.get("conditions"), list) else []
     clean = []
     for c in explicit:
@@ -999,7 +1023,7 @@ def _explicit_action(w, raw, problems: list | None = None) -> dict:
               "terms": [words(x, ACTION_TERMS_WORDS) for x in terms
                         if isinstance(x, str) and words(x, ACTION_TERMS_WORDS)][:4]}
     for key in ("deal_action", "region", "amount", "funding", "funding_plan", "scope",
-                "military_engineers", "regions", "measures"):
+                "military_engineers", "regions", "measures", "kinds", "claims", "intensity"):
         if key in raw:
             value = raw[key]
             if key == "regions":

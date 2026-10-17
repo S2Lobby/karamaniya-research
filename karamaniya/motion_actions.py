@@ -217,6 +217,13 @@ def structured_action(w, motion: dict) -> dict:
         return {"action_type": "disaster_relief", "target": None, "policy": None,
                 "value": motion.get("value"), "issue": "", "terms": [], "kind": kind, "subject": subject,
                 **{field: explicit[field] for field in fields if field in explicit}}
+    if kind == "media_campaign":
+        # Wave 3: the campaign's kinds, claims and intensity are the executable payload.
+        return {"action_type": "media_campaign", "target": None, "policy": None,
+                "value": motion.get("value"), "issue": "", "terms": [], "kind": kind, "subject": subject,
+                "kinds": list(explicit.get("kinds") or []),
+                "claims": [dict(c) for c in explicit.get("claims") or [] if isinstance(c, dict)],
+                "intensity": str(explicit.get("intensity") or "")}
     return {"action_type": action_type or kind, "target": target, "policy": subject,
             "value": motion.get("value"), "issue": "", "terms": [], "kind": kind, "subject": subject}
 
@@ -2173,6 +2180,13 @@ def execution_key(w, motion: dict) -> str:
         from .deliberation import _program_measure_key
         payload = {"action_type": "program", "month": payload["month"],
                    "measures": [list(pair) for pair in _program_measure_key(w, motion)]}
+    # Wave 3: a media campaign is the line it sets, so two campaigns differ by their kinds, claims and
+    # intensity rather than sharing the empty subject/value every media motion carries.
+    if action["kind"] == "media_campaign":
+        payload = {"action_type": "media_campaign", "month": payload["month"],
+                   "kinds": sorted(action.get("kinds") or []),
+                   "claims": [[str(c.get("metric")), str(c.get("value"))] for c in action.get("claims") or []],
+                   "intensity": str(action.get("intensity") or "")}
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 

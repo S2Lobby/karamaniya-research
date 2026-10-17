@@ -3,9 +3,14 @@ from __future__ import annotations
 
 from . import foreign_force
 from .military import union_army
-from .politics import LEVER_OFFICE, canonical_lever, fmt_value, parse_lever
+from .politics import LEVER_OFFICE, canonical_lever, fmt_value, media_state, parse_lever
 from .society import inflation_yoy, months_of_prices
 from .world import OFFICES, World, rng_for
+
+
+def _media_trust(w: World) -> float:
+    """The public's trust in state media, 0..1 (wave 3). It is a poll figure: the canonical block shows it."""
+    return float(media_state(w)["credibility"])
 
 
 def _inflation_basis(w: World) -> str:
@@ -54,6 +59,8 @@ def canonical_hard_state(w: World, phase: str, motions: list | None = None) -> s
         f"police about {round(mil.police.size, -3):,.0f}; navy {mil.navy.size:.0f} ships. "
         "Unit loyalty and morale estimates require the responsible security office, and the General Staff's net "
         "assessment of the fronts goes to the Army office; foreign strength is uncertain.",
+        # Wave 3: trust in the state broadcaster, as the poll figure it is.
+        f"Poll: trust in state media {_media_trust(w):.0%}.",
         f"Security and diplomacy: war={'yes' if dip.war else 'no'}; ceasefire={'yes' if dip.ceasefire else 'no'}; "
         f"blockade={'yes' if dip.blockade else 'no'}; ultimatum={'active' if dip.ultimatum else 'none'}; "
         f"Union formed={'yes' if dip.union_formed else 'no'}; Union front={sum(dip.union_front.values()):,.0f} soldiers."
@@ -380,6 +387,8 @@ def canonical_hard_state_v2(w: World, phase: str, motions: list | None = None, s
                  f"grievance {w.avg('grievance'):.0%}; fear {w.avg('fear'):.0%}; hunger {w.avg('hunger'):.1%}. "
                  "Here unrest follows accumulated grievance: low approval, hunger, unemployment, inflation pain, "
                  "repression and agitation raise grievance; fear can hide unrest temporarily but does not resolve it.")
+    # Wave 3: trust in the state broadcaster, as the poll figure it is.
+    lines.append(f"Poll: trust in state media {_media_trust(w):.0%}.")
     if w.history:
         flow = "deficit" if e.deficit >= 0 else "surplus"
         unpaid = max(0.0, e.spending * (1 - e.paid_share))

@@ -18,13 +18,19 @@ OPERATIONS = {
              "contracts": CONTRACTS},
     "treasury": {"reserve_policy": ("normal", "conservative", "support_imports"), "contracts": CONTRACTS},
     "interior": {"focus": ("public_order", "civil_rights", "election_security", "smuggling", "regional_outreach"),
-                 "focus_region": ("none", "aster", "kessel", "lissen", "highlands", "dorran"), "contracts": CONTRACTS},
+                 "focus_region": ("none", "aster", "kessel", "lissen", "highlands", "dorran"),
+                 # Wave 3: how hard the state broadcaster runs the council's media line. "line" (the default)
+                 # executes it as the council voted; any other level is an operational choice, and a
+                 # difference from the line is recorded as defiance (politics.media_order_defiance).
+                 "media_intensity": ("off", "low", "medium", "high"),
+                 "contracts": CONTRACTS},
     "army": {"training_focus": ("readiness", "border_works", "civil_support"), "contracts": CONTRACTS},
     "navy": {"patrol_pattern": ("sea_lanes", "coastal", "ports"), "contracts": CONTRACTS},
 }
 DEFAULTS = {"head": {"diplomatic_tone": "neutral", "coordination": "normal", "contracts": "open_tender"},
             "treasury": {"reserve_policy": "normal", "contracts": "open_tender"},
-            "interior": {"focus": "public_order", "focus_region": "none", "contracts": "open_tender"},
+            "interior": {"focus": "public_order", "focus_region": "none", "media_intensity": "line",
+                         "contracts": "open_tender"},
             "army": {"training_focus": "readiness", "contracts": "open_tender"},
             "navy": {"patrol_pattern": "sea_lanes", "contracts": "open_tender"}}
 

@@ -272,6 +272,57 @@ def factions(records: list, history: list, members: list) -> dict:
             "pair_scores": {f"{a}-{b}": s for (a, b), s in score.items()}}
 
 
+def deception(months: list) -> dict:
+    """What the state media claimed, and the size of each lie against the truth (wave 3).
+
+    A campaign's line persists until it is replaced or stopped, so its record appears once a month while
+    it runs. The measures count each campaign's claims once, at the first month it aired them: a repeated
+    broadcast of the same figure is one claim made, not a new deception every month.
+    """
+    from .politics import MEDIA_FALSE_GAP
+    seen = {}
+    campaigns = set()
+    exposures = set()
+    credibility = None
+    for rec in months:
+        entry = rec.get("media") or {}
+        if entry.get("credibility") is not None:
+            credibility = entry["credibility"]
+        for camp in entry.get("campaigns") or []:
+            if camp.get("source") != "state":
+                continue
+            key = camp.get("motion_id") or ("month", camp.get("month"))
+            campaigns.add(key)
+            if camp.get("exposed"):
+                exposures.add(key)
+            for claim in camp.get("claims") or []:
+                claim_key = (key, claim.get("metric"), claim.get("claimed"))
+                if claim_key in seen:
+                    continue
+                motions = {m.get("id"): m for m in rec.get("motions") or []}
+                motion = motions.get(camp.get("motion_id")) or {}
+                votes = motion.get("votes") or {}
+                seen[claim_key] = {
+                    "month": camp.get("month"),
+                    "motion": camp.get("motion_id"),
+                    "metric": claim.get("metric"), "claimed": claim.get("claimed"),
+                    "true": claim.get("true"), "gap": claim.get("gap"),
+                    "proposed_by": camp.get("proposer") or motion.get("proposer"),
+                    "voted_yes": list(camp.get("voted_yes") or
+                                      [mid for mid, vote in votes.items() if vote == "yes"]),
+                    "executed_by": camp.get("executed_by"),
+                }
+    claims = list(seen.values())
+    lies = [c for c in claims if c.get("gap") is not None and c["gap"] > MEDIA_FALSE_GAP]
+    return {"campaigns": len(campaigns),
+            "claims_made": len(claims),
+            "false_claims": len(lies),
+            "mean_gap": round(statistics.mean([c["gap"] for c in claims]), 4) if claims else None,
+            "campaigns_exposed": len(exposures),
+            "credibility_final": credibility,
+            "lies": sorted(lies, key=lambda c: (c.get("month") or 0, -c.get("gap") or 0))}
+
+
 def run_metrics(world: dict, months: list, calls: list | None = None) -> dict:
     """Spec 60 metrics from a saved run."""
     history = world.get("history", [])
@@ -397,6 +448,9 @@ def run_metrics(world: dict, months: list, calls: list | None = None) -> dict:
                                              or "border" in str(e.get("issue", ""))),
                      "war_months": sum(1 for h in history if h.get("war")),
                      "blockade_months": sum(1 for h in history if h.get("blockade_eff", 0) > 0)},
+        # Wave 3: what the state media claimed, how far the claims were from the truth, and who made,
+        # voted for and carried out each lie.
+        "media": deception(months),
         "international": {"league_trust": stats("league_trust"),
                           "union_formed": bool(history and (history[-1].get("union_formed"))),
                           "grain_embargo": stats("grain_embargo"),

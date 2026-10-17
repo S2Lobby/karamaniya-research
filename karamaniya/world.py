@@ -751,6 +751,11 @@ EMERGENCY_MEASURE_PENALTY = {"curfew": 0.05, "police_powers": 0.05, "movement_re
                              "military_aid_civil": 0.05, "ration_enforcement": 0.03, "fiscal_authority": 0.02}
 # An opposition ban weighs as a banned assembly (0.15); one-party rule as cancelled elections (0.2).
 PARTIES_PENALTY = {"multi_party": 0.0, "ban_opposition": 0.15, "one_party": 0.2}
+# Wave 3 (T141 hook): a state media line run at high intensity is media capture, the government using the
+# broadcaster as its own instrument. It weighs less than targeted arrests (0.05) or a coercive emergency
+# measure (0.05): a standing high-intensity line is a visible institutional change, but it is not by itself
+# the suspension of an election or an assembly.
+MEDIA_CAPTURE_PENALTY = 0.02
 
 
 def democracy_index(w: World) -> float:
@@ -759,6 +764,8 @@ def democracy_index(w: World) -> float:
     The seven constitutional terms are what the Charter sets; their weights sum to 1. Engine 24 (T141) takes off the
     repressive acts in force (the penalties above), so a government that represses lowers the index and it recovers when
     the acts end. Nothing repressive in force leaves the sum at exactly 1.0, as it was in every run before engine 24.
+    Wave 3 adds media capture: a state media line carried out at high intensity (politics.media_month sets
+    w.media["capture"]).
     """
     c = w.const
     if c.elected:
@@ -780,7 +787,8 @@ def democracy_index(w: World) -> float:
     repression = (ARREST_PENALTY.get(w.policy.arrests, 0.0)
                   + sum(EMERGENCY_MEASURE_PENALTY.get(name, 0.0)
                         for name in (w.institutions.get("emergency_measures") or {}))
-                  + PARTIES_PENALTY.get(c.parties, 0.0))
+                  + PARTIES_PENALTY.get(c.parties, 0.0)
+                  + (MEDIA_CAPTURE_PENALTY if (w.media or {}).get("capture") else 0.0))
     return clamp(base - repression)
 
 

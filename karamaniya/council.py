@@ -1407,6 +1407,8 @@ class Council:
         self._emit(type="neighbours", month=acted_month, actors=_neighbours_live(w, acted_month, cabinet_decisions))
         if w.human_factor and w.agent_architecture_version >= 1:
             record["social"] = _post_month_social(w)
+        # Wave 3: the month record carries what the state media line did and what it cost.
+        record["media"] = politics.media_record(w, acted_month)
         record["integrity"] = dict(w.integrity)
         record["outcome"] = dict(w.outcome)
         self.last_record = {"motions": record["motions"], "defiance": record["defiance"],
@@ -2038,6 +2040,8 @@ class Council:
         engine.step(w, cabinet_decisions, foreign_prepared=self.foreign_enabled)
         self._emit(type="neighbours", month=completed_month,
                    actors=_neighbours_live(w, completed_month, cabinet_decisions))
+        # Wave 3: the month record carries what the state media line did and what it cost.
+        record["media"] = politics.media_record(w, completed_month)
         # The engine appends implementation, economy, politics, audit and dilemma events after
         # council resolution. Write memory from the completed event list so delegates remember
         # what actually happened, and retain the month before engine.step advances the clock.
@@ -2760,6 +2764,9 @@ class Council:
                 w.member(mid).notebook = d["notes"]
                 if w.member(mid).agent_state:
                     w.member(mid).agent_state["notes_month"] = w.month     # when they were written, to date them later
+        # Wave 3: the Interior holder's media_intensity order against the council's media line, recorded
+        # through the same defiance mechanism (and the same public event) as a policy order against a directive.
+        record["defiance"] += politics.media_order_defiance(w)
         record["compliance_restored"] = freshness.track(w, record)
         active_ids = {m.id for m in w.active_members()}
         for mid, d in decisions.items():

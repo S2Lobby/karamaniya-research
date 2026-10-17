@@ -63,22 +63,22 @@ It runs the engine's five scripted seats for one month, calls no model, and writ
 5. runs it with the venv's interpreter in the extracted root;
 6. passes when the exit code is 0 and a run checkpoint exists.
 
-Measured on 2026-10-17 from `C:\Users\litle\Karamaniya\research-wt-e12` with Python 3.12.10, on the engine-28
-release commit `15e85d77` (after the full suite passed: 3,194 tests, OK):
+Measured on 2026-10-17 from `C:\Users\litle\Karamaniya\research-wt-e12` with Python 3.12.10, on the engine-29
+release commit `a15b63db` (after the full suite passed: 3,218 tests, OK):
 
 ```
-built dist\karamaniya-trust-submission-15e85d77.zip (1,181,042 bytes, 143 files, commit 15e85d77, versions
-      {'world_engine': 28, 'agent_prompt': 25, 'error_taxonomy': 6, 'psychology': 8, 'agent_architecture': 2})
-clean-machine smoke: exit 0, 144 files, 4.3s, checkpoints ['runs\\package-smoke-seed1\\checkpoint.json']
+built dist\karamaniya-trust-submission-a15b63db.zip (1,184,832 bytes, 143 files, commit a15b63db, versions
+      {'world_engine': 29, 'agent_prompt': 26, 'error_taxonomy': 6, 'psychology': 8, 'agent_architecture': 2})
+clean-machine smoke: exit 0, 144 files, 3.0s, checkpoints ['runs\\package-smoke-seed1\\checkpoint.json']
 command: <temp>\.venv-smoke\Scripts\python.exe -m karamaniya simulate council.scripted.toml --runs 1 --months 1
          --prefix package-smoke
 ```
 
-The extracted package's run manifest recorded `world_engine_version: 28` and `agent_prompt_version: 25`, the five
-scripted seats A-E, seed 1 and the outcome `survived`; the package's own checks found no forbidden path, no `.env`, no
-secret and no SHA-256 mismatch (143 files listed, 144 zip entries including `PACKAGE_MANIFEST.json`). `python -m
-unittest tests.test_engine24_package -v` ran 9 tests, OK, including this build and smoke. This build replaces the
-engine-27 one, `bdfa1057` (1,179,908 bytes, 143 files).
+The extracted package's run manifest recorded `world_engine_version: 29` and `agent_prompt_version: 26`, the five
+scripted seats A-E, seed 1 and the outcome `survived`, and the run wrote its closing answers (`debrief.json`, engine
+29); the package's own checks found no forbidden path, no `.env`, no secret and no SHA-256 mismatch (143 files listed,
+144 zip entries including `PACKAGE_MANIFEST.json`). `python -m unittest tests.test_engine24_package -v` ran 9 tests,
+OK, including this build and smoke. This build replaces the engine-28 one, `15e85d77` (1,181,042 bytes, 143 files).
 
 The unit tests are `python -m unittest tests.test_engine24_package -v`. The integration class builds from `HEAD`
 and runs the smoke; it skips until the package files are committed, because the build reads a commit.

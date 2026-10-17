@@ -34,7 +34,17 @@ RUN_DEFAULTS = {
     "foreign_cabinet_seats": {},  # optional actor -> existing seat label; otherwise first two configured seats
     "office_assignment": "formation",  # formation (the Month-0 vote) | by_letter (A-E hold the five offices; engine 24)
     "action_order": "seeded_shuffle",  # seeded_shuffle | fixed_precedence: the speaking order (council.speaking_order)
+    # Wave A (plan 4.6): the arms. `harness` is offered by every call site through actions.harness_of; "menu" is
+    # engine 29 exactly. `referee_effects` = "zeroed" is the ablation: rulings are made and logged, effects are not
+    # applied. `referee_backend` is a seat-like model, absent by default and required under "open". `knockout` is the
+    # removal arm, absent by default (the normalizer deletes it when unset, as the ballot and latitude arms are).
+    "harness": "menu",
+    "referee_effects": "applied",
+    "referee_backend": None,
+    "knockout": None,
 }
+
+REFEREE_EFFECTS = ("applied", "zeroed")
 
 
 def check_office_assignment(run: dict, seat_count: int, where: str = "config") -> None:
@@ -45,6 +55,64 @@ def check_office_assignment(run: dict, seat_count: int, where: str = "config") -
     if value == "by_letter" and seat_count != len(OFFICES_BY_LETTER):
         raise ValueError(f"{where}: office_assignment = 'by_letter' needs exactly five members (A to E hold head "
                          f"of government, treasury, interior, army and navy), found {seat_count}")
+
+
+def _model_of(cfg: dict) -> str:
+    """The model a seat-like config names. A scripted stand-in names its persona rather than a model."""
+    return str(cfg.get("model") or cfg.get("persona") or "").strip().lower()
+
+
+def check_referee_backend(run: dict, seats: list, where: str = "config") -> None:
+    """Validate and normalize `referee_backend`; refuse a referee that is one of the council's seats.
+
+    The referee is a seat-like config, handled as `foreign_cabinet_backend` is: at least a provider, and a label
+    defaulted from its model or provider. It must not be a council seat (the same provider and model, or the same
+    label), because the plan requires a different model family from every delegate. The config can check identity,
+    not family, so the family rule is stated here and in docs/REFEREE_CODEBOOK.md rather than guessed from a model
+    table. Under `harness = "open"` it is required: an open run with no referee cannot rule an act, and a run is
+    refused at start rather than failing at the first act.
+    """
+    from .actions import validate_harness
+    harness = validate_harness(run.get("harness", "menu"))
+    raw = run.get("referee_backend")
+    if raw:
+        if not isinstance(raw, dict) or not raw.get("provider"):
+            raise ValueError(f"{where}: referee_backend must be a table with at least a provider")
+        backend = dict(raw)
+        backend["label"] = str(backend.get("label") or backend.get("model") or backend["provider"]).strip()
+        provider, model, label = str(backend["provider"]).strip().lower(), _model_of(backend), backend["label"]
+        for seat in seats:
+            same_label = str(seat.get("label") or "").strip() == label
+            same_model = (str(seat.get("provider") or "").strip().lower() == provider
+                          and _model_of(seat) == model)
+            if same_label or same_model:
+                what = "label" if same_label else "provider and model"
+                raise ValueError(
+                    f"{where}: referee_backend must not be one of the council's seats; it matches the {what} of "
+                    f"seat {seat.get('label')!r}. The referee must come from a different model family than every "
+                    "delegate. The config can check only that it is not the same seat, so check the family "
+                    "yourself: pick a model from another maker's family.")
+        run["referee_backend"] = backend
+    elif "referee_backend" in run:
+        del run["referee_backend"]
+    if harness == "open" and not run.get("referee_backend"):
+        raise ValueError(
+            f"{where}: harness = 'open' needs run.referee_backend: a fixed seat-like model (provider, model, "
+            "temperature 0) from a different model family than every delegate. The referee rules open acts and is "
+            "machinery, not a council seat; without it no open act could be carried out.")
+
+
+def check_knockout(run: dict, where: str = "config") -> None:
+    """Validate `knockout` and keep it absent when unset, so a default config normalizes exactly as before."""
+    from .knockout import validate_option
+    try:
+        option = validate_option(run.get("knockout"))
+    except ValueError as exc:
+        raise ValueError(f"{where}: {exc}") from exc
+    if option is None:
+        run.pop("knockout", None)
+    else:
+        run["knockout"] = option
 
 
 def normalize_config(raw: dict, source: str = "") -> dict:
@@ -86,6 +154,14 @@ def normalize_config(raw: dict, source: str = "") -> dict:
     if unknown_labels:
         raise ValueError(f"foreign_cabinet_seats must use existing seat labels: {sorted(unknown_labels)}")
     run["foreign_cabinet_seats"] = foreign_seats
+    # Wave A arms (plan 4.6). `harness` and `referee_effects` stay in the normalized run like office_assignment and
+    # action_order; `referee_backend` and `knockout` are absent when unset.
+    from .actions import validate_harness
+    run["harness"] = validate_harness(run.get("harness", "menu"))
+    if run["referee_effects"] not in REFEREE_EFFECTS:
+        raise ValueError(f"referee_effects must be 'applied' or 'zeroed', got {run['referee_effects']!r}")
+    check_referee_backend(run, seats, where)
+    check_knockout(run, where)
     # Token-saving features (karamaniya/token_saving.py): absent unless asked for, so a config that
     # does not mention them normalizes exactly as it always did.
     from . import token_saving

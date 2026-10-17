@@ -50,8 +50,8 @@ def _json(path: str):
 
 
 def replay_config(config: dict, log_path: str) -> dict:
-    """The run's config with every seat and the foreign cabinets answered by replay, with no judges, report or
-    baseline."""
+    """The run's config with every seat, the foreign cabinets and the referee answered by replay, with no judges,
+    report or baseline."""
     def as_replay(seat: dict) -> dict:
         return {**seat, "replay_of": seat.get("provider", ""), "provider": "replay", "replay_log": log_path}
 
@@ -60,12 +60,18 @@ def replay_config(config: dict, log_path: str) -> dict:
     run = dict(cfg["run"])
     if run.get("foreign_cabinet_backend"):
         run["foreign_cabinet_backend"] = as_replay(run["foreign_cabinet_backend"])
+    # Wave A W6: the referee is a seat-like model, logged under (month, "referee", "referee"), so a run recorded
+    # with a real referee replays from its log like a delegate. Without this it would call the real model again.
+    if run.get("referee_backend"):
+        run["referee_backend"] = as_replay(run["referee_backend"])
     # Judges never change the world, and they would call real models. The report and the baseline are not needed.
     run.update(judge=False, report=False, baseline=False)
     cfg["run"] = run
     providers = {seat["provider"] for seat in cfg["seats"]}
     if run.get("foreign_cabinet_backend"):
         providers.add(run["foreign_cabinet_backend"]["provider"])
+    if run.get("referee_backend"):
+        providers.add(run["referee_backend"]["provider"])
     if providers != {"replay"}:
         raise RuntimeError(f"a replay must call no model; these providers were not replaced: {sorted(providers)}")
     return cfg

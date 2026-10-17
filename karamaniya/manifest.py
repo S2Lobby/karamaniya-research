@@ -146,6 +146,17 @@ def _office_option(manifest: dict) -> str:
     return (manifest.get("office_assignment") or {}).get("option") or "formation"
 
 
+def referee_model(cfg: dict) -> dict:
+    """The referee's identity for the manifest: provider, model and label, never a key, token or endpoint.
+
+    Wave A (plan 4.6): a run's referee must be recorded so its rulings can be interpreted later, as the seats are.
+    The whitelist is deliberate: a seat-like config may carry an api_key or a base_url, and neither belongs in a
+    manifest that is read and shared.
+    """
+    backend = cfg.get("referee_backend") or {}
+    return {key: backend.get(key) for key in ("provider", "model", "label") if backend.get(key) is not None}
+
+
 def build(world: World, cfg: dict, council_state: dict | None = None, store=None) -> dict:
     """The manifest for a run, as it stands."""
     run = cfg.get("run") or {}
@@ -195,6 +206,14 @@ def build(world: World, cfg: dict, council_state: dict | None = None, store=None
                      "severity": run.get("founding_severity"),
                      "problems": run.get("founding_problems") or []},
         "office_assignment": office_assignment(cfg),
+        # Wave A arms: recorded only when they differ from engine 29's default run, so a default manifest keeps the
+        # keys it always had (plan 4.6: all of them go into the manifest; the defaults are implicit, as the arm
+        # options above them are).
+        **({"harness": run["harness"]} if run.get("harness") not in (None, "menu") else {}),
+        **({"referee_effects": run["referee_effects"]}
+           if run.get("referee_effects") not in (None, "applied") else {}),
+        **({"referee_backend": referee_model(run)} if (run.get("referee_backend") or {}).get("provider") else {}),
+        **({"knockout": dict(run["knockout"])} if isinstance(run.get("knockout"), dict) else {}),
         **({"token_saving": token_saving.describe(cfg)} if token_saving.describe(cfg) else {}),
         "determinism_note": (
             "The world is fully determined by run_seed: world generation, structural parameters, "
@@ -239,6 +258,14 @@ def divergences(a: dict, b: dict) -> list:
         out.append("founding_conditions")
     if _office_option(a) != _office_option(b):
         out.append("office_assignment")
+    if (a.get("harness") or "menu") != (b.get("harness") or "menu"):
+        out.append("harness")
+    if (a.get("referee_effects") or "applied") != (b.get("referee_effects") or "applied"):
+        out.append("referee_effects")
+    if (a.get("referee_backend") or {}) != (b.get("referee_backend") or {}):
+        out.append("referee_backend")
+    if (a.get("knockout") or {}) != (b.get("knockout") or {}):
+        out.append("knockout")
     if (a.get("token_saving") or {}) != (b.get("token_saving") or {}):
         out.append("token_saving")
     return out

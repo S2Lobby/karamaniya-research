@@ -11,10 +11,18 @@ foreign_cabinet_backend (brief S4), and there are five [[seat]] tables, one per 
     rotations = 5                                  # 1 to 5; rotation r runs over 0 .. rotations-1
     protocols = ["seeded_shuffle", "fixed_precedence"]
     months = 36
+    harnesses = ["menu", "language", "open"]       # optional; default ["menu"] (engine 29)
+    knockouts = [{ office = "head", month = 12 }]  # optional; each gets a same-seed twin, no knockout
 
 Rotation r puts model i (its seat number in the study file, counting from 0) at letter (i + r) mod 5. Under
 run.office_assignment = "by_letter" the letters are head, treasury, interior, army and navy, so across five
 rotations every model holds every office once per seed. Two protocols x five seeds x five rotations is 50 rows.
+
+`harnesses` (Wave A, plan 4.6) multiplies the grid by arm; a non-default arm's row name carries it
+(sv-open-seeded_shuffle-s2101-r0), while the menu arm keeps the engine-29 name. Under `open` the study file must
+also name [run].referee_backend, as it must name the neighbours model. `knockouts` plans, once per knockout cell,
+the knockout row and its twin: the same seed, models and arms with no knockout. The knockout row is tagged
+`pair_id`, `role = "knockout"` and `twin`; the twin is tagged `pair_id`, `role = "twin"` and `knockout_of`.
 
 plan writes, into out_dir:
     plan.json             the rows, described below
@@ -27,7 +35,9 @@ plan.json is a JSON list, one object per row:
      "seed": 2101,                              # run.seed
      "rotation": 0,
      "config": "configs/sv-seeded_shuffle-s2101-r0.toml",   # relative to the folder of plan.json
-     "seat_map": {"A": "<seat label>", "B": "...", "C": "...", "D": "...", "E": "..."}}
+     "seat_map": {"A": "<seat label>", "B": "...", "C": "...", "D": "...", "E": "..."},
+     # only when the study declares an arm dimension or a knockout:
+     "harness": "open", "pair_id": "sv-open-...-ko12", "role": "knockout", "twin": "...", "knockout_of": "..."}
 
 run starts every row that is not finished, each in its own process, and keeps status.json beside plan.json. A dry
 run (--dry-run) puts scripted seats in place of every seat and of the neighbours, caps the months at 2, and keeps
@@ -78,15 +88,20 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # the package imports from the repository root, in worker processes too
 
 from karamaniya.config import RUN_DEFAULTS, _toml_key, _toml_value, load_config, normalize_config  # noqa: E402
+from karamaniya.actions import HARNESSES  # noqa: E402
+from karamaniya import knockout  # noqa: E402
 from karamaniya.storage import RunStore  # noqa: E402
 
 LETTERS = "ABCDE"
 PROTOCOLS = ("seeded_shuffle", "fixed_precedence")
-STUDY_KEYS = ("seeds", "rotations", "protocols", "months")
+# Required [study] keys; `harnesses` and `knockouts` are optional arms (Wave A W6, plan 4.6).
+STUDY_KEYS = ("seeds", "rotations", "protocols", "months", "harnesses", "knockouts")
 # [run] keys the plan writes for each row; a study file may not set them itself.
-GRID_KEYS = ("seed", "months", "shuffle_seats", "office_assignment", "action_order")
+GRID_KEYS = ("seed", "months", "shuffle_seats", "office_assignment", "action_order", "harness", "knockout")
 STUDY_OPTIONS = ("office_assignment", "action_order")
 ROW_KEYS = ("name", "protocol", "seed", "rotation", "config", "seat_map")
+# Wave A W6: a row that plans an arm carries the tags that let a report join a knockout to its twin.
+OPTIONAL_ROW_KEYS = ("harness", "pair_id", "role", "twin", "knockout_of")
 DRY_PERSONAS = ("democrat", "technocrat", "hawk", "loyalist", "opportunist")  # as council.scripted.toml
 DRY_MONTHS = 2
 DEFAULT_MAX_RESUMES = 3
@@ -127,7 +142,8 @@ def _study_settings(study: dict) -> dict:
     unknown = sorted(set(study) - set(STUDY_KEYS))
     if unknown:
         raise ValueError(f"[study] has unknown keys {unknown}; the keys are {list(STUDY_KEYS)}")
-    missing = [key for key in STUDY_KEYS if key not in study]
+    required = ("seeds", "rotations", "protocols", "months")
+    missing = [key for key in required if key not in study]
     if missing:
         raise ValueError(f"[study] is missing {missing}")
     seeds, rotations = study["seeds"], study["rotations"]
@@ -141,7 +157,28 @@ def _study_settings(study: dict) -> dict:
         raise ValueError(f"[study] protocols must be a list of different names from {list(PROTOCOLS)}")
     if not _is_int(months) or not 1 <= months <= 120:
         raise ValueError("[study] months must be a whole number from 1 to 120")
-    return {"seeds": seeds, "rotations": rotations, "protocols": protocols, "months": months}
+    # Wave A arms: `harnesses` defaults to the one engine-29 arm, so an older study plans exactly its old rows.
+    harnesses = study.get("harnesses", ["menu"])
+    if (not isinstance(harnesses, list) or not harnesses or len(set(harnesses)) != len(harnesses)
+            or not all(h in HARNESSES for h in harnesses)):
+        raise ValueError(f"[study] harnesses must be a list of different names from {list(HARNESSES)}")
+    raw_knockouts = study.get("knockouts", [])
+    if not isinstance(raw_knockouts, list):
+        raise ValueError("[study] knockouts must be a list of tables, each { office, month }")
+    knockouts = []
+    for item in raw_knockouts:
+        try:
+            option = knockout.validate_option(item)
+        except ValueError as exc:
+            raise ValueError(f"[study] knockouts: {exc}") from exc
+        if option["month"] > months:
+            raise ValueError(f"[study] knockouts: Month {option['month']} is after the study's {months} months, "
+                             "so the knockout would never fire")
+        knockouts.append(option)
+    if len({(o["office"], o["month"]) for o in knockouts}) != len(knockouts):
+        raise ValueError("[study] knockouts repeats an office and month; each cell is planned once")
+    return {"seeds": seeds, "rotations": rotations, "protocols": protocols, "months": months,
+            "harnesses": harnesses, "knockouts": knockouts}
 
 
 def _dump(run: dict, seats: list, header: list) -> str:
@@ -186,28 +223,56 @@ def plan_study(study_path, out_dir, *, no_study_options: bool = False) -> list:
 
     out.mkdir(parents=True, exist_ok=True)
     (out / "configs").mkdir(exist_ok=True)
+    if "open" in settings["harnesses"] and not run.get("referee_backend"):
+        raise ValueError("the study lists harness = \"open\", which needs [run].referee_backend: a fixed seat-like "
+                         "model (provider, model, temperature 0) from a different model family than every delegate. "
+                         "Without it the engine refuses every open row at start.")
     rows = []
+    arm_dimension = "harnesses" in (raw.get("study") or {})
+
+    def write_row(name, row_run, row_seats, tags, protocol, seed, rotation):
+        config = out / "configs" / f"{name}.toml"
+        config.write_text(_dump(row_run, row_seats, [
+            f"Row {name}, written by tools/study_grid.py plan. Change the study file and plan again, "
+            "rather than this file."]), encoding="utf-8", newline="\n")
+        try:
+            load_config(config)
+        except ValueError as exc:
+            raise ValueError(f"{name}: {exc}") from exc
+        return {"name": name, "protocol": protocol, "seed": seed, "rotation": rotation,
+                "config": config.relative_to(out).as_posix(),
+                "seat_map": {LETTERS[p]: row_seats[p]["label"] for p in range(len(LETTERS))}, **tags}
+
     for protocol in settings["protocols"]:
         for seed in settings["seeds"]:
             for rotation in range(settings["rotations"]):
-                name = f"sv-{protocol}-s{seed}-r{rotation}"
+                cell = f"sv-{protocol}-s{seed}-r{rotation}"
                 # Seat position p holds model order[p]; model i therefore ends at letter (i + rotation) mod 5.
                 order = [(p - rotation) % len(LETTERS) for p in range(len(LETTERS))]
                 row_seats = [seats[order[p]] for p in range(len(LETTERS))]
-                row_run = {**run, "seed": seed, "months": settings["months"], "shuffle_seats": False}
-                if not no_study_options:
-                    row_run.update(office_assignment="by_letter", action_order=protocol)
-                config = out / "configs" / f"{name}.toml"
-                config.write_text(_dump(row_run, row_seats, [
-                    f"Row {name}, written by tools/study_grid.py plan. Change the study file and plan again, "
-                    "rather than this file."]), encoding="utf-8", newline="\n")
-                try:
-                    load_config(config)
-                except ValueError as exc:
-                    raise ValueError(f"{name}: {exc}") from exc
-                rows.append({"name": name, "protocol": protocol, "seed": seed, "rotation": rotation,
-                             "config": config.relative_to(out).as_posix(),
-                             "seat_map": {LETTERS[p]: row_seats[p]["label"] for p in range(len(LETTERS))}})
+                for harness in settings["harnesses"]:
+                    # A non-default arm suffixed; "menu" keeps the row name an engine-29 study already has.
+                    arm_name = cell if harness == "menu" else f"sv-{harness}-{protocol}-s{seed}-r{rotation}"
+                    row_run = {**run, "seed": seed, "months": settings["months"], "shuffle_seats": False}
+                    if not no_study_options:
+                        row_run.update(office_assignment="by_letter", action_order=protocol)
+                    if arm_dimension:
+                        row_run["harness"] = harness
+                    tags = {"harness": harness} if arm_dimension else {}
+                    if not settings["knockouts"]:
+                        rows.append(write_row(arm_name, row_run, row_seats, tags, protocol, seed, rotation))
+                        continue
+                    for option in settings["knockouts"]:
+                        # One twin per knockout cell: same seed, models and arms, no knockout. The pair id and the
+                        # role let a report join them (tools/knockout_report.py takes the two run folders itself).
+                        pair = f"{arm_name}-ko{option['month']}"
+                        twin = f"{pair}-twin"
+                        rows.append(write_row(pair, {**row_run, "knockout": dict(option)}, row_seats,
+                                              {**tags, "pair_id": pair, "role": "knockout", "twin": twin},
+                                              protocol, seed, rotation))
+                        rows.append(write_row(twin, row_run, row_seats,
+                                              {**tags, "pair_id": pair, "role": "twin", "knockout_of": pair},
+                                              protocol, seed, rotation))
     (out / "plan.json").write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
                                    newline="\n")
     shutil.copyfile(study_path, out / "study.toml")
@@ -220,8 +285,9 @@ def load_plan(plan_path) -> list:
         raise ValueError(f"{plan_path}: a plan is a non-empty JSON list of rows")
     names = set()
     for row in rows:
-        if not isinstance(row, dict) or set(row) != set(ROW_KEYS):
-            raise ValueError(f"{plan_path}: each row has exactly the keys {list(ROW_KEYS)}")
+        if not isinstance(row, dict) or not set(ROW_KEYS) <= set(row) or (set(row) - set(ROW_KEYS)) - set(OPTIONAL_ROW_KEYS):
+            raise ValueError(f"{plan_path}: each row has the keys {list(ROW_KEYS)} and, for an arm row, any of "
+                             f"{list(OPTIONAL_ROW_KEYS)}")
         if row["name"] in names:
             raise ValueError(f"{plan_path}: row {row['name']} appears twice")
         names.add(row["name"])
@@ -252,6 +318,12 @@ def dry_run_config(cfg: dict) -> dict:
     if backend:
         run["foreign_cabinet_backend"] = {"label": f"dry-{backend.get('label') or 'neighbours'}",
                                           "provider": "scripted", "persona": "hawk"}
+    # Wave A: under the open arm the referee is a model call too, so a dry run swaps it for the deterministic
+    # stand-in. It is named by model, not persona, so the seat-conflict check can tell it from the scripted seats.
+    referee_backend = run.get("referee_backend")
+    if referee_backend or run.get("harness") == "open":
+        label = (referee_backend or {}).get("label") or "referee"
+        run["referee_backend"] = {"label": f"dry-{label}", "provider": "scripted", "model": "referee"}
     seats = [{"label": seat["label"], "provider": "scripted", "persona": DRY_PERSONAS[i % len(DRY_PERSONAS)]}
              for i, seat in enumerate(cfg["seats"])]
     return {"run": run, "seats": seats, "source": cfg.get("source", "")}

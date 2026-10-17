@@ -684,6 +684,12 @@ def validate(w, data, act: dict, *, cabinet: bool = False, actor: str | None = N
 
     if problems:
         return None, problems
+    # The bus's schedule() passes a society entry's reason to public_mood.react, so the canonical effects carry
+    # one; without it a valid ruling's effect could not be scheduled (found by the W4 smoke script).
+    if cabinet:
+        effect_reason = f"An open act by {str(actor or 'a neighbouring cabinet').title()}."
+    else:
+        effect_reason = f"An open act by the {_office_title(act.get('office'))}."
     clean = {"feasible": feasible,
              "reason": reason.strip(),
              "category": category,
@@ -691,7 +697,8 @@ def validate(w, data, act: dict, *, cabinet: bool = False, actor: str | None = N
              "success": success,
              "public": public,
              "effects": [{"channel": item["channel"], "target": item["target"], "value": item["value"],
-                          "months": item["months"]} for item in accepted] if feasible else [],
+                          "months": item["months"], "reason": effect_reason[:160]}
+                         for item in accepted] if feasible else [],
              "public_report": report.strip()}
     return clean, []
 
@@ -926,6 +933,14 @@ class Referee:
     def _result(self, ok: bool, ruling: dict | None, answers: list, **extra) -> RefereeResult:
         return RefereeResult(ok=ok, ruling=ruling, answers=answers, seat=self.label,
                              provider=self.cfg.get("provider"), model=self.cfg.get("model"), **extra)
+
+    # The draw and the outcome are functions of the world, not of the model: expose them on the instance too,
+    # so a caller holding the referee uses one object for the whole path (the module functions remain the API).
+    def draw_success(self, w, level: str, index: int = 0) -> tuple:
+        return draw_success(w, level, index)
+
+    def outcome(self, w, ruling: dict, index: int | None = None) -> dict:
+        return outcome(w, ruling, index)
 
 
 # The scripted referee's fixed effect lives here (tested here); backends/scripted.py imports it lazily.

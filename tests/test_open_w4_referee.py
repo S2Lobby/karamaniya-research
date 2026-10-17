@@ -200,6 +200,19 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(clean["effects"][0]["months"], 3)
         self.assertEqual(clean["cost"], {"one_off": 0.0, "monthly": 1.0, "months": 3})
 
+    def test_a_ruling_s_effects_are_ready_for_the_bus(self):
+        # the bus's schedule() passes a society entry's reason to public_mood.react; the smoke script found
+        # that a canonical effect without one raised KeyError.
+        w = world()
+        clean, problems = self.check(ruling())
+        self.assertEqual(problems, [])
+        stored = effects.schedule(w, clean["effects"],
+                                  {"kind": "open_act", "actor": "A", "motion": "M-1", "month": w.month})
+        self.assertEqual(len(stored), 1)
+        self.assertEqual(stored[0]["kind"], "approval")
+        self.assertTrue(stored[0]["bus"])
+        self.assertIn("reason", clean["effects"][0])
+
     def test_an_unknown_channel_is_refused_in_words(self):
         clean, problems = self.check(ruling(effects=[
             {"channel": "public_joy", "target": "*", "value": .01, "months": 1}]))
@@ -500,6 +513,13 @@ class DrawTests(unittest.TestCase):
         self.assertEqual(len(set(rolls)), 3)
         replay = world(3)
         self.assertEqual([referee.outcome(replay, data)["roll"] for _ in range(3)], rolls)
+
+    def test_the_referee_instance_exposes_the_draw_and_the_outcome(self):
+        w = world(3)
+        rule = referee.Referee({"provider": "scripted"})
+        self.assertEqual(rule.draw_success(w, "high", 0), referee.draw_success(w, "high", 0))
+        data = ruling()
+        self.assertEqual(rule.outcome(w, data, 0), referee.outcome(w, data, 0))
 
     def test_a_failed_act_says_so_in_its_report(self):
         w = world(3)

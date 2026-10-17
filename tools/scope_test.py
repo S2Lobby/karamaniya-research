@@ -98,9 +98,36 @@ def _shim_missing_duckdb() -> bool:
     return True
 
 
-def load_reference(explicit=None):
+class _ImportState:
+    """What the scope test added to the process, so a later test gets the interpreter it started with.
+
+    The review run may import several test modules in one process. The socioVerse checkout is only for this tool;
+    leaving `socioverse`, `studies` or the duckdb stand-in in `sys.modules` makes the wrap tests think the framework
+    is installed and then fail, instead of skipping. Anything that was already imported before the scope test is
+    kept (a real install), and anything the scope test brought in is removed afterwards."""
+
+    def __init__(self):
+        self.before = set(sys.modules)
+        self.root = None
+        self.added_path = False
+
+    def restore(self) -> None:
+        for name in list(sys.modules):
+            if name in self.before:
+                continue
+            if (name == "duckdb" or name == "socioverse" or name.startswith("socioverse.")
+                    or name == "studies" or name.startswith("studies.")):
+                sys.modules.pop(name, None)
+        if self.added_path and self.root is not None and str(self.root) in sys.path:
+            sys.path.remove(str(self.root))
+
+
+def load_reference(explicit=None, state=None):
     """Import SocioVerse2 and its opinion_diffusion study, returning (socioverse_root, module, bundles)."""
     root = socioverse_root(explicit)
+    if state is not None:
+        state.root = root
+        state.added_path = str(root) not in sys.path
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
     _shim_missing_duckdb()
@@ -359,9 +386,19 @@ def _socioverse_version() -> str:
 def run_scope_test(*, socioverse_root_path=None, out=DEFAULT_OUT, llm="stub", model=None, base_url=None,
                    steps=None, seed=None, prompt_lang=None) -> dict:
     """Run the reference study with the audited decision step. Returns the summary (also written to --out)."""
+    state = _ImportState()
+    try:
+        return _run_scope_test(socioverse_root_path=socioverse_root_path, out=out, llm=llm, model=model,
+                               base_url=base_url, steps=steps, seed=seed, prompt_lang=prompt_lang, state=state)
+    finally:
+        state.restore()
+
+
+def _run_scope_test(*, socioverse_root_path, out, llm, model, base_url, steps, seed, prompt_lang,
+                    state) -> dict:
     if llm not in ("stub", "openai"):
         raise ScopeTestError("--llm must be stub or openai")
-    root, od, bundles = load_reference(socioverse_root_path)
+    root, od, bundles = load_reference(socioverse_root_path, state)
     env_bundle, pop_bundle, sim_config = bundles
     from socioverse.engine import build_providers
     from socioverse.engine.loop import LongitudinalSimulator

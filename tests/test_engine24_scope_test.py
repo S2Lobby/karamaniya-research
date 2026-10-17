@@ -103,6 +103,14 @@ class IntegrationTests(unittest.TestCase):
         with self.assertRaises(scope_test.ScopeTestError):
             self.run_once("bad", steps=0)
 
+    def test_the_scoped_imports_and_the_duckdb_stand_in_are_removed_after_the_run(self):
+        # A later test module must see the interpreter it started with: if `socioverse` stayed imported, the wrap
+        # tests would run against a vendor path with a fake duckdb instead of skipping.
+        self.run_once("cleanup")
+        self.assertNotIn("socioverse", sys.modules)
+        self.assertNotIn("duckdb", sys.modules)
+        self.assertFalse(any(name.startswith("socioverse.") for name in sys.modules))
+
 
 if __name__ == "__main__":
     unittest.main()

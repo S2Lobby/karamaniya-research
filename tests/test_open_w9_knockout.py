@@ -273,8 +273,23 @@ class ScriptedRunCase(unittest.TestCase):
         with open(os.path.join(str(path), "checkpoint.json"), encoding="utf-8") as f:
             return json.load(f)["world"]
 
-    @staticmethod
-    def month_records(path):
+    # Wall-clock and thread-order fields are not decisions: under load the same two scripted runs record
+    # different latency_s and call_id values (W5's full suite, first diff 0.0 vs 0.01). The replay tool
+    # ignores the same fields. They are dropped before the twin comparison.
+    _VOLATILE = {"latency_s", "call_id", "log_mark"}
+
+    @classmethod
+    def _stable(cls, value):
+        if isinstance(value, dict):
+            return {key: cls._stable(item) for key, item in value.items() if key not in cls._VOLATILE}
+        if isinstance(value, list):
+            return [cls._stable(item) for item in value]
+        if isinstance(value, float):
+            return round(value, 6)
+        return value
+
+    @classmethod
+    def month_records(cls, path):
         out = {}
         with open(os.path.join(str(path), "log.jsonl"), encoding="utf-8") as f:
             for line in f:
@@ -282,7 +297,7 @@ class ScriptedRunCase(unittest.TestCase):
                     continue
                 record = json.loads(line)
                 if record.get("type") == "month":
-                    out[record["month"]] = record
+                    out[record["month"]] = cls._stable(record)
         return out
 
 

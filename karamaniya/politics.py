@@ -2797,6 +2797,8 @@ def _officers(w: World, rng) -> None:
         for mem in w.active_members():
             remove_member(w, mem.id, "officers_coup")
         w.count("coups_succeeded", 1)
+        # Engine 24 (T141): a coup is recorded as a successful coup is, so the democracy index's coup term sees it.
+        w.const.coup_month = w.month
         w.event("officers_coup", w.outcome["text"], importance=3)
         return
     if w.dip.war and m.army.loyalty < 0.25 and rng.random() < 0.3:

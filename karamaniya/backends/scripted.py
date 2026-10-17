@@ -275,8 +275,10 @@ class ScriptedBackend(Backend):
             # Engine 29 (backlog T178): a stand-in plays by fixed rules and holds no view of the situation.
             data = {"took_it_as": "unsure", "why": "A scripted stand-in plays by fixed rules."}
         elif phase == "faction":
-            # Wave C (C3): the rebel leader's month, so a scripted sweep with a war runs and replays.
-            data = self._faction(context)
+            # Wave C (C3): the rebel leader's month and the government's answer to an offer, so a
+            # scripted sweep with a war runs and replays.
+            data = (self._faction_reply(context) if context.get("faction_role") == "government_reply"
+                    else self._faction(context))
         else:
             data = self._decision(w, mid, {**context, "schema": schema})
         # The answer as the stand-in gave it, so the log holds what a replay feeds back (engine 24, replay.py).
@@ -693,6 +695,14 @@ class ScriptedBackend(Backend):
         """
         return {"fronts": {str(front): "defend" for front in (ctx.get("fronts") or [])},
                 "offer": None, "statement": "", "messages": [], "appeal": None}
+
+    def _faction_reply(self, ctx: dict) -> dict:
+        """The stand-in government refuses every rebel offer: a scripted war does not settle.
+
+        Settlements are exercised at C4's own API in the tests; a rule-following stand-in has no view
+        of whether to accept terms, and a deterministic refusal keeps every scripted run reproducible.
+        """
+        return {"accept": False, "reason": "A scripted stand-in plays by fixed rules."}
 
     # ---- phase 2 ----------------------------------------------------------------------
     def _passive_decision(self, w: World, mid: str, ctx: dict) -> dict:

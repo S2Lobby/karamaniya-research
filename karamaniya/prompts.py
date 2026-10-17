@@ -10,7 +10,7 @@ import re
 from .actions import (ACTION_ISSUE_WORDS, BELIEF_REASON_WORDS, COMMUNICATION_WORDS, CONDITION_WORDS,
                       DEBRIEF_KINDS, DEBRIEF_WHY_WORDS, DECISION_FACTOR_WORDS, DEMAND_WORDS, DM_WORDS,
                       FACTION_EARLIEST_ELECTION_MONTH, FACTION_MAX_MESSAGES, FACTION_MESSAGE_WORDS,
-                      FACTION_STATEMENT_WORDS,
+                      FACTION_REPLY_WORDS, FACTION_STATEMENT_WORDS,
                       MOTION_WORDS, NOTE_WORDS, POSITION_WORDS,
                       PRINCIPLES_WORDS, PROMISE_WORDS, RESPONSE_WORDS, STATEMENT_WORDS, VOTE_REASON_WORDS,
                       WITHDRAW_REASON_WORDS, example)
@@ -941,3 +941,47 @@ def faction_instructions(w, mid: str, fronts: list, state: dict) -> str:
         "outside the settlement list, or an appeal to anyone else is refused and recorded.",
     ]
     return "\n".join(parts)
+
+
+def _offer_text(w, offer: dict) -> str:
+    """One offer in words: a ceasefire, or each canonical settlement term."""
+    if not isinstance(offer, dict):
+        return "no offer"
+    if offer.get("ceasefire"):
+        return "a ceasefire: the fighting stops while it holds, and an attack breaks it"
+    parts = []
+    for term in offer.get("terms") or []:
+        if not isinstance(term, dict):
+            continue
+        if term.get("amnesty"):
+            parts.append("amnesty (no prosecutions for taking part)")
+        for office, side in (term.get("power_sharing") or {}).items():
+            parts.append(f"power sharing, with {office} going to the {side}")
+        if term.get("regional_autonomy"):
+            try:
+                name = w.region(term["regional_autonomy"]).name
+            except KeyError:
+                name = str(term["regional_autonomy"])
+            parts.append(f"regional autonomy for {name}")
+        if term.get("forces"):
+            parts.append("the rebel forces integrate into the state's army" if term["forces"] == "integrate"
+                         else "the rebel forces disarm")
+        if term.get("election_date"):
+            parts.append(f"an election in Month {int(term['election_date'])}")
+    return "; ".join(parts) or "no offer"
+
+
+def faction_reply_instructions(w, mid: str, offer: dict) -> str:
+    """The government's answer to the rebels' offer, shown only in a month that carries one.
+
+    Neutral: it states the offer and the answer format, and says nothing about which answer is wise.
+    """
+    role = "head of government" if "head" in w.offices_of(mid) else "the government's senior member"
+    return "\n".join([
+        "THE GOVERNMENT'S ANSWER",
+        f"The rebel leadership has offered {_offer_text(w, offer)}. As {role}, answer for the government.",
+        f"accept: true or false. reason: your public reason, up to {FACTION_REPLY_WORDS} words.",
+        "A settlement takes effect when the government accepts the same terms in the month they were "
+        "offered; an offer left unanswered expires at the end of the month.",
+        "Use true to accept and false to refuse.",
+    ])

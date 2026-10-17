@@ -799,11 +799,12 @@ def _war_state(w: World) -> dict | None:
     return state
 
 
-def _c4_call(name: str, *args):
+def _c4_call(name: str, *args, **kwargs):
     """Call a C4 civil-war API when this base carries it (running, ceasefire, offer,
-    orders_break_ceasefire); None when it does not, so the faction month still records the answer."""
+    orders_break_ceasefire, respond, refuse_ceasefire); None when it does not, so the faction month
+    still records the answer."""
     function = getattr(civil_war, name, None)
-    return function(*args) if callable(function) else None
+    return function(*args, **kwargs) if callable(function) else None
 
 
 def _faction_rebels(state: dict) -> set:
@@ -843,6 +844,21 @@ def _faction_leader(w: World, state: dict) -> str | None:
     if leader in members:
         return leader
     return min(members, key=lambda mid: _member_rank(w, mid))
+
+
+def _faction_responder(w: World, state: dict) -> str | None:
+    """Who answers an offer for the government: the head if it is an active non-rebel, else the highest office.
+
+    A rebel head (a plotter who kept the office) cannot answer for the government it has broken with,
+    so the fallback is the highest-ranked active member who is not in rebellion.
+    """
+    rebels = _faction_rebels(state)
+    active = {m.id for m in w.active_members()}
+    head = w.const.offices.get("head")
+    if head in active and head not in rebels:
+        return head
+    government = [mid for mid in (m.id for m in w.active_members()) if mid not in rebels]
+    return min(government, key=lambda mid: _member_rank(w, mid)) if government else None
 
 
 class RunPaused(Exception):
@@ -1390,12 +1406,44 @@ class Council:
                             if out["offer"] == {"ceasefire": True} else None)
         offer_result = (_c4_call("offer", w, "rebels", out["offer"]["terms"])
                         if isinstance(out["offer"], dict) and "terms" in out["offer"] else None)
+        # An offer in the month is put to the government once, in a second call of the same phase and
+        # a different member; C4 records the acceptance or refusal. C4's offers expire at its month
+        # check, so an offer with no answer here could never be accepted at all.
+        offered = out["offer"] is not None
+        if isinstance(offer_result, dict) and offer_result.get("ok") is False:
+            offered = False
+        if isinstance(ceasefire_result, dict) and ceasefire_result.get("action") in ("accepted", "already_active"):
+            offered = False
+        reply_record, responder = None, None
+        settlement_response = ceasefire_response = None
+        if offered:
+            responder = _faction_responder(w, state)
+            if responder is None:
+                problems = problems + ["no active government member can answer the offer"]
+            elif responder not in self.seats:
+                problems = problems + [f"the government member {responder} has no seat in this council"]
+                responder = None
+            else:
+                reply_record = self._faction_reply(responder, out["offer"], brief, inbox, intercepted, can_read)
+                problems = problems + list(reply_record["problems"])
+                if reply_record["accept"] is not None:
+                    if "terms" in out["offer"]:
+                        settlement_response = _c4_call(
+                            "respond", w, "government",
+                            offer_id=(offer_result or {}).get("offer_id"),
+                            accept=reply_record["accept"])
+                    elif reply_record["accept"]:
+                        ceasefire_response = _c4_call("ceasefire", w, "government", accept=True)
+                    else:
+                        ceasefire_response = _c4_call("refuse_ceasefire", w, "government",
+                                                      reply_record["reason"])
         breach = _c4_call("orders_break_ceasefire", w)
         for dm in out["messages"]:
             sent = {**dm, "when": "last month, rebel leadership", "month": w.month, "phase": "faction"}
             self.pending_dms.append(sent)
             self.store.log({"type": "dm", **sent})
-        record = {"month": w.month, "leader": leader, "spoke": [leader],
+        record = {"month": w.month, "leader": leader,
+                  "spoke": [leader] + ([responder] if reply_record is not None else []),
                   "answer": {key: out[key] for key in ("fronts", "offer", "statement", "messages", "appeal")},
                   "refused": out["refused"], "problems": list(problems),
                   "orders": dict(out["fronts"]),
@@ -1406,10 +1454,37 @@ class Council:
         if offer_result is not None:
             record["offer"] = offer_result
             record["problems"] += list((offer_result or {}).get("problems") or [])
+        if reply_record is not None:
+            record["government_reply"] = reply_record
+        if settlement_response is not None:
+            record["settlement_response"] = settlement_response
+            record["problems"] += list((settlement_response or {}).get("problems") or [])
+        if ceasefire_response is not None:
+            record["ceasefire_response"] = ceasefire_response
+            record["problems"] += list((ceasefire_response or {}).get("problems") or [])
         if breach is not None:
             record["ceasefire_breach"] = breach
         state["last_faction"] = record
         return record
+
+    def _faction_reply(self, mid: str, offer: dict, brief: str, inbox: dict, intercepted: dict,
+                       can_read=None) -> dict:
+        """The government's answer to the rebels' offer: one call, phase 'faction', the responder's id."""
+        w = self.w
+        schema = actions.faction_reply_schema()
+        prompt, meta = decision_context.build(
+            w, mid, "faction", public_brief=brief, motions=[],
+            messages=prompts.messages_v2(w, inbox.get(mid, []), intercepted.get(mid)),
+            instructions=prompts.faction_reply_instructions(w, mid, offer),
+            schema_text=self._schema_text(mid, schema), budget=self._budget(mid),
+            extra=(can_read(mid) if can_read else []), layout=self.tokens["layout"])
+        res = self._call(mid, "faction", prompt, schema,
+                         {"motions": [], "statements": [], "faction_role": "government_reply",
+                          "offer": offer, "prompt_meta": meta})
+        out, problems = actions.read_answer(actions.normalize_faction_reply, w, mid, res.data)
+        cuts = actions.text_cuts(out, res.data)
+        return {"member": mid, **out, "problems": list(problems),
+                "call": self._call_summary(mid, "faction", res, problems, cuts)}
 
     def _run_month_v1(self) -> dict:
         w = self.w

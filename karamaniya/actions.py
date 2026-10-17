@@ -53,6 +53,8 @@ FACTION_TERMS = ("amnesty", "power_sharing", "regional_autonomy", "forces", "ele
 FACTION_FORCE_MODES = ("integrate", "disarm")
 FACTION_APPEALS = ("union", "league")
 FACTION_FIELDS = ("fronts", "offer", "statement", "messages", "appeal")
+# The government's answer to an offer, asked only in a month that carries one (a tiny schema on purpose).
+FACTION_REPLY_WORDS = 20
 # The user's design rule: no settlement schedules an election before Month 36 (1-based, as prompts say it).
 FACTION_EARLIEST_ELECTION_MONTH = 36
 
@@ -696,6 +698,7 @@ POSITION_FIELDS = ("main_problem", "preferred_policy", "unacceptable_outcome", "
 # version-2 answer; a cut is recorded with whether its limit was stated (text_cuts).
 STATED_LIMITS = {"statement": STATEMENT_WORDS, "response": RESPONSE_WORDS, "private_messages.text": DM_WORDS,
                  "messages.text": FACTION_MESSAGE_WORDS,
+                 "reason": FACTION_REPLY_WORDS,
                  "notes": NOTE_WORDS, "principles": PRINCIPLES_WORDS, "vote_reasons": VOTE_REASON_WORDS,
                  **{f"private_position.{k}": POSITION_WORDS for k in POSITION_FIELDS},
                  "demands.demand": DEMAND_WORDS, "belief_updates.reason": BELIEF_REASON_WORDS,
@@ -889,8 +892,10 @@ def faction_schema(w: World, fronts: list, others: list) -> dict:
     # carry more than one, and the offer may carry several items.
     term = _opt_obj({
         "amnesty": {"type": "boolean"},
-        "power_sharing": _obj({office: {"type": "string", "enum": ["government", "rebels"]}
-                               for office in OFFICES}),
+        # Any subset of offices: C4's canonical terms accept a partial division, and a strict
+        # schema that demanded all five would force an answer the leader did not mean.
+        "power_sharing": _opt_obj({office: {"type": "string", "enum": ["government", "rebels"]}
+                                   for office in OFFICES}),
         "regional_autonomy": {"type": "string",
                               "enum": [r.id for r in w.regions if r.nation == "karamaniya"]},
         "forces": {"type": "string", "enum": list(FACTION_FORCE_MODES)},
@@ -900,12 +905,18 @@ def faction_schema(w: World, fronts: list, others: list) -> dict:
              "properties": {"ceasefire": {"type": "boolean"},
                             "terms": _arr(term, len(FACTION_TERMS))},
              "additionalProperties": False}
-    return _obj({"fronts": _obj({key: stance for key in fronts}),
+    # Any subset of fronts: a front the leader does not name is fought as the month finds it.
+    return _obj({"fronts": _opt_obj({key: stance for key in fronts}),
                  "offer": offer,
                  "statement": {"type": "string"},
                  "messages": _arr(_obj({"to": {"type": "string", "enum": others},
                                         "text": {"type": "string"}}), FACTION_MAX_MESSAGES),
                  "appeal": {"type": ["string", "null"], "enum": [*FACTION_APPEALS, None]}})
+
+
+def faction_reply_schema() -> dict:
+    """The government's answer to the rebels' offer: accept or refuse, with a short public reason."""
+    return _obj({"accept": {"type": "boolean"}, "reason": {"type": "string"}})
 
 
 def _faction_term(w: World, key: str, value) -> tuple:
@@ -1563,4 +1574,22 @@ def normalize_faction(w: World, mid: str, data, fronts: list, others: list) -> t
     for key in sorted(set(data) - set(FACTION_FIELDS)):
         refuse("FACTION_UNKNOWN_FIELD",
                f"unknown field '{key}'; the answer has fronts, offer, statement, messages and appeal")
+    return out, problems
+
+
+def normalize_faction_reply(w: World, mid: str, data) -> tuple:
+    """The government's answer to an offer: accept or refuse, and a reason in at most 20 words.
+
+    An unreadable answer names no position (``accept`` stays None), so the offer is not answered by it.
+    """
+    out = {"accept": None, "reason": ""}
+    if not isinstance(data, dict):
+        return out, ["no answer"]
+    problems = []
+    accept = data.get("accept")
+    if not isinstance(accept, bool):
+        problems.append("accept must be true or false")
+    else:
+        out["accept"] = accept
+    out["reason"] = words(data.get("reason", ""), FACTION_REPLY_WORDS)
     return out, problems

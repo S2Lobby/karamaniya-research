@@ -63,8 +63,10 @@ class TalkCostsNoOutput(unittest.TestCase):
         w = world()
         before = {a: w.rivals[a].gdp_real for a in ("veleria", "dorsania")}
         stress = w.foreign["actors"]["veleria"]["domestic"]["fiscal_stress"]
-        decisions = {"veleria": {"actions": [{"type": t, "magnitude": 1.0} for t in
-                                             ("public_statement", "offer_talks", "intelligence_collection", "propaganda")]}}
+        decisions = {"veleria": {"actions": [
+            {"type": t, "magnitude": 1.0,
+             **({"target": "country", "message": "government_failing"} if t == "propaganda" else {})}
+            for t in ("public_statement", "offer_talks", "intelligence_collection", "propaganda")]}}
         foreign._apply_cabinet_decisions(w, foreign.positions(w), decisions)
         self.assertEqual({a: w.rivals[a].gdp_real for a in before}, before)
         spent = w.foreign["actors"]["veleria"]["domestic"]["fiscal_stress"] - stress

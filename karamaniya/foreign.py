@@ -949,6 +949,114 @@ def _mark_applied(w, aid: str, actor_id: str, kind: str, effects: dict) -> None:
             ledger.pop(key, None)
 
 
+# ---- Wave 3: the Union's propaganda and Karamaniya's counter ------------------------------------
+# Shared state contract (notes/wave3-spec.md): worker A owns w.media["credibility"], the state campaign's line and
+# boost; this module reads credibility and writes only foreign campaign records. An old checkpoint (or a build before
+# A's branch merges) has no credibility field, so the documented starting value is read rather than created here.
+STATE_MEDIA_DEFAULT_CREDIBILITY = .6
+# What a campaign does at magnitude 1, credibility 0 and hardship factor 1: approval falls by this much and grievance
+# rises by this much. Grievance is the channel: society.update derives unrest from it (p.unrest = grievance * (1 - .75 *
+# fear)), so the campaign does not write unrest directly and cannot be overwritten by the same month's society pass.
+PROPAGANDA_APPROVAL = .06
+PROPAGANDA_GRIEVANCE = .05
+# Real hardship makes a broadcast land harder ("true grievances ... make it land harder", notes/wave3-spec.md). The
+# hardship index is a weighted mix of lived conditions, 0..1; the factor is .4 + 1.2 x hardship, so a calm country
+# still hears a little (the floor) and a hard region lands up to 1.6x. Starting conditions sit near .04 (factor .45);
+# a crisis region near .4 (factor .88).
+PROPAGANDA_HARDSHIP_WEIGHTS = {"grievance": .35, "hunger": .25, "income": .2, "unemployment": .1, "repression": .1}
+PROPAGANDA_HARDSHIP_FLOOR = .4
+PROPAGANDA_HARDSHIP_WEIGHT = 1.2
+PROPAGANDA_HARDSHIP_CEIL = 1.6
+# What each message does: (approval weight, grievance weight). government_failing is the plain claim; blame_government
+# puts the hardship on the government and moves approval more than grievance; stir_minority deepens the division more
+# than the general dislike and is aimed at the minority identities (PROPAGANDA_IDENTITY_WEIGHTS).
+PROPAGANDA_MESSAGES = {"government_failing": (1.0, 1.0),
+                       "stir_minority": (.8, 1.3),
+                       "blame_government": (1.2, .9)}
+PROPAGANDA_MESSAGE_KINDS = tuple(PROPAGANDA_MESSAGES)
+PROPAGANDA_IDENTITY_WEIGHTS = {"government_failing": {"karamanian": 1.0, "imperial": 1.0, "vell": 1.0},
+                               "blame_government": {"karamanian": 1.0, "imperial": 1.0, "vell": 1.0},
+                               "stir_minority": {"karamanian": .8, "imperial": 1.5, "vell": 1.4}}
+PROPAGANDA_TARGETS = ("country",) + tuple(rid for rid, *_ in KARAMANIYA_REGIONS)
+# The schema offers the display names too, because the catalog entry and the prompt name the regions that way; the
+# reader resolves either form to the id, as it does for a covert-support region.
+PROPAGANDA_TARGET_CHOICES = PROPAGANDA_TARGETS + tuple(name for _, name, *_ in KARAMANIYA_REGIONS)
+# The counter. Jamming leaves a quarter of the effect: it stops the broadcasts, not word of mouth. It costs .02 of state
+# media credibility each month it stands ("what are they hiding?"), a standing suspicion rather than a one-off shock,
+# and world.democracy_index subtracts BROADCAST_JAM_PENALTY while it is in force. `open` is the default, so a run that
+# never touches the setting behaves as it did before wave 3.
+BROADCAST_JAM_EFFECT = .25
+BROADCAST_JAM_CREDIBILITY = .02
+
+
+def state_media_credibility(w) -> float:
+    """The public's trust in state media, 0..1, as worker A keeps it in w.media. Read-only: a missing or malformed
+    field reads the documented starting value and is not created here."""
+    value = (w.media or {}).get("credibility", STATE_MEDIA_DEFAULT_CREDIBILITY)
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value)):
+        return clamp(float(value))
+    return STATE_MEDIA_DEFAULT_CREDIBILITY
+
+
+def _propaganda_hardship(p) -> float:
+    """How hard life is for one population group, 0..1, from conditions the group actually lives in."""
+    wts = PROPAGANDA_HARDSHIP_WEIGHTS
+    return clamp(wts["grievance"] * p.grievance + wts["hunger"] * p.hunger
+                 + wts["income"] * max(0.0, 1.0 - p.income)
+                 + wts["unemployment"] * p.unemployment + wts["repression"] * p.repression)
+
+
+def _apply_propaganda(w, actor_id: str, action: dict) -> dict:
+    """Apply one foreign broadcast campaign and record it in w.media["campaigns"]. Returns the applied average
+    deltas for the foreign ledger. Reads state media credibility; writes no state media field."""
+    target = action.get("target", "country")
+    message = action["message"]
+    magnitude = float(action.get("magnitude", .5))
+    jammed = getattr(w.policy, "foreign_broadcasts", "open") == "jammed"
+    credibility = state_media_credibility(w)
+    approval_w, grievance_w = PROPAGANDA_MESSAGES[message]
+    identity_w = PROPAGANDA_IDENTITY_WEIGHTS[message]
+    scale = (1.0 - credibility) * (BROADCAST_JAM_EFFECT if jammed else 1.0)
+    pops = [p for p in w.k_pops() if target == "country" or p.region == target]
+    total = sum(p.size for p in pops) or 1.0
+    d_approval = d_grievance = hardship = 0.0
+    for p in pops:
+        factor = clamp(PROPAGANDA_HARDSHIP_FLOOR + PROPAGANDA_HARDSHIP_WEIGHT * _propaganda_hardship(p),
+                       0.0, PROPAGANDA_HARDSHIP_CEIL)
+        weight = scale * factor * identity_w.get(p.ident, 1.0) * magnitude
+        before_approval, before_grievance = p.approval, p.grievance
+        p.approval = clamp(p.approval - PROPAGANDA_APPROVAL * weight * approval_w, .01, .99)
+        p.grievance = min(1.2, p.grievance + PROPAGANDA_GRIEVANCE * weight * grievance_w)
+        d_approval += (p.approval - before_approval) * p.size
+        d_grievance += (p.grievance - before_grievance) * p.size
+        hardship += _propaganda_hardship(p) * p.size
+    # The long-standing Union propaganda level other mechanics read (society.propaganda_reach, referendums, intelligence
+    # deception, army loyalty). Wave 3 keeps it and scales the increment by the counter; the targeted effect above is the
+    # new channel the spec describes.
+    w.dip.propaganda = clamp(w.dip.propaganda + .07 * magnitude * (BROADCAST_JAM_EFFECT if jammed else 1.0))
+    effects = {"approval": round(d_approval / total, 6), "grievance": round(d_grievance / total, 6)}
+    record = {"month": w.month, "source": actor_id, "kinds": ["propaganda"], "claims": [],
+              "intensity": magnitude, "target": target, "message": message,
+              "executed_by": "cabinet", "defied": False, "exposed": False,
+              "effects": {**effects, "credibility": round(credibility, 4),
+                          "hardship": round(hardship / total, 4), "jammed": jammed}}
+    w.media.setdefault("campaigns", []).append(record)
+    return effects
+
+
+def broadcast_month(w) -> None:
+    """The counter's monthly cost: while foreign broadcasts are jammed, state media credibility falls a little, once a
+    month. Called from director.act after the cabinets act; a setting changed by this month's council applies this month.
+    This is the one write to worker A's credibility field: the spec assigns the jamming penalty to the counter, and
+    without it the setting would have no cost. The rest of A's state (line, boost, state records) is untouched."""
+    if getattr(w.policy, "foreign_broadcasts", "open") != "jammed":
+        return
+    if int(w.counters.get("broadcast_jam_month", -1)) == w.month:
+        return
+    w.counters["broadcast_jam_month"] = float(w.month)
+    w.media["credibility"] = round(clamp(state_media_credibility(w) - BROADCAST_JAM_CREDIBILITY), 4)
+
+
 def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
     """Validate and apply bounded cabinet actions. Invalid proposals are recorded and ignored.
 
@@ -1015,6 +1123,7 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
                       "trust": actor["reputation"]["diplomatic_trust"],
                       "coal_embargo": w.dip.coal_embargo}
             force_effects = {}
+            campaign_effects = {}
             if kind in foreign_force.KINDS:
                 force_effects = foreign_force.apply(w, actor_id, action)
             elif kind == "partial_embargo":
@@ -1047,7 +1156,7 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
                 positions[actor_id]["independent_trade"] = True
                 positions[actor_id]["union"] = "oppose"
             elif kind == "propaganda":
-                w.dip.propaganda = clamp(w.dip.propaganda + .07*magnitude)
+                campaign_effects = _apply_propaganda(w, actor_id, action)
                 if w.const.press == "free":
                     actor["reputation"]["diplomatic_trust"] = clamp(actor["reputation"]["diplomatic_trust"]-.015*magnitude)
             elif kind == "intelligence_collection":
@@ -1091,6 +1200,7 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
                 if abs(now - before[name]) > 1e-9:
                     effects[name] = round(now - before[name], 6)
             effects.update(force_effects)
+            effects.update(campaign_effects)
             _mark_applied(w, aid, actor_id, kind, effects or {"note": "no canonical state moved"})
         for update in decision.get("belief_updates", [])[:4]:
             key = update.get("belief") if isinstance(update, dict) else None
@@ -1416,6 +1526,9 @@ def cabinet_schema(actor_id: str | None = None) -> dict:
                              "front": {"type": "string", "enum": list(foreign_force.FRONTS)},
                              "aim": {"type": "string", "enum": list(foreign_force.AIMS)},
                              "region": {"type": "string", "enum": list(CABINET_REGIONS)},
+                             # Wave 3: the fields a propaganda act states (PROPAGANDA_TARGETS, PROPAGANDA_MESSAGES).
+                             "target": {"type": "string", "enum": list(PROPAGANDA_TARGET_CHOICES)},
+                             "message": {"type": "string", "enum": list(PROPAGANDA_MESSAGE_KINDS)},
                              "terms": {"type": "string", "enum": list(foreign_force.ULTIMATUM_TERMS)},
                              "deadline_months": {"type": "integer", "minimum": foreign_force.DEADLINE_MONTHS[0],
                                                  "maximum": foreign_force.DEADLINE_MONTHS[1]}},
@@ -1517,6 +1630,8 @@ def cabinet_system_prompt(actor_id: str, temperament: str = "") -> str:
             "money and support at home. "
             f"You may take at most {ACTS_PER_MONTH} acts a month: only the first {ACTS_PER_MONTH} in your list are "
             "read, and you are told the next month which acts were not read. "
+            "A propaganda act states a target (country or one of the regions of Karamaniya), a message "
+            "(government_failing, stir_minority or blame_government) and a magnitude from 0 to 1. "
             f"Your strategy is kept to {STRATEGY_CHARS} characters: a longer one is cut to that length. "
             "A public statement is kept to 500 characters and your strategic assessment to 1200. "
             "Each decision factor is kept to 160 characters, and at most six are kept. "
@@ -1645,6 +1760,41 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
             action["deadline_months"] = int(months)
         else:
             refusals.append("deadline_months must be a whole number")
+    if kind == "propaganda":
+        # Wave 3: a target (the whole country or one region) and a message are the act's substance. A missing target is
+        # read as the whole country, the act's broadest form, with a note; a missing or unknown message is refused,
+        # because the engine cannot choose what the broadcast says.
+        target = raw.get("target")
+        if target in (None, ""):
+            action["target"] = "country"
+            changes.append("target was taken as the whole country because none was given")
+        elif isinstance(target, str):
+            wanted = _spaced_lower(target)
+            rid = None if wanted in ("country", "whole country", "karamaniya", "nationwide", "all") \
+                else REGION_BY_NAME.get(wanted)
+            if wanted in ("country", "whole country", "karamaniya", "nationwide", "all"):
+                action["target"] = "country"
+            elif rid is not None:
+                action["target"] = rid
+                if rid != target:
+                    changes.append(f"target '{target}' was read as {rid}")
+            else:
+                refusals.append("target must be country or one of "
+                                + ", ".join(name for _, name, *_ in KARAMANIYA_REGIONS))
+        else:
+            refusals.append("target must be country or one of "
+                            + ", ".join(name for _, name, *_ in KARAMANIYA_REGIONS))
+        message = raw.get("message")
+        if isinstance(message, str):
+            wanted = _spaced_lower(message).replace("-", "_").replace(" ", "_")
+            if wanted in PROPAGANDA_MESSAGES:
+                action["message"] = wanted
+                if wanted != message:
+                    changes.append(f"message '{message}' was read as {wanted}")
+            else:
+                refusals.append(f"message must be one of {', '.join(PROPAGANDA_MESSAGE_KINDS)}")
+        else:
+            refusals.append(f"message must be one of {', '.join(PROPAGANDA_MESSAGE_KINDS)}")
     if refusals:
         return None, refusals
     return action, changes
@@ -1654,7 +1804,7 @@ def _read_act(raw, allowed: set) -> tuple[dict | None, list[str]]:
 #: reading is kept in the month's record and not sent to the cabinet as a refusal (engine 23: engine 22 listed every
 #: "Kessel Valley" under your_acts_refused_last_month, which told a cabinet its covert support had failed when it had not).
 #: A type written under "action" is read the same way (engine 24).
-_READING = re.compile(r"^(?:magnitude|region) '.*' was read as \S+$|^type '\S+' was read from the key 'action'$"
+_READING = re.compile(r"^(?:magnitude|region|target|message) '.*' was read as \S+$|^type '\S+' was read from the key 'action'$"
                       r"|^strategy was read from its object$")
 #: An answer's own key that holds acts it chose not to take this month ("actions_held"), or plans for later. Its acts are
 #: not this month's, so no note is sent for them.
@@ -1803,11 +1953,18 @@ def action_catalog(actor_id: str) -> list:
     common = [{"type": "offer_talks", "cost": "staff time; may signal weakness", "risk": "domestic criticism"},
               {"type": "public_statement", "cost": "credibility if inaccurate", "risk": "counter-messaging"},
               {"type": "trade_concession", "cost": "producer revenue", "risk": "Union disagreement"},
-              {"type": "intelligence_collection", "cost": "budget", "risk": "exposure and diplomatic damage"}]
+              {"type": "intelligence_collection", "cost": "budget", "risk": "exposure and diplomatic damage"},
+              # Wave 3: available to both cabinets. The entry describes what the act states and what its reach depends
+              # on; it does not tell the cabinet whether to use it.
+              {"type": "propaganda",
+               "needs": ("target (country or one of " + ", ".join(name for _, name, *_ in KARAMANIYA_REGIONS)
+                         + "), message (government_failing, stir_minority, blame_government), magnitude (0 to 1)"),
+               "cost": "budget",
+               "world_reaction": ("the public's trust in Karamaniya's state media and real hardship in the target "
+                                  "decide how far it lands; jamming foreign broadcasts cuts its effect")}]
     if actor_id == "veleria":
         common += [{"type": "partial_embargo", "cost": "export losses", "risk": "smuggling and Karamaniyan backlash"},
-                   {"type": "military_exercise", "cost": "budget and readiness fatigue", "risk": "counter-mobilization"},
-                   {"type": "propaganda", "cost": "credibility", "risk": "counter-propaganda and backlash"}]
+                   {"type": "military_exercise", "cost": "budget and readiness fatigue", "risk": "counter-mobilization"}]
     elif actor_id == "dorsania":
         common += [{"type": "grain_embargo", "cost": "farmer and exporter losses", "risk": "market substitution"},
                    {"type": "independent_grain_trade", "cost": "Union trust", "risk": "Velerian retaliation"},
@@ -1826,6 +1983,13 @@ def validate_action(actor_id: str, action: dict, world_state: dict, w=None) -> s
     magnitude = action.get("magnitude", 0)
     if not isinstance(magnitude, (int, float)) or not math.isfinite(magnitude) or magnitude < 0 or magnitude > 1:
         return "magnitude must be between 0 and 1"
+    if action.get("type") == "propaganda":
+        # The reader has already resolved target and message; this is the contract check for any action built elsewhere.
+        if action.get("target", "country") not in PROPAGANDA_TARGETS:
+            return ("propaganda target must be country or one of "
+                    + ", ".join(PROPAGANDA_TARGETS[1:]))
+        if action.get("message") not in PROPAGANDA_MESSAGE_KINDS:
+            return f"propaganda message must be one of {', '.join(PROPAGANDA_MESSAGE_KINDS)}"
     if action.get("type") == "military_exercise":
         available = world_state.get("mobilized_reserve", 0)
         troops = action.get("troops", 0)

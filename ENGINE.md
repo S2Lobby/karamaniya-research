@@ -299,6 +299,15 @@ simulated.
   trade it holds back; mobilising and moving troops cost what they take from the economy. Engine 15 charged
   every act against real output, and with the crown shared, two talkative cabinets raised prices 42% in nine
   months in all three countries.
+- **The Union's propaganda and the counter (engine 27):** both cabinets can run a `propaganda` act with a
+  target (the whole country or one region), a message (`government_failing`, `stir_minority` or
+  `blame_government`) and a magnitude from 0 to 1. Approval falls and grievance rises there, scaled by
+  (1 - trust in the state media) and by real hardship, so a distrusted press and true grievances make it land
+  harder; unrest follows grievance as it does everywhere else. Each campaign is recorded in
+  `w.media["campaigns"]` with its `source` set to the actor. The council can set `foreign_broadcasts` (open by
+  default, or jammed): jamming leaves a quarter of a campaign's effect, lowers the democracy index while it
+  stands and costs state media credibility each month, as people ask what the government is hiding. The
+  setting and the act's limits are stated to the delegates and the cabinets; neither is recommended to them.
 - **Hostility (engine 15):** both governments are Karamaniya's adversaries. Each cabinet is told what its
   government wants (Veleria: Karamaniya back under the Union on Veleria's terms, weak and dependent on its
   coal until then, or at least Kessel Valley; Dorsania: Karamaniya made to pay, its grain turned into

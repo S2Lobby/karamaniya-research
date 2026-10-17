@@ -35,7 +35,8 @@ class ActionIdentity(unittest.TestCase):
 class ApplyingOnce(unittest.TestCase):
     def _decide(self):
         return {"veleria": {"strategy": "press the advantage",
-                            "actions": [{"type": "propaganda", "magnitude": 0.8},
+                            "actions": [{"type": "propaganda", "target": "country",
+                                         "message": "government_failing", "magnitude": 0.8},
                                         {"type": "military_exercise", "troops": 1000, "magnitude": 0.5}],
                             "decision_factors": ["test"]}}
 

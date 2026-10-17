@@ -427,7 +427,8 @@ def settings_block(w: World) -> str:
         + (f", regional_fund {p.regional_fund}, ownership {p.ownership}, import_cap {cap}, planning {p.planning}"
            if v2 else ""),
         f"Interior: protest_response {p.protest_response}, surveillance {p.surveillance}, arrests {p.arrests}, "
-        f"emigration {p.emigration}, election_conduct {p.election_conduct}, patronage {b(p.patronage['interior'])}"
+        f"emigration {p.emigration}, election_conduct {p.election_conduct}, "
+        f"foreign_broadcasts {p.foreign_broadcasts}, patronage {b(p.patronage['interior'])}"
         + (f", amnesty {p.amnesty}" if v2 else ""),
         f"Army: recruitment {p.recruitment}"
         + (f" ({recruitment_setting(w)})" if v2 else "")

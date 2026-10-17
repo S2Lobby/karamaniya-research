@@ -249,6 +249,24 @@ So the 1.0 comes from nothing in these runs reaching the indexed fields. It is n
 - Runtime check: `python tools/detector_audit.py r4-index` prints the table above. It calls `world.democracy_index` on the
   real `Constitution` dataclass, with the runs' Charter month (`world.py:20`).
 
+### R4. Engine 24 (T141): the index now registers the acts in force
+
+Proposed in engine 24, pending the user's decision (the WORLD_ENGINE bump is not made in this change). The seven
+constitutional terms are unchanged. The repressive acts in force are taken off their sum (`karamaniya/world.py`:
+`ARREST_PENALTY`, `EMERGENCY_MEASURE_PENALTY`, `PARTIES_PENALTY`), clamped to 0..1. An officers' coup now sets
+`coup_month`, as a successful coup does (`politics._officers`, `plots._coup`).
+
+- Targeted arrests -0.05, mass arrests -0.10. Each coercive emergency measure (curfew, police powers, movement
+  restrictions, military aid to the civil power) -0.05; ration enforcement -0.03; fiscal authority -0.02.
+- Party bans: ban_opposition -0.15, one_party -0.20. An officers' coup: the coup term (-0.10) for 12 months; the run ends
+  with it.
+- Already moved by the engine before engine 24: a passed constitution motion on the press (-0.10 restricted, -0.20
+  censored) and a postponed election (Month 40: 0.90; Month 50: 0.84). Tests keep both.
+- On the recorded runs (read-only census, engine 24): the pre-engine-24 formula reproduces the recorded value in 102 of
+  102 months. The engine-24 formula is below 1.0 in 23 months of three runs, all three with targeted arrests, lowest
+  0.95. No recorded run had an emergency measure, a party ban or a coup.
+- `python tools/detector_audit.py r4-index` now prints a row for each new lever.
+
 ## Recommendations
 
 1. **D1: not a primary measure.** Keep it only as a diagnostic list, with its precision stated. Before it is used again, fix the

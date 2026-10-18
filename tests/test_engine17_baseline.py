@@ -29,8 +29,11 @@ def scripted(**run):
 
 
 class CouncilsOfOnePersona(unittest.TestCase):
-    def test_there_are_four_same_seed_councils(self):
-        self.assertEqual(baseline.MODES, ("scripted", "passive", "hawk", "dove"))
+    def test_the_four_rule_councils_are_kept_and_rr3_added_two_replayed_modes(self):
+        # Regime realism RR3 (plan 4.5): the four rule-played modes are unchanged; two replayed-neighbour modes
+        # run the scripted and passive councils against the run's recorded cabinets.
+        self.assertEqual(baseline.RULE_MODES, ("scripted", "passive", "hawk", "dove"))
+        self.assertEqual(baseline.MODES, baseline.RULE_MODES + ("scripted_replayed", "passive_replayed"))
 
     def test_seats_of_one_persona_are_each_given_an_office_and_between_them_every_office(self):
         run = scripted()["run"]

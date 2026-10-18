@@ -50,8 +50,8 @@ def parse_seeds(text: str) -> list:
 
 def parse_modes(text: str) -> list:
     modes = [m.strip() for m in text.split(",") if m.strip()]
-    if not modes or any(m not in baseline.MODES for m in modes):
-        raise argparse.ArgumentTypeError(f"modes are {', '.join(baseline.MODES)}; got {text!r}")
+    if not modes or any(m not in baseline.RULE_MODES for m in modes):
+        raise argparse.ArgumentTypeError(f"modes are {', '.join(baseline.RULE_MODES)}; got {text!r}")
     return list(dict.fromkeys(modes))
 
 
@@ -158,8 +158,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--seeds", type=parse_seeds, required=True, help="e.g. 1-10, or 1,3,7-9")
     ap.add_argument("--months", type=int, default=calibration.REFERENCE_MONTHS, help="months per run (default 36)")
-    ap.add_argument("--modes", type=parse_modes, default=list(baseline.MODES),
-                    help=f"councils to play, of {', '.join(baseline.MODES)} (default: all)")
+    ap.add_argument("--modes", type=parse_modes, default=list(baseline.RULE_MODES),
+                    help=f"councils to play, of {', '.join(baseline.RULE_MODES)} (default: all)")
     ap.add_argument("--out", help="write every figure, run by run, to this JSON file")
     args = ap.parse_args(argv)
     if not 1 <= args.months <= 120:

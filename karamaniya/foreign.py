@@ -1172,7 +1172,10 @@ def _apply_cabinet_decisions(w, positions: dict, decisions: dict) -> None:
             error = validate_action(actor_id, action, {"mobilized_reserve": available}, w)
             if error:
                 _remember(w.foreign, actor_id, "rejected_action", error, w.month, action=action)
-                errors.record(w, "FOREIGN_ACTION_INVALID", error, actor=actor_id)
+                # The act travels with the record so a comparison that replays this cabinet can say which recorded
+                # act the comparison world refused (baseline.foreign_acts, regime-realism plan 4.5).
+                errors.record(w, "FOREIGN_ACTION_INVALID", error, actor=actor_id,
+                              action=action if isinstance(action, dict) else {"value": repr(action)[:120]})
                 continue
             kind = action["type"]
             # Past validation the action is a dict with a known type, so the id is well defined.

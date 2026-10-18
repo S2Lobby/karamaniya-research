@@ -29,7 +29,7 @@ def check(month, *, security=0.6, met=False, fired=False, crackdown=None):
     return row
 
 
-def record(model, mode, seed, *, outcome="survived", zone=0, crackdowns=None, history=None):
+def record(model, mode, seed, *, outcome="survived", zone=0, crackdowns=None, history=None, preset="stress"):
     if history is None:
         history = [check(m, met=True) for m in range(zone)]
     return regime_sweep.summary(mode, seed, model, history, {"type": outcome, "month": 35},
@@ -38,7 +38,7 @@ def record(model, mode, seed, *, outcome="survived", zone=0, crackdowns=None, hi
                                     {"granted": False, "why": "coup_blocked"}]}},
                                 [{"kind": "protest", "concession_credibility": 0.3},
                                  {"kind": "protest", "concession_credibility": 0.0},
-                                 {"kind": "protest"}])
+                                 {"kind": "protest"}], preset=preset)
 
 
 class SummaryTests(unittest.TestCase):
@@ -59,6 +59,13 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(r["crackdowns"]["in_security_band"], 1)
         self.assertEqual(r["crackdowns"]["failed_in_security_band"], 0)
 
+    def test_talks_are_read_from_every_month_row_not_the_last_month_only(self):
+        history = [{"month": 0, "events": [{"kind": "protest", "concession_credibility": 0.4}]},
+                   {"month": 1, "events": [{"kind": "protest"}]}]
+        r = regime_sweep.summary("dove", 1, "legitimacy", history, {"type": "survived"}, {}, [])
+        self.assertEqual(r["talks"]["count"], 1)
+        self.assertEqual(r["talks"]["with_concessions"], 1)
+
     def test_the_honeymoon_and_talk_figures_read_the_final_state(self):
         history = [check(0)]
         events = [{"kind": "protest", "concession_credibility": 0.4},
@@ -77,10 +84,18 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(r["talks"]["max_concession_credibility"], 0.4)
 
     def test_a_legacy_row_has_no_checks_and_records_zeros(self):
-        r = regime_sweep.summary("dove", 2, "legacy", [{"month": 0}], {"type": "voted_out", "month": 0}, {}, [])
+        r = regime_sweep.summary("dove", 2, "legacy", [{"month": 0, "approval": 0.4, "unrest": 0.2}],
+                                 {"type": "voted_out", "month": 0}, {}, [])
         self.assertEqual(r["zone_months"], 0)
         self.assertEqual(r["crackdowns"]["attempted"], 0)
         self.assertEqual(r["honeymoons"]["changes"], 0)
+
+    def test_a_legacy_run_zone_is_read_from_its_own_thresholds(self):
+        history = [{"month": 0, "approval": 0.19, "unrest": 0.5},
+                   {"month": 1, "approval": 0.25, "unrest": 0.6},
+                   {"month": 2, "approval": 0.1, "unrest": 0.44}]
+        r = regime_sweep.summary("scripted", 3, "legacy", history, {"type": "revolution", "month": 2})
+        self.assertEqual(r["zone_months"], 1, "only the row under both thresholds is in the zone")
 
 
 class BandTests(unittest.TestCase):
@@ -104,8 +119,10 @@ class BandTests(unittest.TestCase):
             pairs.append(record("legitimacy", "scripted", seed, outcome="survived", zone=1))
         for seed in (3, 4):
             pairs.append(record("legitimacy", "scripted", seed, outcome="survived", zone=0))
-        # One quiet pair is not stress and does not count.
+        # One quiet pair and one relief pair do not count.
         pairs += [record("legacy", "dove", 9, zone=0), record("legitimacy", "dove", 9, zone=0)]
+        pairs += [record("legacy", "scripted", 10, preset="relief", outcome="revolution", zone=1),
+                  record("legitimacy", "scripted", 10, preset="relief", outcome="survived", zone=1)]
         band = regime_sweep.bands(pairs)["legitimacy_against_legacy"]
         self.assertEqual(band["pairs"], 4)
         self.assertEqual(band["legacy_revolutions"], 2)
@@ -123,24 +140,37 @@ class BandTests(unittest.TestCase):
 
     def test_an_empty_crackdown_sample_does_not_pass_silently(self):
         records = [record("legitimacy", "scripted", 1, zone=0), record("legacy", "scripted", 1, zone=0)]
-        band = regime_sweep.bands(records)["crackdown_failure"]
+        band = regime_sweep.bands(records, [])["crackdown_failure"]
         self.assertEqual(band["observed"]["attempts"], 0)
         self.assertIsNone(band["observed"]["met"])
         self.assertFalse(band["met"], "the census alone is not the observed band")
         self.assertTrue(band["census"]["met"])
         self.assertEqual((band["census"]["min_failure"], band["census"]["max_failure"]), (0.2902, 0.3955))
 
-    def test_observed_failures_inside_the_band_pass_with_the_census(self):
+    def test_the_forced_sample_carries_the_observed_band(self):
         history = [check(0, met=True, fired=True, crackdown="massacre"),
                    check(1, met=True, fired=True, crackdown="uprising_succeeds"),
                    check(2, met=True, fired=True, crackdown="uprising_succeeds"),
                    check(3, met=True, fired=True, crackdown="massacre")]
         records = [regime_sweep.summary("scripted", 1, "legitimacy", history, {"type": "survived"}, {}, [])]
-        band = regime_sweep.bands(records)["crackdown_failure"]
+        probes = [{"security": 0.6, "outcome": o} for o in
+                  ("massacre", "uprising_succeeds", "uprising_succeeds", "massacre")]
+        band = regime_sweep.bands(records, probes)["crackdown_failure"]
         self.assertEqual(band["observed"]["attempts"], 4)
         self.assertEqual(band["observed"]["failures"], 2)
         self.assertAlmostEqual(band["observed"]["failure_share"], 0.5)
         self.assertFalse(band["met"], "50% is outside 20-40% even though the census is inside")
+        self.assertEqual(band["in_run"]["legitimacy"]["attempts"], 4)
+
+    def test_a_probe_outside_the_security_band_is_not_counted(self):
+        probes = [{"security": 0.6, "outcome": "massacre"}, {"security": 0.8, "outcome": "uprising_succeeds"}]
+        sample = regime_sweep.crackdown_sample(probes)
+        self.assertEqual((sample["attempts"], sample["failures"]), (1, 0))
+
+    def test_a_real_probe_takes_its_own_draw_stream(self):
+        probe = regime_sweep._crackdown_probe({"seed": 1, "month": 3})
+        self.assertEqual((probe["seed"], probe["month"], probe["security"]), (1, 3, 0.6))
+        self.assertIn(probe["outcome"], ("massacre", "uprising_succeeds", "civil_war"))
 
     def test_the_seed_and_name_parsers(self):
         self.assertEqual(regime_sweep._parse_ints("1-3,7"), [1, 2, 3, 7])

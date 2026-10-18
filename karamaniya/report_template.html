@@ -247,6 +247,7 @@ footer { font-size: 12.5px; color: var(--muted); }
     <details><summary>Show the numbers as a table</summary><div class="tablewrap" id="datatable"></div></details>
   </section>
   <section class="panel-section" style="border:0;padding:0" id="baseline-section"></section>
+  <section class="panel-section" style="border:0;padding:0" id="profile-section"></section>
   <section class="panel-section" style="border:0;padding:0">
     <div class="eyebrow">Offices month by month</div>
     <h2>Who held power</h2>
@@ -960,6 +961,55 @@ footer { font-size: 12.5px; color: var(--muted); }
       ...table, ...notes);
   }
 
+  // ---- the outcome profile (RR4) ----
+  // The profile is the government's outcome, not one verdict: survival, human cost per 100,000, democracy, living
+  // standards, stability and outside pressure. report.py builds the plain-language lines and the comparison rows;
+  // this renders them. A missing baseline item reads "not recorded", never zero.
+  function profileValue(v, f) {
+    if (v === null || v === undefined) return "not recorded";
+    if (f === "rate") return Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 });
+    if (f === "count") return Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    if (f === "index") return Number(v).toFixed(2);
+    if (f === "percent") return pct(v, 1);
+    return String(v);
+  }
+  function profileDelta(v, f, better) {
+    if (v === null || v === undefined) return null;
+    if (Math.abs(v) < 1e-9) return { tone: "", text: "the same" };
+    const tone = better === null || better === undefined ? "" : (v > 0) === better ? "var(--good-ink)" : "var(--critical-ink)";
+    let text;
+    if (f === "rate") text = signed(v, x => x.toFixed(1));
+    else if (f === "index") text = signed(v, x => x.toFixed(2));
+    else if (f === "percent") text = signed(v * 100, x => x.toFixed(1)) + " pts";
+    else text = signed(v, x => int(x));
+    return { tone, text };
+  }
+  function renderProfile() {
+    const host = document.getElementById("profile-section"), p = D.profile_view || {};
+    if (!host || !p.text || !p.text.length) return;
+    const comp = p.comparison || {};
+    const kids = [el("div", { class: "eyebrow", text: "The outcome, beyond survival" }),
+      el("h2", { text: "The outcome profile" }),
+      ...p.text.map(t => el("p", { class: "note", text: t }))];
+    if (comp.mode && comp.rows && comp.rows.length) {
+      kids.push(el("p", { class: "note", text: comp.note }));
+      const table = el("table", { class: "said-did baseline" },
+        el("thead", {}, el("tr", {}, el("th", { text: "Profile item" }), el("th", { text: "This run" }),
+          el("th", { text: comp.label || comp.mode }), el("th", { text: "This run minus the comparison" }))),
+        el("tbody", {}, comp.rows.map(r => {
+          const d = profileDelta(r.difference, r.format, r.higher_is_better);
+          return el("tr", {}, el("td", { text: r.area + " · " + r.item }),
+            el("td", {}, el("b", { text: profileValue(r.run, r.format) })),
+            el("td", { text: profileValue(r.comparison, r.format) }),
+            el("td", { class: "muted", style: d && d.tone ? "color:" + d.tone : null, text: d ? d.text : "" }));
+        })));
+      kids.push(el("div", { class: "tablewrap" }, table));
+    } else {
+      kids.push(el("p", { class: "note", text: comp.note || "No baseline was run beside this run, so no comparison is made." }));
+    }
+    host.replaceChildren(...kids);
+  }
+
   function renderConsensusLine() {
     const host = document.getElementById("consensus-line"), council = (((D.scorecard.analytics || {}).metrics || {}).council) || {};
     if (!host || !council.substantive) { if (host) host.replaceChildren(); return; }
@@ -1332,7 +1382,7 @@ footer { font-size: 12.5px; color: var(--muted); }
   try { const saved = Number(localStorage.getItem("karamaniya-month:" + D.run.id)); if (saved >= 0 && saved < N) cur = saved; } catch (e) { /* ignore */ }
   if (live) cur = N - 1;
   if (mapOnly) cur = mapOnly[1] ? Math.max(0, Math.min(N - 1, Number(mapOnly[1].slice(1)) - 1)) : N - 1;
-  renderHead(); renderFounding(); buildMap(); buildCharts(); renderBaseline(); renderPower(); renderGeopolitics(); renderMembers();
+  renderHead(); renderFounding(); buildMap(); buildCharts(); renderBaseline(); renderProfile(); renderPower(); renderGeopolitics(); renderMembers();
   buildRelations(); renderAnalysis(); renderEngineWatch();
   document.getElementById("foot").textContent = "Generated " + D.generated + " from run " + D.run.id + ". Model names are shown here for the researcher; during the run the AIs only saw Delegate letters.";
   setMonth(cur);

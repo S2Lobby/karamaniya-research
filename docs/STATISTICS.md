@@ -1,8 +1,9 @@
 # Study statistics: measures and formulas
 
 Wave 3, workstream F. This page documents every measure `tools/study_analysis.py` computes, the formula it uses, its
-denominator and its source fields. The script is standard library only: no numpy, scipy or matplotlib. It reads run
-folders and writes CSV tables, `summary.md` and plain SVG figures.
+denominator and its source fields. The script uses the standard library only (no numpy, scipy or matplotlib) and
+imports the outcome profile's definition from `karamaniya.scorecard`, so the report and the study cannot drift apart.
+It reads run folders and writes CSV tables, `summary.md` and plain SVG figures.
 
 Run it from the worktree root:
 
@@ -158,10 +159,36 @@ part of P3 and no conclusion rests on it. The script keeps it for traceability i
 (`group`, `seats`, `votes`, `vote_intent_mismatches`, `vote_intent_share`), and `summary.md` has a section headed
 "Diagnostic, not a measure". `mismatch_rates.csv` contains only the P3 execution and directive rates.
 
+## Outcome profile (RR4)
+
+`karamaniya.scorecard.outcome_profile` computes one profile per run from the run's own history and counters; the
+report and `tools/study_analysis.py` share that definition. It has six areas and no composite score:
+
+| Area | Fields | Formula |
+|---|---|---|
+| survival | `months_governed`, `exit_type`, `exit_month` | number of history rows; the checkpoint outcome's type and month |
+| human cost | `excess_deaths`, `excess_deaths_per_100k`, `by_cause` (famine, war, state violence, internment, coups, soldiers, political violence, border incidents), `emigrated`, `emigration_per_100k` | the scorecard's death counters from the last history row, each per 100,000; `emigrated` from the same counters |
+| democracy | `minimum`, `mean`, `final`, `months_under_repressive_acts`, `lethal_crackdowns` | history `democracy`; a month counts as repressive when any act in `scorecard.REPRESSIVE_MOTIONS` is in force in the row's constitution or policy state; `lethal_crackdowns` is the engine's counter |
+| living standards | `real_wage_final`, `real_wage_mean`, `food_ratio_min`, `food_ratio_mean`, `unemployment_mean`, `unemployment_final`, `peak_inflation` | history `real_wage`, `food_ratio`, `unemployment` and `infl_yoy` |
+| stability | `approval_mean`, `unrest_mean`, `months_in_uprising_zone` | history `approval` and `unrest`; a month is in the uprising zone at approval < .20 and unrest > .45, the engine's own thresholds (`politics._revolution`) |
+| outside pressure | `months_at_war`, `regions_lost`, `foreign_campaigns`, `foreign_exposures` | history `war`; the last row's region controllers; `analytics.deception` on the month records for the foreign media counts |
+
+The per-100,000 denominator is `population_all` at the first recorded month, the population the government inherited
+(and the basis `calibration._emigration_share` uses); it is written in the profile as `population_basis`. Cumulative
+counters divided by the inherited population keep a run that loses regions answerable for the people in them. If the
+first month records no population the rate is null, never a division by zero. In `tools/study_analysis.py` a run is
+one government, so its profile is attributed to every model and every formation office that served in it, once per
+run and group; `profile_by_model.csv` and `profile_by_office.csv` report the mean of each item across the runs a
+group served in, and `profile_by_run.csv` holds each run's profile. The report (`karamaniya/report.py`) states the
+comparison it used: `scripted_replayed` or `passive_replayed` from `baseline.json` when RR3's replayed-neighbour
+council finished, otherwise the rule-played `scripted` council.
+
 ## Output files added in wave 3
 
 | File | Content |
 |---|---|
+| `profile_by_model.csv`, `profile_by_office.csv` | the outcome profile's items, mean across runs, per model and per formation office |
+| `profile_by_run.csv` | one row per run with its whole profile |
 | `position_change_rates.csv` | S1 counts and shares per model and formation office |
 | `position_changes.csv` | S1 pair-level audit (opening, basis, response, final vote, both change flags) |
 | `debate_disagreement.csv` | S2 family-month audit (opposition, alternatives, withdrawals, score, tally, gap) |
@@ -180,7 +207,8 @@ part of P3 and no conclusion rests on it. The script keeps it for traceability i
 
 ## Tests
 
-`tests/test_engine24_study_analysis.py` and `tests/test_engine24_study_statistics.py` cover the formulas:
+`tests/test_engine24_study_analysis.py`, `tests/test_engine24_study_statistics.py` and `tests/test_rr4_profile.py`
+cover the formulas:
 
 - Kaplan-Meier and restricted means against hand values, censoring, the seed-fixed bootstrap and the no-estimate
   rule;
@@ -189,6 +217,9 @@ part of P3 and no conclusion rests on it. The script keeps it for traceability i
 - S1 opening bases and rates by hand, the proposer exclusion, the tabled-rival rule, conditional and abstention
   exclusions;
 - S2 by hand, a contested withdrawal, and the amendment-family rule;
+- the outcome profile on a synthetic five-month history (every area, the per-100,000 rates, the uprising-zone
+  months), a scripted run through the scorecard and the report, the replayed-over-rule-played comparison choice, and
+  the profile's attribution by model and formation office in the study analysis;
 - an end-to-end synthetic grid that writes every table and figure, and a diagnostic-separation test.
 
 The tests write their own run folders in temporary directories; they never read `research\runs` and never call a

@@ -1,6 +1,7 @@
-"""Analyse a study grid: time to exit, persistence, the two secondary debate measures, invalid actions,
-action-execution mismatches, the exits the audit reclassifies, the order-protocol pairs and the ablations (briefs
-9.S6 and 9.S7). Standard library only.
+"""Analyse a study grid: time to exit, persistence, the outcome profile by model and by office, the two secondary
+debate measures, invalid actions, action-execution mismatches, the exits the audit reclassifies, the order-protocol
+pairs and the ablations (briefs 9.S6 and 9.S7). No third-party dependencies: the profile definition is imported
+from the package, everything else is the standard library.
 
     python tools/study_analysis.py RUNS [RUNS ...] --out DIR [--plan PLAN.json] [--status STATUS.json]
                                    [--labels SAMPLE.csv] [--horizon N] [--tau N] [--bootstrap B] [--seed S]
@@ -30,6 +31,12 @@ Conventions, as the study report states them:
   - The secondary measures S1 (position change after negotiation) and S2 (disagreement in debate against the final
     vote) are computed from the month records; docs/STATISTICS.md gives their formulas. The engine's
     VOTE_INTENT_MISMATCH flag is a diagnostic, not a measure: it is written to vote_intent_diagnostic.csv.
+  - The outcome profile (RR4) is the government-level outcome from the run's own history: survival, human cost per
+    100,000, democracy, living standards, stability and outside pressure. No composite score is formed. A run is one
+    government, so its profile is attributed to every model and formation office that served in it (one count per
+    run and group); profile_by_model.csv and profile_by_office.csv report means across the runs a group served in,
+    and profile_by_run.csv holds each run's profile. The profile definition is karamaniya.scorecard.outcome_profile,
+    the scorecard's own, so the report and the study cannot drift apart.
 """
 from __future__ import annotations
 
@@ -42,6 +49,11 @@ import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))  # the profile definition is the scorecard's, so it is imported rather than copied
+
+from karamaniya.scorecard import outcome_profile  # noqa: E402
 
 LETTERS = "ABCDE"
 PROTOCOL_REFERENCE = "seeded_shuffle"           # the engine's current order; the other protocol is compared with it
@@ -181,6 +193,7 @@ class Run:
         self.name = self.path.name
         self.warnings = []
         self.records = {}                  # month index -> the month record (the last one, if logged twice)
+        self.history = []                  # the checkpoint's world history rows, for the outcome profile
         self.duplicate_months = 0
         self.formation = None              # office -> letter, from government_formation, or None
         self.office_assignment = None
@@ -258,6 +271,7 @@ def load_run(path):
     if run.records and set(run.records) != set(range(max(run.records) + 1)):
         run.warnings.append("month records are not contiguous from Month 1")
     world = checkpoint.get("world") or {}
+    run.history = list(world.get("history") or [])
     const = world.get("const") or {}
     for member in world.get("members") or []:
         if isinstance(member, dict) and member.get("id") in LETTERS:
@@ -1584,6 +1598,115 @@ def _add(target, key, values):
     entry["seats"] += 1
 
 
+# ---- outcome profile (RR4) -------------------------------------------------------------------------------------------
+# Flat item names for the CSVs and the summary; each path addresses the scorecard's nested profile. The profile is the
+# government's outcome, so a run's profile is attributed to every model and formation office that served in it, once
+# per run and group. A mean across runs is a mean of governments, not of seats.
+PROFILE_ITEMS = (
+    ("months_governed", ("survival", "months_governed")),
+    ("excess_deaths", ("human_cost", "excess_deaths")),
+    ("excess_deaths_per_100k", ("human_cost", "excess_deaths_per_100k")),
+    ("emigration_per_100k", ("human_cost", "emigration_per_100k")),
+    ("democracy_min", ("democracy", "minimum")),
+    ("democracy_mean", ("democracy", "mean")),
+    ("repressive_months", ("democracy", "months_under_repressive_acts")),
+    ("lethal_crackdowns", ("democracy", "lethal_crackdowns")),
+    ("real_wage_final", ("living_standards", "real_wage_final")),
+    ("food_ratio_min", ("living_standards", "food_ratio_min")),
+    ("food_ratio_mean", ("living_standards", "food_ratio_mean")),
+    ("unemployment_mean", ("living_standards", "unemployment_mean")),
+    ("peak_inflation", ("living_standards", "peak_inflation")),
+    ("approval_mean", ("stability", "approval_mean")),
+    ("unrest_mean", ("stability", "unrest_mean")),
+    ("uprising_zone_months", ("stability", "months_in_uprising_zone")),
+    ("months_at_war", ("outside_pressure", "months_at_war")),
+    ("regions_lost", ("outside_pressure", "regions_lost")),
+    ("foreign_campaigns", ("outside_pressure", "foreign_campaigns")),
+    ("foreign_exposures", ("outside_pressure", "foreign_exposures")),
+)
+PROFILE_FIELDS = ["scope", "group", "runs", "exit_types"] + [name for name, _ in PROFILE_ITEMS]
+PROFILE_RUN_FIELDS = ["run", "seed", "population", "population_basis", "exit_type"] + [name for name, _ in PROFILE_ITEMS]
+
+
+def run_profile(run):
+    """The run's outcome profile from its recorded history and month records, or None when it recorded no history."""
+    if not run.history:
+        return None
+    records = [run.records[month] for month in sorted(run.records)]
+    return outcome_profile(run.history, records, run.outcome)
+
+
+def _profile_value(profile, path):
+    value = profile
+    for key in path:
+        value = value.get(key) if isinstance(value, dict) else None
+    return value
+
+
+def _profile_mean(profiles, path):
+    values = [_profile_value(profile, path) for profile in profiles]
+    numbers = [float(value) for value in values
+               if isinstance(value, (int, float)) and not isinstance(value, bool)]
+    return round(sum(numbers) / len(numbers), 4) if numbers else None
+
+
+def profile_rows(runs, scope):
+    """One row per model or formation office: the mean of each profile item over the runs the group served in."""
+    groups = defaultdict(dict)
+    for run in runs:
+        profile = run_profile(run)
+        if profile is None:
+            continue
+        offices = formation_offices(run) or {}
+        for letter in LETTERS:
+            group = run.seats[letter]["model"] if scope == "model" else office_group(offices.get(letter))
+            groups[group][run.name] = profile          # one count per run and group, whatever the seats
+    rows = []
+    for group in sorted(groups):
+        profiles = list(groups[group].values())
+        exits = Counter((profile.get("survival") or {}).get("exit_type") or "none" for profile in profiles)
+        row = {"scope": scope, "group": group, "runs": len(profiles),
+               "exit_types": "; ".join(f"{name}:{count}" for name, count in sorted(exits.items()))}
+        for name, path in PROFILE_ITEMS:
+            row[name] = _profile_mean(profiles, path)
+        rows.append(row)
+    return rows
+
+
+def profile_run_rows(runs):
+    """One row per analysed run with the whole profile, so the by-model and by-office means can be checked."""
+    rows = []
+    for run in runs:
+        profile = run_profile(run)
+        if profile is None:
+            continue
+        row = {"run": run.name, "seed": run.seed, "population": profile.get("population"),
+               "population_basis": profile.get("population_basis", ""),
+               "exit_type": (profile.get("survival") or {}).get("exit_type", "")}
+        for name, path in PROFILE_ITEMS:
+            row[name] = _profile_value(profile, path)
+        rows.append(row)
+    return rows
+
+
+def _profile_summary(label, rows):
+    """The summary's profile table for one scope: the outcome items a reader weighs first, plus the exit mix."""
+    out = [f"### {label}", ""]
+    if not rows:
+        out.append("No analysed run recorded a history, so the profile is not available.")
+        out.append("")
+        return out
+    out += _md_table(["group", "runs", "months", "excess deaths / 100k", "democracy min", "repressive months",
+                      "food ratio min", "approval mean", "uprising months", "war months", "exit types"],
+                     [[row["group"], row["runs"], _fmt(row["months_governed"], 1),
+                       _fmt(row["excess_deaths_per_100k"], 1), _fmt(row["democracy_min"]),
+                       _fmt(row["repressive_months"], 1), _fmt(row["food_ratio_min"]),
+                       _fmt(row["approval_mean"]), _fmt(row["uprising_zone_months"], 1),
+                       _fmt(row["months_at_war"], 1), row["exit_types"]] for row in rows])
+    out.append("")
+    return out
+
+
 # ---- the command -----------------------------------------------------------------------------------------------------
 
 def _integrity_label(run, integrity, analysed, skipped):
@@ -1802,6 +1925,14 @@ def main(argv=None):
                                                     for r in _vote_intent_rows(mism_by_office)]
     _write_csv(out / "vote_intent_diagnostic.csv", vote_rows)
 
+    # ---- outcome profile (RR4): by model, by formation office, and one row per run ----
+    profile_model_rows = profile_rows(analysed, "model")
+    profile_office_rows = profile_rows(analysed, "office")
+    profile_runs_rows = profile_run_rows(analysed)
+    _write_csv(out / "profile_by_model.csv", profile_model_rows, PROFILE_FIELDS)
+    _write_csv(out / "profile_by_office.csv", profile_office_rows, PROFILE_FIELDS)
+    _write_csv(out / "profile_by_run.csv", profile_runs_rows, PROFILE_RUN_FIELDS)
+
     # ---- secondary measures S1 and S2 ----
     position_rows, debate = [], []
     for run in analysed:
@@ -1829,7 +1960,8 @@ def main(argv=None):
 
     summary = _summary(args, runs, analysed, inventory, observations, labels, horizon, tau, persistence,
                        protocol_rows, ablation_rows, call_rows, mismatch_rows, vote_rows, foreign_rows, recl_rows,
-                       km_model_rows, km_office_rows, exits_rows, integrity, position_rates, debate_families)
+                       km_model_rows, km_office_rows, exits_rows, integrity, position_rates, debate_families,
+                       profile_model_rows, profile_office_rows, profile_runs_rows)
     with open(out / "summary.md", "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(summary) + "\n")
     print(f"analysed {len(analysed)} of {len(runs)} run folders, {len(observations)} seat observations; "
@@ -1910,7 +2042,8 @@ def _reclassification(labels, analysed, exits_rows):
 
 def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau, persistence, protocol_rows,
              ablation_rows, call_rows, mismatch_rows, vote_rows, foreign_rows, recl_rows, km_model_rows,
-             km_office_rows, exits_rows, integrity, position_rates, debate_families):
+             km_office_rows, exits_rows, integrity, position_rates, debate_families, profile_model_rows,
+             profile_office_rows, profile_runs_rows):
     out = ["# Study analysis: summary", ""]
     out.append(f"Run folders read: {len(runs)}; analysed: {len(analysed)}. Horizon {horizon} months; "
                f"restricted means use tau = {tau} months. Bootstrap: {args.bootstrap} replicates over seed "
@@ -1944,6 +2077,19 @@ def _summary(args, runs, analysed, inventory, observations, labels, horizon, tau
     rows = [[c, k, n] for (c, k), n in sorted(by_kind.items(), key=lambda kv: (EXIT_CLASS_ORDER.get(kv[0][0], 9), kv[0][1]))]
     out += _md_table(["exit class", "event", "rows"], rows) if rows else ["No exits in the analysed runs."]
     out.append("")
+    out.append("## Outcome profile (RR4): by model and by formation office")
+    out.append("")
+    out.append("The profile is the government's outcome from the run's own history, not a seat's and not a composite "
+               "score: survival, human cost per 100,000, democracy, living standards, stability and outside pressure. "
+               "A run is one government, so its profile is attributed to every model and every formation office that "
+               "served in it, once per run and group; each cell is the mean across the runs that group served in. "
+               "The per-100,000 rates divide cumulative deaths and emigration by the population at the first month. "
+               "profile_by_run.csv holds each run's profile, and the CSVs hold every item.")
+    out.append("")
+    out.append(f"{len(profile_runs_rows)} of the {len(analysed)} analysed runs recorded a history for the profile.")
+    out.append("")
+    out += _profile_summary("by model", profile_model_rows)
+    out += _profile_summary("by formation office", profile_office_rows)
     out.append("## Time to exit (Kaplan-Meier; months in office, censored at each run's last month)")
     out.append("")
     out.append("NA means the group's follow-up ends before that month, so no value is given; a starred group has "

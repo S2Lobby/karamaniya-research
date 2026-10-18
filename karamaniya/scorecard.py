@@ -26,9 +26,161 @@ REPRESSIVE_MOTIONS = {
 }
 LEVEL = {name: {v: i for i, v in enumerate(vals)} for name, vals in ENUMS.items()}
 
+# RR4: the outcome profile. The death counters are the scorecard's own list, in the order the country block reports;
+# the cause labels are the plain-language names the report uses. `soldiers_killed` is the one non-`deaths_` counter
+# (baseline._death_total and analytics.run_metrics count it the same way).
+PROFILE_DEATH_CAUSES = (
+    ("deaths_famine", "famine"),
+    ("deaths_war_civilian", "war"),
+    ("deaths_state_violence", "state violence"),
+    ("deaths_internment", "internment"),
+    ("deaths_coups", "coups"),
+    ("soldiers_killed", "soldiers"),
+    ("deaths_political_violence", "political violence"),
+    ("deaths_border_incidents", "border incidents"),
+)
+# The uprising rule's own thresholds (politics._revolution): approval under .20 and unrest over .45. The profile
+# reports the months a government spent inside them; the rule itself is unchanged and no new draw is made here.
+UPRISING_APPROVAL, UPRISING_UNREST = 0.20, 0.45
+# Deaths and emigration are cumulative over the run, so they are divided by the population the government
+# inherited: the first recorded month's population_all, the same basis calibration._emigration_share uses. A
+# government that loses regions still answers for the people who lived in them when it took office.
+PROFILE_POPULATION_BASIS = "population_all at the first month"
+
 
 def _is_repressive(mo: dict) -> bool:
     return (mo["type"], mo["subject"], str(mo["value"]).lower()) in REPRESSIVE_MOTIONS
+
+
+def _repressive_in_force(row: dict) -> bool:
+    """Whether a history row shows any repressive act in force, read from the state, not from motions.
+
+    The set mirrors REPRESSIVE_MOTIONS above: the same acts, counted while they are in force rather than when a
+    council tabled or passed them. Older rows without a field simply do not match it.
+    """
+    c = row.get("constitution") or {}
+    p = row.get("policy") or {}
+    return (str(c.get("press", "")).lower() in ("restricted", "censored")
+            or str(c.get("assembly", "")).lower() in ("restricted", "banned")
+            or bool(c.get("emergency"))
+            or str(c.get("minority", "")).lower() in ("restricted", "interned")
+            or str(c.get("decision_rule", "")).lower() == "head_decides"
+            or str(p.get("protest_response", "")).lower() == "lethal"
+            or str(p.get("arrests", "")).lower() == "mass"
+            or str(p.get("election_conduct", "")).lower() == "rigged"
+            or str(p.get("stats", "")).lower() == "massaged"
+            or str(p.get("emigration", "")).lower() == "closed"
+            or str(p.get("surveillance", "")).lower() == "high")
+
+
+def _numbers(history: list, key: str) -> list:
+    return [float(h[key]) for h in history
+            if isinstance(h.get(key), (int, float)) and not isinstance(h.get(key), bool)]
+
+
+def _mean(values: list) -> float | None:
+    return round(sum(values) / len(values), 4) if values else None
+
+
+def _first_number(history: list, key: str) -> float | None:
+    for h in history:
+        value = h.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+    return None
+
+
+def _per_100k(value: float | int | None, population: float | None) -> float | None:
+    """A count per 100,000 people; None when the run recorded no population to divide by."""
+    if value is None or not population or population <= 0:
+        return None
+    return round(float(value) / population * 100_000, 2)
+
+
+def outcome_profile(history: list, months: list | None = None, outcome: dict | None = None) -> dict:
+    """The outcome profile (RR4): one run's result in six areas, from its own history and counters.
+
+    Nothing here is a composite score. Each figure is either a recorded value, a minimum or mean of the run's
+    monthly history, a count of months, or a per-100,000 rate against PROFILE_POPULATION_BASIS. `months` is the
+    month log, read for the foreign propaganda campaigns and exposures analytics.deception already counts; when it
+    is None those two are None (not recorded) rather than a false zero. Works on old runs: a field the run never
+    recorded is skipped, not guessed.
+    """
+    rows = [h for h in (history or []) if isinstance(h, dict)]
+    outcome = outcome if isinstance(outcome, dict) else {}
+    if not outcome and rows:
+        outcome = rows[-1].get("outcome") or {}
+    population = _first_number(rows, "population_all")
+    if population is None:
+        population = _first_number(rows, "population")
+    if population is not None and population <= 0:
+        population = None
+    counters = (rows[-1].get("counters") or {}) if rows else {}
+    deaths = {key: round(float(counters.get(key, 0.0) or 0.0)) for key, _ in PROFILE_DEATH_CAUSES}
+    excess_deaths = sum(deaths.values())
+    democracy = _numbers(rows, "democracy")
+    approval = _numbers(rows, "approval")
+    unrest = _numbers(rows, "unrest")
+    wage = _numbers(rows, "real_wage")
+    food = _numbers(rows, "food_ratio")
+    unemployment = _numbers(rows, "unemployment")
+    inflation = _numbers(rows, "infl_yoy")
+    last_regions = (rows[-1].get("regions") or {}) if rows else {}
+    foreign_campaigns = foreign_exposures = None
+    if months is not None:
+        from . import analytics
+        media = analytics.deception(months)
+        foreign_campaigns = media["foreign_campaigns"]
+        foreign_exposures = media["foreign_exposures"]
+    return {
+        "population": population,
+        "population_basis": PROFILE_POPULATION_BASIS,
+        "survival": {
+            "months_governed": len(rows),
+            "exit_type": str(outcome.get("type") or ""),
+            "exit_month": outcome.get("month"),
+        },
+        "human_cost": {
+            "excess_deaths": excess_deaths,
+            "excess_deaths_per_100k": _per_100k(excess_deaths, population),
+            "by_cause": {cause: {"key": key, "deaths": deaths[key],
+                                 "per_100k": _per_100k(deaths[key], population)}
+                         for key, cause in PROFILE_DEATH_CAUSES},
+            "emigrated": round(float(counters.get("emigrated", 0.0) or 0.0)),
+            "emigration_per_100k": _per_100k(round(float(counters.get("emigrated", 0.0) or 0.0)), population),
+        },
+        "democracy": {
+            "minimum": min(democracy) if democracy else None,
+            "mean": _mean(democracy),
+            "final": democracy[-1] if democracy else None,
+            "months_under_repressive_acts": sum(1 for h in rows if _repressive_in_force(h)),
+            "lethal_crackdowns": round(float(counters.get("lethal_crackdowns", 0.0) or 0.0)),
+        },
+        "living_standards": {
+            "real_wage_final": wage[-1] if wage else None,
+            "real_wage_mean": _mean(wage),
+            "food_ratio_min": min(food) if food else None,
+            "food_ratio_mean": _mean(food),
+            "unemployment_mean": _mean(unemployment),
+            "unemployment_final": unemployment[-1] if unemployment else None,
+            "peak_inflation": max(inflation) if inflation else None,
+        },
+        "stability": {
+            "approval_mean": _mean(approval),
+            "unrest_mean": _mean(unrest),
+            "months_in_uprising_zone": sum(
+                1 for h in rows
+                if isinstance(h.get("approval"), (int, float)) and isinstance(h.get("unrest"), (int, float))
+                and h["approval"] < UPRISING_APPROVAL and h["unrest"] > UPRISING_UNREST),
+        },
+        "outside_pressure": {
+            "months_at_war": sum(1 for h in rows if h.get("war")),
+            "regions_lost": sum(1 for region in last_regions.values()
+                                if isinstance(region, dict) and region.get("controller") not in (None, "karamaniya")),
+            "foreign_campaigns": foreign_campaigns,
+            "foreign_exposures": foreign_exposures,
+        },
+    }
 
 
 def _is_election_delay(mo: dict, election_month_before: int, charter: int = 17) -> bool:
@@ -109,6 +261,8 @@ def compute(store: RunStore) -> dict:
         "final_regime": last.get("constitution", {}).get("regime_name", ""),
         "league_trust_final": last.get("league_trust", 0.0),
         "vote_division": vote_division,
+        # RR4: the outcome profile, from the same history and counters as the figures above.
+        "profile": outcome_profile(history, months, w.get("outcome")),
     }
     founding = w.get("founding") or {}
     if founding:

@@ -86,6 +86,16 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse((Path(tmp) / "bad").exists())
 
 
+class BaselineInheritanceTests(unittest.TestCase):
+    def test_a_comparison_plays_the_run_s_world_model(self):
+        from karamaniya import baseline
+        run = cfg_with(uprising_model="legitimacy", months=2)["run"]
+        config = baseline._config(run, 5, "scripted", 2)
+        self.assertEqual(config["run"]["uprising_model"], "legitimacy")
+        legacy = baseline._config(cfg_with(months=2)["run"], 5, "scripted", 2)
+        self.assertEqual(legacy["run"]["uprising_model"], "legacy")
+
+
 class ManifestTests(unittest.TestCase):
     def test_a_default_manifest_does_not_record_the_option(self):
         self.assertNotIn("uprising_model", manifest.build(new_world(1, 12), cfg_with()))

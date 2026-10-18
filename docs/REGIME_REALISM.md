@@ -127,8 +127,9 @@ world refuses is recorded as skipped with its month, actor, action and reason, b
 result and delta names its neighbours (`rule-played` or `replayed from <run>`), and the report prints that line, up to
 three refused acts, and the limitation: replayed neighbours do not react to the comparison council. A run without
 recorded cabinet answers gets the four rule modes and the report says why; the log running out fails that comparison
-mode with its reason rather than silently truncating it. `calibration.py` and `tools/calibrate.py` use `RULE_MODES`
-only: a bare seed has no log to replay.
+mode with its reason rather than silently truncating it. The comparisons keep the run's `uprising_model` (it is in
+`baseline.KEPT`) and `baseline.json` records it, so a legitimacy run is compared under the same uprising rules.
+`calibration.py` and `tools/calibrate.py` use `RULE_MODES` only: a bare seed has no log to replay.
 
 ## 6. The outcome profile (RR4, plan 4.6)
 

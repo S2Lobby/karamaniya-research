@@ -66,7 +66,10 @@ KEPT = ("seed", "dm_per_turn", "human_factor", "founding_scenario", "founding_se
         "agent_architecture_version", "revision_round", "tuning", "test_scenario",
         "parallel_decisions", "framing",
         # The ballot is a rule of the world the stand-ins play in (what they can see), not something a model is told.
-        "ballot")
+        "ballot",
+        # Engine 33: the uprising model is a rule of the world too. A comparison beside a legitimacy run must play the
+        # same world, or its figures mix two different uprising rules.
+        "uprising_model")
 
 
 def _death_total(counters: dict) -> float:
@@ -261,7 +264,8 @@ def compute(run_dir, modes=MODES, force: bool = False) -> dict:
         out = {"format": FORMAT, "status": status if months else "no_months",
                "world_engine": versions.WORLD_ENGINE,
                "run_world_engine": (cfg.get("architecture") or {}).get("world_engine_version"),
-               "months": months, "this_run": this_run, "modes": {}, "replay": replay_state}
+               "months": months, "this_run": this_run, "modes": {}, "replay": replay_state,
+               "uprising_model": (cfg.get("run") or {}).get("uprising_model", "legacy")}
         store._write_json(FILE, out)
         return out
     cached = read(run_dir)
@@ -320,6 +324,7 @@ def compute(run_dir, modes=MODES, force: bool = False) -> dict:
     out = {"format": FORMAT, "status": "failed" if failed else "ok", "world_engine": versions.WORLD_ENGINE,
            "agent_prompt": versions.AGENT_PROMPT, "source_fingerprint": RUNTIME_SOURCE_FINGERPRINT,
            "seed": run_cfg.get("seed"), "months": months, "length": length, "replay": replay_state,
+           "uprising_model": run_cfg.get("uprising_model", "legacy"),
            "computed": dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
            "this_run": this_run, "this_run_monthly": monthly(world.history), "modes": results}
     store._write_json(FILE, out)

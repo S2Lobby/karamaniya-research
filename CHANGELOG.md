@@ -30,7 +30,8 @@ prompt fixture is not rewritten. Design, decisions and calibration: `docs/REGIME
 - **Comparison councils face the run's own neighbours (RR3, plan 4.5).** `baseline.MODES` adds
   `scripted_replayed` and `passive_replayed`, which replay the run's recorded cabinet answers month by month. A
   recorded act the comparison world refuses is recorded as skipped with its reason; every mode names its neighbours;
-  the report prints them and the limitation that replayed neighbours do not react.
+  the report prints them and the limitation that replayed neighbours do not react. A comparison also keeps the run's
+  `uprising_model`, and `baseline.json` records it.
 - **An outcome profile, not one verdict (RR4, plan 4.6).** The scorecard, report and `tools/study_analysis.py` report
   survival, human cost per 100,000 by cause, democracy, living standards, stability and outside pressure, compared
   with the replayed-neighbour baseline where one exists. No composite score.

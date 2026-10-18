@@ -1,8 +1,8 @@
 # RR2: concessions and the new head's grace period
 
 Worktree `C:\Users\litle\Karamaniya\karamaniya-test\rr2-relief`, branch `rr/relief`, based on
-`49a8d5b`. Nothing pushed or merged. Three commits: `14d9f64` (tests and the base fixture),
-`63ba5ac` (the implementation), and the commit carrying this report.
+`49a8d5b`. Nothing pushed or merged. Commits: `14d9f64` (tests and the base fixture), `63ba5ac`
+(the implementation), then the report and a style follow-up.
 
 ## What changed
 

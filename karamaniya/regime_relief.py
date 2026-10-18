@@ -100,6 +100,7 @@ RATIONING_PAIN = .35            # synthetic: the salience of rationing when it i
 PRICE_CONTROL_PAIN = {"none": 0.0, "food": .25, "all": .35}
 MINORITY_PAIN = {"equal": 0.0, "restricted": .4, "interned": 1.0}   # society.MINORITY_OPP, local to avoid a cycle
 
+
 def model(w: World) -> str:
     """The run's uprising model. Absent means legacy, as checkpoints saved before the option did."""
     return str(getattr(w, "uprising_model", MODE_LEGACY) or MODE_LEGACY).strip().lower()

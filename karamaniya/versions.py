@@ -370,7 +370,9 @@ PSYCHOLOGY = 8
 # (a massacre, a split or an uprising success), lets delivered concessions make talks credible and gives a new head a
 # grace period. It is off under the default `legacy`: no new draw, no new history key, and a scripted engine-32 run
 # replays identically.
-WORLD_ENGINE = 33
+# 34 (backlog T193): a communication a model writes as `warn` is read as `warning`, the kind the schema names. Other
+# spellings are unchanged, and an unknown kind is still refused. A run whose seats never write `warn` is unchanged.
+WORLD_ENGINE = 34
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

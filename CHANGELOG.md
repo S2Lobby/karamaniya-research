@@ -4,6 +4,13 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 34
+
+`WORLD_ENGINE` 34, `AGENT_PROMPT` 30 unchanged (psychology 8, error taxonomy 8). A communication a model writes as
+`warn` is read as `warning`, the kind the schema names (backlog T193). Before, `warn` was refused as an unknown kind and
+the seat was told so the next month. Nothing else changes: other unknown kinds are still refused, and a run whose seats
+never write `warn` is unchanged. No prompt changes.
+
 ## World engine 33 (regime realism)
 
 `WORLD_ENGINE` 33, `AGENT_PROMPT` 30 unchanged (psychology 8, error taxonomy 8). The release adds a second world,

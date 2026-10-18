@@ -1442,13 +1442,14 @@ def _comms(raw, problems: list, refused: list | None = None, cap_reason: str = S
     """The public communications the engine reads, at most two. An unknown kind is recorded in `problems`, as before. Each
     refusal is also kept in `refused` with its reason (T138): an unknown kind, and a communication past the two read.
     `cap_reason` is the reason given past the cap; the response round passes its own (it reads one)."""
-    from .standing import COMM_KINDS
+    from .standing import COMM_KIND_ALIASES, COMM_KINDS
     refused = [] if refused is None else refused
     out = []
     for item in _listed(raw, "communications", problems):
         if not isinstance(item, dict):
             continue
         kind = str(item.get("kind", "")).strip().lower()
+        kind = COMM_KIND_ALIASES.get(kind, kind)
         # Some models put report sharing in communications despite the dedicated field.
         # It is migrated below instead of reported as an unknown communication kind.
         if kind == "share_reports":

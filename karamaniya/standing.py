@@ -478,6 +478,9 @@ def reactions_text(w: World, mid: str) -> str:
 COMM_KINDS = ("endorse", "criticize", "distance", "claim_credit", "defend", "demand_resignation",
               "reassure", "blame_external", "apologize", "retract", "campaign", "demand", "warning",
               "offer_resignation")
+# A kind a model writes as a near-synonym is read as the kind it means (engine 34, T193). These spellings only; any
+# other kind outside COMM_KINDS is still refused.
+COMM_KIND_ALIASES = {"warn": "warning"}
 EXTERNAL = ("union", "veleria", "dorsania", "league", "previous_regime", "public")
 # Engine 27 (wave 3, D): a public demand and a public warning are words, not instruments. A demand addressed to a
 # foreign power hardens that power's view of Karamaniya a little; a warning hardens it a little more, and is read at

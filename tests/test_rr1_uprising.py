@@ -386,12 +386,12 @@ class Crackdown(unittest.TestCase):
         from karamaniya import uprising
         force = new_world(1, 36).mil.police
         force.loyalty, force.bond, force.arrears = 0.6, 0.2, 0.0
-        expected = 0.62 + 0.45 * 0.6 + 0.20 * 0.2 - 0.15
+        expected = uprising.CRACKDOWN_BASE + 0.45 * 0.6 + 0.20 * 0.2 - 0.15
         self.assertAlmostEqual(uprising.obey_probability(force, 0.5), expected, places=9)
         # The terms the lead named: unrest above .6, the lethal penalty and the arrears cap.
         self.assertAlmostEqual(uprising.obey_probability(force, 0.7), expected - 0.25, places=9)
         force.arrears = 10.0
-        penalised = 0.62 + 0.45 * 0.6 + 0.20 * 0.2 - 0.15 - 0.15
+        penalised = uprising.CRACKDOWN_BASE + 0.45 * 0.6 + 0.20 * 0.2 - 0.15 - 0.15
         self.assertAlmostEqual(uprising.obey_probability(force, 0.5), penalised, places=9)
         force.loyalty, force.bond, force.arrears = 1.0, 1.0, 0.0
         self.assertAlmostEqual(uprising.obey_probability(force, 0.5), 0.98, places=9)

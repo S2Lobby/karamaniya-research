@@ -48,12 +48,14 @@ NEAR_MONTHS = 12            # a credible vote within this many months gives the 
 COUP_MONTHS = 12            # a coup this recent makes every scheduled vote non-credible
 
 # ---- the national crackdown draw (plan 4.2; lead's RR-1 decision 1) --------------------------
-# obey(force) = clamp(.62 + .45*loyalty + .20*bond - .25*[unrest > .6] - .15 - arrears, .05, .98).
+# obey(force) = clamp(.64 + .45*loyalty + .20*bond - .25*[unrest > .6] - .15 - arrears, .05, .98).
 # The .15 is the lethal-order penalty the regional formula already carries: this branch is lethal
 # by definition. The arrears penalty is .03 a month of pay owed, capped at .15. At loyalty .55-.65
-# and bond .2-.3 each force sits near .76-.84 and both obey near .58-.71 (failure 29-42%); RR5's
-# sweep calibrates the constants to the agreed 20-40% at security .55-.65.
-CRACKDOWN_BASE = 0.62
+# and bond .2-.3 each force sits near .78-.84 and both obey near .60-.71 (failure 29-40%): RR5's
+# sweep set the base to .64 to bring the low-loyalty end inside the agreed 20-40% band at security
+# .55-.65 (at RR1's draft .62 the range was 32-43%, outside it). `tools/regime_sweep.py` prints the
+# census from these constants.
+CRACKDOWN_BASE = 0.64
 CRACKDOWN_LOYALTY = 0.45
 CRACKDOWN_BOND = 0.20
 CRACKDOWN_UNREST = 0.25     # when national unrest is above .6

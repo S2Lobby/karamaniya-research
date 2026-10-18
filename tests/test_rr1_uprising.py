@@ -96,17 +96,19 @@ def both_obey_month(seed: int = 1) -> int:
 
 
 def both_refuse_month(seed: int = 1) -> int:
-    # loyalty .05 and bond 0 put each force at .4925 with unrest .5 (no >.6 penalty, no arrears).
-    return month_matching(lambda police, army: police > 0.4925 and army > 0.4925, seed)
+    # loyalty .6 with five months of arrears puts each force at .59 while security stays .6
+    # (above the lethal gate's .55): the gate and a double refusal can hold at once.
+    return month_matching(lambda police, army: police > 0.59 and army > 0.59, seed)
 
 
 def police_refuses_month(seed: int = 1) -> int:
-    return month_matching(lambda police, army: police > 0.4925 and army < 0.98, seed)
+    return month_matching(lambda police, army: police > 0.59 and army < 0.98, seed)
 
 
 def force_regime(w, police: tuple, army: tuple) -> None:
-    w.mil.police.loyalty, w.mil.police.bond = police
-    w.mil.army.loyalty, w.mil.army.bond = army
+    for force, values in ((w.mil.police, police), (w.mil.army, army)):
+        force.loyalty, force.bond = values[0], values[1]
+        force.arrears = values[2] if len(values) > 2 else 0.0
 
 
 # ---- the 36-month scripted run ----------------------------------------------------------------
@@ -258,14 +260,17 @@ class Crackdown(unittest.TestCase):
         from karamaniya import uprising
         self.uprising = uprising
 
-    def legitimate_world(self, month: int, option: str = "off", police=(0.05, 0.0), army=(0.95, 0.9)):
+    def legitimate_world(self, month: int, option: str = "off", police=(0.6, 0.0, 5.0),
+                         army=(0.95, 0.9)):
+        # Default regime: the police refuse (.59 obey after five months of arrears) while the army
+        # obeys and security stays .775, above the lethal gate.
         w = uprising_world(month=month, model="legitimacy", civil_war_option=option)
         force_regime(w, police, army)
         return w
 
     def test_both_obey_is_the_massacre_plus_the_backlash(self):
         month = both_obey_month()
-        w = self.legitimate_world(month)
+        w = self.legitimate_world(month, police=(0.95, 0.9))
         before = [(p.grievance, p.fear) for p in w.pops]
         politics._revolution(w, Fires())
         self.assertEqual(w.outcome, {}, "a massacre leaves the government in office")
@@ -316,7 +321,8 @@ class Crackdown(unittest.TestCase):
 
     def test_both_refuse_succeeds_even_with_the_arm_on(self):
         month = both_refuse_month()
-        w = self.legitimate_world(month, option="on", police=(0.05, 0.0), army=(0.05, 0.0))
+        w = self.legitimate_world(month, option="on", police=(0.6, 0.0, 5.0),
+                                  army=(0.6, 0.0, 5.0))
         politics._revolution(w, Fires())
         self.assertIsNone(w.civil_war, "there is no government force to fight a war with")
         self.assertIn(w.outcome.get("type"), ("revolution", "revolution_union"))
@@ -414,6 +420,20 @@ class MonthRow(unittest.TestCase):
         politics._revolution(w, NoDraw())
         engine.snapshot(w)
         self.assertNotIn("uprising_check", w.history[-1])
+
+    def test_a_real_engine_month_carries_the_zero_chance_record_only_under_legitimacy(self):
+        w = new_world(1, 36)
+        w.uprising_model = "legitimacy"
+        engine.begin_month(w)
+        engine.step(w)
+        check = w.history[-1]["uprising_check"]
+        self.assertFalse(check["thresholds_met"])
+        self.assertEqual(check["chance"], 0.0)
+        self.assertIsNone(check["draw"])
+        legacy = new_world(1, 36)
+        engine.begin_month(legacy)
+        engine.step(legacy)
+        self.assertNotIn("uprising_check", legacy.history[-1])
 
 
 if __name__ == "__main__":

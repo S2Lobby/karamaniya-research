@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from . import agents, director, economy, founding, human, military, opposition, politics, society, state_validation
+from . import uprising
 from .military import union_army, union_navy
 from .society import inflation_yoy
 from .economy import front_region
@@ -469,4 +470,10 @@ def snapshot(w: World, refresh_last: bool = False) -> None:
     war_record = _civil_war_record(w)
     if war_record is not None:
         row["civil_war"] = war_record
+    # RR1: the uprising check and the crackdown draw, present only under
+    # `uprising_model = "legitimacy"`. Under the default "legacy" the key is absent, so a default
+    # run's rows are exactly the base engine's.
+    check = uprising.month_record(w)
+    if check is not None:
+        row["uprising_check"] = check
     w.history.append(row)

@@ -11,7 +11,7 @@ import math
 import re
 from difflib import SequenceMatcher, get_close_matches
 
-from . import fine_print, military, opposition, tuning
+from . import fine_print, military, opposition, regime_relief, tuning
 from .world import (ARMED_OFFICES, MEDIA_CAPTURE_PENALTY, OFFICE_TITLES, OFFICES, World, clamp, month_label,
                     rng_for, smooth_step)
 
@@ -1750,8 +1750,13 @@ def apply_motion(w: World, mo: dict) -> str:
     t, subj, val, text = mo["type"], str(mo.get("subject", "")).strip(), mo.get("value", ""), mo.get("text", "")
     if t == "assign_office":
         mid = str(val).strip().upper()
+        previous = c.offices.get(subj)
         c.offices[subj] = mid
         reset_bond(w, subj)
+        if subj == "head":
+            # Regime realism RR2: a different head of government buys a short, decaying grace
+            # period. A vacated office grants nothing; under legacy the call is a no-op.
+            regime_relief.head_changed(w, previous, mid)
         return f"{w.member(mid).name} appointed to {OFFICE_TITLES[subj]}"
     if t == "vacate_office":
         c.offices[subj] = None

@@ -249,11 +249,11 @@ class ConcessionCredibility(unittest.TestCase):
         regional.set_status(w, "kessel", "devolved")
         politics.set_lever(w, "amnesty", "release")
         politics.set_lever(w, "regional_fund", "kessel")
-        w.month = 2
         w.policy.rationing = True
-        close_month(w)
-        record_cause(w, "kessel", "rationing", month=2)
-        w.policy.rationing = False
+        close_month(w)                                   # Month 1 row: rationing in force
+        record_cause(w, "kessel", "rationing", month=0)
+        w.policy.rationing = False                       # repealed in Month 2
+        self.assertGreater(sum(e["credit"] for e in regime_relief.negotiation_credits(w, "kessel")), 1.0)
         self.assertEqual(regime_relief.concession_credibility(w, "kessel"), 1.0)
 
 
@@ -308,17 +308,17 @@ class TheNegotiateHook(unittest.TestCase):
         regional.set_status(w, "kessel", "devolved")
         politics.set_lever(w, "amnesty", "release")
         politics.set_lever(w, "regional_fund", "kessel")
-        w.month = 2
         w.policy.rationing = True
-        close_month(w)
-        record_cause(w, "kessel", "rationing", month=2)
-        w.policy.rationing = False
+        close_month(w)                                   # Month 1 row: rationing in force
+        record_cause(w, "kessel", "rationing", month=0)
+        w.policy.rationing = False                       # repealed in Month 2
         angry_kessel(w)
         w.policy.protest_response = "negotiate"
         for p in w.pops:
             p.approval = 0.1
         society._protests(w, random.Random(3))
         drops = [0.9 - p.grievance for p in kessel_pops(w)]
+        self.assertEqual(regime_relief.concession_credibility(w, "kessel"), 1.0)
         self.assertAlmostEqual(min(drops), 0.15)
         self.assertAlmostEqual(max(drops), 0.15)
 
@@ -418,7 +418,8 @@ class TheProtestCauseRecord(unittest.TestCase):
 class TheGracePeriod(unittest.TestCase):
     def test_a_new_head_grants_a_three_month_halving_reaction(self):
         w = world("legitimacy")
-        assign_head(w, "E")                              # E holds no other office: a fresh head
+        w.const.offices["navy"] = None                   # E holds no other office: a fresh head
+        assign_head(w, "E")
         entry = public_mood.active(w, regime_relief.GRACE_REASON)[0]
         self.assertEqual((entry["kind"], entry["where"]), ("approval", "*"))
         self.assertAlmostEqual(entry["value"], 0.03)

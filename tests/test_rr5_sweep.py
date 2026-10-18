@@ -152,8 +152,9 @@ class BandTests(unittest.TestCase):
 
 class RealRunTests(unittest.TestCase):
     def test_one_short_run_travels_the_worker_path(self):
-        r = regime_sweep._run({"mode": "dove", "seed": 1, "model": "legitimacy", "months": 2})
-        self.assertEqual((r["model"], r["mode"], r["seed"], r["months"]), ("legitimacy", "dove", 1, 2))
+        r = regime_sweep._run({"preset": "default", "mode": "dove", "seed": 1, "model": "legitimacy", "months": 2})
+        self.assertEqual((r["preset"], r["model"], r["mode"], r["seed"], r["months"]),
+                         ("default", "legitimacy", "dove", 1, 2))
         self.assertTrue(r["outcome"])
         self.assertGreaterEqual(r["zone_months"], 0)
 

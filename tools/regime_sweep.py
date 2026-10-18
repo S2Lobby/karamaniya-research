@@ -8,9 +8,19 @@ councils (baseline.py's `scripted`, `hawk`, `dove` modes), under both `uprising_
 months, crackdowns attempted and failed, honeymoons and concession relief. No model is called; every seat is a
 `scripted` stand-in, and the neighbours are the stand-in cabinets, exactly as a baseline is run.
 
-Each run is a real engine run through `runner.new_run`, so the option travels the same config/runner path a council
-does. Runs are independent processes (Windows spawns them); each gets its own temporary run folder, removed when its
-figures are read. The output JSON keeps one record per run and the band check:
+A baseline council is stable: in a 36-month default run it never reaches approval below .2 with unrest above .45, so
+a default-only sweep would have no stress pairs and no crackdowns. Each council therefore plays two presets:
+
+    default   the run as a baseline plays it (the quiet band);
+    stress    after Month 0 formation, every population group starts at approval .16, unrest .55 and grievance .85,
+              the government's protest response is `lethal`, and both forces sit at loyalty .60 and bond .25 (the
+              middle of the RR0 range, security inside the .55-.65 band). The injection is identical for both
+              uprising models and tells no delegate anything; it is a calibration harness, not a scenario.
+
+Each run is a real engine run (the same World, Council, ScriptedBackend and monthly steps a baseline uses), with the
+options stamped through `runner.apply_run_options`; it keeps no run folder, because the sweep needs the world's
+history and final state, not a product. Runs are independent processes (Windows spawns them), so a 144-run sweep
+takes seconds. The output JSON keeps one record per run and the band check:
 
 - a quiet run (one that never enters the uprising zone, `uprising_check.thresholds_met` false all months) never ends
   in revolution;
@@ -42,39 +52,74 @@ from pathlib import Path
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from karamaniya import baseline, regime_relief, uprising, versions  # noqa: E402
+from karamaniya import baseline, uprising, versions  # noqa: E402
+from karamaniya.backends.scripted import ScriptedBackend  # noqa: E402
 from karamaniya.config import normalize_config  # noqa: E402
-from karamaniya.runner import new_run  # noqa: E402
+from karamaniya.council import Council  # noqa: E402
+from karamaniya.runner import _seats, apply_run_options  # noqa: E402
 from karamaniya.storage import RunStore  # noqa: E402
+from karamaniya.world import new_world  # noqa: E402
 
 SEEDS = list(range(1, 13))
 MODES = ("scripted", "hawk", "dove")
 MODELS = ("legacy", "legitimacy")
+PRESETS = ("default", "stress")
 MONTHS = 36
 REVOLUTIONS = ("revolution", "revolution_union")
 SECURITY_BAND = (0.55, 0.65)
+# The stress preset's starting state (see the module docstring): in the uprising zone from Month 1, a lethal
+# response, and forces in the middle of the security band the third check is written for.
+STRESS_APPROVAL = 0.16
+STRESS_UNREST = 0.55
+STRESS_GRIEVANCE = 0.85
+STRESS_LOYALTY = 0.60
+STRESS_BOND = 0.25
 
 
 # ---- one run ------------------------------------------------------------------------------------
+def _stress(world) -> None:
+    """Put a formed government in the stress preset (see the module docstring). No draw, no prompt."""
+    for p in world.pops:
+        p.approval, p.unrest, p.grievance = STRESS_APPROVAL, STRESS_UNREST, STRESS_GRIEVANCE
+    world.policy.protest_response = "lethal"
+    for force in (world.mil.police, world.mil.army):
+        force.loyalty, force.bond, force.arrears = STRESS_LOYALTY, STRESS_BOND, 0.0
+
+
 def _run(job: dict) -> dict:
-    """Run one scripted council and return its record. Runs in a worker process."""
+    """Play one scripted council and return its record. Runs in a worker process."""
     mode, seed, model, months = job["mode"], job["seed"], job["model"], job["months"]
+    preset = job.get("preset", "default")
     raw = baseline._config({}, 5, mode, months)
     raw["run"].update(seed=seed, uprising_model=model)
     cfg = normalize_config(raw, raw["source"])
+    mapping = {letter: seat["label"] for letter, seat in zip("ABCDE", cfg["seats"])}
+    cfg["mapping"] = mapping
+    world = new_world(seed, months, member_ids=list(mapping),
+                      founding_scenario=cfg["run"].get("founding_scenario", "random"),
+                      founding_severity=cfg["run"].get("founding_severity", "default"))
+    apply_run_options(world, cfg["run"])
+    seats = _seats(cfg, mapping)
+    for seat in seats.values():
+        seat.backend = ScriptedBackend(seat.cfg)
     tmp = tempfile.mkdtemp(prefix=f"regime-sweep-{mode}-{model}-{seed}-")
     try:
-        path = new_run(cfg, runs_dir=tmp, name=f"{mode}-{model}-s{seed}", quiet=True, check=False)
-        world, _council, meta = RunStore(path).load_checkpoint()
-        record = summary(mode, seed, model, world.history, world.outcome, world.institutions, world.events)
-        record["stopped"] = str((meta or {}).get("stopped") or "")
-        return record
+        council = Council(world, seats, cfg["run"], RunStore(os.path.join(tmp, "r")))
+        council.survey()
+        council.diagnose_founding()
+        council.form_government()
+        if preset == "stress":
+            _stress(world)
+        while not world.ended() and world.month < months:
+            council.run_month()
+        return summary(mode, seed, model, world.history, world.outcome, world.institutions, world.events,
+                       preset=preset)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def summary(mode: str, seed: int, model: str, history: list, outcome: dict,
-            institutions: dict | None = None, events: list | None = None) -> dict:
+            institutions: dict | None = None, events: list | None = None, preset: str = "") -> dict:
     """The figures the sweep records for one run, from its history rows and final state."""
     rows = list(history or [])
     outcome = dict(outcome or {})
@@ -92,7 +137,7 @@ def summary(mode: str, seed: int, model: str, history: list, outcome: dict,
     talks = [e for e in events if e.get("kind") == "protest" and "concession_credibility" in e]
     credits = [float(e.get("concession_credibility") or 0.0) for e in talks]
     return {
-        "mode": mode, "seed": seed, "model": model,
+        "preset": preset, "mode": mode, "seed": seed, "model": model,
         "outcome": outcome.get("type", ""),
         "outcome_month": outcome.get("month"),
         "months": len(rows),
@@ -153,7 +198,7 @@ def bands(records: list) -> dict:
 
     by_pair = {}
     for r in records:
-        by_pair.setdefault((r["mode"], r["seed"]), {})[r["model"]] = r
+        by_pair.setdefault((r.get("preset", ""), r["mode"], r["seed"]), {})[r["model"]] = r
     stress = [pair for pair in by_pair.values()
               if (pair.get("legacy") or {}).get("zone_months", 0) > 0]
     legacy_rev = sum(1 for pair in stress if pair["legacy"].get("outcome") in REVOLUTIONS)
@@ -202,9 +247,11 @@ def _parse_names(text: str, allowed: tuple) -> list:
     return out
 
 
-def run_sweep(seeds: list, modes: list, models: list, months: int, workers: int, echo=None) -> dict:
-    jobs = [{"mode": mode, "seed": seed, "model": model, "months": months}
-            for model in models for mode in modes for seed in seeds]
+def run_sweep(seeds: list, modes: list, models: list, months: int, workers: int, echo=None,
+              presets: list | None = None) -> dict:
+    presets = list(presets or ["default"])
+    jobs = [{"preset": preset, "mode": mode, "seed": seed, "model": model, "months": months}
+            for preset in presets for model in models for mode in modes for seed in seeds]
     records, failures = [], []
     done = 0
     with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as pool:
@@ -217,20 +264,21 @@ def run_sweep(seeds: list, modes: list, models: list, months: int, workers: int,
             except Exception as exc:                     # a failed run is data too, not a silent zero
                 failures.append({**job, "error": f"{type(exc).__name__}: {exc}"})
             if echo:
-                echo(f"[{done}/{len(jobs)}] {job['mode']} seed {job['seed']} {job['model']}")
-    records.sort(key=lambda r: (r["model"], r["mode"], r["seed"]))
+                echo(f"[{done}/{len(jobs)}] {job['preset']} {job['mode']} seed {job['seed']} {job['model']}")
+    records.sort(key=lambda r: (r.get("preset", ""), r["model"], r["mode"], r["seed"]))
     return {"format": 1, "generated": None, "months": months, "seeds": seeds, "modes": modes, "models": models,
-            "world_engine": versions.WORLD_ENGINE, "runs": records, "failures": failures,
+            "presets": presets, "world_engine": versions.WORLD_ENGINE, "runs": records, "failures": failures,
             "bands": bands(records) if records else {}}
 
 
 def _report(data: dict, out=None) -> None:
     lines = [f"Regime sweep: {len(data['runs'])} runs, Month 0-{data['months'] - 1}, world engine "
              f"{data['world_engine']}"]
-    lines.append(f"{'model':12} {'mode':9} {'seed':>4} {'outcome':22} {'months':>6} {'zone':>4} {'fired':>5} "
-                 f"{'crack':>5} {'fail':>4} {'honeym':>6} {'talk+':>5}")
+    lines.append(f"{'preset':8} {'model':12} {'mode':9} {'seed':>4} {'outcome':22} {'months':>6} {'zone':>4} "
+                 f"{'fired':>5} {'crack':>5} {'fail':>4} {'honeym':>6} {'talk+':>5}")
     for r in data["runs"]:
-        lines.append(f"{r['model']:12} {r['mode']:9} {r['seed']:>4} {r['outcome'] or '-':22} {r['months']:>6} "
+        lines.append(f"{r.get('preset', ''):8} {r['model']:12} {r['mode']:9} {r['seed']:>4} "
+                     f"{r['outcome'] or '-':22} {r['months']:>6} "
                      f"{r['zone_months']:>4} {r['fired_months']:>5} {r['crackdowns']['attempted']:>5} "
                      f"{r['crackdowns']['failed']:>4} {r['honeymoons']['granted']:>6} "
                      f"{r['talks']['with_concessions']:>5}")
@@ -264,6 +312,7 @@ def main(argv=None) -> int:
     parser.add_argument("--months", type=int, default=MONTHS, help=f"months per run (default {MONTHS})")
     parser.add_argument("--modes", default=",".join(MODES), help=f"councils: {','.join(MODES)}")
     parser.add_argument("--models", default=",".join(MODELS), help=f"worlds: {','.join(MODELS)}")
+    parser.add_argument("--presets", default=",".join(PRESETS), help=f"starting states: {','.join(PRESETS)}")
     parser.add_argument("--workers", type=int, default=min(12, os.cpu_count() or 1), help="parallel processes")
     parser.add_argument("--out", default="", help="write the JSON here")
     parser.add_argument("--quiet", action="store_true", help="no progress lines")
@@ -271,8 +320,9 @@ def main(argv=None) -> int:
     seeds = _parse_ints(args.seeds)
     modes = _parse_names(args.modes, MODES)
     models = _parse_names(args.models, MODELS)
+    presets = _parse_names(args.presets, PRESETS)
     data = run_sweep(seeds, modes, models, args.months, max(1, args.workers),
-                     echo=None if args.quiet else print)
+                     echo=None if args.quiet else print, presets=presets)
     data["generated"] = __import__("datetime").datetime.now().isoformat(timespec="seconds")
     _report(data, args.out or None)
     return 1 if data["failures"] else 0

@@ -226,6 +226,19 @@ class LegitimacyFactor(unittest.TestCase):
         self.assertAlmostEqual(month_7, 1 - 6 / 12, places=6)
         self.assertAlmostEqual(month_1, 1.0, places=6)
 
+    def test_a_rigged_win_does_not_count_as_an_election(self):
+        w = new_world(1, 36)
+        w.const.elected = True
+        w.const.election_month = 40
+        w.const.elections = [{"month": 0, "shares": {"Council List": 0.5}, "rigged": True,
+                              "exposed": False}]
+        rigged = self.uprising.legitimacy_factor(w)
+        self.assertFalse(rigged["elected"])
+        w.const.elections[0]["rigged"] = False
+        fair = self.uprising.legitimacy_factor(w)
+        self.assertTrue(fair["elected"])
+        self.assertLess(fair["L"], rigged["L"])
+
     def test_l_never_falls_below_the_minimum(self):
         w = new_world(1, 36)
         w.const.elected = True

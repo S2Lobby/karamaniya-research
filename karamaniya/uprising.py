@@ -121,12 +121,26 @@ def _near(w) -> float:
     return clamp(1.0 - months_left / NEAR_MONTHS)
 
 
+def _won_fairly(w) -> bool:
+    """Whether the government holds a mandate from a fair election (plan 4.1's ``elected``).
+
+    A rigged count that kept the Council List in power is not a fair win, so it gets no election
+    protection even after the conduct setting is set back to fair. A checkpoint that predates the
+    election records reads as fair, as the rest of the engine reads it.
+    """
+    if not w.const.elected:
+        return False
+    held = [entry for entry in w.const.elections if "shares" in entry]
+    return not (held and held[-1].get("rigged"))
+
+
 def legitimacy_factor(w) -> dict:
-    """``D``, whether the government is elected, ``near`` and the multiplier ``L`` for this month."""
+    """``D``, whether the government is elected fairly, ``near`` and the multiplier ``L``."""
     D = democracy_index(w)
-    elected = bool(w.const.elected)
+    elected = _won_fairly(w)
     near = _near(w)
-    L = max(L_MIN, 1.0 - A * D * (1 + (1 if elected else 0)) / 2.0 - B * D * near)
+    term = 1.0 + (1.0 if elected else 0.0)
+    L = max(L_MIN, 1.0 - A * D * term / 2.0 - B * D * near)
     return {"D": D, "elected": elected, "near": near, "L": L}
 
 

@@ -3,12 +3,14 @@
 Entering the branch, every test here failed on the base (49a8d5b) except the legacy-identity test,
 which passes there by construction. The fixture ``tests/fixtures/uprising_legacy_36m.json`` is the
 history of a 36-month scripted run (``council.scripted.toml``) recorded on the base before any
-change; ``python -m tests.test_rr1_uprising --record`` regenerates it on a base checkout.
+change (re-recorded on 274ad98, whose engine is 49a8d5b's, when the digest changed);
+``python -m tests.test_rr1_uprising --record`` regenerates it on a base checkout.
 
 What is tested:
 
-- under ``uprising_model = "legacy"`` the engine is byte-identical: the same history rows as the
-  base, and no ``uprising_check`` key anywhere;
+- under ``uprising_model = "legacy"`` the engine is unchanged: the same history rows as the base
+  (every float to nine significant figures, so the check holds on Linux as on Windows), and no
+  ``uprising_check`` key anywhere;
 - the legitimacy factor ``L``: it falls as the democracy index rises, as an election is won and as
   a credible vote comes near; it never falls below ``L_MIN``; a postponed, cancelled or rigged vote,
   or a coup within 12 months, removes the near-vote term;
@@ -146,9 +148,22 @@ def scripted_run(tmp: str, months: int = 36, seed: int = 1, model: str | None = 
     return w
 
 
+def _rounded(value):
+    """Every float to nine significant figures. Windows and Linux maths libraries can differ in a float's last digit:
+    CI run 43 failed on Ubuntu with a history that matched Windows' month by month except in the 16th and 17th
+    digits. Nine figures absorb that and still show any real divergence."""
+    if isinstance(value, float):
+        return float(f"{value:.9g}")
+    if isinstance(value, dict):
+        return {k: _rounded(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_rounded(v) for v in value]
+    return value
+
+
 def row_digest(row: dict) -> str:
     """A row's hash, without the fingerprint that names the code version rather than the run."""
-    data = {k: v for k, v in row.items() if k != "engine_source_fingerprint"}
+    data = _rounded({k: v for k, v in row.items() if k != "engine_source_fingerprint"})
     return hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
 

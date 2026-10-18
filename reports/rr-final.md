@@ -12,7 +12,7 @@ recorded and the user says so.
 - RR4 `490d62b`, `e428f5d`; merged `de1641d`.
 - RR3 `aad1276`, `738f8e2`, `f1b5591`; merged `fbd5348`.
 - RR5 `b48a832` (option), `bf61048` (sweep + crackdown calibration), `2aa6605` (presets), `2471856` (full sweep and
-  output), `b8b8906` (versions/docs).
+  output), `b8b8906` (versions/docs), `3ecbad4` (final reports), `980d32d` (a baseline plays the run's world model).
 - 41 files changed, 21,580 insertions, 118 deletions over `274ad98`.
 
 ## What changed
@@ -35,7 +35,8 @@ recorded and the user says so.
 - **RR5, options and integration.** `uprising_model` in `config.RUN_DEFAULTS`, validation, `runner.apply_run_options`
   (live attribute plus checkpointed institutions under legitimacy), manifest record/divergence, study-grid
   `uprising_models` dimension; `tools/regime_sweep.py`; WORLD_ENGINE 33, AGENT_PROMPT 30 unchanged; docs, changelog,
-  backlog, final `docs/REGIME_REALISM.md`.
+  backlog, final `docs/REGIME_REALISM.md`. A baseline keeps the run's `uprising_model` (`baseline.KEPT`) and
+  `baseline.json` records it, so comparisons do not mix two uprising rules.
 
 ## Tests I ran myself
 
@@ -46,9 +47,9 @@ recorded and the user says so.
 | `python -m unittest tests.test_rr1_uprising tests.test_rr5_sweep tests.test_rr5_options` | 45 OK |
 | `python -m unittest tests.test_engine33_versions tests.test_agent_prompt30_versions tests.test_config tests.test_manifest tests.test_engine24_study_grid tests.test_rr5_options tests.test_rr5_sweep` | 89 OK |
 | `python -m unittest tests.test_rr3_comparisons tests.test_engine13 tests.test_engine17_baseline tests.test_engine18_calibration tests.test_manifest` (on the RR3 branch) | 92 OK |
-| `python tools/test_fast.py tests --deselect tests/test_engine24_cluster_estimate.py::Bench::...` | **3850 passed, 22 skipped, 6357 subtests passed in 248.55 s** |
+| `python tools/test_fast.py tests --deselect tests/test_engine24_cluster_estimate.py::Bench::...` | **3851 passed, 22 skipped, 6357 subtests passed in 144.00 s** |
 | `python -m unittest tests.test_engine24_package` | 9 OK |
-| `python tools/package.py all` | zip 1,343,528 bytes, 153 files; clean-venv smoke exit 0, 8.3 s |
+| `python tools/package.py all` | zip 1,343,658 bytes, 153 files; clean-venv smoke exit 0, 3.7 s |
 
 The cluster timing test is deselected because it is load-sensitive, as in the engine-30 release. The full-suite figure
 is from `tools/test_fast.py`, which runs the same test modules in 12 workers; the exact sequential

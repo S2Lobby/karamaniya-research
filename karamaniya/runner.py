@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .backends import make_backend
 from .config import (SEAT_IDS, check_knockout, check_office_assignment, check_referee_backend,
-                     load_config)
+                     check_uprising_model, load_config)
 from .council import Council, RunPaused, Seat
 from . import manifest
 from .storage import RunStore
@@ -79,14 +79,25 @@ def _seat_outlooks(world) -> dict:
 
 
 def apply_run_options(world, run: dict):
-    """Stamp the run's arm on the world, so `actions.harness_of(w)` reads it at every call site.
+    """Stamp the run's arms on the world, so every engine call site reads the same options.
 
-    World is a dataclass of the state a checkpoint keeps; the arm is a run option, not world state, so it is set on
-    the live object rather than serialized (a checkpoint written before the option has no attribute and reads as
-    "menu"). Both new_run and resume_run call this before the council builds a prompt or checks a motion.
+    `harness` is a run option, not world state, so it is set on the live object rather than serialized (a checkpoint
+    written before the option has no attribute and reads as "menu"). `uprising_model` (engine 33) is read by
+    `uprising.model` and `regime_relief.model`; it is stamped the same way, and under `legitimacy` also into
+    `world.institutions`, which a checkpoint keeps, so a world loaded without its config still reads the model that
+    produced it. Under the default `legacy` the institutions key is not written: a default checkpoint stays exactly
+    the one engine 32 wrote. Both new_run and resume_run call this before the council builds a prompt or checks a
+    motion.
     """
     from .actions import validate_harness
+    from .uprising import MODELS
     world.harness = validate_harness(run.get("harness", "menu"))
+    model = str(run.get("uprising_model", "legacy") or "legacy").strip().lower()
+    if model not in MODELS:
+        raise ValueError(f"uprising_model must be one of {list(MODELS)}, got {model!r}")
+    world.uprising_model = model
+    if model != "legacy":
+        world.institutions["uprising_model"] = model
     return world
 
 
@@ -240,6 +251,7 @@ def new_run(config, runs_dir="runs", name=None, months=None, seed=None, framing=
     # refused before the first call, as the control room expects of every option.
     check_referee_backend(cfg["run"], cfg["seats"])
     check_knockout(cfg["run"])
+    check_uprising_model(cfg["run"])
     if "civil_war" in cfg["run"]:
         # Wave C: an explicit arm is checked before any folder or checkpoint is written.
         from .civil_war import validate_option as validate_civil_war

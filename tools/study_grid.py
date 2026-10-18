@@ -13,6 +13,7 @@ foreign_cabinet_backend (brief S4), and there are five [[seat]] tables, one per 
     months = 36
     harnesses = ["menu", "language", "open"]       # optional; default ["menu"] (engine 29)
     knockouts = [{ office = "head", month = 12 }]  # optional; each gets a same-seed twin, no knockout
+    uprising_models = ["legacy", "legitimacy"]     # optional; default ["legacy"] (engine 33, regime realism)
 
 Rotation r puts model i (its seat number in the study file, counting from 0) at letter (i + r) mod 5. Under
 run.office_assignment = "by_letter" the letters are head, treasury, interior, army and navy, so across five
@@ -20,7 +21,10 @@ rotations every model holds every office once per seed. Two protocols x five see
 
 `harnesses` (Wave A, plan 4.6) multiplies the grid by arm; a non-default arm's row name carries it
 (sv-open-seeded_shuffle-s2101-r0), while the menu arm keeps the engine-29 name. Under `open` the study file must
-also name [run].referee_backend, as it must name the neighbours model. `knockouts` plans, once per knockout cell,
+also name [run].referee_backend, as it must name the neighbours model. `uprising_models` (engine 33, regime realism)
+multiplies the grid the same way: the default `legacy` keeps the row name, a non-default model prefixes it
+(sv-legitimacy-seeded_shuffle-s2101-r0); when both dimensions are declared the name carries both tokens in that
+order (sv-open-legitimacy-seeded_shuffle-s2101-r0). `knockouts` plans, once per knockout cell,
 the knockout row and its twin: the same seed, models and arms with no knockout. The knockout row is tagged
 `pair_id`, `role = "knockout"` and `twin`; the twin is tagged `pair_id`, `role = "twin"` and `knockout_of`.
 
@@ -36,8 +40,9 @@ plan.json is a JSON list, one object per row:
      "rotation": 0,
      "config": "configs/sv-seeded_shuffle-s2101-r0.toml",   # relative to the folder of plan.json
      "seat_map": {"A": "<seat label>", "B": "...", "C": "...", "D": "...", "E": "..."},
-     # only when the study declares an arm dimension or a knockout:
-     "harness": "open", "pair_id": "sv-open-...-ko12", "role": "knockout", "twin": "...", "knockout_of": "..."}
+     # only when the study declares an arm or uprising dimension, or a knockout:
+     "harness": "open", "uprising_model": "legitimacy",
+     "pair_id": "sv-open-...-ko12", "role": "knockout", "twin": "...", "knockout_of": "..."}
 
 run starts every row that is not finished, each in its own process, and keeps status.json beside plan.json. A dry
 run (--dry-run) puts scripted seats in place of every seat and of the neighbours, caps the months at 2, and keeps
@@ -90,18 +95,22 @@ sys.path.insert(0, str(ROOT))  # the package imports from the repository root, i
 from karamaniya.config import RUN_DEFAULTS, _toml_key, _toml_value, load_config, normalize_config  # noqa: E402
 from karamaniya.actions import HARNESSES  # noqa: E402
 from karamaniya import knockout  # noqa: E402
+from karamaniya.uprising import MODELS as UPRISING_MODELS  # noqa: E402
 from karamaniya.storage import RunStore  # noqa: E402
 
 LETTERS = "ABCDE"
 PROTOCOLS = ("seeded_shuffle", "fixed_precedence")
-# Required [study] keys; `harnesses` and `knockouts` are optional arms (Wave A W6, plan 4.6).
-STUDY_KEYS = ("seeds", "rotations", "protocols", "months", "harnesses", "knockouts")
+# Required [study] keys; `harnesses`/`knockouts` are optional arms (Wave A W6, plan 4.6) and `uprising_models` is the
+# engine-33 world dimension (regime realism).
+STUDY_KEYS = ("seeds", "rotations", "protocols", "months", "harnesses", "knockouts", "uprising_models")
 # [run] keys the plan writes for each row; a study file may not set them itself.
-GRID_KEYS = ("seed", "months", "shuffle_seats", "office_assignment", "action_order", "harness", "knockout")
+GRID_KEYS = ("seed", "months", "shuffle_seats", "office_assignment", "action_order", "harness", "knockout",
+             "uprising_model")
 STUDY_OPTIONS = ("office_assignment", "action_order")
 ROW_KEYS = ("name", "protocol", "seed", "rotation", "config", "seat_map")
-# Wave A W6: a row that plans an arm carries the tags that let a report join a knockout to its twin.
-OPTIONAL_ROW_KEYS = ("harness", "pair_id", "role", "twin", "knockout_of")
+# Wave A W6: a row that plans an arm carries the tags that let a report join a knockout to its twin. Engine 33 adds
+# `uprising_model` to the optional tags, for the same reason: a report can group rows by the world they ran in.
+OPTIONAL_ROW_KEYS = ("harness", "uprising_model", "pair_id", "role", "twin", "knockout_of")
 DRY_PERSONAS = ("democrat", "technocrat", "hawk", "loyalist", "opportunist")  # as council.scripted.toml
 DRY_MONTHS = 2
 DEFAULT_MAX_RESUMES = 3
@@ -162,6 +171,13 @@ def _study_settings(study: dict) -> dict:
     if (not isinstance(harnesses, list) or not harnesses or len(set(harnesses)) != len(harnesses)
             or not all(h in HARNESSES for h in harnesses)):
         raise ValueError(f"[study] harnesses must be a list of different names from {list(HARNESSES)}")
+    # Engine 33 (regime realism): `uprising_models` defaults to the one legacy model, so an older study plans exactly
+    # its old rows; naming it plans the same council in each world.
+    uprising_models = study.get("uprising_models", ["legacy"])
+    if (not isinstance(uprising_models, list) or not uprising_models
+            or len(set(uprising_models)) != len(uprising_models)
+            or not all(m in UPRISING_MODELS for m in uprising_models)):
+        raise ValueError(f"[study] uprising_models must be a list of different names from {list(UPRISING_MODELS)}")
     raw_knockouts = study.get("knockouts", [])
     if not isinstance(raw_knockouts, list):
         raise ValueError("[study] knockouts must be a list of tables, each { office, month }")
@@ -178,7 +194,7 @@ def _study_settings(study: dict) -> dict:
     if len({(o["office"], o["month"]) for o in knockouts}) != len(knockouts):
         raise ValueError("[study] knockouts repeats an office and month; each cell is planned once")
     return {"seeds": seeds, "rotations": rotations, "protocols": protocols, "months": months,
-            "harnesses": harnesses, "knockouts": knockouts}
+            "harnesses": harnesses, "knockouts": knockouts, "uprising_models": uprising_models}
 
 
 def _dump(run: dict, seats: list, header: list) -> str:
@@ -229,6 +245,7 @@ def plan_study(study_path, out_dir, *, no_study_options: bool = False) -> list:
                          "Without it the engine refuses every open row at start.")
     rows = []
     arm_dimension = "harnesses" in (raw.get("study") or {})
+    uprising_dimension = "uprising_models" in (raw.get("study") or {})
 
     def write_row(name, row_run, row_seats, tags, protocol, seed, rotation):
         config = out / "configs" / f"{name}.toml"
@@ -251,28 +268,38 @@ def plan_study(study_path, out_dir, *, no_study_options: bool = False) -> list:
                 order = [(p - rotation) % len(LETTERS) for p in range(len(LETTERS))]
                 row_seats = [seats[order[p]] for p in range(len(LETTERS))]
                 for harness in settings["harnesses"]:
-                    # A non-default arm suffixed; "menu" keeps the row name an engine-29 study already has.
-                    arm_name = cell if harness == "menu" else f"sv-{harness}-{protocol}-s{seed}-r{rotation}"
-                    row_run = {**run, "seed": seed, "months": settings["months"], "shuffle_seats": False}
-                    if not no_study_options:
-                        row_run.update(office_assignment="by_letter", action_order=protocol)
-                    if arm_dimension:
-                        row_run["harness"] = harness
-                    tags = {"harness": harness} if arm_dimension else {}
-                    if not settings["knockouts"]:
-                        rows.append(write_row(arm_name, row_run, row_seats, tags, protocol, seed, rotation))
-                        continue
-                    for option in settings["knockouts"]:
-                        # One twin per knockout cell: same seed, models and arms, no knockout. The pair id and the
-                        # role let a report join them (tools/knockout_report.py takes the two run folders itself).
-                        pair = f"{arm_name}-ko{option['month']}"
-                        twin = f"{pair}-twin"
-                        rows.append(write_row(pair, {**row_run, "knockout": dict(option)}, row_seats,
-                                              {**tags, "pair_id": pair, "role": "knockout", "twin": twin},
-                                              protocol, seed, rotation))
-                        rows.append(write_row(twin, row_run, row_seats,
-                                              {**tags, "pair_id": pair, "role": "twin", "knockout_of": pair},
-                                              protocol, seed, rotation))
+                    for uprising in settings["uprising_models"]:
+                        # A non-default arm or world is prefixed, harness first; both defaults keep the row name an
+                        # engine-29 study already has.
+                        tokens = ([harness] if harness != "menu" else []) + (
+                            [uprising] if uprising != "legacy" else [])
+                        arm_name = f"sv-{'-'.join(tokens + [protocol])}-s{seed}-r{rotation}"
+                        row_run = {**run, "seed": seed, "months": settings["months"], "shuffle_seats": False}
+                        if not no_study_options:
+                            row_run.update(office_assignment="by_letter", action_order=protocol)
+                        if arm_dimension:
+                            row_run["harness"] = harness
+                        if uprising_dimension:
+                            row_run["uprising_model"] = uprising
+                        tags = {}
+                        if arm_dimension:
+                            tags["harness"] = harness
+                        if uprising_dimension:
+                            tags["uprising_model"] = uprising
+                        if not settings["knockouts"]:
+                            rows.append(write_row(arm_name, row_run, row_seats, tags, protocol, seed, rotation))
+                            continue
+                        for option in settings["knockouts"]:
+                            # One twin per knockout cell: same seed, models and arms, no knockout. The pair id and the
+                            # role let a report join them (tools/knockout_report.py takes the two run folders itself).
+                            pair = f"{arm_name}-ko{option['month']}"
+                            twin = f"{pair}-twin"
+                            rows.append(write_row(pair, {**row_run, "knockout": dict(option)}, row_seats,
+                                                  {**tags, "pair_id": pair, "role": "knockout", "twin": twin},
+                                                  protocol, seed, rotation))
+                            rows.append(write_row(twin, row_run, row_seats,
+                                                  {**tags, "pair_id": pair, "role": "twin", "knockout_of": pair},
+                                                  protocol, seed, rotation))
     (out / "plan.json").write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
                                    newline="\n")
     shutil.copyfile(study_path, out / "study.toml")

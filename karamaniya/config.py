@@ -42,6 +42,10 @@ RUN_DEFAULTS = {
     "referee_effects": "applied",
     "referee_backend": None,
     "knockout": None,
+    # Engine 33 (regime realism RR5): "legacy" is the engine-32 uprising, "legitimacy" adds the legitimacy factor and
+    # the crackdown gamble (karamaniya/uprising.py) and the relief channels (karamaniya/regime_relief.py). A run that
+    # does not name it reads as legacy and is byte-identical to the engine-32 base.
+    "uprising_model": "legacy",
 }
 
 REFEREE_EFFECTS = ("applied", "zeroed")
@@ -115,6 +119,19 @@ def check_knockout(run: dict, where: str = "config") -> None:
         run["knockout"] = option
 
 
+def check_uprising_model(run: dict, where: str = "config") -> None:
+    """Validate `uprising_model` and normalize it to the lowercase spelling the engine reads.
+
+    The default stays in the run like `harness` does, so the manifest can tell a default run from a named one; a
+    checkpoint or config that predates the option reads as `legacy` in the engine itself.
+    """
+    from .uprising import MODELS
+    value = run.get("uprising_model", "legacy")
+    if not isinstance(value, str) or value.strip().lower() not in MODELS:
+        raise ValueError(f"{where}: uprising_model must be one of {list(MODELS)}, got {value!r}")
+    run["uprising_model"] = value.strip().lower()
+
+
 def normalize_config(raw: dict, source: str = "") -> dict:
     """Fill defaults and check a config that came from a file or from the control room."""
     run = {**RUN_DEFAULTS, **(raw.get("run") or {})}
@@ -162,6 +179,7 @@ def normalize_config(raw: dict, source: str = "") -> dict:
         raise ValueError(f"referee_effects must be 'applied' or 'zeroed', got {run['referee_effects']!r}")
     check_referee_backend(run, seats, where)
     check_knockout(run, where)
+    check_uprising_model(run, where)
     # Token-saving features (karamaniya/token_saving.py): absent unless asked for, so a config that
     # does not mention them normalizes exactly as it always did.
     from . import token_saving

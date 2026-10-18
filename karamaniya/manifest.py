@@ -214,6 +214,10 @@ def build(world: World, cfg: dict, council_state: dict | None = None, store=None
            if run.get("referee_effects") not in (None, "applied") else {}),
         **({"referee_backend": referee_model(run)} if (run.get("referee_backend") or {}).get("provider") else {}),
         **({"knockout": dict(run["knockout"])} if isinstance(run.get("knockout"), dict) else {}),
+        # Engine 33 (regime realism): recorded only when it is not the legacy model, so a default manifest keeps the
+        # keys it always had; the divergence check reads an absent key as legacy.
+        **({"uprising_model": run["uprising_model"]}
+           if run.get("uprising_model") not in (None, "legacy") else {}),
         # Wave C: the civil-war arm, recorded only when it is on. Absent under the default, so a
         # run that never names it has the manifest it always had.
         **({"civil_war": "on"} if getattr(world, "civil_war_option", "off") == "on" else {}),
@@ -269,6 +273,8 @@ def divergences(a: dict, b: dict) -> list:
         out.append("referee_backend")
     if (a.get("knockout") or {}) != (b.get("knockout") or {}):
         out.append("knockout")
+    if (a.get("uprising_model") or "legacy") != (b.get("uprising_model") or "legacy"):
+        out.append("uprising_model")
     if (a.get("token_saving") or {}) != (b.get("token_saving") or {}):
         out.append("token_saving")
     return out

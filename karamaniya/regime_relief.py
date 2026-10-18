@@ -103,7 +103,10 @@ MINORITY_PAIN = {"equal": 0.0, "restricted": .4, "interned": 1.0}   # society.MI
 
 def model(w: World) -> str:
     """The run's uprising model. Absent means legacy, as checkpoints saved before the option did."""
-    return str(getattr(w, "uprising_model", MODE_LEGACY) or MODE_LEGACY).strip().lower()
+    value = getattr(w, "uprising_model", None)
+    if value is None:
+        value = (getattr(w, "institutions", None) or {}).get("uprising_model")
+    return str(value or MODE_LEGACY).strip().lower()
 
 
 def enabled(w: World) -> bool:

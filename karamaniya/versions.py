@@ -138,7 +138,11 @@ AGENT_ARCHITECTURE = 2      # 0 legacy, 1 psychology + canonical state, 2 full d
 # added only under open. The next month's briefing gains an OPEN ACTS CARRIED OUT section only when an act ran.
 # 29 goes with world engine 32 (Wave C). The rebel leader's faction prompt and the government's reply prompt appear
 # only while a civil war runs; the default prompts are unchanged.
-AGENT_PROMPT = 29
+# 30 (world engine 32 unchanged): a CLI seat runs in a folder with the system's own random name. A CLI shows its
+# working directory to the model, and the old `karamaniya-<tool>-` folder told the delegate it sat in a harness (run
+# 20261018-014944-seed1: Haiku's reasoning skipped "karamaniya-related items" and its closing answer cited "a sandboxed
+# directory with a naming pattern"). The engine's own prompts are unchanged; the prompt fixture is not rewritten.
+AGENT_PROMPT = 30
 # 5: each delegate is dealt a political agenda with a red line (agendas.deal), on a stream of its own, so
 # every other seeded draw is unchanged.
 # 6: every delegate answers to a fourth national audience, the independence movement (agents.AUDIENCES), whose

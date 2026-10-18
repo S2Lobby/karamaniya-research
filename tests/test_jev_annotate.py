@@ -217,7 +217,7 @@ class StubSampleTests(unittest.TestCase):
         path, headers, body = self.state.requests[0]
         self.assertTrue(path.endswith("/api/alpha/decisions"), path)
         self.assertEqual(headers.get("Authorization"), f"Bearer {KEY}")
-        self.assertEqual(body["model"], "typesafe/jev-latest")
+        self.assertEqual(body["model"], "typesafe/jev-1.14")
         self.assertNotIn(KEY, text)
         rows = read_csv(self.out)
         self.assertEqual([row["annotator_2"] for row in rows], [SUP, SUP])

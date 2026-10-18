@@ -39,7 +39,9 @@ python tools/exit_audit.py agreement sample.csv sample.jev.csv --col-b annotator
 ```
 
 `--openrouter` uses `https://openrouter.ai/api/alpha` and the `/decisions` path, reads the key from
-`OPENROUTER_API_KEY` instead of `TYPESAFE_API_KEY`, and defaults the model to `typesafe/jev-latest`. `--base-url`
+`OPENROUTER_API_KEY` instead of `TYPESAFE_API_KEY`, and defaults the model to the pinned `typesafe/jev-1.14`.
+OpenRouter has no `typesafe/jev-latest` (it refused that id as nonexistent for every judge call of run
+20261018-014944-seed1); its moving alias is `~typesafe/jev-latest`, which `--model` accepts. `--base-url`
 overrides the base (the tests point it at the stub), `--dry-run` builds the requests and prints the estimate without a
 key, and the key is never printed. The OpenRouter path is covered by a stub test that asserts the path, the bearer
 header and the model id.

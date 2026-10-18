@@ -4,6 +4,21 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## Agent prompt 30 (world engine 32 unchanged)
+
+Found in run 20261018-014944-seed1, the first run on engine 30 (revolution in Month 18).
+
+- **A CLI seat's folder names nothing (T186).** CLI seats ran in `karamaniya-<tool>-` temp folders, and a CLI shows
+  its working directory to the model. Haiku picked it up: "Skipping karamaniya-related items" in Month 1, and "a
+  sandboxed directory with a naming pattern" in its closing answer. The folder now has the system's own random name.
+  The engine's prompts are unchanged and the fixture is not rewritten. The CLI's own environment details are still
+  shown (Haiku's reasoning mentions the working directory, the shell and an email), and no engine setting removes them.
+- **Jev on OpenRouter uses a model that exists (T185).** The judge panel's "jev" choice (added in 0b6d4e1) and
+  `tools/jev_annotate.py --openrouter` sent `typesafe/jev-latest`, which OpenRouter refuses as nonexistent: the run
+  lost all 18 judge calls. Both now default to the pinned `typesafe/jev-1.14`, so a run records which Jev judged it
+  (`~typesafe/jev-latest` is OpenRouter's moving alias). One real call through `JudgePanel` on the run's last month
+  answered all four judge questions for $0.0000567. A panel edit also keeps the council file's second and third judges.
+
 ## World engine 30
 
 `WORLD_ENGINE` 32, `AGENT_PROMPT` 29 (psychology 8, error taxonomy 8): three waves in one release. Wave B is eleven

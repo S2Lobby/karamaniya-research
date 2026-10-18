@@ -83,7 +83,7 @@ class AntigravityCLIBackend(Backend):
         super().__init__(cfg)
         self.cmd = cli_common.resolve(cfg, "agy")
         self.effort = cfg.get("effort", "")  # low | medium | high | max
-        self.workdir = cli_common.scratch_dir("agy")
+        self.workdir = cli_common.scratch_dir()
 
     def call(self, system: str, user: str, schema: dict, context: dict) -> CallResult:
         message = {"event": "user", "message": {"role": "user", "content": [

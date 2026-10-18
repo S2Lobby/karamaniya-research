@@ -446,7 +446,7 @@ class JevAnnotation(unittest.TestCase):
             backend = make_backend({**route, "model": model})
         self.assertEqual(route["provider"], "systemone")
         self.assertEqual(backend.base_url + backend.path, "https://openrouter.ai/api/alpha/decisions")
-        self.assertEqual(backend.model, "typesafe/jev-latest")
+        self.assertEqual(backend.model, "typesafe/jev-1.14")
         self.assertEqual(backend.api_key, "test-key")
 
 

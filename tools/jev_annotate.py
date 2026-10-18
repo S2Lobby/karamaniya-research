@@ -568,7 +568,7 @@ def add_api_args(parser):
     parser.add_argument("--retries", type=int, default=2, help="retries on 429/5xx (default: 2)")
     parser.add_argument("--openrouter", action="store_true",
                         help="use OpenRouter's Decisions API (base https://openrouter.ai/api/alpha, path "
-                             "/decisions, key in OPENROUTER_API_KEY, model typesafe/jev-latest)")
+                             "/decisions, key in OPENROUTER_API_KEY, model typesafe/jev-1.14)")
     parser.add_argument("--dry-run", action="store_true",
                         help="build the requests and print the cost estimate; send nothing and need no key")
 
@@ -581,8 +581,11 @@ def api_config(args):
         base_url = base_url or "https://openrouter.ai/api/alpha"
         path = "/decisions"
         key_env = "OPENROUTER_API_KEY"
+        # OpenRouter has no "typesafe/jev-latest": its moving alias is "~typesafe/jev-latest", and the plain id was
+        # refused as nonexistent (HTTP 400) for all 18 judge calls of run 20261018-014944-seed1. A pinned version also
+        # records which Jev labelled the sheet.
         if model == "jev-latest":
-            model = "typesafe/jev-latest"
+            model = "typesafe/jev-1.14"
     return {"model": model, "base_url": base_url, "path": path, "api_key_env": key_env,
             "timeout": args.timeout, "retries": args.retries}
 

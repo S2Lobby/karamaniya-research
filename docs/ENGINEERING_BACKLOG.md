@@ -416,6 +416,15 @@ The three waves merged into world engine 32 / agent prompt 29 (Wave B: 30/27; Wa
 | T183 | Negotiation, settlement and the war's ends | high | IMPLEMENTED | `civil_war.py` | `test_civil_war_negotiation.py` | Engine 32: ceasefire, the closed settlement list, same-month acceptance, amnesty/power sharing/autonomy/forces/election date, and the ends; tested directly |
 | T184 | Civil-war records, report and calibration | medium | IMPLEMENTED | `engine.py`, `tools/civil_war_report.py`, `tools/civil_war_sweep.py`, `docs/CIVIL_WAR.md` | `test_civil_war_records.py` | Engine 32: the month record, the twin difference-in-differences report, the 60-run sweep and the docs |
 
+### After engine 30 (2026-10-18)
+
+Found in run 20261018-014944-seed1, the first run on engine 30.
+
+| ID | Title | Severity | Status | Files | Tests | Note |
+|---|---|---|---|---|---|---|
+| T185 | Jev on OpenRouter was asked for a model that does not exist | high | VERIFIED | `gui.html`, `tools/jev_annotate.py`, `docs/JEV_ANNOTATOR.md`, `docs/research/jev-contract.md` | `test_gui.py`, `test_jev_annotate.py` | `typesafe/jev-latest` was refused (HTTP 400) for all 18 judge calls; the panel and the annotator now default to `typesafe/jev-1.14`. One real `JudgePanel` call answered all four questions ($0.0000567) |
+| T186 | A CLI seat's folder told the delegate it sat in a harness | medium | VERIFIED | `backends/cli_common.py` and the six CLI backends | `test_agent_prompt30_versions.py` | Agent prompt 30: the folder has the system's own random name (was `karamaniya-<tool>-`). The CLI's own environment block is still shown |
+
 ### Open, deliberately
 
 | ID | Title | Reason |

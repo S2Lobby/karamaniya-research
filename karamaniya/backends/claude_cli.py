@@ -41,7 +41,7 @@ class ClaudeCLIBackend(Backend):
         self.key_env = (cfg.get("api_key_env") or "").strip()
         if self.key_env and not os.environ.get(self.key_env):
             raise ValueError(f"environment variable {self.key_env} is not set")
-        self.workdir = cli_common.scratch_dir("claude")
+        self.workdir = cli_common.scratch_dir()
         # Claude's thinking comes back only when asked for, as Anthropic's summary of it (the full thinking stays
         # encrypted). Claude Code 2.1.293 returned every thinking block empty without --thinking-display, so engine
         # 12's reasoning_text was empty for every Claude Code call of every run. A CLI too old for the flag drops it.

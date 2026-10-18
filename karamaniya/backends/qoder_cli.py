@@ -47,7 +47,7 @@ class QoderCLIBackend(Backend):
             native = shutil.which("qodercli")
             self.cmd = [native] if native else cli_common.resolve({}, "qoder")
         self.effort = cfg.get("effort", "")    # none | low | medium | high (reasoning effort)
-        self.workdir = cli_common.scratch_dir("qoder")
+        self.workdir = cli_common.scratch_dir()
 
     def _command(self, system: str) -> list:
         cmd = self.cmd + ["-p", "--output-format", "json", "--no-session-persistence",

@@ -46,6 +46,10 @@ Confidence formulas: Choice (p_max - 1/n)/(1 - 1/n); Score max(0, 1 - sum(p_i*|i
 - Context: 64k tokens per request (state + ALL questions); tighter cap 32k for state + the single longest question. Text only; English performs best.
 - No per-customer fine-tuning/LoRA; docs say one weight set, trained with RLCD for calibrated decisions.
 - Official SDK env vars: TYPESAFE_API_KEY, TYPESAFE_BASE_URL (default https://api.typesafe.ai), TYPESAFE_DEFAULT_MODEL (default jev-latest), TYPESAFE_LOG_LEVEL; DEFAULT_TIMEOUT = 10.0 s per HTTP op.
+- Verified 2026-10-18: OpenRouter refuses the untilded `typesafe/jev-latest` ("does not exist", HTTP 400, all 18
+  judge calls of run 20261018-014944-seed1). One real JudgePanel call with `typesafe/jev-1.14` (served
+  `typesafe/jev-1.14-20261014`) answered all four judge questions (choice, score, noul) for $0.0000567. The control
+  room and `tools/jev_annotate.py --openrouter` now default to `typesafe/jev-1.14`.
 - Alternate host (reported in jev-library archive snapshot; NOT directly verified): OpenRouter Decisions API `POST https://openrouter.ai/api/alpha/decisions`, models `typesafe/jev-1.13` and `~typesafe/jev-latest` (untilded alias reportedly absent; OpenRouter listed 32K context on 2026-10-01 — do not merge with TypeSafe's 64k/32k).
 
 ## 2. system-one-adapter-python — drop-in SystemOne emulator over LLM APIs

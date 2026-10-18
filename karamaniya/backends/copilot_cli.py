@@ -87,7 +87,7 @@ class CopilotCLIBackend(Backend):
         super().__init__(cfg)
         self.cmd = find_copilot(cfg)
         self.effort = cfg.get("effort", "")    # none | minimal | low | medium | high | xhigh | max
-        self.workdir = cli_common.scratch_dir("copilot")
+        self.workdir = cli_common.scratch_dir()
 
     def _command(self, usage_path: str, context: dict | None = None) -> list:
         cmd = self.cmd + ["--output-format", "json", "--stream", "off", "--no-auto-update",

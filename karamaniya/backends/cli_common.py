@@ -81,9 +81,14 @@ def resolve(cfg: dict, name: str, exe_candidates=()) -> list:
     return [found]
 
 
-def scratch_dir(tag: str) -> str:
-    """An empty folder for the CLI to run in, so it has no project files to look at."""
-    return tempfile.mkdtemp(prefix=f"karamaniya-{tag}-")
+def scratch_dir() -> str:
+    """An empty folder for the CLI to run in, so it has no project files to look at.
+
+    The name is the system's own random one. A CLI shows its working directory to the model, and the old
+    `karamaniya-<tool>-` names told a delegate where it was: in run 20261018-014944-seed1 Haiku wrote "Skipping
+    karamaniya-related items" in Month 1 and closed with "a sandboxed directory with a naming pattern".
+    """
+    return tempfile.mkdtemp()
 
 
 def run(cmd: list, input_text: str | None, timeout: float, cwd: str | None = None,

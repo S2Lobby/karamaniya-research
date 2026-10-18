@@ -51,7 +51,7 @@ class ClineCLIBackend(Backend):
         self.cmd = cli_common.resolve(cfg, "cline", EXE)
         self.cline_provider = cfg.get("cline_provider", "")  # e.g. "cline-pass"; empty = Cline's default
         self.effort = cfg.get("effort", "")                  # none | low | medium | high | xhigh
-        self.workdir = cli_common.scratch_dir("cline")
+        self.workdir = cli_common.scratch_dir()
         # A prompt too long for the command line goes partly on stdin, until Cline is seen to ignore it.
         self.stdin_ok = True
 

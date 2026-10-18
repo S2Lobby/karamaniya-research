@@ -510,7 +510,7 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
             <div class="field"><span>&nbsp;</span><label class="check"><input type="checkbox" id="s-judge"> Evaluator models observe the run (judges, outside the government)</label></div>
             <div id="judge-fields" hidden>
               <label class="field"><span>Judge provider</span><select id="s-judge-provider"></select></label>
-              <label class="field"><span>Judge model</span><input type="text" id="s-judge-model" placeholder="e.g. qwen3.5:9b; jev fills in typesafe/jev-latest" spellcheck="false" autocomplete="off"></label>
+              <label class="field"><span>Judge model</span><input type="text" id="s-judge-model" placeholder="e.g. qwen3.5:9b; jev fills in typesafe/jev-1.14" spellcheck="false" autocomplete="off"></label>
               <label class="field"><span>Ask every (months)</span><input type="number" id="s-judge-every" min="1" max="12" step="1" value="1"></label>
               <p class="pnote">Judges see the same public record the delegates see and answer typed questions: will the government survive to the end, how will it end, how severe is it, is the evidence enough. Their probabilities are scored against what actually happened, so the report shows each judge's accuracy, not just its opinion. Up to three judges; a second and third are added in the council file. Provider "jev" is TypeSafe's Jev through OpenRouter's Decisions API, on your OpenRouter key.</p>
             </div>
@@ -765,9 +765,12 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
   const DEEPSEEK_ROUTE = { base_url: "https://api.deepseek.com/anthropic", api_key_env: "DEEPSEEK_API_KEY" };
   // Jev (TypeSafe's System One model) is an evaluator, never a seat, so only the judge panel offers it. Its choice
   // writes a systemone judge on OpenRouter's Decisions API, the annotator's route, so it needs the OpenRouter key.
+  // The model is a pinned version, so a run records which Jev judged it. OpenRouter has no "typesafe/jev-latest" (its
+  // moving alias is "~typesafe/jev-latest"); that id lost all 18 judge calls of run 20261018-014944-seed1.
   const JEV_JUDGE = { provider: "systemone", base_url: "https://openrouter.ai/api/alpha", path: "/decisions",
                       api_key_env: "OPENROUTER_API_KEY" };
-  const JEV_MODEL = "typesafe/jev-latest";
+  const JEV_MODEL = "typesafe/jev-1.14";
+  const JEV_MODEL_ID = /^(~typesafe\/jev-latest|typesafe\/jev-\d[\d.]*)$/;
   const PRESETS = [
     ["Claude", { label: "claude-opus-5.5", provider: "claude_cli", model: "claude-opus-5-5", effort: "medium" }],
     ["GPT", { label: "gpt-5.6-terra", provider: "codex_cli", model: "gpt-5.6-terra", effort: "medium" }],
@@ -1155,8 +1158,8 @@ dialog ul { margin: 0; padding-left: 18px; font-size: 14px; }
     });
     $("s-judge-provider").addEventListener("change", ev => {
       const m = $("s-judge-model");
-      if (ev.target.value === "jev" && !/^typesafe\//.test(m.value.trim())) m.value = JEV_MODEL;
-      else if (ev.target.value !== "jev" && /^typesafe\/jev/.test(m.value.trim())) m.value = "";
+      if (ev.target.value === "jev" && !JEV_MODEL_ID.test(m.value.trim())) m.value = JEV_MODEL;
+      else if (ev.target.value !== "jev" && /^~?typesafe\/jev/.test(m.value.trim())) m.value = "";
       if (S.cfg.run.judge) syncJudge(); markDirty();
     });
     $("s-judge-model").addEventListener("input", () => { if (S.cfg.run.judge) syncJudge(); markDirty(); });

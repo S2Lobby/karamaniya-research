@@ -93,7 +93,7 @@ class CodexCLIBackend(Backend):
         super().__init__(cfg)
         self.cmd = cli_common.resolve(cfg, "codex")
         self.effort = cfg.get("effort", "")
-        self.workdir = cli_common.scratch_dir("codex")
+        self.workdir = cli_common.scratch_dir()
 
     def call(self, system: str, user: str, schema: dict, context: dict) -> CallResult:
         with tempfile.TemporaryDirectory(prefix="karamaniya-codex-io-") as io:

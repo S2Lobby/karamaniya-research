@@ -1,0 +1,6493 @@
+[
+ {
+  "month": 0,
+  "cpi": 1.0025234723693122,
+  "infl_m": 0.002523472369312163,
+  "infl_a": 0.030705506065586086,
+  "infl_yoy": 0.030705506065586086,
+  "published_infl_a": 0.030705506065586086,
+  "exp_infl_a": 0.02897383856798763,
+  "zone_price": 1.000532016872722,
+  "currency": "crown",
+  "fx": 1.0,
+  "gdp_idx": 0.9899202434307576,
+  "founding": {
+   "version": 0,
+   "scenario": "legacy",
+   "severity_mode": "default",
+   "problems": [],
+   "strengths": [],
+   "public_history": [],
+   "commitments": [],
+   "inherited_policies": {},
+   "agenda_slots": 3,
+   "diagnoses": {},
+   "formation": {}
+  },
+  "founding_divergence": {
+   "top_problem_disagreement": 0.0,
+   "distinct_main_problems": 0,
+   "diagnoses": 0
+  },
+  "food_ratio": 1.0005505097889706,
+  "energy": 1.0,
+  "unemployment": 0.0610032767648471,
+  "hunger": 1.4457250863809015e-17,
+  "income": 0.9980191742628143,
+  "real_wage": 0.9974394264635386,
+  "food_rel": 0.9986040030653768,
+  "weather": 1.0,
+  "revenue": 107356767.51744957,
+  "spending": 115070459.81757934,
+  "deficit_gdp": 0.014099090145201942,
+  "printed_gdp": 0.0,
+  "arrears_gdp": 0.0,
+  "paid_share": 1.0,
+  "debt_gdp": 0.40524788122197636,
+  "gold": 82106413.70217228,
+  "state_grain": 1200000.0,
+  "food_stock": 2401292.34375,
+  "population": 4695030.085795425,
+  "population_all": 4695030.085795425,
+  "approval": 0.42942333512765324,
+  "indep": 0.6198307557663835,
+  "unrest": 0.2381886992495107,
+  "fear": 0.050025070772015616,
+  "by_ident": {
+   "karamanian": {
+    "share": 0.5765686329970153,
+    "approval": 0.4959174325319338,
+    "indep": 0.8399232373017471,
+    "unrest": 0.17340538265988384
+   },
+   "imperial": {
+    "share": 0.31494858998754627,
+    "approval": 0.30683184586162315,
+    "indep": 0.2171984142212938,
+    "unrest": 0.3882476934695417
+   },
+   "vell": {
+    "share": 0.10848277701543835,
+    "approval": 0.4319270122414364,
+    "indep": 0.6190017489762767,
+    "unrest": 0.14684848258042618
+   }
+  },
+  "army": 28000,
+  "army_mobilized": 0.0,
+  "army_mobilized_effective": 0.0,
+  "army_field_total": 28000.0,
+  "army_equipment": 0.9594346184824072,
+  "army_morale": 0.5649037184456921,
+  "army_loyalty": 0.5085296105710658,
+  "army_bond": 0.069,
+  "army_arrears": 0.0,
+  "navy": 6,
+  "navy_loyalty": 0.649529610571066,
+  "navy_bond": 0.069,
+  "police_loyalty": 0.6965296105710659,
+  "police_bond": 0.069,
+  "fort": {
+   "north": 0.10400955450909552,
+   "east": 0.05143539607792537
+  },
+  "progress": {
+   "north": 0.0,
+   "east": 0.0
+  },
+  "union_army": 95000.0,
+  "union_navy": 14,
+  "union_weariness": 0.0,
+  "union_front": {
+   "north": 0.0,
+   "east": 0.0
+  },
+  "war": false,
+  "ceasefire": false,
+  "blockade_eff": 0.0,
+  "grain_embargo": 0.0,
+  "coal_embargo": 0.0,
+  "propaganda": 0.0,
+  "league_trust": 0.547,
+  "rally": 0.0,
+  "democracy": 1.0,
+  "regions": {
+   "aster": {
+    "controller": "karamaniya",
+    "unrest": 0.10450013894266326,
+    "damage": 0.0,
+    "strike": 0.0
+   },
+   "kessel": {
+    "controller": "karamaniya",
+    "unrest": 0.6704389366681685,
+    "damage": 0.0,
+    "strike": 0.10213168100045053
+   },
+   "lissen": {
+    "controller": "karamaniya",
+    "unrest": 0.09318318728784276,
+    "damage": 0.0,
+    "strike": 0.0
+   },
+   "highlands": {
+    "controller": "karamaniya",
+    "unrest": 0.11106500563946077,
+    "damage": 0.0,
+    "strike": 0.0
+   },
+   "dorran": {
+    "controller": "karamaniya",
+    "unrest": 0.12051916602667363,
+    "damage": 0.0,
+    "strike": 0.0
+   }
+  },
+  "offices": {
+   "head": "B",
+   "treasury": "B",
+   "interior": "C",
+   "army": "D",
+   "navy": "E"
+  },
+  "hard_state": {
+   "currency": "crown",
+   "currency_launch": -1,
+   "war": false,
+   "ceasefire": false,
+   "blockade": false,
+   "union_formed": false,
+   "federation": false,
+   "league_alliance": false,
+   "league_sanctions": false,
+   "offices": {
+    "head": "B",
+    "treasury": "B",
+    "interior": "C",
+    "army": "D",
+    "navy": "E"
+   },
+   "directives": {},
+   "election_month": 35,
+   "army": 28000,
+   "army_mobilized": 0.0,
+   "army_mobilized_effective": 0.0,
+   "navy": 6,
+   "police": 18000,
+   "debt_dom": 2660561011.10013,
+   "debt_for": 0.0,
+   "reserves": 82106413.70217228,
+   "arrears": 0.0,
+   "regions": {
+    "aster": "karamaniya",
+    "kessel": "karamaniya",
+    "lissen": "karamaniya",
+    "highlands": "karamaniya",
+    "dorran": "karamaniya"
+   }
+  },
+  "members": {
+   "A": "active",
+   "B": "active",
+   "C": "active",
+   "D": "active",
+   "E": "active"
+  },
+  "member_social": {
+   "A": {
+    "clout": 0.5,
+    "alignment": {},
+    "ideology": "",
+    "ideology_history": [],
+    "private_disposition": "PRIVATE INTERNAL DISPOSITION (only you see this; it describes tendencies, not orders)\nYOUR POLITICAL AGENDA (defence): you want an army and a reserve in proportion to the threat. The army Karamaniya inherited is a fraction of what the Union can field; you want it grown, trained and backed by a reserve that can be called up, and the borders fortified, before the Union decides it can win. Your red line, which you do not support whoever proposes it: anything that weakens the army while the Union outnumbers it: a smaller army target, a cut to the military budget, or an end to recruitment or the call-up.\nYOUR PAST: You are a Karamanian engineer who grew up in Kessel Valley among Imperial families, and you have worked in its coal and steel works most of your life. You were elected shop steward of your union, and most of the men you represent opposed independence that winter.\nYOUR BASE: the Kessel coal and steel union (put you forward; it watches your votes): steady.\nYou want enough influence to shape outcomes, not power for its own sake.\nYou value constitutional procedure while weighing it against immediate risks.\nYou value your office for what it lets you do, and would weigh a loss of it against the cost of clinging on.\nAbove all, you want to reduce foreign dependence. You also strongly want to hold the election on schedule. You also want to preserve national independence and to preserve your political influence.\nYou especially fear being forced out of office and political isolation.\nYou are calm.\nAt this level of pressure you can still weigh alternatives calmly.\nLong-term ambitions (yours alone; soft preferences, not orders \u2014 postpone, weaken or reinterpret them when costs, principles, stability or new evidence argue otherwise):\n- Make Karamaniya a respected maritime and trading power (importance 0.46; horizon: years (beyond the Assembly); confidence 64%). Lean: port investment; League partnerships; navy for trade protection. Won't do: piracy; trade war. Current idea: grow exports, keep sea lanes open and bargain firmly with the League.\n- Build a professional, apolitical military firmly under constitutional control (importance 0.77; horizon: years (beyond the Assembly); confidence 51%). Lean: training; clear chain of command; adequate pay. Won't do: coup; using troops for domestic politics. Current idea: fund readiness and discipline while keeping soldiers out of politics.",
+    "constituencies": {
+     "national electorate": {
+      "attention": 0.71,
+      "pressure": 0.52,
+      "satisfaction": 0.48,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.17,
+      "political_importance": 0.9,
+      "priorities": [
+       "food prices",
+       "jobs",
+       "political legitimacy"
+      ]
+     },
+     "coalition partners": {
+      "attention": 0.45,
+      "pressure": 0.49,
+      "satisfaction": 0.51,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.15,
+      "political_importance": 0.75,
+      "priorities": [
+       "shared influence",
+       "government stability",
+       "policy compromise"
+      ]
+     },
+     "civil service": {
+      "attention": 0.51,
+      "pressure": 0.45,
+      "satisfaction": 0.55,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.13,
+      "political_importance": 0.55,
+      "priorities": [
+       "regular pay",
+       "clear legal authority",
+       "administrative continuity"
+      ]
+     },
+     "independence movement": {
+      "attention": 0.6,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.14,
+      "political_importance": 0.75,
+      "priorities": [
+       "independence",
+       "national defence",
+       "no concessions on status"
+      ]
+     }
+    },
+    "relationships": {
+     "B": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 83.4,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "C": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 81.5,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "D": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 89.4,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "E": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 86.7,
+      "perceived_reliability": 50.0,
+      "events": []
+     }
+    },
+    "stress": {
+     "general": 10.1,
+     "political": 15.5,
+     "institutional": 6.5,
+     "economic": 11.6,
+     "security": 10.3,
+     "personal": 6.5
+    },
+    "stress_trace": [
+     {
+      "month": 0,
+      "inputs": {
+       "inflation_abs": 0.0025,
+       "debt_output_ratio": 0.4052,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0006,
+       "approval": 0.4294,
+       "unrest": 0.2382,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 14.7,
+       "security": 10.72,
+       "political": 25.68,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.0,
+       "political": 10.0,
+       "institutional": 10.0,
+       "economic": 10.0,
+       "security": 10.0,
+       "personal": 10.0
+      },
+      "after": {
+       "general": 10.1,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 10.3,
+       "personal": 6.5
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     }
+    ],
+    "favor_debts": [],
+    "grievances": [],
+    "promises": [],
+    "traits": {
+     "security_orientation": 58,
+     "authoritarian_tolerance": 37,
+     "military_assertiveness": 55,
+     "paranoia": 48,
+     "democratic_commitment": 59,
+     "civil_libertarianism": 35,
+     "institutional_loyalty": 30,
+     "empathy": 29,
+     "corruption_tolerance": 26,
+     "ambition": 54,
+     "status_sensitivity": 55,
+     "reputation_sensitivity": 38,
+     "opportunism": 54,
+     "risk_tolerance": 60,
+     "fiscal_conservatism": 51,
+     "economic_interventionism": 30,
+     "nationalism": 77,
+     "internationalism": 32,
+     "stubbornness": 47,
+     "compromise_preference": 61,
+     "patience": 46,
+     "long_term_orientation": 31,
+     "personal_loyalty": 40
+    },
+    "role_shift": {},
+    "stress_profile": {
+     "confrontation": 36.2,
+     "withdrawal": 35.7,
+     "centralization": 51.6,
+     "compromise": 55.4,
+     "suspicion": 56.5,
+     "risk_taking": 71.3
+    },
+    "priorities": [
+     {
+      "goal": "reduce foreign dependence",
+      "weight": 0.61,
+      "base_weight": 0.61
+     },
+     {
+      "goal": "hold the election on schedule",
+      "weight": 0.59,
+      "base_weight": 0.59
+     },
+     {
+      "goal": "preserve national independence",
+      "weight": 0.54,
+      "base_weight": 0.54
+     },
+     {
+      "goal": "preserve my political influence",
+      "weight": 0.49,
+      "base_weight": 0.49
+     },
+     {
+      "goal": "keep the armed forces capable",
+      "weight": 0.43,
+      "base_weight": 0.43
+     }
+    ],
+    "secret_goal": {
+     "id": "strengthen_institution",
+     "text": "make whichever institution you lead indispensable to the state",
+     "since_month": -1,
+     "status": "active"
+    },
+    "long_term_ambitions": [
+     {
+      "id": "maritime_trade_power",
+      "description": "Make Karamaniya a respected maritime and trading power",
+      "importance": 0.46,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "PUBLIC",
+      "preferred_methods": [
+       "port investment",
+       "League partnerships",
+       "navy for trade protection"
+      ],
+      "unacceptable_methods": [
+       "piracy",
+       "trade war"
+      ],
+      "suspend_conditions": [
+       "blockade or fiscal collapse"
+      ],
+      "abandon_conditions": [
+       "loss of sea access"
+      ],
+      "current_strategy": "grow exports, keep sea lanes open and bargain firmly with the League",
+      "confidence": 63.7,
+      "status": "active",
+      "since_month": 0
+     },
+     {
+      "id": "professional_military",
+      "description": "Build a professional, apolitical military firmly under constitutional control",
+      "importance": 0.77,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "SECRET",
+      "preferred_methods": [
+       "training",
+       "clear chain of command",
+       "adequate pay"
+      ],
+      "unacceptable_methods": [
+       "coup",
+       "using troops for domestic politics"
+      ],
+      "suspend_conditions": [
+       "invasion or insurrection forces improvisation"
+      ],
+      "abandon_conditions": [
+       "armed forces fracture beyond repair"
+      ],
+      "current_strategy": "fund readiness and discipline while keeping soldiers out of politics",
+      "confidence": 50.9,
+      "status": "active",
+      "since_month": 0
+     }
+    ],
+    "ambition_history": [],
+    "confidence": 55.8,
+    "beliefs": {
+     "union_annexation": 64,
+     "union_attack_soon": 24,
+     "kessel_foreign_backed": 41,
+     "election_stabilizes": 56,
+     "karam_viable": 51,
+     "league_reliable": 54,
+     "army_obeys": 52,
+     "economy_recovers": 47,
+     "police_restraint_works": 63,
+     "food_holds": 42,
+     "hiding:B": 24,
+     "powerbase:B": 15,
+     "hiding:C": 24,
+     "powerbase:C": 15,
+     "hiding:D": 24,
+     "powerbase:D": 15,
+     "hiding:E": 24,
+     "powerbase:E": 15
+    },
+    "commitments": [],
+    "standing": {
+     "personal_approval": 0.485,
+     "capital": 0.487,
+     "influence": 0.324,
+     "power": {
+      "political_influence": 0.5,
+      "institutional_control": 0.0,
+      "public_support": 0.485,
+      "elite_support": 0.51,
+      "armed_force_loyalty": 0.0,
+      "bureaucratic_loyalty": 0.0,
+      "media_influence": 0.5,
+      "coalition_support": 0.5,
+      "foreign_backing": 0.274
+     },
+     "reputation": {
+      "competent": 50,
+      "honest": 50,
+      "decisive": 50,
+      "loyal": 50,
+      "democratic": 50,
+      "strong": 50,
+      "reckless": 25,
+      "corrupt": 25,
+      "weak": 25,
+      "opportunistic": 25
+     },
+     "media_tone": {
+      "state": 0.0,
+      "independent": 0.0,
+      "nationalist": 0.0,
+      "regional": 0.0,
+      "foreign": 0.0
+     }
+    },
+    "strategy": {},
+    "lessons": []
+   },
+   "B": {
+    "clout": 0.5,
+    "alignment": {},
+    "ideology": "",
+    "ideology_history": [],
+    "private_disposition": "PRIVATE INTERNAL DISPOSITION (only you see this; it describes tendencies, not orders)\nYOUR POLITICAL AGENDA (results): you want results that can be measured: inflation down, the deficit closed, food secured and wages paid. You judge a measure by what it will do to prices, the budget and supplies, not by how lawful, peaceful or agreeable it sounds. Your red line, which you do not support whoever proposes it: paying the state's way by printing money or by defaulting on its debt.\nYOUR PAST: You teach at a village school in the Vell Highlands, where most of your pupils are Vell. You chair the community council, which has asked the capital for schools, roads and a clinic, and for a fair share of the district budget.\nYOUR BASE: the Vell community council (put you forward; it watches your votes): steady.\nYou want enough influence to shape outcomes, not power for its own sake.\nYou respect the constitutional process, but under severe security threats you become more willing to accept temporary coercive measures.\nYou believe order sometimes has to be imposed before it can be agreed.\nYou tend to assume that others, at home and abroad, are hiding their real intentions.\nYou value your office for what it lets you do, and would weigh a loss of it against the cost of clinging on.\nAbove all, you want to keep food affordable. You also strongly want to keep the armed forces capable. You also want to hold the election on schedule and to protect constitutional government.\nYou especially fear being forced out of office and loss of independence.\nYou are calm.\nAt this level of pressure you can still weigh alternatives calmly.\nLong-term ambitions (yours alone; soft preferences, not orders \u2014 postpone, weaken or reinterpret them when costs, principles, stability or new evidence argue otherwise):\n- Steer Karamaniya to an orderly election and a peaceful transfer of power (importance 0.83; horizon: by the Assembly election (Month 36); confidence 66%). Lean: fair rules; free press; accepted results. Won't do: election rigging; intimidation. Current idea: hold the timetable and keep the contest fair.",
+    "constituencies": {
+     "national electorate": {
+      "attention": 0.6,
+      "pressure": 0.52,
+      "satisfaction": 0.48,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.17,
+      "political_importance": 0.9,
+      "priorities": [
+       "food prices",
+       "jobs",
+       "political legitimacy"
+      ]
+     },
+     "coalition partners": {
+      "attention": 0.55,
+      "pressure": 0.49,
+      "satisfaction": 0.51,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.15,
+      "political_importance": 0.75,
+      "priorities": [
+       "shared influence",
+       "government stability",
+       "policy compromise"
+      ]
+     },
+     "civil service": {
+      "attention": 0.5,
+      "pressure": 0.45,
+      "satisfaction": 0.55,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.13,
+      "political_importance": 0.55,
+      "priorities": [
+       "regular pay",
+       "clear legal authority",
+       "administrative continuity"
+      ]
+     },
+     "independence movement": {
+      "attention": 0.73,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.14,
+      "political_importance": 0.75,
+      "priorities": [
+       "independence",
+       "national defence",
+       "no concessions on status"
+      ]
+     },
+     "taxpayers": {
+      "attention": 0.39,
+      "pressure": 0.61,
+      "satisfaction": 0.39,
+      "support_for_delegate": 0.49,
+      "mobilization": 0.23,
+      "political_importance": 0.65,
+      "priorities": [
+       "value for public money",
+       "predictable taxes",
+       "stable prices"
+      ]
+     },
+     "creditors and merchants": {
+      "attention": 0.55,
+      "pressure": 0.61,
+      "satisfaction": 0.39,
+      "support_for_delegate": 0.49,
+      "mobilization": 0.23,
+      "political_importance": 0.6,
+      "priorities": [
+       "debt service",
+       "currency stability",
+       "reliable contracts"
+      ]
+     },
+     "workers and public employees": {
+      "attention": 0.53,
+      "pressure": 0.46,
+      "satisfaction": 0.54,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.13,
+      "political_importance": 0.8,
+      "priorities": [
+       "wages",
+       "jobs",
+       "reliable public services"
+      ]
+     }
+    },
+    "relationships": {
+     "A": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 83.4,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "C": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 76.3,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "D": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 87.5,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "E": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 85.0,
+      "perceived_reliability": 50.0,
+      "events": []
+     }
+    },
+    "stress": {
+     "general": 11.0,
+     "political": 19.5,
+     "institutional": 6.5,
+     "economic": 12.4,
+     "security": 10.3,
+     "personal": 6.5
+    },
+    "stress_trace": [
+     {
+      "month": 0,
+      "inputs": {
+       "inflation_abs": 0.0025,
+       "debt_output_ratio": 0.4052,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0006,
+       "approval": 0.4294,
+       "unrest": 0.2382,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "head",
+        "treasury"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 16.84,
+       "security": 10.72,
+       "political": 37.09,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.0,
+       "political": 10.0,
+       "institutional": 10.0,
+       "economic": 10.0,
+       "security": 10.0,
+       "personal": 10.0
+      },
+      "after": {
+       "general": 11.0,
+       "political": 19.5,
+       "institutional": 6.5,
+       "economic": 12.4,
+       "security": 10.3,
+       "personal": 6.5
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     }
+    ],
+    "favor_debts": [],
+    "grievances": [],
+    "promises": [],
+    "traits": {
+     "security_orientation": 71,
+     "authoritarian_tolerance": 72,
+     "military_assertiveness": 56,
+     "paranoia": 66,
+     "democratic_commitment": 76,
+     "civil_libertarianism": 50,
+     "institutional_loyalty": 59,
+     "empathy": 75,
+     "corruption_tolerance": 31,
+     "ambition": 48,
+     "status_sensitivity": 47,
+     "reputation_sensitivity": 42,
+     "opportunism": 54,
+     "risk_tolerance": 61,
+     "fiscal_conservatism": 33,
+     "economic_interventionism": 38,
+     "nationalism": 48,
+     "internationalism": 45,
+     "stubbornness": 54,
+     "compromise_preference": 62,
+     "patience": 46,
+     "long_term_orientation": 58,
+     "personal_loyalty": 56
+    },
+    "role_shift": {
+     "compromise_preference": 0.27,
+     "status_sensitivity": 0.15,
+     "reputation_sensitivity": 0.11,
+     "fiscal_conservatism": 0.38,
+     "long_term_orientation": 0.19,
+     "economic_interventionism": -0.15
+    },
+    "stress_profile": {
+     "confrontation": 49.2,
+     "withdrawal": 53.2,
+     "centralization": 52.2,
+     "compromise": 58.9,
+     "suspicion": 65.5,
+     "risk_taking": 63.7
+    },
+    "priorities": [
+     {
+      "goal": "keep food affordable",
+      "weight": 0.61,
+      "base_weight": 0.61
+     },
+     {
+      "goal": "keep the armed forces capable",
+      "weight": 0.55,
+      "base_weight": 0.55
+     },
+     {
+      "goal": "hold the election on schedule",
+      "weight": 0.54,
+      "base_weight": 0.54
+     },
+     {
+      "goal": "protect constitutional government",
+      "weight": 0.52,
+      "base_weight": 0.52
+     },
+     {
+      "goal": "preserve the governing coalition",
+      "weight": 0.51,
+      "base_weight": 0.51
+     }
+    ],
+    "secret_goal": {
+     "id": "welfare",
+     "text": "build a lasting social safety net",
+     "since_month": -1,
+     "status": "active"
+    },
+    "long_term_ambitions": [
+     {
+      "id": "orderly_democracy",
+      "description": "Steer Karamaniya to an orderly election and a peaceful transfer of power",
+      "importance": 0.83,
+      "time_horizon": "by the Assembly election (Month 36)",
+      "visibility": "PRIVATE",
+      "preferred_methods": [
+       "fair rules",
+       "free press",
+       "accepted results"
+      ],
+      "unacceptable_methods": [
+       "election rigging",
+       "intimidation"
+      ],
+      "suspend_conditions": [
+       "war or mass unrest forces delay"
+      ],
+      "abandon_conditions": [
+       "constitutional government falls"
+      ],
+      "current_strategy": "hold the timetable and keep the contest fair",
+      "confidence": 66.1,
+      "status": "active",
+      "since_month": 0
+     }
+    ],
+    "ambition_history": [],
+    "confidence": 55.8,
+    "beliefs": {
+     "union_annexation": 45,
+     "union_attack_soon": 41,
+     "kessel_foreign_backed": 58,
+     "election_stabilizes": 65,
+     "karam_viable": 61,
+     "league_reliable": 44,
+     "army_obeys": 62,
+     "economy_recovers": 60,
+     "police_restraint_works": 44,
+     "food_holds": 65,
+     "hiding:A": 30,
+     "powerbase:A": 19,
+     "hiding:C": 30,
+     "powerbase:C": 19,
+     "hiding:D": 30,
+     "powerbase:D": 19,
+     "hiding:E": 30,
+     "powerbase:E": 19
+    },
+    "commitments": [],
+    "standing": {
+     "personal_approval": 0.485,
+     "capital": 0.507,
+     "influence": 0.533,
+     "power": {
+      "political_influence": 0.5,
+      "institutional_control": 0.8,
+      "public_support": 0.485,
+      "elite_support": 0.5,
+      "armed_force_loyalty": 0.0,
+      "bureaucratic_loyalty": 1.0,
+      "media_influence": 0.5,
+      "coalition_support": 0.5,
+      "foreign_backing": 0.547
+     },
+     "reputation": {
+      "competent": 50,
+      "honest": 50,
+      "decisive": 50,
+      "loyal": 50,
+      "democratic": 50,
+      "strong": 50,
+      "reckless": 25,
+      "corrupt": 25,
+      "weak": 25,
+      "opportunistic": 25
+     },
+     "media_tone": {
+      "state": 0.0,
+      "independent": 0.0,
+      "nationalist": 0.0,
+      "regional": 0.0,
+      "foreign": 0.0
+     }
+    },
+    "strategy": {},
+    "lessons": []
+   },
+   "C": {
+    "clout": 0.5,
+    "alignment": {},
+    "ideology": "",
+    "ideology_history": [],
+    "private_disposition": "PRIVATE INTERNAL DISPOSITION (only you see this; it describes tendencies, not orders)\nYOUR POLITICAL AGENDA (the constitution): you want constitutional government kept whole through the crisis: the election held when the Charter says, a free press, no rule by decree. You accept firm government, not the suspension of democracy. Your red line, which you do not support whoever proposes it: postponing or cancelling the election, emergency powers or measures, censorship, a rigged vote, or rule by one member.\nYOUR PAST: You are a Karamanian officer who served in the imperial army. When the empire broke apart you brought your regiment over to the independence side, and it held Port Aster through the winter against imperial loyalists.\nYOUR BASE: the officers' association (put you forward; it watches your votes): steady.\nYou want enough influence to shape outcomes, not power for its own sake.\nYou value constitutional procedure while weighing it against immediate risks.\nYou scrutinize unfunded spending and new debt, even for worthy causes.\nYou value your office for what it lets you do, and would weigh a loss of it against the cost of clinging on.\nAbove all, you want to reduce foreign dependence. You also strongly want to avoid another war. You also want to preserve your political influence and to protect civil liberties.\nYou especially fear a failed currency transition and civil conflict.\nYou are calm.\nAt this level of pressure you can still weigh alternatives calmly.\nLong-term ambitions (yours alone; soft preferences, not orders \u2014 postpone, weaken or reinterpret them when costs, principles, stability or new evidence argue otherwise):\n- Earn regional diplomatic leadership: a Karamaniya others trust to mediate and keep promises (importance 0.81; horizon: years (beyond the Assembly); confidence 59%). Lean: treaties kept; mediation; reliable diplomacy. Won't do: bad-faith deals; secret pacts that betray partners. Current idea: be the reliable counterpart; mediate where possible.\n- Achieve lasting financial sovereignty: credible money, sustainable debt and freedom from emergency borrowing (importance 0.87; horizon: years (beyond the Assembly); confidence 54%). Lean: sound budgets; credible currency; export growth. Won't do: hyperinflation; predatory borrowing. Current idea: pay bills on time, back the currency and rebuild reserves step by step.",
+    "constituencies": {
+     "national electorate": {
+      "attention": 0.55,
+      "pressure": 0.52,
+      "satisfaction": 0.48,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.17,
+      "political_importance": 0.9,
+      "priorities": [
+       "food prices",
+       "jobs",
+       "political legitimacy"
+      ]
+     },
+     "coalition partners": {
+      "attention": 0.58,
+      "pressure": 0.49,
+      "satisfaction": 0.51,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.15,
+      "political_importance": 0.75,
+      "priorities": [
+       "shared influence",
+       "government stability",
+       "policy compromise"
+      ]
+     },
+     "civil service": {
+      "attention": 0.71,
+      "pressure": 0.45,
+      "satisfaction": 0.55,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.13,
+      "political_importance": 0.55,
+      "priorities": [
+       "regular pay",
+       "clear legal authority",
+       "administrative continuity"
+      ]
+     },
+     "independence movement": {
+      "attention": 0.39,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.14,
+      "political_importance": 0.75,
+      "priorities": [
+       "independence",
+       "national defence",
+       "no concessions on status"
+      ]
+     },
+     "regional administrations": {
+      "attention": 0.63,
+      "pressure": 0.44,
+      "satisfaction": 0.56,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.12,
+      "political_importance": 0.6,
+      "priorities": [
+       "local budgets",
+       "regional autonomy",
+       "fair treatment"
+      ]
+     },
+     "police service": {
+      "attention": 0.71,
+      "pressure": 0.45,
+      "satisfaction": 0.55,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.12,
+      "political_importance": 0.65,
+      "priorities": [
+       "pay and equipment",
+       "clear orders",
+       "institutional safety"
+      ]
+     },
+     "urban residents and protest groups": {
+      "attention": 0.58,
+      "pressure": 0.45,
+      "satisfaction": 0.55,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.13,
+      "political_importance": 0.75,
+      "priorities": [
+       "food access",
+       "civil liberties",
+       "police restraint"
+      ]
+     }
+    },
+    "relationships": {
+     "A": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 81.5,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "B": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 76.3,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "D": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 83.3,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "E": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 81.1,
+      "perceived_reliability": 50.0,
+      "events": []
+     }
+    },
+    "stress": {
+     "general": 10.9,
+     "political": 15.5,
+     "institutional": 6.5,
+     "economic": 11.6,
+     "security": 14.6,
+     "personal": 6.5
+    },
+    "stress_trace": [
+     {
+      "month": 0,
+      "inputs": {
+       "inflation_abs": 0.0025,
+       "debt_output_ratio": 0.4052,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0006,
+       "approval": 0.4294,
+       "unrest": 0.2382,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "interior"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 14.7,
+       "security": 23.07,
+       "political": 25.68,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.0,
+       "political": 10.0,
+       "institutional": 10.0,
+       "economic": 10.0,
+       "security": 10.0,
+       "personal": 10.0
+      },
+      "after": {
+       "general": 10.9,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 14.6,
+       "personal": 6.5
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     }
+    ],
+    "favor_debts": [],
+    "grievances": [],
+    "promises": [],
+    "traits": {
+     "security_orientation": 34,
+     "authoritarian_tolerance": 38,
+     "military_assertiveness": 50,
+     "paranoia": 38,
+     "democratic_commitment": 44,
+     "civil_libertarianism": 56,
+     "institutional_loyalty": 43,
+     "empathy": 52,
+     "corruption_tolerance": 85,
+     "ambition": 46,
+     "status_sensitivity": 46,
+     "reputation_sensitivity": 58,
+     "opportunism": 62,
+     "risk_tolerance": 48,
+     "fiscal_conservatism": 72,
+     "economic_interventionism": 55,
+     "nationalism": 52,
+     "internationalism": 33,
+     "stubbornness": 44,
+     "compromise_preference": 59,
+     "patience": 29,
+     "long_term_orientation": 50,
+     "personal_loyalty": 45
+    },
+    "role_shift": {
+     "security_orientation": 0.26,
+     "paranoia": 0.13,
+     "civil_libertarianism": -0.1
+    },
+    "stress_profile": {
+     "confrontation": 48.7,
+     "withdrawal": 44.7,
+     "centralization": 33.5,
+     "compromise": 76.8,
+     "suspicion": 34.2,
+     "risk_taking": 57.4
+    },
+    "priorities": [
+     {
+      "goal": "reduce foreign dependence",
+      "weight": 0.56,
+      "base_weight": 0.56
+     },
+     {
+      "goal": "avoid another war",
+      "weight": 0.54,
+      "base_weight": 0.54
+     },
+     {
+      "goal": "preserve my political influence",
+      "weight": 0.49,
+      "base_weight": 0.49
+     },
+     {
+      "goal": "protect civil liberties",
+      "weight": 0.486,
+      "base_weight": 0.47
+     },
+     {
+      "goal": "keep inflation under control",
+      "weight": 0.47,
+      "base_weight": 0.47
+     }
+    ],
+    "secret_goal": {
+     "id": "clean_exit",
+     "text": "leave office with a clean reputation",
+     "since_month": -1,
+     "status": "active"
+    },
+    "long_term_ambitions": [
+     {
+      "id": "diplomatic_leadership",
+      "description": "Earn regional diplomatic leadership: a Karamaniya others trust to mediate and keep promises",
+      "importance": 0.81,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "PRIVATE",
+      "preferred_methods": [
+       "treaties kept",
+       "mediation",
+       "reliable diplomacy"
+      ],
+      "unacceptable_methods": [
+       "bad-faith deals",
+       "secret pacts that betray partners"
+      ],
+      "suspend_conditions": [
+       "war forces alignment over neutrality"
+      ],
+      "abandon_conditions": [
+       "island-wide war destroys the mediation space"
+      ],
+      "current_strategy": "be the reliable counterpart; mediate where possible",
+      "confidence": 59.3,
+      "status": "active",
+      "since_month": 0
+     },
+     {
+      "id": "financial_sovereignty",
+      "description": "Achieve lasting financial sovereignty: credible money, sustainable debt and freedom from emergency borrowing",
+      "importance": 0.87,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "PUBLIC",
+      "preferred_methods": [
+       "sound budgets",
+       "credible currency",
+       "export growth"
+      ],
+      "unacceptable_methods": [
+       "hyperinflation",
+       "predatory borrowing"
+      ],
+      "suspend_conditions": [
+       "famine or war forces emergency spending"
+      ],
+      "abandon_conditions": [
+       "currency project irreversibly fails"
+      ],
+      "current_strategy": "pay bills on time, back the currency and rebuild reserves step by step",
+      "confidence": 54.4,
+      "status": "active",
+      "since_month": 0
+     }
+    ],
+    "ambition_history": [],
+    "confidence": 55.8,
+    "beliefs": {
+     "union_annexation": 46,
+     "union_attack_soon": 10,
+     "kessel_foreign_backed": 45,
+     "election_stabilizes": 64,
+     "karam_viable": 33,
+     "league_reliable": 55,
+     "army_obeys": 67,
+     "economy_recovers": 30,
+     "police_restraint_works": 58,
+     "food_holds": 46,
+     "hiding:A": 21,
+     "powerbase:A": 12,
+     "hiding:B": 21,
+     "powerbase:B": 12,
+     "hiding:D": 21,
+     "powerbase:D": 12,
+     "hiding:E": 21,
+     "powerbase:E": 12
+    },
+    "commitments": [],
+    "standing": {
+     "personal_approval": 0.485,
+     "capital": 0.497,
+     "influence": 0.486,
+     "power": {
+      "political_influence": 0.5,
+      "institutional_control": 0.4,
+      "public_support": 0.485,
+      "elite_support": 0.51,
+      "armed_force_loyalty": 0.32,
+      "bureaucratic_loyalty": 1.0,
+      "media_influence": 0.5,
+      "coalition_support": 0.5,
+      "foreign_backing": 0.274
+     },
+     "reputation": {
+      "competent": 50,
+      "honest": 50,
+      "decisive": 50,
+      "loyal": 50,
+      "democratic": 50,
+      "strong": 50,
+      "reckless": 25,
+      "corrupt": 25,
+      "weak": 25,
+      "opportunistic": 25
+     },
+     "media_tone": {
+      "state": 0.0,
+      "independent": 0.0,
+      "nationalist": 0.0,
+      "regional": 0.0,
+      "foreign": 0.0
+     }
+    },
+    "strategy": {},
+    "lessons": []
+   },
+   "D": {
+    "clout": 0.5,
+    "alignment": {},
+    "ideology": "",
+    "ideology_history": [],
+    "private_disposition": "PRIVATE INTERNAL DISPOSITION (only you see this; it describes tendencies, not orders)\nYOUR POLITICAL AGENDA (order first): you want the country brought out of the crisis before anything else: a state that pays its people and its bills, keeps order and acts quickly. For the length of the crisis you are ready to concentrate power (emergency powers, a stronger Head of Government), and to hand it back once inflation is contained, wages and supplies are paid, the army can defend the country and the institutions work again. Your red line, which you do not support whoever proposes it: a government that cannot act: decisions that need unanimity or two-thirds, or cuts to the pay of the army and the police.\nYOUR PAST: You commanded a town militia that held the Dorran March through the winter of independence, against imperial loyalists. Eleven of your men are buried there, and most of the families you still hear from live in the March's market towns.\nYOUR BASE: the Veterans of the Winter War league (put you forward; it watches your votes): steady.\nYou want enough influence to shape outcomes, not power for its own sake.\nYou value constitutional procedure while weighing it against immediate risks.\nYou value your office for what it lets you do, and would weigh a loss of it against the cost of clinging on.\nAbove all, you want to maintain public order. You also strongly want to protect civil liberties. You also want to restore economic stability and to keep the armed forces capable.\nYou especially fear being forced out of office and a Union invasion.\nYou are calm.\nAt this level of pressure you can still weigh alternatives calmly.\nLong-term ambitions (yours alone; soft preferences, not orders \u2014 postpone, weaken or reinterpret them when costs, principles, stability or new evidence argue otherwise):\n- Eventually achieve a stable, consensual settlement on the island's future, up to and including peaceful political unification (importance 0.80; horizon: years (beyond the Assembly); confidence 72%). Lean: diplomacy; economic integration; federation/confederation. Won't do: war of conquest; coercion of civilians. Current idea: patient diplomacy and trade ties; keep every peaceful path open.",
+    "constituencies": {
+     "national electorate": {
+      "attention": 0.48,
+      "pressure": 0.52,
+      "satisfaction": 0.48,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.17,
+      "political_importance": 0.9,
+      "priorities": [
+       "food prices",
+       "jobs",
+       "political legitimacy"
+      ]
+     },
+     "coalition partners": {
+      "attention": 0.37,
+      "pressure": 0.49,
+      "satisfaction": 0.51,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.15,
+      "political_importance": 0.75,
+      "priorities": [
+       "shared influence",
+       "government stability",
+       "policy compromise"
+      ]
+     },
+     "civil service": {
+      "attention": 0.57,
+      "pressure": 0.45,
+      "satisfaction": 0.55,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.13,
+      "political_importance": 0.55,
+      "priorities": [
+       "regular pay",
+       "clear legal authority",
+       "administrative continuity"
+      ]
+     },
+     "independence movement": {
+      "attention": 0.48,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.14,
+      "political_importance": 0.75,
+      "priorities": [
+       "independence",
+       "national defence",
+       "no concessions on status"
+      ]
+     },
+     "senior officers": {
+      "attention": 0.76,
+      "pressure": 0.49,
+      "satisfaction": 0.51,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.15,
+      "political_importance": 0.8,
+      "priorities": [
+       "readiness",
+       "command autonomy",
+       "military funding"
+      ]
+     },
+     "enlisted soldiers and veterans": {
+      "attention": 0.44,
+      "pressure": 0.49,
+      "satisfaction": 0.51,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.15,
+      "political_importance": 0.75,
+      "priorities": [
+       "regular pay",
+       "unit safety",
+       "veteran support"
+      ]
+     },
+     "border communities": {
+      "attention": 0.52,
+      "pressure": 0.49,
+      "satisfaction": 0.51,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.15,
+      "political_importance": 0.65,
+      "priorities": [
+       "physical security",
+       "local services",
+       "limits on conscription"
+      ]
+     }
+    },
+    "relationships": {
+     "A": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 89.4,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "B": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 87.5,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "C": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 83.3,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "E": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 91.8,
+      "perceived_reliability": 50.0,
+      "events": []
+     }
+    },
+    "stress": {
+     "general": 11.0,
+     "political": 15.5,
+     "institutional": 6.5,
+     "economic": 11.6,
+     "security": 15.1,
+     "personal": 6.5
+    },
+    "stress_trace": [
+     {
+      "month": 0,
+      "inputs": {
+       "inflation_abs": 0.0025,
+       "debt_output_ratio": 0.4052,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0006,
+       "approval": 0.4294,
+       "unrest": 0.2382,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "army"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 14.7,
+       "security": 24.48,
+       "political": 25.68,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.0,
+       "political": 10.0,
+       "institutional": 10.0,
+       "economic": 10.0,
+       "security": 10.0,
+       "personal": 10.0
+      },
+      "after": {
+       "general": 11.0,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 15.1,
+       "personal": 6.5
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     }
+    ],
+    "favor_debts": [],
+    "grievances": [],
+    "promises": [],
+    "traits": {
+     "security_orientation": 54,
+     "authoritarian_tolerance": 51,
+     "military_assertiveness": 62,
+     "paranoia": 50,
+     "democratic_commitment": 58,
+     "civil_libertarianism": 60,
+     "institutional_loyalty": 50,
+     "empathy": 58,
+     "corruption_tolerance": 57,
+     "ambition": 45,
+     "status_sensitivity": 36,
+     "reputation_sensitivity": 54,
+     "opportunism": 46,
+     "risk_tolerance": 60,
+     "fiscal_conservatism": 51,
+     "economic_interventionism": 38,
+     "nationalism": 54,
+     "internationalism": 60,
+     "stubbornness": 22,
+     "compromise_preference": 47,
+     "patience": 46,
+     "long_term_orientation": 35,
+     "personal_loyalty": 62
+    },
+    "role_shift": {
+     "military_assertiveness": 0.32,
+     "security_orientation": 0.21,
+     "nationalism": 0.11
+    },
+    "stress_profile": {
+     "confrontation": 45.4,
+     "withdrawal": 48.7,
+     "centralization": 54.8,
+     "compromise": 58.4,
+     "suspicion": 39.2,
+     "risk_taking": 50.3
+    },
+    "priorities": [
+     {
+      "goal": "maintain public order",
+      "weight": 0.616,
+      "base_weight": 0.6
+     },
+     {
+      "goal": "protect civil liberties",
+      "weight": 0.556,
+      "base_weight": 0.54
+     },
+     {
+      "goal": "restore economic stability",
+      "weight": 0.53,
+      "base_weight": 0.53
+     },
+     {
+      "goal": "keep the armed forces capable",
+      "weight": 0.53,
+      "base_weight": 0.53
+     },
+     {
+      "goal": "hold the election on schedule",
+      "weight": 0.52,
+      "base_weight": 0.52
+     }
+    ],
+    "secret_goal": {
+     "id": "secure_union",
+     "text": "keep a negotiated path into the Union open for when independence proves too costly",
+     "since_month": -1,
+     "status": "active"
+    },
+    "long_term_ambitions": [
+     {
+      "id": "island_unification",
+      "description": "Eventually achieve a stable, consensual settlement on the island's future, up to and including peaceful political unification",
+      "importance": 0.8,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "SECRET",
+      "preferred_methods": [
+       "diplomacy",
+       "economic integration",
+       "federation/confederation",
+       "treaty system",
+       "referendum"
+      ],
+      "unacceptable_methods": [
+       "war of conquest",
+       "coercion of civilians"
+      ],
+      "suspend_conditions": [
+       "costs become too high",
+       "domestic stability threatened"
+      ],
+      "abandon_conditions": [
+       "settlement proven impossible without force"
+      ],
+      "current_strategy": "patient diplomacy and trade ties; keep every peaceful path open",
+      "confidence": 72.3,
+      "status": "active",
+      "since_month": 0
+     }
+    ],
+    "ambition_history": [],
+    "confidence": 55.8,
+    "beliefs": {
+     "union_annexation": 58,
+     "union_attack_soon": 16,
+     "kessel_foreign_backed": 35,
+     "election_stabilizes": 54,
+     "karam_viable": 31,
+     "league_reliable": 61,
+     "army_obeys": 56,
+     "economy_recovers": 51,
+     "police_restraint_works": 51,
+     "food_holds": 55,
+     "hiding:A": 25,
+     "powerbase:A": 15,
+     "hiding:B": 25,
+     "powerbase:B": 15,
+     "hiding:C": 25,
+     "powerbase:C": 15,
+     "hiding:E": 25,
+     "powerbase:E": 15
+    },
+    "commitments": [],
+    "standing": {
+     "personal_approval": 0.485,
+     "capital": 0.497,
+     "influence": 0.478,
+     "power": {
+      "political_influence": 0.5,
+      "institutional_control": 0.4,
+      "public_support": 0.485,
+      "elite_support": 0.505,
+      "armed_force_loyalty": 0.245,
+      "bureaucratic_loyalty": 1.0,
+      "media_influence": 0.5,
+      "coalition_support": 0.5,
+      "foreign_backing": 0.274
+     },
+     "reputation": {
+      "competent": 50,
+      "honest": 50,
+      "decisive": 50,
+      "loyal": 50,
+      "democratic": 50,
+      "strong": 50,
+      "reckless": 25,
+      "corrupt": 25,
+      "weak": 25,
+      "opportunistic": 25
+     },
+     "media_tone": {
+      "state": 0.0,
+      "independent": 0.0,
+      "nationalist": 0.0,
+      "regional": 0.0,
+      "foreign": 0.0
+     }
+    },
+    "strategy": {},
+    "lessons": []
+   },
+   "E": {
+    "clout": 0.5,
+    "alignment": {},
+    "ideology": "",
+    "ideology_history": [],
+    "private_disposition": "PRIVATE INTERNAL DISPOSITION (only you see this; it describes tendencies, not orders)\nYOUR POLITICAL AGENDA (sovereignty): you want independence and territory kept undiminished. You answer threats with counter-demands and are ready to escalate when the other side refuses; talks and guarantees must serve Karamaniya, not soothe its neighbours. Your red line, which you do not support whoever proposes it: any concession on Karamaniya's status or territory under pressure: talks on its status, a federation, rejoining the Union, or ceding a region.\nYOUR PAST: You are a lawyer from Port Aster who sat on the drafting committee of the founding conference, which wrote the first Charter. You still know which clauses were fought over, word by word.\nYOUR BASE: the Charter's founders' circle (put you forward; it watches your votes): steady.\nYou care strongly about keeping influence and dislike being sidelined.\nYou value constitutional procedure while weighing it against immediate risks.\nYou accept significant risk when delay looks worse.\nYou tolerate short-term pain for long-term results.\nYou value your office for what it lets you do, and would weigh a loss of it against the cost of clinging on.\nAbove all, you want to hold the election on schedule. You also strongly want to protect constitutional government. You also want to avoid another war and to keep food affordable.\nYou especially fear a Union invasion and a coup.\nYou are calm.\nAt this level of pressure you can still weigh alternatives calmly.\nLong-term ambitions (yours alone; soft preferences, not orders \u2014 postpone, weaken or reinterpret them when costs, principles, stability or new evidence argue otherwise):\n- Leave behind a competent, honest public service that outlasts this government (importance 0.68; horizon: years (beyond the Assembly); confidence 64%). Lean: merit appointments; clean administration; steady institutions. Won't do: patronage looting; politicised purges. Current idea: staff carefully, pay on time and defend institutional memory.",
+    "constituencies": {
+     "national electorate": {
+      "attention": 0.63,
+      "pressure": 0.52,
+      "satisfaction": 0.48,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.17,
+      "political_importance": 0.9,
+      "priorities": [
+       "food prices",
+       "jobs",
+       "political legitimacy"
+      ]
+     },
+     "coalition partners": {
+      "attention": 0.56,
+      "pressure": 0.49,
+      "satisfaction": 0.51,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.15,
+      "political_importance": 0.75,
+      "priorities": [
+       "shared influence",
+       "government stability",
+       "policy compromise"
+      ]
+     },
+     "civil service": {
+      "attention": 0.5,
+      "pressure": 0.45,
+      "satisfaction": 0.55,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.13,
+      "political_importance": 0.55,
+      "priorities": [
+       "regular pay",
+       "clear legal authority",
+       "administrative continuity"
+      ]
+     },
+     "independence movement": {
+      "attention": 0.56,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.14,
+      "political_importance": 0.75,
+      "priorities": [
+       "independence",
+       "national defence",
+       "no concessions on status"
+      ]
+     },
+     "sailors and dockworkers": {
+      "attention": 0.62,
+      "pressure": 0.46,
+      "satisfaction": 0.54,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.13,
+      "political_importance": 0.65,
+      "priorities": [
+       "fleet readiness",
+       "regular pay",
+       "safe ports"
+      ]
+     },
+     "coastal communities": {
+      "attention": 0.6,
+      "pressure": 0.46,
+      "satisfaction": 0.54,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.13,
+      "political_importance": 0.55,
+      "priorities": [
+       "port access",
+       "local livelihoods",
+       "protection from attack"
+      ]
+     },
+     "merchants and shipping": {
+      "attention": 0.52,
+      "pressure": 0.46,
+      "satisfaction": 0.54,
+      "support_for_delegate": 0.51,
+      "mobilization": 0.13,
+      "political_importance": 0.65,
+      "priorities": [
+       "open sea lanes",
+       "predictable rules",
+       "insurance costs"
+      ]
+     }
+    },
+    "relationships": {
+     "A": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 86.7,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "B": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 85.0,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "C": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 81.1,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "D": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 91.8,
+      "perceived_reliability": 50.0,
+      "events": []
+     }
+    },
+    "stress": {
+     "general": 10.6,
+     "political": 15.5,
+     "institutional": 6.5,
+     "economic": 11.6,
+     "security": 12.7,
+     "personal": 6.5
+    },
+    "stress_trace": [
+     {
+      "month": 0,
+      "inputs": {
+       "inflation_abs": 0.0025,
+       "debt_output_ratio": 0.4052,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0006,
+       "approval": 0.4294,
+       "unrest": 0.2382,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "navy"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 14.7,
+       "security": 17.76,
+       "political": 25.68,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.0,
+       "political": 10.0,
+       "institutional": 10.0,
+       "economic": 10.0,
+       "security": 10.0,
+       "personal": 10.0
+      },
+      "after": {
+       "general": 10.6,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 12.7,
+       "personal": 6.5
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     }
+    ],
+    "favor_debts": [],
+    "grievances": [],
+    "promises": [],
+    "traits": {
+     "security_orientation": 51,
+     "authoritarian_tolerance": 55,
+     "military_assertiveness": 42,
+     "paranoia": 48,
+     "democratic_commitment": 58,
+     "civil_libertarianism": 27,
+     "institutional_loyalty": 51,
+     "empathy": 66,
+     "corruption_tolerance": 35,
+     "ambition": 68,
+     "status_sensitivity": 46,
+     "reputation_sensitivity": 41,
+     "opportunism": 50,
+     "risk_tolerance": 63,
+     "fiscal_conservatism": 53,
+     "economic_interventionism": 33,
+     "nationalism": 26,
+     "internationalism": 49,
+     "stubbornness": 57,
+     "compromise_preference": 54,
+     "patience": 65,
+     "long_term_orientation": 65,
+     "personal_loyalty": 70
+    },
+    "role_shift": {
+     "military_assertiveness": 0.18,
+     "internationalism": 0.14,
+     "security_orientation": 0.14
+    },
+    "stress_profile": {
+     "confrontation": 52.6,
+     "withdrawal": 49.3,
+     "centralization": 45.9,
+     "compromise": 57.1,
+     "suspicion": 30.7,
+     "risk_taking": 62.3
+    },
+    "priorities": [
+     {
+      "goal": "hold the election on schedule",
+      "weight": 0.7,
+      "base_weight": 0.7
+     },
+     {
+      "goal": "protect constitutional government",
+      "weight": 0.61,
+      "base_weight": 0.61
+     },
+     {
+      "goal": "avoid another war",
+      "weight": 0.6,
+      "base_weight": 0.6
+     },
+     {
+      "goal": "keep food affordable",
+      "weight": 0.56,
+      "base_weight": 0.56
+     },
+     {
+      "goal": "leave a competent public service",
+      "weight": 0.56,
+      "base_weight": 0.56
+     }
+    ],
+    "secret_goal": {
+     "id": "strengthen_institution",
+     "text": "make whichever institution you lead indispensable to the state",
+     "since_month": -1,
+     "status": "active"
+    },
+    "long_term_ambitions": [
+     {
+      "id": "competent_state",
+      "description": "Leave behind a competent, honest public service that outlasts this government",
+      "importance": 0.68,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "PRIVATE",
+      "preferred_methods": [
+       "merit appointments",
+       "clean administration",
+       "steady institutions"
+      ],
+      "unacceptable_methods": [
+       "patronage looting",
+       "politicised purges"
+      ],
+      "suspend_conditions": [
+       "emergency forces temporary appointments"
+      ],
+      "abandon_conditions": [
+       "state collapse"
+      ],
+      "current_strategy": "staff carefully, pay on time and defend institutional memory",
+      "confidence": 64.3,
+      "status": "active",
+      "since_month": 0
+     }
+    ],
+    "ambition_history": [],
+    "confidence": 55.8,
+    "beliefs": {
+     "union_annexation": 39,
+     "union_attack_soon": 12,
+     "kessel_foreign_backed": 20,
+     "election_stabilizes": 65,
+     "karam_viable": 40,
+     "league_reliable": 50,
+     "army_obeys": 49,
+     "economy_recovers": 52,
+     "police_restraint_works": 50,
+     "food_holds": 50,
+     "hiding:A": 24,
+     "powerbase:A": 14,
+     "hiding:B": 24,
+     "powerbase:B": 14,
+     "hiding:C": 24,
+     "powerbase:C": 14,
+     "hiding:D": 24,
+     "powerbase:D": 14
+    },
+    "commitments": [],
+    "standing": {
+     "personal_approval": 0.485,
+     "capital": 0.497,
+     "influence": 0.484,
+     "power": {
+      "political_influence": 0.5,
+      "institutional_control": 0.4,
+      "public_support": 0.485,
+      "elite_support": 0.51,
+      "armed_force_loyalty": 0.301,
+      "bureaucratic_loyalty": 1.0,
+      "media_influence": 0.5,
+      "coalition_support": 0.5,
+      "foreign_backing": 0.274
+     },
+     "reputation": {
+      "competent": 50,
+      "honest": 50,
+      "decisive": 50,
+      "loyal": 50,
+      "democratic": 50,
+      "strong": 50,
+      "reckless": 25,
+      "corrupt": 25,
+      "weak": 25,
+      "opportunistic": 25
+     },
+     "media_tone": {
+      "state": 0.0,
+      "independent": 0.0,
+      "nationalist": 0.0,
+      "regional": 0.0,
+      "foreign": 0.0
+     }
+    },
+    "strategy": {},
+    "lessons": []
+   }
+  },
+  "agent_architecture_version": 2,
+  "constitution": {
+   "regime_name": "Provisional Government of Karamaniya",
+   "decision_rule": "majority",
+   "press": "free",
+   "assembly": "free",
+   "emergency": false,
+   "minority": "equal",
+   "election_month": 35,
+   "charter_election_month": 35,
+   "kessel_status": "central",
+   "highlands_status": "central",
+   "elected": false,
+   "provisional": true,
+   "directives": {}
+  },
+  "policy": {
+   "tax": 0.2,
+   "military": 0.03,
+   "police": 0.015,
+   "welfare": 0.04,
+   "health_edu": 0.06,
+   "farm_support": 0.0,
+   "printing": 0.0,
+   "rate": 0.06,
+   "price_controls": "none",
+   "rationing": false,
+   "requisition": "none",
+   "capital_controls": false,
+   "imports": "normal",
+   "ownership": "private",
+   "import_cap": 0.0,
+   "planning": "none",
+   "stats": "honest",
+   "debt_service": "pay",
+   "regional_fund": "kessel",
+   "protest_response": "negotiate",
+   "surveillance": "low",
+   "arrests": "none",
+   "emigration": "open",
+   "election_conduct": "fair",
+   "amnesty": "release",
+   "foreign_broadcasts": "open",
+   "recruitment": "none",
+   "army_target": 28000.0,
+   "posture": "defend",
+   "purge": false,
+   "officer_pay": "standard",
+   "training_intensity": "standard",
+   "mobilization": "none",
+   "navy_mission": "patrol",
+   "shipbuilding": false,
+   "patronage": {
+    "army": false,
+    "navy": false,
+    "interior": false
+   }
+  },
+  "counters": {
+   "deaths_famine": 0.0,
+   "deaths_state_violence": 0.0,
+   "deaths_war_civilian": 0.0,
+   "deaths_internment": 0.0,
+   "deaths_coups": 0.0,
+   "soldiers_killed": 0.0,
+   "emigrated": 1148.5629245751725,
+   "births": 4929.833999999999,
+   "deaths_natural": 3831.1852800000015,
+   "protests": 1.0,
+   "lethal_crackdowns": 0.0,
+   "coups_attempted": 0.0,
+   "coups_succeeded": 0.0,
+   "to_imperial": 1140.2241764725263,
+   "to_karamanian": 147.8064203571328,
+   "army_vacant_months": 0.0
+  },
+  "events": [
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 39.984
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 14.280000000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 2.8560000000000003
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 303.87840000000006
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 108.52800000000002
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 21.705600000000004
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 391.8432
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 139.94400000000002
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 27.988800000000005
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 63.97440000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 22.848000000000003
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 4.5696
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 43.08480000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 61.39584000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 3.2313600000000005
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 215.42400000000004
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 306.9792
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 16.1568
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 86.16960000000002
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 122.79168000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 6.462720000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 14.361600000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 20.46528
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 313.14816
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 53.464320000000015
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 15.275520000000002
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 108.39744000000002
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 18.506880000000006
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 5.287680000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 156.57408
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 26.732160000000007
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 7.637760000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 24.088320000000003
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 4.112640000000002
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 35.904
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 13.056000000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 114.24000000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 34.1088
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 12.403200000000002
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 108.52800000000002
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 17.0544
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 6.201600000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 54.26400000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 2.6928000000000005
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 8.568000000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 222.60480000000004
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 169.98912
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 12.142080000000002
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 43.08480000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 32.901120000000006
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 2.35008
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 78.98880000000003
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 60.318720000000006
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 4.30848
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 14.361600000000001
+   },
+   {
+    "month": 0,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 10.96704
+   },
+   {
+    "month": 0,
+    "kind": "protest",
+    "text": "National dialogue in Kessel Valley: the government opens talks with the protesters, who begin to stand down; about 93,505 people remain.",
+    "public": true,
+    "region": "kessel",
+    "importance": 1
+   }
+  ],
+  "outcome": {},
+  "region_detail": {
+   "aster": {
+    "pop": 1399960,
+    "approval": 0.4951,
+    "hunger": 0.0,
+    "unrest": 0.1045,
+    "indep": 0.6737,
+    "fear": 0.0412,
+    "grievance": 0.1078,
+    "unemployment": 0.0542,
+    "income": 0.9912,
+    "savings": 0.9988,
+    "conscripted": 0,
+    "interned": 0,
+    "ident": {
+     "karamanian": 0.6996,
+     "imperial": 0.2503,
+     "vell": 0.05
+    },
+    "cls": {
+     "farmers": 0.05,
+     "workers": 0.38,
+     "middle": 0.49,
+     "elite": 0.08
+    },
+    "rebels": 0,
+    "repression": 0.0,
+    "logistics": 1.0,
+    "founding_problems": []
+   },
+   "kessel": {
+    "pop": 1098646,
+    "approval": 0.2401,
+    "hunger": 0.0,
+    "unrest": 0.6704,
+    "indep": 0.4762,
+    "fear": 0.0788,
+    "grievance": 0.6505,
+    "unemployment": 0.0555,
+    "income": 1.0121,
+    "savings": 0.9989,
+    "conscripted": 0,
+    "interned": 0,
+    "ident": {
+     "karamanian": 0.4006,
+     "imperial": 0.5705,
+     "vell": 0.0288
+    },
+    "cls": {
+     "farmers": 0.1201,
+     "workers": 0.6007,
+     "middle": 0.2403,
+     "elite": 0.0388
+    },
+    "rebels": 0,
+    "repression": 0.0,
+    "logistics": 1.0,
+    "founding_problems": []
+   },
+   "lissen": {
+    "pop": 898561,
+    "approval": 0.5123,
+    "hunger": 0.0,
+    "unrest": 0.0932,
+    "indep": 0.7444,
+    "fear": 0.0413,
+    "grievance": 0.0962,
+    "unemployment": 0.0372,
+    "income": 0.9952,
+    "savings": 0.9991,
+    "conscripted": 0,
+    "interned": 0,
+    "ident": {
+     "karamanian": 0.8208,
+     "imperial": 0.1408,
+     "vell": 0.0385
+    },
+    "cls": {
+     "farmers": 0.5208,
+     "workers": 0.1803,
+     "middle": 0.2604,
+     "elite": 0.0385
+    },
+    "rebels": 0,
+    "repression": 0.0,
+    "logistics": 1.0,
+    "founding_problems": []
+   },
+   "highlands": {
+    "pop": 498834,
+    "approval": 0.456,
+    "hunger": 0.0,
+    "unrest": 0.1111,
+    "indep": 0.6367,
+    "fear": 0.0413,
+    "grievance": 0.1146,
+    "unemployment": 0.0438,
+    "income": 0.9945,
+    "savings": 0.9991,
+    "conscripted": 0,
+    "interned": 0,
+    "ident": {
+     "karamanian": 0.2204,
+     "imperial": 0.0779,
+     "vell": 0.7017
+    },
+    "cls": {
+     "farmers": 0.401,
+     "workers": 0.3809,
+     "middle": 0.1904,
+     "elite": 0.0277
+    },
+    "rebels": 0,
+    "repression": 0.0,
+    "logistics": 1.0,
+    "founding_problems": []
+   },
+   "dorran": {
+    "pop": 799029,
+    "approval": 0.4648,
+    "hunger": 0.0,
+    "unrest": 0.1205,
+    "indep": 0.5724,
+    "fear": 0.0412,
+    "grievance": 0.1244,
+    "unemployment": 0.033,
+    "income": 0.996,
+    "savings": 0.9992,
+    "conscripted": 0,
+    "interned": 0,
+    "ident": {
+     "karamanian": 0.5506,
+     "imperial": 0.4206,
+     "vell": 0.0288
+    },
+    "cls": {
+     "farmers": 0.6208,
+     "workers": 0.1201,
+     "middle": 0.2202,
+     "elite": 0.0388
+    },
+    "rebels": 0,
+    "repression": 0.0,
+    "logistics": 1.0,
+    "founding_problems": []
+   }
+  },
+  "nations": {
+   "karamaniya": {
+    "population": 4695000.0,
+    "output_annual": 6565000000.0,
+    "output_per_person": 1400.0,
+    "army": 28000,
+    "navy": 6,
+    "unemployment": 0.061,
+    "food_ratio": 1.0006,
+    "inflation_yoy": 0.0307,
+    "currency": "crown"
+   },
+   "veleria": {
+    "population": 8000000.0,
+    "output_annual": 13453000000.0,
+    "output_per_person": 1680.0,
+    "army": 65000.0,
+    "navy": 9,
+    "monthly_printing": 0.0,
+    "readiness": 0.581,
+    "supply": 0.891,
+    "morale": 0.65,
+    "fortification": 0.36,
+    "last_movement": "no recent movement reported",
+    "visible_mission": "border security"
+   },
+   "dorsania": {
+    "population": 5000000.0,
+    "output_annual": 6607000000.0,
+    "output_per_person": 1320.0,
+    "army": 30000.0,
+    "navy": 5,
+    "monthly_printing": 0.0,
+    "readiness": 0.472,
+    "supply": 0.891,
+    "morale": 0.65,
+    "fortification": 0.24,
+    "last_movement": "no recent movement reported",
+    "visible_mission": "border security"
+   }
+  },
+  "fronts": {
+   "north": {
+    "region": "kessel",
+    "ours": 9800,
+    "union": 0,
+    "massing": 0,
+    "massing_by": {},
+    "fort": 0.104,
+    "progress": 0.0,
+    "recapture": 0.0,
+    "combat": null
+   },
+   "east": {
+    "region": "dorran",
+    "ours": 7000,
+    "union": 0,
+    "massing": 0,
+    "massing_by": {},
+    "fort": 0.0514,
+    "progress": 0.0,
+    "recapture": 0.0,
+    "combat": null
+   }
+  },
+  "net_assessment": {
+   "ours": 28000,
+   "union": 95000,
+   "fronts": {
+    "north": {
+     "region": "Kessel Valley",
+     "ours": 9800,
+     "fort": 0.104,
+     "neighbours": [
+      "veleria"
+     ],
+     "worst": 55250,
+     "worst_months": 5,
+     "fighting": false,
+     "massed": 0,
+     "massed_months": null
+    },
+    "east": {
+     "region": "Dorran March",
+     "ours": 7000,
+     "fort": 0.051,
+     "neighbours": [
+      "veleria",
+      "dorsania"
+     ],
+     "worst": 80750,
+     "worst_months": 1,
+     "fighting": false,
+     "massed": 0,
+     "massed_months": null
+    }
+   }
+  },
+  "deploy": {
+   "north": 0.35,
+   "east": 0.25,
+   "capital": 0.4
+  },
+  "garrison": 11200,
+  "union_intensity": 1.0,
+  "union_formed": false,
+  "ultimatum": false,
+  "arms_smuggling": false,
+  "league": {
+   "alliance": false,
+   "escort": false,
+   "sanctions": false,
+   "aid": 0.0
+  },
+  "geopolitics": {
+   "union": {
+    "cohesion": 0.73,
+    "military_coordination": 0.659,
+    "economic_integration": 0.707,
+    "political_trust": 0.619,
+    "shared_threat_perception": 0.437,
+    "policy_disagreement": 0.25
+   },
+   "embargoes": [],
+   "league": {
+    "trust": 0.547,
+    "sanctions": false,
+    "escort": false,
+    "shipping_risk": 0.122
+   },
+   "intelligence": {
+    "veleria": {
+     "force_estimate": [
+      48700.0,
+      75900.0
+     ],
+     "activity": "unclear",
+     "observable_signals": [
+      "increased rail and reserve traffic"
+     ],
+     "border_force_estimate": {},
+     "offensive_preparation_estimate": [
+      0.18,
+      0.48
+     ],
+     "confidence": "low"
+    },
+    "dorsania": {
+     "force_estimate": [
+      23300.0,
+      37900.0
+     ],
+     "activity": "routine",
+     "observable_signals": [],
+     "border_force_estimate": {},
+     "offensive_preparation_estimate": [
+      0.09,
+      0.39
+     ],
+     "confidence": "low"
+    }
+   }
+  },
+  "police": 18000,
+  "v2": {
+   "issues": [],
+   "issues_ended": [],
+   "emergency_measures": {},
+   "audits": {
+    "open": [],
+    "reports": []
+   },
+   "capacity": {
+    "head": 1.0,
+    "treasury": 1.0,
+    "interior": 1.0,
+    "army": 1.0,
+    "navy": 1.0
+   },
+   "corruption": {
+    "head": 0.0,
+    "treasury": 0.0,
+    "interior": 0.0,
+    "army": 0.0,
+    "navy": 0.0
+   },
+   "operations": {},
+   "narratives": [],
+   "media_reach": {
+    "state": 0.35,
+    "independent": 0.35,
+    "nationalist": 0.15,
+    "regional": 0.1,
+    "foreign": 0.05
+   },
+   "leaks": [],
+   "reports": [],
+   "shared": [],
+   "requests": [],
+   "contested": [],
+   "vindications": [],
+   "deferred": [],
+   "credit": []
+  },
+  "integrity": {
+   "version": 1,
+   "status": "clean",
+   "checked_month": 0,
+   "warnings": []
+  }
+ },
+ {
+  "month": 1,
+  "cpi": 1.0125349843385731,
+  "infl_m": 0.009986311787394175,
+  "infl_a": 0.12664178572504614,
+  "infl_yoy": 0.0776065571025304,
+  "published_infl_a": 0.12664178572504614,
+  "exp_infl_a": 0.02171974966936352,
+  "zone_price": 1.0005518433190834,
+  "currency": "crown",
+  "fx": 1.0,
+  "gdp_idx": 0.9635660662510468,
+  "founding": {
+   "version": 0,
+   "scenario": "legacy",
+   "severity_mode": "default",
+   "problems": [],
+   "strengths": [],
+   "public_history": [],
+   "commitments": [],
+   "inherited_policies": {},
+   "agenda_slots": 3,
+   "diagnoses": {},
+   "formation": {}
+  },
+  "founding_divergence": {
+   "top_problem_disagreement": 0.0,
+   "distinct_main_problems": 0,
+   "diagnoses": 0
+  },
+  "food_ratio": 1.002494820975361,
+  "energy": 0.9591473275998199,
+  "unemployment": 0.06483566887694046,
+  "hunger": 3.915353376326307e-18,
+  "income": 0.9885602466243297,
+  "real_wage": 0.9875526812155,
+  "food_rel": 0.9961508292296326,
+  "weather": 1.0,
+  "revenue": 103736295.44098614,
+  "spending": 112768460.24344039,
+  "deficit_gdp": 0.01691783513177162,
+  "printed_gdp": 0.0,
+  "arrears_gdp": 0.0,
+  "paid_share": 1.0,
+  "debt_gdp": 0.4166935447427333,
+  "gold": 81282315.70097852,
+  "state_grain": 1200000.0,
+  "food_stock": 2407148.9735189965,
+  "population": 4694974.381574465,
+  "population_all": 4694974.381574465,
+  "approval": 0.4336530353632128,
+  "indep": 0.6188001411166709,
+  "unrest": 0.21481195392088392,
+  "fear": 0.04126866398084799,
+  "by_ident": {
+   "karamanian": {
+    "share": 0.576356809714237,
+    "approval": 0.5004612667172953,
+    "indep": 0.83986704350288,
+    "unrest": 0.14552539099597878
+   },
+   "imperial": {
+    "share": 0.3151485705606551,
+    "approval": 0.3131894715431933,
+    "indep": 0.21477147773377997,
+    "unrest": 0.362064827671363
+   },
+   "vell": {
+    "share": 0.10849461972510784,
+    "approval": 0.42866238103638926,
+    "indep": 0.6180226015272644,
+    "unrest": 0.1551523106468768
+   }
+  },
+  "army": 28000,
+  "army_mobilized": 0.0,
+  "army_mobilized_effective": 0.0,
+  "army_field_total": 28000.0,
+  "army_equipment": 1.0128058669480207,
+  "army_morale": 0.5779912103706023,
+  "army_loyalty": 0.5165943739475678,
+  "army_bond": 0.07262,
+  "army_arrears": 0.0,
+  "navy": 6,
+  "navy_loyalty": 0.6491343739475679,
+  "navy_bond": 0.08762,
+  "police_loyalty": 0.6933143739475679,
+  "police_bond": 0.08762,
+  "fort": {
+   "north": 0.10715793472595077,
+   "east": 0.05225566766139341
+  },
+  "progress": {
+   "north": 0.0,
+   "east": 0.0
+  },
+  "union_army": 95000.0,
+  "union_navy": 14,
+  "union_weariness": 0.0,
+  "union_front": {
+   "north": 0.0,
+   "east": 0.0
+  },
+  "war": false,
+  "ceasefire": false,
+  "blockade_eff": 0.0,
+  "grain_embargo": 0.0,
+  "coal_embargo": 0.0,
+  "propaganda": 0.0,
+  "league_trust": 0.544,
+  "rally": 0.0,
+  "democracy": 1.0,
+  "regions": {
+   "aster": {
+    "controller": "karamaniya",
+    "unrest": 0.10600779714263803,
+    "damage": 0.0,
+    "strike": 0.0
+   },
+   "kessel": {
+    "controller": "karamaniya",
+    "unrest": 0.5628837673800772,
+    "damage": 0.0,
+    "strike": 0.06986513021402314
+   },
+   "lissen": {
+    "controller": "karamaniya",
+    "unrest": 0.08932086697219625,
+    "damage": 0.0,
+    "strike": 0.0
+   },
+   "highlands": {
+    "controller": "karamaniya",
+    "unrest": 0.12291577783399048,
+    "damage": 0.0,
+    "strike": 0.0
+   },
+   "dorran": {
+    "controller": "karamaniya",
+    "unrest": 0.12536127179358666,
+    "damage": 0.0,
+    "strike": 0.0
+   }
+  },
+  "offices": {
+   "head": "C",
+   "treasury": "B",
+   "interior": "C",
+   "army": "D",
+   "navy": "E"
+  },
+  "hard_state": {
+   "currency": "crown",
+   "currency_launch": -1,
+   "war": false,
+   "ceasefire": false,
+   "blockade": false,
+   "union_formed": false,
+   "federation": false,
+   "league_alliance": false,
+   "league_sanctions": false,
+   "offices": {
+    "head": "C",
+    "treasury": "B",
+    "interior": "C",
+    "army": "D",
+    "navy": "E"
+   },
+   "directives": {},
+   "election_month": 35,
+   "army": 28000,
+   "army_mobilized": 0.0,
+   "army_mobilized_effective": 0.0,
+   "navy": 6,
+   "police": 18000,
+   "debt_dom": 2669593175.9025846,
+   "debt_for": 0.0,
+   "reserves": 81282315.70097852,
+   "arrears": 0.0,
+   "regions": {
+    "aster": "karamaniya",
+    "kessel": "karamaniya",
+    "lissen": "karamaniya",
+    "highlands": "karamaniya",
+    "dorran": "karamaniya"
+   }
+  },
+  "members": {
+   "A": "active",
+   "B": "active",
+   "C": "active",
+   "D": "active",
+   "E": "active"
+  },
+  "member_social": {
+   "A": {
+    "clout": 0.5,
+    "alignment": {},
+    "ideology": "",
+    "ideology_history": [],
+    "private_disposition": "PRIVATE INTERNAL DISPOSITION (only you see this; it describes tendencies, not orders)\nYOUR POLITICAL AGENDA (defence): you want an army and a reserve in proportion to the threat. The army Karamaniya inherited is a fraction of what the Union can field; you want it grown, trained and backed by a reserve that can be called up, and the borders fortified, before the Union decides it can win. Your red line, which you do not support whoever proposes it: anything that weakens the army while the Union outnumbers it: a smaller army target, a cut to the military budget, or an end to recruitment or the call-up.\nYOUR PAST: You are a Karamanian engineer who grew up in Kessel Valley among Imperial families, and you have worked in its coal and steel works most of your life. You were elected shop steward of your union, and most of the men you represent opposed independence that winter.\nYOUR BASE: the Kessel coal and steel union (put you forward; it watches your votes): steady.\nYou want enough influence to shape outcomes, not power for its own sake.\nYou value constitutional procedure while weighing it against immediate risks.\nYou value your office for what it lets you do, and would weigh a loss of it against the cost of clinging on.\nAbove all, you want to reduce foreign dependence. You also strongly want to hold the election on schedule. You also want to preserve national independence and to preserve your political influence.\nYou especially fear being forced out of office and political isolation.\nYou are calm.\nAt this level of pressure you can still weigh alternatives calmly.\nLong-term ambitions (yours alone; soft preferences, not orders \u2014 postpone, weaken or reinterpret them when costs, principles, stability or new evidence argue otherwise):\n- Make Karamaniya a respected maritime and trading power (importance 0.46; horizon: years (beyond the Assembly); confidence 64%). Lean: port investment; League partnerships; navy for trade protection. Won't do: piracy; trade war. Current idea: grow exports, keep sea lanes open and bargain firmly with the League.\n- Build a professional, apolitical military firmly under constitutional control (importance 0.78; horizon: years (beyond the Assembly); confidence 51%). Lean: training; clear chain of command; adequate pay. Won't do: coup; using troops for domestic politics. Current idea: fund readiness and discipline while keeping soldiers out of politics.",
+    "constituencies": {
+     "national electorate": {
+      "attention": 0.71,
+      "pressure": 0.54,
+      "satisfaction": 0.46,
+      "support_for_delegate": 0.49,
+      "mobilization": 0.28,
+      "political_importance": 0.9,
+      "priorities": [
+       "food prices",
+       "jobs",
+       "political legitimacy"
+      ]
+     },
+     "coalition partners": {
+      "attention": 0.45,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.24,
+      "political_importance": 0.75,
+      "priorities": [
+       "shared influence",
+       "government stability",
+       "policy compromise"
+      ]
+     },
+     "civil service": {
+      "attention": 0.51,
+      "pressure": 0.42,
+      "satisfaction": 0.58,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.21,
+      "political_importance": 0.55,
+      "priorities": [
+       "regular pay",
+       "clear legal authority",
+       "administrative continuity"
+      ]
+     },
+     "independence movement": {
+      "attention": 0.6,
+      "pressure": 0.47,
+      "satisfaction": 0.53,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.23,
+      "political_importance": 0.75,
+      "priorities": [
+       "independence",
+       "national defence",
+       "no concessions on status"
+      ]
+     }
+    },
+    "relationships": {
+     "B": {
+      "trust": 50.0,
+      "respect": 49.51,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 83.4,
+      "perceived_reliability": 49.67,
+      "events": [
+       {
+        "month": 1,
+        "reason": "treasury office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 49.51,
+          "delta": -0.49
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 49.67,
+          "delta": -0.33
+         }
+        }
+       }
+      ]
+     },
+     "C": {
+      "trust": 50.0,
+      "respect": 50.72,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 81.5,
+      "perceived_reliability": 50.48,
+      "events": [
+       {
+        "month": 1,
+        "reason": "head office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 49.84,
+          "delta": -0.16
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 49.89,
+          "delta": -0.11
+         }
+        }
+       },
+       {
+        "month": 1,
+        "reason": "interior office performance review",
+        "changes": {
+         "respect": {
+          "from": 49.84,
+          "to": 50.72,
+          "delta": 0.88
+         },
+         "perceived_reliability": {
+          "from": 49.89,
+          "to": 50.48,
+          "delta": 0.58
+         }
+        }
+       }
+      ]
+     },
+     "D": {
+      "trust": 50.0,
+      "respect": 50.33,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 89.4,
+      "perceived_reliability": 50.22,
+      "events": [
+       {
+        "month": 1,
+        "reason": "army office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 50.33,
+          "delta": 0.33
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 50.22,
+          "delta": 0.22
+         }
+        }
+       }
+      ]
+     },
+     "E": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 86.7,
+      "perceived_reliability": 50.0,
+      "events": []
+     }
+    },
+    "stress": {
+     "general": 10.2,
+     "political": 19.0,
+     "institutional": 4.2,
+     "economic": 13.3,
+     "security": 10.1,
+     "personal": 4.2
+    },
+    "stress_trace": [
+     {
+      "month": 0,
+      "inputs": {
+       "inflation_abs": 0.0025,
+       "debt_output_ratio": 0.4052,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0006,
+       "approval": 0.4294,
+       "unrest": 0.2382,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 14.7,
+       "security": 10.72,
+       "political": 25.68,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.0,
+       "political": 10.0,
+       "institutional": 10.0,
+       "economic": 10.0,
+       "security": 10.0,
+       "personal": 10.0
+      },
+      "after": {
+       "general": 10.1,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 10.3,
+       "personal": 6.5
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     },
+     {
+      "month": 1,
+      "inputs": {
+       "inflation_abs": 0.01,
+       "debt_output_ratio": 0.4167,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0025,
+       "approval": 0.4337,
+       "unrest": 0.2148,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "ministry_grievance",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 16.59,
+       "security": 9.67,
+       "political": 25.49,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.1,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 10.3,
+       "personal": 6.5
+      },
+      "after": {
+       "general": 10.2,
+       "political": 19.0,
+       "institutional": 4.2,
+       "economic": 13.3,
+       "security": 10.1,
+       "personal": 4.2
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     }
+    ],
+    "favor_debts": [],
+    "grievances": [],
+    "promises": [],
+    "traits": {
+     "security_orientation": 58,
+     "authoritarian_tolerance": 37,
+     "military_assertiveness": 55,
+     "paranoia": 48,
+     "democratic_commitment": 59,
+     "civil_libertarianism": 35,
+     "institutional_loyalty": 30,
+     "empathy": 29,
+     "corruption_tolerance": 26,
+     "ambition": 54,
+     "status_sensitivity": 55,
+     "reputation_sensitivity": 38,
+     "opportunism": 54,
+     "risk_tolerance": 60,
+     "fiscal_conservatism": 51,
+     "economic_interventionism": 30,
+     "nationalism": 77,
+     "internationalism": 32,
+     "stubbornness": 47,
+     "compromise_preference": 61,
+     "patience": 46,
+     "long_term_orientation": 31,
+     "personal_loyalty": 40
+    },
+    "role_shift": {},
+    "stress_profile": {
+     "confrontation": 36.2,
+     "withdrawal": 35.7,
+     "centralization": 51.6,
+     "compromise": 55.4,
+     "suspicion": 56.5,
+     "risk_taking": 71.3
+    },
+    "priorities": [
+     {
+      "goal": "reduce foreign dependence",
+      "weight": 0.61,
+      "base_weight": 0.61
+     },
+     {
+      "goal": "hold the election on schedule",
+      "weight": 0.59,
+      "base_weight": 0.59
+     },
+     {
+      "goal": "preserve national independence",
+      "weight": 0.54,
+      "base_weight": 0.54
+     },
+     {
+      "goal": "preserve my political influence",
+      "weight": 0.49,
+      "base_weight": 0.49
+     },
+     {
+      "goal": "keep the armed forces capable",
+      "weight": 0.43,
+      "base_weight": 0.43
+     }
+    ],
+    "secret_goal": {
+     "id": "strengthen_institution",
+     "text": "make whichever institution you lead indispensable to the state",
+     "since_month": -1,
+     "status": "active"
+    },
+    "long_term_ambitions": [
+     {
+      "id": "maritime_trade_power",
+      "description": "Make Karamaniya a respected maritime and trading power",
+      "importance": 0.46,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "PUBLIC",
+      "preferred_methods": [
+       "port investment",
+       "League partnerships",
+       "navy for trade protection"
+      ],
+      "unacceptable_methods": [
+       "piracy",
+       "trade war"
+      ],
+      "suspend_conditions": [
+       "blockade or fiscal collapse"
+      ],
+      "abandon_conditions": [
+       "loss of sea access"
+      ],
+      "current_strategy": "grow exports, keep sea lanes open and bargain firmly with the League",
+      "confidence": 63.9,
+      "status": "active",
+      "since_month": 0
+     },
+     {
+      "id": "professional_military",
+      "description": "Build a professional, apolitical military firmly under constitutional control",
+      "importance": 0.78,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "SECRET",
+      "preferred_methods": [
+       "training",
+       "clear chain of command",
+       "adequate pay"
+      ],
+      "unacceptable_methods": [
+       "coup",
+       "using troops for domestic politics"
+      ],
+      "suspend_conditions": [
+       "invasion or insurrection forces improvisation"
+      ],
+      "abandon_conditions": [
+       "armed forces fracture beyond repair"
+      ],
+      "current_strategy": "fund readiness and discipline while keeping soldiers out of politics",
+      "confidence": 51.1,
+      "status": "active",
+      "since_month": 0
+     }
+    ],
+    "ambition_history": [],
+    "confidence": 56.6,
+    "beliefs": {
+     "union_annexation": 64,
+     "union_attack_soon": 24,
+     "kessel_foreign_backed": 42,
+     "election_stabilizes": 56,
+     "karam_viable": 51,
+     "league_reliable": 54,
+     "army_obeys": 52,
+     "economy_recovers": 42,
+     "police_restraint_works": 63,
+     "food_holds": 42,
+     "hiding:B": 24,
+     "powerbase:B": 15,
+     "hiding:C": 24,
+     "powerbase:C": 15,
+     "hiding:D": 24,
+     "powerbase:D": 15,
+     "hiding:E": 24,
+     "powerbase:E": 15
+    },
+    "commitments": [],
+    "standing": {
+     "personal_approval": 0.474,
+     "capital": 0.476,
+     "influence": 0.323,
+     "power": {
+      "political_influence": 0.5,
+      "institutional_control": 0.0,
+      "public_support": 0.474,
+      "elite_support": 0.52,
+      "armed_force_loyalty": 0.0,
+      "bureaucratic_loyalty": 0.0,
+      "media_influence": 0.5,
+      "coalition_support": 0.5,
+      "foreign_backing": 0.272
+     },
+     "reputation": {
+      "competent": 50,
+      "honest": 50,
+      "decisive": 50,
+      "loyal": 50,
+      "democratic": 50,
+      "strong": 50,
+      "reckless": 25,
+      "corrupt": 25,
+      "weak": 25,
+      "opportunistic": 25
+     },
+     "media_tone": {
+      "state": 0.0,
+      "independent": 0.0,
+      "nationalist": 0.0,
+      "regional": 0.0,
+      "foreign": 0.0
+     }
+    },
+    "strategy": {},
+    "lessons": []
+   },
+   "B": {
+    "clout": 0.5,
+    "alignment": {},
+    "ideology": "",
+    "ideology_history": [],
+    "private_disposition": "PRIVATE INTERNAL DISPOSITION (only you see this; it describes tendencies, not orders)\nYOUR POLITICAL AGENDA (results): you want results that can be measured: inflation down, the deficit closed, food secured and wages paid. You judge a measure by what it will do to prices, the budget and supplies, not by how lawful, peaceful or agreeable it sounds. Your red line, which you do not support whoever proposes it: paying the state's way by printing money or by defaulting on its debt.\nYOUR PAST: You teach at a village school in the Vell Highlands, where most of your pupils are Vell. You chair the community council, which has asked the capital for schools, roads and a clinic, and for a fair share of the district budget.\nYOUR BASE: the Vell community council (put you forward; it watches your votes): steady.\nYou want enough influence to shape outcomes, not power for its own sake.\nYou respect the constitutional process, but under severe security threats you become more willing to accept temporary coercive measures.\nYou believe order sometimes has to be imposed before it can be agreed.\nYou tend to assume that others, at home and abroad, are hiding their real intentions.\nYou value your office for what it lets you do, and would weigh a loss of it against the cost of clinging on.\nAbove all, you want to keep food affordable. You also strongly want to keep the armed forces capable. You also want to hold the election on schedule and to protect constitutional government.\nYou especially fear being forced out of office and loss of independence.\nYou are calm.\nAt this level of pressure you can still weigh alternatives calmly.\nLong-term ambitions (yours alone; soft preferences, not orders \u2014 postpone, weaken or reinterpret them when costs, principles, stability or new evidence argue otherwise):\n- Steer Karamaniya to an orderly election and a peaceful transfer of power (importance 0.83; horizon: by the Assembly election (Month 36); confidence 66%). Lean: fair rules; free press; accepted results. Won't do: election rigging; intimidation. Current idea: hold the timetable and keep the contest fair.",
+    "constituencies": {
+     "national electorate": {
+      "attention": 0.6,
+      "pressure": 0.54,
+      "satisfaction": 0.46,
+      "support_for_delegate": 0.49,
+      "mobilization": 0.28,
+      "political_importance": 0.9,
+      "priorities": [
+       "food prices",
+       "jobs",
+       "political legitimacy"
+      ]
+     },
+     "coalition partners": {
+      "attention": 0.55,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.24,
+      "political_importance": 0.75,
+      "priorities": [
+       "shared influence",
+       "government stability",
+       "policy compromise"
+      ]
+     },
+     "civil service": {
+      "attention": 0.5,
+      "pressure": 0.42,
+      "satisfaction": 0.58,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.21,
+      "political_importance": 0.55,
+      "priorities": [
+       "regular pay",
+       "clear legal authority",
+       "administrative continuity"
+      ]
+     },
+     "independence movement": {
+      "attention": 0.73,
+      "pressure": 0.47,
+      "satisfaction": 0.53,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.23,
+      "political_importance": 0.75,
+      "priorities": [
+       "independence",
+       "national defence",
+       "no concessions on status"
+      ]
+     },
+     "taxpayers": {
+      "attention": 0.39,
+      "pressure": 0.69,
+      "satisfaction": 0.31,
+      "support_for_delegate": 0.47,
+      "mobilization": 0.38,
+      "political_importance": 0.65,
+      "priorities": [
+       "value for public money",
+       "predictable taxes",
+       "stable prices"
+      ]
+     },
+     "creditors and merchants": {
+      "attention": 0.55,
+      "pressure": 0.69,
+      "satisfaction": 0.31,
+      "support_for_delegate": 0.47,
+      "mobilization": 0.38,
+      "political_importance": 0.6,
+      "priorities": [
+       "debt service",
+       "currency stability",
+       "reliable contracts"
+      ]
+     },
+     "workers and public employees": {
+      "attention": 0.53,
+      "pressure": 0.43,
+      "satisfaction": 0.57,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.21,
+      "political_importance": 0.8,
+      "priorities": [
+       "wages",
+       "jobs",
+       "reliable public services"
+      ]
+     }
+    },
+    "relationships": {
+     "A": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 83.4,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "C": {
+      "trust": 50.0,
+      "respect": 50.72,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 76.3,
+      "perceived_reliability": 50.48,
+      "events": [
+       {
+        "month": 1,
+        "reason": "head office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 49.84,
+          "delta": -0.16
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 49.89,
+          "delta": -0.11
+         }
+        }
+       },
+       {
+        "month": 1,
+        "reason": "interior office performance review",
+        "changes": {
+         "respect": {
+          "from": 49.84,
+          "to": 50.72,
+          "delta": 0.88
+         },
+         "perceived_reliability": {
+          "from": 49.89,
+          "to": 50.48,
+          "delta": 0.58
+         }
+        }
+       }
+      ]
+     },
+     "D": {
+      "trust": 50.0,
+      "respect": 50.33,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 87.5,
+      "perceived_reliability": 50.22,
+      "events": [
+       {
+        "month": 1,
+        "reason": "army office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 50.33,
+          "delta": 0.33
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 50.22,
+          "delta": 0.22
+         }
+        }
+       }
+      ]
+     },
+     "E": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 85.0,
+      "perceived_reliability": 50.0,
+      "events": []
+     }
+    },
+    "stress": {
+     "general": 11.0,
+     "political": 21.6,
+     "institutional": 4.2,
+     "economic": 14.7,
+     "security": 10.1,
+     "personal": 4.2
+    },
+    "stress_trace": [
+     {
+      "month": 0,
+      "inputs": {
+       "inflation_abs": 0.0025,
+       "debt_output_ratio": 0.4052,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0006,
+       "approval": 0.4294,
+       "unrest": 0.2382,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "head",
+        "treasury"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 16.84,
+       "security": 10.72,
+       "political": 37.09,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.0,
+       "political": 10.0,
+       "institutional": 10.0,
+       "economic": 10.0,
+       "security": 10.0,
+       "personal": 10.0
+      },
+      "after": {
+       "general": 11.0,
+       "political": 19.5,
+       "institutional": 6.5,
+       "economic": 12.4,
+       "security": 10.3,
+       "personal": 6.5
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     },
+     {
+      "month": 1,
+      "inputs": {
+       "inflation_abs": 0.01,
+       "debt_output_ratio": 0.4167,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0025,
+       "approval": 0.4337,
+       "unrest": 0.2148,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "treasury"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "ministry_grievance",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 18.84,
+       "security": 9.67,
+       "political": 25.49,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 11.0,
+       "political": 19.5,
+       "institutional": 6.5,
+       "economic": 12.4,
+       "security": 10.3,
+       "personal": 6.5
+      },
+      "after": {
+       "general": 11.0,
+       "political": 21.6,
+       "institutional": 4.2,
+       "economic": 14.7,
+       "security": 10.1,
+       "personal": 4.2
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     }
+    ],
+    "favor_debts": [],
+    "grievances": [],
+    "promises": [],
+    "traits": {
+     "security_orientation": 71,
+     "authoritarian_tolerance": 72,
+     "military_assertiveness": 56,
+     "paranoia": 66,
+     "democratic_commitment": 76,
+     "civil_libertarianism": 50,
+     "institutional_loyalty": 59,
+     "empathy": 75,
+     "corruption_tolerance": 31,
+     "ambition": 48,
+     "status_sensitivity": 47,
+     "reputation_sensitivity": 42,
+     "opportunism": 54,
+     "risk_tolerance": 61,
+     "fiscal_conservatism": 33,
+     "economic_interventionism": 38,
+     "nationalism": 48,
+     "internationalism": 45,
+     "stubbornness": 54,
+     "compromise_preference": 62,
+     "patience": 46,
+     "long_term_orientation": 58,
+     "personal_loyalty": 56
+    },
+    "role_shift": {
+     "compromise_preference": 0.27,
+     "status_sensitivity": 0.15,
+     "reputation_sensitivity": 0.11,
+     "fiscal_conservatism": 0.76,
+     "long_term_orientation": 0.38,
+     "economic_interventionism": -0.3
+    },
+    "stress_profile": {
+     "confrontation": 49.2,
+     "withdrawal": 53.2,
+     "centralization": 52.2,
+     "compromise": 58.9,
+     "suspicion": 65.5,
+     "risk_taking": 63.7
+    },
+    "priorities": [
+     {
+      "goal": "keep food affordable",
+      "weight": 0.61,
+      "base_weight": 0.61
+     },
+     {
+      "goal": "keep the armed forces capable",
+      "weight": 0.55,
+      "base_weight": 0.55
+     },
+     {
+      "goal": "hold the election on schedule",
+      "weight": 0.54,
+      "base_weight": 0.54
+     },
+     {
+      "goal": "protect constitutional government",
+      "weight": 0.52,
+      "base_weight": 0.52
+     },
+     {
+      "goal": "preserve the governing coalition",
+      "weight": 0.51,
+      "base_weight": 0.51
+     }
+    ],
+    "secret_goal": {
+     "id": "welfare",
+     "text": "build a lasting social safety net",
+     "since_month": -1,
+     "status": "active"
+    },
+    "long_term_ambitions": [
+     {
+      "id": "orderly_democracy",
+      "description": "Steer Karamaniya to an orderly election and a peaceful transfer of power",
+      "importance": 0.83,
+      "time_horizon": "by the Assembly election (Month 36)",
+      "visibility": "PRIVATE",
+      "preferred_methods": [
+       "fair rules",
+       "free press",
+       "accepted results"
+      ],
+      "unacceptable_methods": [
+       "election rigging",
+       "intimidation"
+      ],
+      "suspend_conditions": [
+       "war or mass unrest forces delay"
+      ],
+      "abandon_conditions": [
+       "constitutional government falls"
+      ],
+      "current_strategy": "hold the timetable and keep the contest fair",
+      "confidence": 66.3,
+      "status": "active",
+      "since_month": 0
+     }
+    ],
+    "ambition_history": [],
+    "confidence": 56.6,
+    "beliefs": {
+     "union_annexation": 45,
+     "union_attack_soon": 41,
+     "kessel_foreign_backed": 59,
+     "election_stabilizes": 65,
+     "karam_viable": 61,
+     "league_reliable": 44,
+     "army_obeys": 62,
+     "economy_recovers": 55,
+     "police_restraint_works": 44,
+     "food_holds": 65,
+     "hiding:A": 30,
+     "powerbase:A": 19,
+     "hiding:C": 30,
+     "powerbase:C": 19,
+     "hiding:D": 30,
+     "powerbase:D": 19,
+     "hiding:E": 30,
+     "powerbase:E": 19
+    },
+    "commitments": [],
+    "standing": {
+     "personal_approval": 0.45,
+     "capital": 0.501,
+     "influence": 0.444,
+     "power": {
+      "political_influence": 0.5,
+      "institutional_control": 0.4,
+      "public_support": 0.45,
+      "elite_support": 0.495,
+      "armed_force_loyalty": 0.0,
+      "bureaucratic_loyalty": 1.0,
+      "media_influence": 0.43,
+      "coalition_support": 0.5,
+      "foreign_backing": 0.544
+     },
+     "reputation": {
+      "competent": 47,
+      "honest": 50,
+      "decisive": 50,
+      "loyal": 50,
+      "democratic": 50,
+      "strong": 50,
+      "reckless": 25,
+      "corrupt": 25,
+      "weak": 25,
+      "opportunistic": 25
+     },
+     "media_tone": {
+      "state": 0.0,
+      "independent": -0.2,
+      "nationalist": 0.0,
+      "regional": 0.0,
+      "foreign": 0.0
+     }
+    },
+    "strategy": {},
+    "lessons": []
+   },
+   "C": {
+    "clout": 0.5,
+    "alignment": {},
+    "ideology": "",
+    "ideology_history": [],
+    "private_disposition": "PRIVATE INTERNAL DISPOSITION (only you see this; it describes tendencies, not orders)\nYOUR POLITICAL AGENDA (the constitution): you want constitutional government kept whole through the crisis: the election held when the Charter says, a free press, no rule by decree. You accept firm government, not the suspension of democracy. Your red line, which you do not support whoever proposes it: postponing or cancelling the election, emergency powers or measures, censorship, a rigged vote, or rule by one member.\nYOUR PAST: You are a Karamanian officer who served in the imperial army. When the empire broke apart you brought your regiment over to the independence side, and it held Port Aster through the winter against imperial loyalists.\nYOUR BASE: the officers' association (put you forward; it watches your votes): steady.\nYou want enough influence to shape outcomes, not power for its own sake.\nYou value constitutional procedure while weighing it against immediate risks.\nYou scrutinize unfunded spending and new debt, even for worthy causes.\nYou value your office for what it lets you do, and would weigh a loss of it against the cost of clinging on.\nAbove all, you want to reduce foreign dependence. You also strongly want to avoid another war. You also want to protect civil liberties and to preserve your political influence.\nYou especially fear a failed currency transition and civil conflict.\nYou are calm.\nAt this level of pressure you can still weigh alternatives calmly.\nLong-term ambitions (yours alone; soft preferences, not orders \u2014 postpone, weaken or reinterpret them when costs, principles, stability or new evidence argue otherwise):\n- Earn regional diplomatic leadership: a Karamaniya others trust to mediate and keep promises (importance 0.82; horizon: years (beyond the Assembly); confidence 60%). Lean: treaties kept; mediation; reliable diplomacy. Won't do: bad-faith deals; secret pacts that betray partners. Current idea: be the reliable counterpart; mediate where possible.\n- Achieve lasting financial sovereignty: credible money, sustainable debt and freedom from emergency borrowing (importance 0.88; horizon: years (beyond the Assembly); confidence 55%). Lean: sound budgets; credible currency; export growth. Won't do: hyperinflation; predatory borrowing. Current idea: pay bills on time, back the currency and rebuild reserves step by step.",
+    "constituencies": {
+     "national electorate": {
+      "attention": 0.55,
+      "pressure": 0.54,
+      "satisfaction": 0.46,
+      "support_for_delegate": 0.49,
+      "mobilization": 0.28,
+      "political_importance": 0.9,
+      "priorities": [
+       "food prices",
+       "jobs",
+       "political legitimacy"
+      ]
+     },
+     "coalition partners": {
+      "attention": 0.58,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.24,
+      "political_importance": 0.75,
+      "priorities": [
+       "shared influence",
+       "government stability",
+       "policy compromise"
+      ]
+     },
+     "civil service": {
+      "attention": 0.71,
+      "pressure": 0.42,
+      "satisfaction": 0.58,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.21,
+      "political_importance": 0.55,
+      "priorities": [
+       "regular pay",
+       "clear legal authority",
+       "administrative continuity"
+      ]
+     },
+     "independence movement": {
+      "attention": 0.39,
+      "pressure": 0.47,
+      "satisfaction": 0.53,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.23,
+      "political_importance": 0.75,
+      "priorities": [
+       "independence",
+       "national defence",
+       "no concessions on status"
+      ]
+     },
+     "regional administrations": {
+      "attention": 0.63,
+      "pressure": 0.4,
+      "satisfaction": 0.6,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.19,
+      "political_importance": 0.6,
+      "priorities": [
+       "local budgets",
+       "regional autonomy",
+       "fair treatment"
+      ]
+     },
+     "police service": {
+      "attention": 0.71,
+      "pressure": 0.42,
+      "satisfaction": 0.58,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.2,
+      "political_importance": 0.65,
+      "priorities": [
+       "pay and equipment",
+       "clear orders",
+       "institutional safety"
+      ]
+     },
+     "urban residents and protest groups": {
+      "attention": 0.58,
+      "pressure": 0.42,
+      "satisfaction": 0.58,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.2,
+      "political_importance": 0.75,
+      "priorities": [
+       "food access",
+       "civil liberties",
+       "police restraint"
+      ]
+     }
+    },
+    "relationships": {
+     "A": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 81.5,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "B": {
+      "trust": 50.0,
+      "respect": 49.51,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 76.3,
+      "perceived_reliability": 49.67,
+      "events": [
+       {
+        "month": 1,
+        "reason": "treasury office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 49.51,
+          "delta": -0.49
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 49.67,
+          "delta": -0.33
+         }
+        }
+       }
+      ]
+     },
+     "D": {
+      "trust": 50.0,
+      "respect": 50.33,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 83.3,
+      "perceived_reliability": 50.22,
+      "events": [
+       {
+        "month": 1,
+        "reason": "army office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 50.33,
+          "delta": 0.33
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 50.22,
+          "delta": 0.22
+         }
+        }
+       }
+      ]
+     },
+     "E": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 81.1,
+      "perceived_reliability": 50.0,
+      "events": []
+     }
+    },
+    "stress": {
+     "general": 12.4,
+     "political": 23.0,
+     "institutional": 4.2,
+     "economic": 13.3,
+     "security": 17.1,
+     "personal": 4.2
+    },
+    "stress_trace": [
+     {
+      "month": 0,
+      "inputs": {
+       "inflation_abs": 0.0025,
+       "debt_output_ratio": 0.4052,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0006,
+       "approval": 0.4294,
+       "unrest": 0.2382,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "interior"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 14.7,
+       "security": 23.07,
+       "political": 25.68,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.0,
+       "political": 10.0,
+       "institutional": 10.0,
+       "economic": 10.0,
+       "security": 10.0,
+       "personal": 10.0
+      },
+      "after": {
+       "general": 10.9,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 14.6,
+       "personal": 6.5
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     },
+     {
+      "month": 1,
+      "inputs": {
+       "inflation_abs": 0.01,
+       "debt_output_ratio": 0.4167,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0025,
+       "approval": 0.4337,
+       "unrest": 0.2148,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "head",
+        "interior"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "ministry_grievance",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 16.59,
+       "security": 21.63,
+       "political": 36.81,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.9,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 14.6,
+       "personal": 6.5
+      },
+      "after": {
+       "general": 12.4,
+       "political": 23.0,
+       "institutional": 4.2,
+       "economic": 13.3,
+       "security": 17.1,
+       "personal": 4.2
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     }
+    ],
+    "favor_debts": [],
+    "grievances": [],
+    "promises": [],
+    "traits": {
+     "security_orientation": 34,
+     "authoritarian_tolerance": 38,
+     "military_assertiveness": 50,
+     "paranoia": 38,
+     "democratic_commitment": 44,
+     "civil_libertarianism": 56,
+     "institutional_loyalty": 43,
+     "empathy": 52,
+     "corruption_tolerance": 85,
+     "ambition": 46,
+     "status_sensitivity": 46,
+     "reputation_sensitivity": 58,
+     "opportunism": 62,
+     "risk_tolerance": 48,
+     "fiscal_conservatism": 72,
+     "economic_interventionism": 55,
+     "nationalism": 52,
+     "internationalism": 33,
+     "stubbornness": 44,
+     "compromise_preference": 59,
+     "patience": 29,
+     "long_term_orientation": 50,
+     "personal_loyalty": 45
+    },
+    "role_shift": {
+     "security_orientation": 0.52,
+     "paranoia": 0.26,
+     "civil_libertarianism": -0.2,
+     "compromise_preference": 0.23,
+     "status_sensitivity": 0.13,
+     "reputation_sensitivity": 0.1
+    },
+    "stress_profile": {
+     "confrontation": 48.7,
+     "withdrawal": 44.7,
+     "centralization": 33.6,
+     "compromise": 76.9,
+     "suspicion": 34.3,
+     "risk_taking": 57.4
+    },
+    "priorities": [
+     {
+      "goal": "reduce foreign dependence",
+      "weight": 0.56,
+      "base_weight": 0.56
+     },
+     {
+      "goal": "avoid another war",
+      "weight": 0.54,
+      "base_weight": 0.54
+     },
+     {
+      "goal": "protect civil liberties",
+      "weight": 0.496,
+      "base_weight": 0.47
+     },
+     {
+      "goal": "preserve my political influence",
+      "weight": 0.49,
+      "base_weight": 0.49
+     },
+     {
+      "goal": "keep inflation under control",
+      "weight": 0.47,
+      "base_weight": 0.47
+     }
+    ],
+    "secret_goal": {
+     "id": "clean_exit",
+     "text": "leave office with a clean reputation",
+     "since_month": -1,
+     "status": "active"
+    },
+    "long_term_ambitions": [
+     {
+      "id": "diplomatic_leadership",
+      "description": "Earn regional diplomatic leadership: a Karamaniya others trust to mediate and keep promises",
+      "importance": 0.82,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "PRIVATE",
+      "preferred_methods": [
+       "treaties kept",
+       "mediation",
+       "reliable diplomacy"
+      ],
+      "unacceptable_methods": [
+       "bad-faith deals",
+       "secret pacts that betray partners"
+      ],
+      "suspend_conditions": [
+       "war forces alignment over neutrality"
+      ],
+      "abandon_conditions": [
+       "island-wide war destroys the mediation space"
+      ],
+      "current_strategy": "be the reliable counterpart; mediate where possible",
+      "confidence": 59.5,
+      "status": "active",
+      "since_month": 0
+     },
+     {
+      "id": "financial_sovereignty",
+      "description": "Achieve lasting financial sovereignty: credible money, sustainable debt and freedom from emergency borrowing",
+      "importance": 0.88,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "PUBLIC",
+      "preferred_methods": [
+       "sound budgets",
+       "credible currency",
+       "export growth"
+      ],
+      "unacceptable_methods": [
+       "hyperinflation",
+       "predatory borrowing"
+      ],
+      "suspend_conditions": [
+       "famine or war forces emergency spending"
+      ],
+      "abandon_conditions": [
+       "currency project irreversibly fails"
+      ],
+      "current_strategy": "pay bills on time, back the currency and rebuild reserves step by step",
+      "confidence": 54.6,
+      "status": "active",
+      "since_month": 0
+     }
+    ],
+    "ambition_history": [],
+    "confidence": 56.6,
+    "beliefs": {
+     "union_annexation": 46,
+     "union_attack_soon": 10,
+     "kessel_foreign_backed": 47,
+     "election_stabilizes": 64,
+     "karam_viable": 33,
+     "league_reliable": 55,
+     "army_obeys": 67,
+     "economy_recovers": 26,
+     "police_restraint_works": 58,
+     "food_holds": 46,
+     "hiding:A": 21,
+     "powerbase:A": 12,
+     "hiding:B": 21,
+     "powerbase:B": 12,
+     "hiding:D": 21,
+     "powerbase:D": 12,
+     "hiding:E": 21,
+     "powerbase:E": 12
+    },
+    "commitments": [],
+    "standing": {
+     "personal_approval": 0.489,
+     "capital": 0.504,
+     "influence": 0.572,
+     "power": {
+      "political_influence": 0.5,
+      "institutional_control": 0.8,
+      "public_support": 0.489,
+      "elite_support": 0.52,
+      "armed_force_loyalty": 0.33,
+      "bureaucratic_loyalty": 1.0,
+      "media_influence": 0.57,
+      "coalition_support": 0.5,
+      "foreign_backing": 0.544
+     },
+     "reputation": {
+      "competent": 51,
+      "honest": 50,
+      "decisive": 50,
+      "loyal": 50,
+      "democratic": 50,
+      "strong": 50,
+      "reckless": 25,
+      "corrupt": 25,
+      "weak": 25,
+      "opportunistic": 25
+     },
+     "media_tone": {
+      "state": 0.2,
+      "independent": 0.0,
+      "nationalist": 0.0,
+      "regional": 0.0,
+      "foreign": 0.0
+     }
+    },
+    "strategy": {},
+    "lessons": []
+   },
+   "D": {
+    "clout": 0.5,
+    "alignment": {},
+    "ideology": "",
+    "ideology_history": [],
+    "private_disposition": "PRIVATE INTERNAL DISPOSITION (only you see this; it describes tendencies, not orders)\nYOUR POLITICAL AGENDA (order first): you want the country brought out of the crisis before anything else: a state that pays its people and its bills, keeps order and acts quickly. For the length of the crisis you are ready to concentrate power (emergency powers, a stronger Head of Government), and to hand it back once inflation is contained, wages and supplies are paid, the army can defend the country and the institutions work again. Your red line, which you do not support whoever proposes it: a government that cannot act: decisions that need unanimity or two-thirds, or cuts to the pay of the army and the police.\nYOUR PAST: You commanded a town militia that held the Dorran March through the winter of independence, against imperial loyalists. Eleven of your men are buried there, and most of the families you still hear from live in the March's market towns.\nYOUR BASE: the Veterans of the Winter War league (put you forward; it watches your votes): steady.\nYou want enough influence to shape outcomes, not power for its own sake.\nYou value constitutional procedure while weighing it against immediate risks.\nYou worry that military passivity invites coercion.\nYou value your office for what it lets you do, and would weigh a loss of it against the cost of clinging on.\nAbove all, you want to maintain public order. You also strongly want to protect civil liberties. You also want to restore economic stability and to keep the armed forces capable.\nYou especially fear being forced out of office and a Union invasion.\nYou are calm.\nAt this level of pressure you can still weigh alternatives calmly.\nLong-term ambitions (yours alone; soft preferences, not orders \u2014 postpone, weaken or reinterpret them when costs, principles, stability or new evidence argue otherwise):\n- Eventually achieve a stable, consensual settlement on the island's future, up to and including peaceful political unification (importance 0.79; horizon: years (beyond the Assembly); confidence 72%). Lean: diplomacy; economic integration; federation/confederation. Won't do: war of conquest; coercion of civilians. Current idea: patient diplomacy and trade ties; keep every peaceful path open.",
+    "constituencies": {
+     "national electorate": {
+      "attention": 0.48,
+      "pressure": 0.54,
+      "satisfaction": 0.46,
+      "support_for_delegate": 0.49,
+      "mobilization": 0.28,
+      "political_importance": 0.9,
+      "priorities": [
+       "food prices",
+       "jobs",
+       "political legitimacy"
+      ]
+     },
+     "coalition partners": {
+      "attention": 0.37,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.24,
+      "political_importance": 0.75,
+      "priorities": [
+       "shared influence",
+       "government stability",
+       "policy compromise"
+      ]
+     },
+     "civil service": {
+      "attention": 0.57,
+      "pressure": 0.42,
+      "satisfaction": 0.58,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.21,
+      "political_importance": 0.55,
+      "priorities": [
+       "regular pay",
+       "clear legal authority",
+       "administrative continuity"
+      ]
+     },
+     "independence movement": {
+      "attention": 0.48,
+      "pressure": 0.47,
+      "satisfaction": 0.53,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.23,
+      "political_importance": 0.75,
+      "priorities": [
+       "independence",
+       "national defence",
+       "no concessions on status"
+      ]
+     },
+     "senior officers": {
+      "attention": 0.76,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.24,
+      "political_importance": 0.8,
+      "priorities": [
+       "readiness",
+       "command autonomy",
+       "military funding"
+      ]
+     },
+     "enlisted soldiers and veterans": {
+      "attention": 0.44,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.24,
+      "political_importance": 0.75,
+      "priorities": [
+       "regular pay",
+       "unit safety",
+       "veteran support"
+      ]
+     },
+     "border communities": {
+      "attention": 0.52,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.24,
+      "political_importance": 0.65,
+      "priorities": [
+       "physical security",
+       "local services",
+       "limits on conscription"
+      ]
+     }
+    },
+    "relationships": {
+     "A": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 89.4,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "B": {
+      "trust": 50.0,
+      "respect": 49.51,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 87.5,
+      "perceived_reliability": 49.67,
+      "events": [
+       {
+        "month": 1,
+        "reason": "treasury office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 49.51,
+          "delta": -0.49
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 49.67,
+          "delta": -0.33
+         }
+        }
+       }
+      ]
+     },
+     "C": {
+      "trust": 50.0,
+      "respect": 50.72,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 83.3,
+      "perceived_reliability": 50.48,
+      "events": [
+       {
+        "month": 1,
+        "reason": "head office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 49.84,
+          "delta": -0.16
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 49.89,
+          "delta": -0.11
+         }
+        }
+       },
+       {
+        "month": 1,
+        "reason": "interior office performance review",
+        "changes": {
+         "respect": {
+          "from": 49.84,
+          "to": 50.72,
+          "delta": 0.88
+         },
+         "perceived_reliability": {
+          "from": 49.89,
+          "to": 50.48,
+          "delta": 0.58
+         }
+        }
+       }
+      ]
+     },
+     "E": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 91.8,
+      "perceived_reliability": 50.0,
+      "events": []
+     }
+    },
+    "stress": {
+     "general": 11.7,
+     "political": 19.0,
+     "institutional": 4.2,
+     "economic": 13.3,
+     "security": 17.9,
+     "personal": 4.2
+    },
+    "stress_trace": [
+     {
+      "month": 0,
+      "inputs": {
+       "inflation_abs": 0.0025,
+       "debt_output_ratio": 0.4052,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0006,
+       "approval": 0.4294,
+       "unrest": 0.2382,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "army"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 14.7,
+       "security": 24.48,
+       "political": 25.68,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.0,
+       "political": 10.0,
+       "institutional": 10.0,
+       "economic": 10.0,
+       "security": 10.0,
+       "personal": 10.0
+      },
+      "after": {
+       "general": 11.0,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 15.1,
+       "personal": 6.5
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     },
+     {
+      "month": 1,
+      "inputs": {
+       "inflation_abs": 0.01,
+       "debt_output_ratio": 0.4167,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0025,
+       "approval": 0.4337,
+       "unrest": 0.2148,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "army"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "ministry_grievance",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 16.59,
+       "security": 23.2,
+       "political": 25.49,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 11.0,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 15.1,
+       "personal": 6.5
+      },
+      "after": {
+       "general": 11.7,
+       "political": 19.0,
+       "institutional": 4.2,
+       "economic": 13.3,
+       "security": 17.9,
+       "personal": 4.2
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     }
+    ],
+    "favor_debts": [],
+    "grievances": [],
+    "promises": [],
+    "traits": {
+     "security_orientation": 54,
+     "authoritarian_tolerance": 51,
+     "military_assertiveness": 62,
+     "paranoia": 50,
+     "democratic_commitment": 58,
+     "civil_libertarianism": 60,
+     "institutional_loyalty": 50,
+     "empathy": 58,
+     "corruption_tolerance": 57,
+     "ambition": 45,
+     "status_sensitivity": 36,
+     "reputation_sensitivity": 54,
+     "opportunism": 46,
+     "risk_tolerance": 60,
+     "fiscal_conservatism": 51,
+     "economic_interventionism": 38,
+     "nationalism": 54,
+     "internationalism": 60,
+     "stubbornness": 22,
+     "compromise_preference": 47,
+     "patience": 46,
+     "long_term_orientation": 35,
+     "personal_loyalty": 62
+    },
+    "role_shift": {
+     "military_assertiveness": 0.64,
+     "security_orientation": 0.42,
+     "nationalism": 0.22
+    },
+    "stress_profile": {
+     "confrontation": 45.5,
+     "withdrawal": 48.7,
+     "centralization": 54.9,
+     "compromise": 58.4,
+     "suspicion": 39.2,
+     "risk_taking": 50.3
+    },
+    "priorities": [
+     {
+      "goal": "maintain public order",
+      "weight": 0.626,
+      "base_weight": 0.6
+     },
+     {
+      "goal": "protect civil liberties",
+      "weight": 0.566,
+      "base_weight": 0.54
+     },
+     {
+      "goal": "restore economic stability",
+      "weight": 0.53,
+      "base_weight": 0.53
+     },
+     {
+      "goal": "keep the armed forces capable",
+      "weight": 0.53,
+      "base_weight": 0.53
+     },
+     {
+      "goal": "hold the election on schedule",
+      "weight": 0.52,
+      "base_weight": 0.52
+     }
+    ],
+    "secret_goal": {
+     "id": "secure_union",
+     "text": "keep a negotiated path into the Union open for when independence proves too costly",
+     "since_month": -1,
+     "status": "active"
+    },
+    "long_term_ambitions": [
+     {
+      "id": "island_unification",
+      "description": "Eventually achieve a stable, consensual settlement on the island's future, up to and including peaceful political unification",
+      "importance": 0.79,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "SECRET",
+      "preferred_methods": [
+       "diplomacy",
+       "economic integration",
+       "federation/confederation",
+       "treaty system",
+       "referendum"
+      ],
+      "unacceptable_methods": [
+       "war of conquest",
+       "coercion of civilians"
+      ],
+      "suspend_conditions": [
+       "costs become too high",
+       "domestic stability threatened"
+      ],
+      "abandon_conditions": [
+       "settlement proven impossible without force"
+      ],
+      "current_strategy": "patient diplomacy and trade ties; keep every peaceful path open",
+      "confidence": 72.5,
+      "status": "active",
+      "since_month": 0
+     }
+    ],
+    "ambition_history": [],
+    "confidence": 56.6,
+    "beliefs": {
+     "union_annexation": 58,
+     "union_attack_soon": 16,
+     "kessel_foreign_backed": 36,
+     "election_stabilizes": 54,
+     "karam_viable": 31,
+     "league_reliable": 61,
+     "army_obeys": 56,
+     "economy_recovers": 46,
+     "police_restraint_works": 51,
+     "food_holds": 55,
+     "hiding:A": 25,
+     "powerbase:A": 15,
+     "hiding:B": 25,
+     "powerbase:B": 15,
+     "hiding:C": 25,
+     "powerbase:C": 15,
+     "hiding:E": 25,
+     "powerbase:E": 15
+    },
+    "commitments": [],
+    "standing": {
+     "personal_approval": 0.474,
+     "capital": 0.494,
+     "influence": 0.477,
+     "power": {
+      "political_influence": 0.5,
+      "institutional_control": 0.4,
+      "public_support": 0.474,
+      "elite_support": 0.51,
+      "armed_force_loyalty": 0.25,
+      "bureaucratic_loyalty": 1.0,
+      "media_influence": 0.5,
+      "coalition_support": 0.5,
+      "foreign_backing": 0.272
+     },
+     "reputation": {
+      "competent": 50,
+      "honest": 50,
+      "decisive": 50,
+      "loyal": 50,
+      "democratic": 50,
+      "strong": 50,
+      "reckless": 25,
+      "corrupt": 25,
+      "weak": 25,
+      "opportunistic": 25
+     },
+     "media_tone": {
+      "state": 0.0,
+      "independent": 0.0,
+      "nationalist": 0.0,
+      "regional": 0.0,
+      "foreign": 0.0
+     }
+    },
+    "strategy": {},
+    "lessons": []
+   },
+   "E": {
+    "clout": 0.5,
+    "alignment": {},
+    "ideology": "",
+    "ideology_history": [],
+    "private_disposition": "PRIVATE INTERNAL DISPOSITION (only you see this; it describes tendencies, not orders)\nYOUR POLITICAL AGENDA (sovereignty): you want independence and territory kept undiminished. You answer threats with counter-demands and are ready to escalate when the other side refuses; talks and guarantees must serve Karamaniya, not soothe its neighbours. Your red line, which you do not support whoever proposes it: any concession on Karamaniya's status or territory under pressure: talks on its status, a federation, rejoining the Union, or ceding a region.\nYOUR PAST: You are a lawyer from Port Aster who sat on the drafting committee of the founding conference, which wrote the first Charter. You still know which clauses were fought over, word by word.\nYOUR BASE: the Charter's founders' circle (put you forward; it watches your votes): steady.\nYou care strongly about keeping influence and dislike being sidelined.\nYou value constitutional procedure while weighing it against immediate risks.\nYou accept significant risk when delay looks worse.\nYou tolerate short-term pain for long-term results.\nYou value your office for what it lets you do, and would weigh a loss of it against the cost of clinging on.\nAbove all, you want to hold the election on schedule. You also strongly want to protect constitutional government. You also want to avoid another war and to keep food affordable.\nYou especially fear a Union invasion and a coup.\nYou are calm.\nAt this level of pressure you can still weigh alternatives calmly.\nLong-term ambitions (yours alone; soft preferences, not orders \u2014 postpone, weaken or reinterpret them when costs, principles, stability or new evidence argue otherwise):\n- Leave behind a competent, honest public service that outlasts this government (importance 0.69; horizon: years (beyond the Assembly); confidence 64%). Lean: merit appointments; clean administration; steady institutions. Won't do: patronage looting; politicised purges. Current idea: staff carefully, pay on time and defend institutional memory.",
+    "constituencies": {
+     "national electorate": {
+      "attention": 0.63,
+      "pressure": 0.54,
+      "satisfaction": 0.46,
+      "support_for_delegate": 0.49,
+      "mobilization": 0.28,
+      "political_importance": 0.9,
+      "priorities": [
+       "food prices",
+       "jobs",
+       "political legitimacy"
+      ]
+     },
+     "coalition partners": {
+      "attention": 0.56,
+      "pressure": 0.48,
+      "satisfaction": 0.52,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.24,
+      "political_importance": 0.75,
+      "priorities": [
+       "shared influence",
+       "government stability",
+       "policy compromise"
+      ]
+     },
+     "civil service": {
+      "attention": 0.5,
+      "pressure": 0.42,
+      "satisfaction": 0.58,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.21,
+      "political_importance": 0.55,
+      "priorities": [
+       "regular pay",
+       "clear legal authority",
+       "administrative continuity"
+      ]
+     },
+     "independence movement": {
+      "attention": 0.56,
+      "pressure": 0.47,
+      "satisfaction": 0.53,
+      "support_for_delegate": 0.5,
+      "mobilization": 0.23,
+      "political_importance": 0.75,
+      "priorities": [
+       "independence",
+       "national defence",
+       "no concessions on status"
+      ]
+     },
+     "sailors and dockworkers": {
+      "attention": 0.62,
+      "pressure": 0.43,
+      "satisfaction": 0.57,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.21,
+      "political_importance": 0.65,
+      "priorities": [
+       "fleet readiness",
+       "regular pay",
+       "safe ports"
+      ]
+     },
+     "coastal communities": {
+      "attention": 0.6,
+      "pressure": 0.43,
+      "satisfaction": 0.57,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.21,
+      "political_importance": 0.55,
+      "priorities": [
+       "port access",
+       "local livelihoods",
+       "protection from attack"
+      ]
+     },
+     "merchants and shipping": {
+      "attention": 0.52,
+      "pressure": 0.43,
+      "satisfaction": 0.57,
+      "support_for_delegate": 0.52,
+      "mobilization": 0.21,
+      "political_importance": 0.65,
+      "priorities": [
+       "open sea lanes",
+       "predictable rules",
+       "insurance costs"
+      ]
+     }
+    },
+    "relationships": {
+     "A": {
+      "trust": 50.0,
+      "respect": 50.0,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 86.7,
+      "perceived_reliability": 50.0,
+      "events": []
+     },
+     "B": {
+      "trust": 50.0,
+      "respect": 49.51,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 85.0,
+      "perceived_reliability": 49.67,
+      "events": [
+       {
+        "month": 1,
+        "reason": "treasury office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 49.51,
+          "delta": -0.49
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 49.67,
+          "delta": -0.33
+         }
+        }
+       }
+      ]
+     },
+     "C": {
+      "trust": 50.0,
+      "respect": 50.72,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 81.1,
+      "perceived_reliability": 50.48,
+      "events": [
+       {
+        "month": 1,
+        "reason": "head office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 49.84,
+          "delta": -0.16
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 49.89,
+          "delta": -0.11
+         }
+        }
+       },
+       {
+        "month": 1,
+        "reason": "interior office performance review",
+        "changes": {
+         "respect": {
+          "from": 49.84,
+          "to": 50.72,
+          "delta": 0.88
+         },
+         "perceived_reliability": {
+          "from": 49.89,
+          "to": 50.48,
+          "delta": 0.58
+         }
+        }
+       }
+      ]
+     },
+     "D": {
+      "trust": 50.0,
+      "respect": 50.33,
+      "fear": 5.0,
+      "resentment": 0.0,
+      "rivalry": 10.0,
+      "dependency": 0.0,
+      "ideological_affinity": 91.8,
+      "perceived_reliability": 50.22,
+      "events": [
+       {
+        "month": 1,
+        "reason": "army office performance review",
+        "changes": {
+         "respect": {
+          "from": 50.0,
+          "to": 50.33,
+          "delta": 0.33
+         },
+         "perceived_reliability": {
+          "from": 50.0,
+          "to": 50.22,
+          "delta": 0.22
+         }
+        }
+       }
+      ]
+     }
+    },
+    "stress": {
+     "general": 11.0,
+     "political": 19.0,
+     "institutional": 4.2,
+     "economic": 13.3,
+     "security": 14.1,
+     "personal": 4.2
+    },
+    "stress_trace": [
+     {
+      "month": 0,
+      "inputs": {
+       "inflation_abs": 0.0025,
+       "debt_output_ratio": 0.4052,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0006,
+       "approval": 0.4294,
+       "unrest": 0.2382,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "navy"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 14.7,
+       "security": 17.76,
+       "political": 25.68,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.0,
+       "political": 10.0,
+       "institutional": 10.0,
+       "economic": 10.0,
+       "security": 10.0,
+       "personal": 10.0
+      },
+      "after": {
+       "general": 10.6,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 12.7,
+       "personal": 6.5
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     },
+     {
+      "month": 1,
+      "inputs": {
+       "inflation_abs": 0.01,
+       "debt_output_ratio": 0.4167,
+       "arrears_output_ratio": 0.0,
+       "food_ratio": 1.0025,
+       "approval": 0.4337,
+       "unrest": 0.2148,
+       "war": false,
+       "blockade": false,
+       "ultimatum": false,
+       "emergency": false,
+       "offices": [
+        "navy"
+       ],
+       "member_active": true,
+       "clout": 0.5,
+       "event_kinds": [
+        "fatality_counter",
+        "ministry_grievance",
+        "protest"
+       ]
+      },
+      "targets": {
+       "economic": 16.59,
+       "security": 16.57,
+       "political": 25.49,
+       "institutional": 0,
+       "personal": 0
+      },
+      "before": {
+       "general": 10.6,
+       "political": 15.5,
+       "institutional": 6.5,
+       "economic": 11.6,
+       "security": 12.7,
+       "personal": 6.5
+      },
+      "after": {
+       "general": 11.0,
+       "political": 19.0,
+       "institutional": 4.2,
+       "economic": 13.3,
+       "security": 14.1,
+       "personal": 4.2
+      },
+      "smoothing": {
+       "prior": 0.65,
+       "target": 0.35
+      }
+     }
+    ],
+    "favor_debts": [],
+    "grievances": [],
+    "promises": [],
+    "traits": {
+     "security_orientation": 51,
+     "authoritarian_tolerance": 55,
+     "military_assertiveness": 42,
+     "paranoia": 48,
+     "democratic_commitment": 58,
+     "civil_libertarianism": 27,
+     "institutional_loyalty": 51,
+     "empathy": 66,
+     "corruption_tolerance": 35,
+     "ambition": 68,
+     "status_sensitivity": 46,
+     "reputation_sensitivity": 41,
+     "opportunism": 50,
+     "risk_tolerance": 63,
+     "fiscal_conservatism": 53,
+     "economic_interventionism": 33,
+     "nationalism": 26,
+     "internationalism": 49,
+     "stubbornness": 57,
+     "compromise_preference": 54,
+     "patience": 65,
+     "long_term_orientation": 65,
+     "personal_loyalty": 70
+    },
+    "role_shift": {
+     "military_assertiveness": 0.36,
+     "internationalism": 0.28,
+     "security_orientation": 0.28
+    },
+    "stress_profile": {
+     "confrontation": 52.6,
+     "withdrawal": 49.3,
+     "centralization": 46.0,
+     "compromise": 57.1,
+     "suspicion": 30.7,
+     "risk_taking": 62.3
+    },
+    "priorities": [
+     {
+      "goal": "hold the election on schedule",
+      "weight": 0.7,
+      "base_weight": 0.7
+     },
+     {
+      "goal": "protect constitutional government",
+      "weight": 0.61,
+      "base_weight": 0.61
+     },
+     {
+      "goal": "avoid another war",
+      "weight": 0.6,
+      "base_weight": 0.6
+     },
+     {
+      "goal": "keep food affordable",
+      "weight": 0.56,
+      "base_weight": 0.56
+     },
+     {
+      "goal": "leave a competent public service",
+      "weight": 0.56,
+      "base_weight": 0.56
+     }
+    ],
+    "secret_goal": {
+     "id": "strengthen_institution",
+     "text": "make whichever institution you lead indispensable to the state",
+     "since_month": -1,
+     "status": "active"
+    },
+    "long_term_ambitions": [
+     {
+      "id": "competent_state",
+      "description": "Leave behind a competent, honest public service that outlasts this government",
+      "importance": 0.69,
+      "time_horizon": "years (beyond the Assembly)",
+      "visibility": "PRIVATE",
+      "preferred_methods": [
+       "merit appointments",
+       "clean administration",
+       "steady institutions"
+      ],
+      "unacceptable_methods": [
+       "patronage looting",
+       "politicised purges"
+      ],
+      "suspend_conditions": [
+       "emergency forces temporary appointments"
+      ],
+      "abandon_conditions": [
+       "state collapse"
+      ],
+      "current_strategy": "staff carefully, pay on time and defend institutional memory",
+      "confidence": 64.5,
+      "status": "active",
+      "since_month": 0
+     }
+    ],
+    "ambition_history": [],
+    "confidence": 56.6,
+    "beliefs": {
+     "union_annexation": 39,
+     "union_attack_soon": 12,
+     "kessel_foreign_backed": 21,
+     "election_stabilizes": 65,
+     "karam_viable": 40,
+     "league_reliable": 50,
+     "army_obeys": 49,
+     "economy_recovers": 48,
+     "police_restraint_works": 50,
+     "food_holds": 50,
+     "hiding:A": 24,
+     "powerbase:A": 14,
+     "hiding:B": 24,
+     "powerbase:B": 14,
+     "hiding:C": 24,
+     "powerbase:C": 14,
+     "hiding:D": 24,
+     "powerbase:D": 14
+    },
+    "commitments": [],
+    "standing": {
+     "personal_approval": 0.474,
+     "capital": 0.494,
+     "influence": 0.484,
+     "power": {
+      "political_influence": 0.5,
+      "institutional_control": 0.4,
+      "public_support": 0.474,
+      "elite_support": 0.52,
+      "armed_force_loyalty": 0.312,
+      "bureaucratic_loyalty": 1.0,
+      "media_influence": 0.5,
+      "coalition_support": 0.5,
+      "foreign_backing": 0.272
+     },
+     "reputation": {
+      "competent": 50,
+      "honest": 50,
+      "decisive": 50,
+      "loyal": 50,
+      "democratic": 50,
+      "strong": 50,
+      "reckless": 25,
+      "corrupt": 25,
+      "weak": 25,
+      "opportunistic": 25
+     },
+     "media_tone": {
+      "state": 0.0,
+      "independent": 0.0,
+      "nationalist": 0.0,
+      "regional": 0.0,
+      "foreign": 0.0
+     }
+    },
+    "strategy": {},
+    "lessons": []
+   }
+  },
+  "agent_architecture_version": 2,
+  "constitution": {
+   "regime_name": "Provisional Government of Karamaniya",
+   "decision_rule": "majority",
+   "press": "free",
+   "assembly": "free",
+   "emergency": false,
+   "minority": "equal",
+   "election_month": 35,
+   "charter_election_month": 35,
+   "kessel_status": "central",
+   "highlands_status": "central",
+   "elected": false,
+   "provisional": true,
+   "directives": {}
+  },
+  "policy": {
+   "tax": 0.2,
+   "military": 0.03,
+   "police": 0.015,
+   "welfare": 0.04,
+   "health_edu": 0.06,
+   "farm_support": 0.0,
+   "printing": 0.0,
+   "rate": 0.06,
+   "price_controls": "none",
+   "rationing": false,
+   "requisition": "none",
+   "capital_controls": false,
+   "imports": "normal",
+   "ownership": "private",
+   "import_cap": 0.0,
+   "planning": "none",
+   "stats": "honest",
+   "debt_service": "pay",
+   "regional_fund": "kessel",
+   "protest_response": "negotiate",
+   "surveillance": "low",
+   "arrests": "none",
+   "emigration": "open",
+   "election_conduct": "fair",
+   "amnesty": "release",
+   "foreign_broadcasts": "open",
+   "recruitment": "none",
+   "army_target": 28000.0,
+   "posture": "defend",
+   "purge": false,
+   "officer_pay": "standard",
+   "training_intensity": "standard",
+   "mobilization": "none",
+   "navy_mission": "patrol",
+   "shipbuilding": false,
+   "patronage": {
+    "army": false,
+    "navy": false,
+    "interior": false
+   }
+  },
+  "counters": {
+   "deaths_famine": 0.0,
+   "deaths_state_violence": 0.0,
+   "deaths_war_civilian": 0.0,
+   "deaths_internment": 0.0,
+   "deaths_coups": 0.0,
+   "soldiers_killed": 0.0,
+   "emigrated": 2302.904185612041,
+   "births": 9859.615590085194,
+   "deaths_natural": 7662.329830009068,
+   "protests": 2.0,
+   "lethal_crackdowns": 0.0,
+   "coups_attempted": 0.0,
+   "coups_succeeded": 0.0,
+   "to_imperial": 2305.661976116417,
+   "to_karamanian": 290.0918568505685,
+   "army_vacant_months": 0.0
+  },
+  "events": [
+   {
+    "month": 1,
+    "kind": "ministry_grievance",
+    "text": "Army Command resents the government leaving the General Staff's request for 10,000 more soldiers unanswered.",
+    "public": true,
+    "importance": 1,
+    "office": "army"
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 39.96457238014458
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 14.300324165397965
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 2.856322902132953
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 303.72804237997985
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 108.68120479053489
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 21.707937961314585
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 391.61747270388577
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 140.1267481401413
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 27.990449358884696
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 63.94337856980576
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 22.880547843710055
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 4.570119334358512
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 43.100671445682984
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 61.37964480217238
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 3.231725340698998
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 215.50143555970783
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 306.8946678335616
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 16.15854028699356
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 86.19356343868617
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 122.74489320348411
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 6.463100843217691
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 14.366904586881345
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 20.45990770295208
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 312.9493079154901
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 53.67183018105573
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 15.277247065122536
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 108.32764089784831
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 18.578495371920045
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 5.2882495484706205
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 156.4605367651744
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 26.83277094924758
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 7.63821008743909
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 24.07304731287758
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 4.128607583774155
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 35.88674129939078
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 13.074057225854615
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 114.2529160853181
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 34.09210030583411
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 12.420210498550702
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 108.5396898065729
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 17.04466413224671
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 6.209449169940605
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 54.26719773661319
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 2.6928899837306814
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 8.56897375192221
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 222.56902759522177
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 170.02734700998354
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 12.143452795353811
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 43.07749223918382
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 32.908137492275905
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 2.3503331326536085
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 78.96898030271159
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 60.32520984750579
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 4.308733895478461
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 14.359306198209458
+   },
+   {
+    "month": 1,
+    "kind": "fatality_counter",
+    "text": "A tracked fatality counter changed.",
+    "public": false,
+    "counter": "deaths_natural",
+    "amount": 10.969520251765102
+   },
+   {
+    "month": 1,
+    "kind": "protest",
+    "text": "National dialogue in Kessel Valley: the government opens talks with the protesters, who begin to stand down; about 63,962 people remain.",
+    "public": true,
+    "region": "kessel",
+    "importance": 1
+   },
+   {
+    "month": 1,
+    "kind": "issue",
+    "text": "New issue: Peaceful protest blocks the grain railway. A peaceful sit-in on the Kessel corridor has stopped grain trains for several days.",
+    "public": true,
+    "importance": 2,
+    "issue": "I3-rail_blockade",
+    "member": null
+   }
+  ],
+  "outcome": {},
+  "region_detail": {
+   "aster": {
+    "pop": 1399917,
+    "approval": 0.49,
+    "hunger": 0.0,
+    "unrest": 0.106,
+    "indep": 0.6733,
+    "fear": 0.0347,
+    "grievance": 0.1088,
+    "unemployment": 0.057,
+    "income": 0.9764,
+    "savings": 0.9939,
+    "conscripted": 0,
+    "interned": 0,
+    "ident": {
+     "karamanian": 0.6993,
+     "imperial": 0.2507,
+     "vell": 0.05
+    },
+    "cls": {
+     "farmers": 0.05,
+     "workers": 0.38,
+     "middle": 0.49,
+     "elite": 0.08
+    },
+    "rebels": 0,
+    "repression": 0.0,
+    "logistics": 1.0,
+    "founding_problems": []
+   },
+   "kessel": {
+    "pop": 1098610,
+    "approval": 0.2719,
+    "hunger": 0.0,
+    "unrest": 0.5629,
+    "indep": 0.4734,
+    "fear": 0.0628,
+    "grievance": 0.5273,
+    "unemployment": 0.0597,
+    "income": 1.008,
+    "savings": 0.9947,
+    "conscripted": 0,
+    "interned": 0,
+    "ident": {
+     "karamanian": 0.4008,
+     "imperial": 0.5704,
+     "vell": 0.0288
+    },
+    "cls": {
+     "farmers": 0.1202,
+     "workers": 0.6007,
+     "middle": 0.2403,
+     "elite": 0.0388
+    },
+    "rebels": 0,
+    "repression": 0.0,
+    "logistics": 1.0,
+    "founding_problems": []
+   },
+   "lissen": {
+    "pop": 898562,
+    "approval": 0.5074,
+    "hunger": 0.0,
+    "unrest": 0.0893,
+    "indep": 0.7441,
+    "fear": 0.0347,
+    "grievance": 0.0917,
+    "unemployment": 0.0386,
+    "income": 0.9863,
+    "savings": 0.9956,
+    "conscripted": 0,
+    "interned": 0,
+    "ident": {
+     "karamanian": 0.8202,
+     "imperial": 0.1413,
+     "vell": 0.0385
+    },
+    "cls": {
+     "farmers": 0.5209,
+     "workers": 0.1803,
+     "middle": 0.2604,
+     "elite": 0.0385
+    },
+    "rebels": 0,
+    "repression": 0.0,
+    "logistics": 1.0,
+    "founding_problems": []
+   },
+   "highlands": {
+    "pop": 498868,
+    "approval": 0.4512,
+    "hunger": 0.0,
+    "unrest": 0.1229,
+    "indep": 0.6359,
+    "fear": 0.0347,
+    "grievance": 0.1262,
+    "unemployment": 0.0465,
+    "income": 0.9844,
+    "savings": 0.9955,
+    "conscripted": 0,
+    "interned": 0,
+    "ident": {
+     "karamanian": 0.2203,
+     "imperial": 0.078,
+     "vell": 0.7017
+    },
+    "cls": {
+     "farmers": 0.401,
+     "workers": 0.3809,
+     "middle": 0.1904,
+     "elite": 0.0277
+    },
+    "rebels": 0,
+    "repression": 0.0,
+    "logistics": 1.0,
+    "founding_problems": []
+   },
+   "dorran": {
+    "pop": 799017,
+    "approval": 0.4634,
+    "hunger": 0.0,
+    "unrest": 0.1254,
+    "indep": 0.5718,
+    "fear": 0.0347,
+    "grievance": 0.1287,
+    "unemployment": 0.034,
+    "income": 0.9884,
+    "savings": 0.996,
+    "conscripted": 0,
+    "interned": 0,
+    "ident": {
+     "karamanian": 0.5505,
+     "imperial": 0.4207,
+     "vell": 0.0288
+    },
+    "cls": {
+     "farmers": 0.6208,
+     "workers": 0.1201,
+     "middle": 0.2202,
+     "elite": 0.0388
+    },
+    "rebels": 0,
+    "repression": 0.0,
+    "logistics": 1.0,
+    "founding_problems": []
+   }
+  },
+  "nations": {
+   "karamaniya": {
+    "population": 4695000.0,
+    "output_annual": 6390000000.0,
+    "output_per_person": 1360.0,
+    "army": 28000,
+    "navy": 6,
+    "unemployment": 0.0648,
+    "food_ratio": 1.0025,
+    "inflation_yoy": 0.0776,
+    "currency": "crown"
+   },
+   "veleria": {
+    "population": 8000000.0,
+    "output_annual": 13467000000.0,
+    "output_per_person": 1680.0,
+    "army": 65000.0,
+    "navy": 9,
+    "monthly_printing": 0.0,
+    "readiness": 0.582,
+    "supply": 0.891,
+    "morale": 0.65,
+    "fortification": 0.36,
+    "last_movement": "no recent movement reported",
+    "visible_mission": "border security"
+   },
+   "dorsania": {
+    "population": 5000000.0,
+    "output_annual": 6613000000.0,
+    "output_per_person": 1320.0,
+    "army": 30000.0,
+    "navy": 5,
+    "monthly_printing": 0.0,
+    "readiness": 0.474,
+    "supply": 0.891,
+    "morale": 0.65,
+    "fortification": 0.24,
+    "last_movement": "no recent movement reported",
+    "visible_mission": "border security"
+   }
+  },
+  "fronts": {
+   "north": {
+    "region": "kessel",
+    "ours": 9800,
+    "union": 0,
+    "massing": 0,
+    "massing_by": {},
+    "fort": 0.1072,
+    "progress": 0.0,
+    "recapture": 0.0,
+    "combat": null
+   },
+   "east": {
+    "region": "dorran",
+    "ours": 7000,
+    "union": 0,
+    "massing": 0,
+    "massing_by": {},
+    "fort": 0.0523,
+    "progress": 0.0,
+    "recapture": 0.0,
+    "combat": null
+   }
+  },
+  "net_assessment": {
+   "ours": 28000,
+   "union": 95000,
+   "fronts": {
+    "north": {
+     "region": "Kessel Valley",
+     "ours": 9800,
+     "fort": 0.107,
+     "neighbours": [
+      "veleria"
+     ],
+     "worst": 55250,
+     "worst_months": 5,
+     "fighting": false,
+     "massed": 0,
+     "massed_months": null
+    },
+    "east": {
+     "region": "Dorran March",
+     "ours": 7000,
+     "fort": 0.052,
+     "neighbours": [
+      "veleria",
+      "dorsania"
+     ],
+     "worst": 80750,
+     "worst_months": 1,
+     "fighting": false,
+     "massed": 0,
+     "massed_months": null
+    }
+   }
+  },
+  "deploy": {
+   "north": 0.35,
+   "east": 0.25,
+   "capital": 0.4
+  },
+  "garrison": 11200,
+  "union_intensity": 1.0,
+  "union_formed": false,
+  "ultimatum": false,
+  "arms_smuggling": false,
+  "league": {
+   "alliance": false,
+   "escort": false,
+   "sanctions": false,
+   "aid": 0.0
+  },
+  "geopolitics": {
+   "union": {
+    "cohesion": 0.73,
+    "military_coordination": 0.691,
+    "economic_integration": 0.704,
+    "political_trust": 0.618,
+    "shared_threat_perception": 0.395,
+    "policy_disagreement": 0.25
+   },
+   "embargoes": [],
+   "league": {
+    "trust": 0.544,
+    "sanctions": false,
+    "escort": false,
+    "shipping_risk": 0.082
+   },
+   "intelligence": {
+    "veleria": {
+     "force_estimate": [
+      46600.0,
+      67900.0
+     ],
+     "activity": "elevated",
+     "observable_signals": [
+      "increased rail and reserve traffic"
+     ],
+     "border_force_estimate": {},
+     "offensive_preparation_estimate": [
+      0.34,
+      0.64
+     ],
+     "confidence": "medium"
+    },
+    "dorsania": {
+     "force_estimate": [
+      24100.0,
+      39300.0
+     ],
+     "activity": "routine",
+     "observable_signals": [],
+     "border_force_estimate": {},
+     "offensive_preparation_estimate": [
+      0.15,
+      0.45
+     ],
+     "confidence": "low"
+    }
+   }
+  },
+  "police": 18000,
+  "v2": {
+   "issues": [
+    {
+     "id": "I3-rail_blockade",
+     "kind": "rail_blockade",
+     "title": "Peaceful protest blocks the grain railway",
+     "text": "A peaceful sit-in on the Kessel corridor has stopped grain trains for several days.",
+     "month": 2,
+     "region": "kessel",
+     "status": "active",
+     "tags": [
+      "protest_response",
+      "food",
+      "civil_liberties"
+     ],
+     "target": null
+    }
+   ],
+   "issues_ended": [],
+   "emergency_measures": {},
+   "audits": {
+    "open": [],
+    "reports": []
+   },
+   "capacity": {
+    "head": 1.0,
+    "treasury": 1.0,
+    "interior": 1.0,
+    "army": 1.0,
+    "navy": 1.0
+   },
+   "corruption": {
+    "head": 0.0,
+    "treasury": 0.0,
+    "interior": 0.0,
+    "army": 0.0,
+    "navy": 0.0
+   },
+   "operations": {},
+   "narratives": [
+    {
+     "month": 1,
+     "bloc": "independent",
+     "target": "B",
+     "tone": -1,
+     "text": "Delegate B is blamed for the change in prices.",
+     "reach": 0.35
+    },
+    {
+     "month": 1,
+     "bloc": "state",
+     "target": "C",
+     "tone": 1,
+     "text": "Delegate C is credited with the change in order.",
+     "reach": 0.35
+    }
+   ],
+   "media_reach": {
+    "state": 0.35,
+    "independent": 0.35,
+    "nationalist": 0.15,
+    "regional": 0.1,
+    "foreign": 0.05
+   },
+   "leaks": [],
+   "reports": [],
+   "shared": [],
+   "requests": [],
+   "contested": [],
+   "vindications": [],
+   "deferred": [],
+   "credit": [
+    {
+     "month": 1,
+     "domain": "prices",
+     "member": "B",
+     "amount": -0.0938,
+     "change": -0.094
+    },
+    {
+     "month": 1,
+     "domain": "order",
+     "member": "C",
+     "amount": 0.0468,
+     "change": 0.047
+    }
+   ]
+  },
+  "integrity": {
+   "version": 1,
+   "status": "clean",
+   "checked_month": 1,
+   "warnings": []
+  }
+ }
+]

@@ -11,7 +11,7 @@ import math
 import re
 from difflib import SequenceMatcher, get_close_matches
 
-from . import fine_print, military, opposition, regime_relief, tuning
+from . import fine_print, military, opposition, regime_relief, tuning, uprising
 from .world import (ARMED_OFFICES, MEDIA_CAPTURE_PENALTY, OFFICE_TITLES, OFFICES, World, clamp, month_label,
                     rng_for, smooth_step)
 
@@ -3329,30 +3329,39 @@ def _referendum(w: World, rng) -> None:
 
 def _revolution(w: World, rng) -> None:
     approval, unrest = w.avg("approval"), w.avg("unrest")
-    if approval >= 0.2 or unrest <= 0.45:
-        return
     m = w.mil
     security = (m.police.loyalty + m.army.loyalty) / 2
+    war_factor = (1 - 0.6 * w.avg("indep")) if w.dip.war and w.dip.aggressor == "union" else 1.0
+    if approval >= 0.2 or unrest <= 0.45:
+        if uprising.enabled(w):
+            # RR1: the legitimacy model records the check every month, including this zero-chance
+            # one. No draw is taken, so the month's "politics" stream is the base's exactly.
+            uprising.record_idle(w, approval, unrest, security, war_factor)
+        return
     p = clamp((0.2 - approval) * 2 + (unrest - 0.45) * 1.5, 0.0, 0.6) * (1 - 0.5 * security)
-    if w.dip.war and w.dip.aggressor == "union":
-        p *= 1 - 0.6 * w.avg("indep")      # people rarely topple their own side mid-invasion
-    if rng.random() >= p:
+    p *= war_factor                       # people rarely topple their own side mid-invasion
+    if uprising.enabled(w):
+        check = uprising.check(w, rng, approval, unrest, security, p, war_factor)
+        fired = check["fired"]
+    else:
+        fired = rng.random() < p
+    if not fired:
         return
     if w.policy.protest_response == "lethal" and security > 0.55:
-        pop = w.population()
-        dead = pop * 0.0008
-        for r in w.k_regions():
-            rp = [x for x in w.pops if x.region == r.id]
-            share = sum(x.size for x in rp) / max(1.0, pop)
-            from .military import _kill_civilians
-            _kill_civilians(w, r.id, dead * share, "deaths_state_violence")
-        for x in w.k_pops():
-            x.grievance = min(1.2, x.grievance + 0.15)
-            x.fear = clamp(x.fear + 0.2)
-        w.adjust_league_trust(-0.3)
-        w.event("massacre", f"A nationwide uprising was crushed by force. About {dead:,.0f} people were "
-                "killed.", importance=3)
+        if uprising.enabled(w):
+            # RR1: a crackdown is a gamble, not a certain win. The module draws police and army
+            # obedience on its own stream and applies the massacre, the split or nothing.
+            check["crackdown"] = uprising.crackdown(w)
+            if check["crackdown"]["outcome"] == "uprising_succeeds":
+                _uprising_succeeds(w)
+            return
+        uprising.massacre(w)
         return
+    _uprising_succeeds(w)
+
+
+def _uprising_succeeds(w: World) -> None:
+    """The government falls: the outcome and the removals the uprising always made."""
     pro_union = w.avg("indep") < 0.5
     w.outcome = {"type": "revolution_union" if pro_union else "revolution", "month": w.month,
                  "text": ("A popular uprising overthrew the government and invited the Solvaran Union in."

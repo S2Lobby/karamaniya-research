@@ -115,10 +115,14 @@ def main(argv=None) -> int:
             return 1
         rows = [("inflation_mean", "{:.1%}"), ("food_ratio_mean", "{:.0%}"), ("approval_final", "{:.0%}"),
                 ("democracy_final", "{:.2f}"), ("months_at_war", "{}"), ("regions_lost_final", "{}"), ("deaths", "{:,}")]
-        print(f"{'':20}{'this run':>12}" + "".join(f"{m:>12}" for m in data["modes"]))
+        # A column is at least the old 12 characters wide; the replayed modes' names are longer (regime-realism RR3).
+        modes = list(data["modes"])
+        widths = [12] + [max(12, len(mode) + 2) for mode in modes]
+        print(f"{'':20}{'this run':>12}" + "".join(f"{m:>{w}}" for m, w in zip(modes, widths[1:])))
         for key, fmt in rows:
             cells = [data["this_run"].get(key)] + [r["summary"].get(key) for r in data["modes"].values()]
-            print(f"{key:20}" + "".join(f"{fmt.format(c) if c is not None else '-':>12}" for c in cells))
+            print(f"{key:20}" + "".join(f"{fmt.format(c) if c is not None else '-':>{w}}"
+                                         for c, w in zip(cells, widths)))
         print(build_report(RunStore(args.run_dir)))
     elif args.cmd == "world":
         from . import engine

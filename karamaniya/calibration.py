@@ -3,8 +3,9 @@
 The engine watch (watch.py) flags a broken month inside one run. A bias that every run shares does not show inside
 any one of them: every seed's inflation creeping up, or the neighbours' economies shrinking with no war. It shows
 across runs. So each check here is one figure taken from a finished world's history, and the range a plausible world
-stays inside, with a one-line reason for that range. tools/calibrate.py plays seeds and simple councils (baseline.MODES;
-no model is called) and reports where the figures leave their ranges. docs/CALIBRATION.md says what to do then.
+stays inside, with a one-line reason for that range. tools/calibrate.py plays seeds and simple councils (the
+rule-played baseline.RULE_MODES; no model is called) and reports where the figures leave their ranges. docs/CALIBRATION.md
+says what to do then.
 
 The evidence is run 20261010-070501-seed1. An engine bug charged every statement and offer of talks by a neighbour's
 cabinet against that neighbour's real output, and kept charging it. The neighbours lost about 30% of their output in
@@ -214,16 +215,17 @@ def scripted_settings(council_path) -> dict:
 
 
 def simulate(settings: dict, seed: int, mode: str, months: int, runs_dir) -> tuple:
-    """One council of stand-ins (a baseline.MODES mode) on one seed, played out under runs_dir: (world, seconds).
+    """One council of stand-ins (a baseline.RULE_MODES mode) on one seed, played out under runs_dir: (world, seconds).
 
     No model is called. The run is made as baseline.compute makes its baselines, so the figures here are the ones a
-    baseline of the same council would get.
+    baseline of the same council would get. The replayed modes are refused: they need a finished run's log to
+    answer the neighbours' cabinets from, and calibration plays councils on a bare seed.
     """
     from .config import normalize_config
     from .runner import new_run
     from .storage import RunStore
-    if mode not in baseline.MODES:
-        raise ValueError(f"unknown council mode {mode!r}; expected one of {', '.join(baseline.MODES)}")
+    if mode not in baseline.RULE_MODES:
+        raise ValueError(f"unknown council mode {mode!r}; expected one of {', '.join(baseline.RULE_MODES)}")
     raw = baseline._config({**settings, "seed": seed}, SEATS, mode, months)
     cfg = normalize_config(raw, raw["source"])
     started = time.perf_counter()

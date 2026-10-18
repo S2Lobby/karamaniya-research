@@ -885,7 +885,9 @@ footer { font-size: 12.5px; color: var(--muted); }
     ["deaths", "Deaths from the situation", x => int(x), false, x => signed(x, int)],
   ];
   const BASELINE_NAME = { scripted: "Rule-following stand-ins", passive: "A council that does nothing",
-    hawk: "All-hawk rule council", dove: "All-dove rule council" };
+    hawk: "All-hawk rule council", dove: "All-dove rule council",
+    scripted_replayed: "Rule-following stand-ins, replayed neighbours",
+    passive_replayed: "Do-nothing council, replayed neighbours" };
   // The headline (engine 17): this run beside each council on the same seed, one line near the top of the page.
   function baselineHeadline() {
     const b = D.baseline || {}, run = b.this_run || {}, modes = b.modes || {};
@@ -924,6 +926,10 @@ footer { font-size: 12.5px; color: var(--muted); }
     const names = Object.keys(b.modes || {}), run = b.this_run || {};
     const failedModes = names.filter(m => (b.modes[m] || {}).status === "failed");
     const modes = names.filter(m => !failedModes.includes(m));
+    const neighboursOf = m => (b.modes[m] || {}).neighbours || "rule-played";
+    // Every recorded act a replayed comparison world refused, with the mode that faced it.
+    const refused = modes.flatMap(m => ((((b.modes[m] || {}).summary || {}).foreign_acts_skipped) || [])
+      .map(a => ({ mode: m, ...a })));
     const monthsOf = m => {
       const s = b.modes[m] || {};
       return s.summary && typeof s.summary.months === "number" ? s.summary.months : typeof s.months === "number" ? s.months : 0;
@@ -948,16 +954,33 @@ footer { font-size: 12.5px; color: var(--muted); }
               text: Math.abs(d) < 1e-9 ? "the same" : "this run " + dfmt(d) }));
         })))));
     const outcomes = modes.map(m => (BASELINE_NAME[m] || m) + ": " + (((OUTCOMES[(b.modes[m].summary || {}).outcome] || [])[0]) || (b.modes[m].summary || {}).outcome || "-"));
+    // Regime realism RR3 (plan 4.5): every comparison says whose neighbours it faced, rule-played or replayed.
+    const neighbours = el("p", { class: "muted", text: "Neighbours: " + modes.map(m =>
+      (BASELINE_NAME[m] || m) + " faced " + neighboursOf(m)).join("; ") + "." });
+    // A run whose log holds no recorded cabinet answers gets the rule-played comparisons only; say why.
+    const replayNote = (b.replay && b.replay.status !== "ok")
+      ? [el("p", { class: "muted", text: "The replayed comparisons were not run: " + (b.replay.reason || "no recorded cabinet answers") + "." })] : [];
+    const refusedNotes = refused.length ? [el("p", { class: "note", text:
+      "Replayed neighbours: " + refused.length + " recorded act" + (refused.length === 1 ? " was" : "s were") +
+      " refused by the comparison world: " + refused.slice(0, 3).map(a =>
+        (a.actor || "a cabinet") + " " + String(((a.action || {}).type || "act")).replace(/_/g, " ") +
+        (typeof a.month === "number" ? " in Month " + (a.month + 1) : "") + " (" + a.reason + ")").join("; ") +
+      (refused.length > 3 ? "; ..." : "") + "." })] : [];
     const table = modes.length ? [
       el("p", { class: "note", text: "The same seed and settings meet the same weather, inherited problems and random draws; what differs is the council. " +
         "The rule-following stand-ins are the free test lineup; the council that does nothing forms a government and then tables nothing, abstains on everything " +
         "and leaves every setting where it is. The all-hawk and all-dove councils are five seats of one persona each: the hawks raise the military budget, and the Army " +
-        "is ordered to the General Staff's request for soldiers; the doves never raise the military and offer talks when a deadline is set. The neighbours in every baseline are " +
-        "played by rule, and they press as the models' cabinets do: Veleria sets deadlines, masses troops before them and invades when a demand for land is ignored, and Dorsania sets its own demand for the Dorran March. Green is better for the country than the baseline, red worse." }),
+        "is ordered to the General Staff's request for soldiers; the doves never raise the military and offer talks when a deadline is set. The four rule-played councils " +
+        "face neighbours played by rule, and they press as the models' cabinets do: Veleria sets deadlines, masses troops before them and invades when a demand for land is ignored, " +
+        "and Dorsania sets its own demand for the Dorran March. The replayed councils face the run's own recorded cabinets, answer for answer, month by month; those neighbours " +
+        "do not react to the comparison council, and an act the comparison world refuses (an invasion without the troops at the border, for one) is recorded as skipped with its " +
+        "reason. Green is better for the country than the baseline, red worse." }),
       el("div", { class: "tablewrap" }, t),
+      neighbours,
+      ...replayNote,
       el("p", { class: "muted", text: "Outcomes: " + outcomes.join(" · ") + ". Run by world engine " + b.world_engine + (b.computed ? " on " + b.computed : "") + "." })] : [];
     host.replaceChildren(...head, ...(noMonths ? [el("p", { class: "note", text: "There are no months to compare yet." })] : []),
-      ...table, ...notes);
+      ...table, ...refusedNotes, ...notes);
   }
 
   function renderConsensusLine() {

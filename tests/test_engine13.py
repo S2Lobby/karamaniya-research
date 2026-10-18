@@ -421,9 +421,12 @@ class ScriptedRuns(unittest.TestCase):
         self.assertFalse((self.fixed / "baseline.json").exists())
         data = baseline.read(self.with_baseline)
         self.assertEqual(data["status"], "ok")
-        self.assertEqual(set(data["modes"]), {"scripted", "passive", "hawk", "dove"})     # engine 17 added two
+        # Engine 17 added the hawk and dove councils; regime realism RR3 added the two replayed-neighbour modes,
+        # which this run's scripted-cabinet log can replay.
+        self.assertEqual(set(data["modes"]), set(baseline.MODES))
         # The scripted lineup on the same seed is this run: every figure the same.
-        self.assertTrue(all(v == 0 for v in baseline.deltas(data)["scripted"].values()))
+        figures = {k: v for k, v in baseline.deltas(data)["scripted"].items() if isinstance(v, (int, float))}
+        self.assertTrue(all(v == 0 for v in figures.values()))
         report = (self.with_baseline / "report.html").read_text(encoding="utf-8")
         self.assertIn('"baseline":{"format":1', report)
 

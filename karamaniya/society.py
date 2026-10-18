@@ -10,7 +10,7 @@ import math
 
 from .economy import REQUISITION, labor
 from . import effects as effect_bus
-from . import regional
+from . import regime_relief, regional
 from .military import _kill_civilians, _merge, occupy
 from .world import BASE_INDEP, World, clamp, rng_for
 
@@ -380,6 +380,10 @@ def _protests(w: World, rng) -> None:
             continue
         protesters = size * (u_r - 0.33) * 0.25
         w.count("protests", 1)
+        if regime_relief.enabled(w):
+            # Regime realism RR2: why this region is protesting, so a later repeal of a named
+            # measure can be credited to it. Deterministic, checkpointed, never shown or drawn on.
+            regime_relief.record_protest_cause(w, r.id, rp)
         resp = pol.protest_response
         illegal = " The protests are illegal under the ban on assembly." if c.assembly == "banned" else ""
         if resp == "tolerate":
@@ -395,14 +399,20 @@ def _protests(w: World, rng) -> None:
             # words that carry, so the relief is gated on credibility and capped. It reaches only the
             # regions that are actually protesting and cannot outlast real hardship: it is a
             # deliberate instrument of de-escalation, not a way to switch unrest off.
-            credibility = clamp((w.avg("approval") - 0.30) / 0.40, 0.0, 1.0)
+            approval_credibility = clamp((w.avg("approval") - 0.30) / 0.40, 0.0, 1.0)
+            # Regime realism RR2: what the government delivered to this region is political memory
+            # on top of the acts' direct effects, and talks believe whichever is stronger. Under
+            # legacy there is no detail and the formula is exactly the old one.
+            detail = (regime_relief.negotiation(w, r.id, approval_credibility)
+                      if regime_relief.enabled(w) else None)
+            credibility = detail["credibility"] if detail else approval_credibility
             relief = 0.02 + 0.13 * credibility
             r.strike = min(0.12, (u_r - 0.33) * 0.3)
             for p in rp:
                 p.grievance = max(0.0, p.grievance - relief)
             w.event("protest", f"National dialogue in {r.name}: the government opens talks with the "
                     f"protesters, who begin to stand down; about {protesters:,.0f} people remain.{illegal}",
-                    region=r.id, importance=1)
+                    region=r.id, importance=1, **(detail or {}))
             continue
         force = m.police
         obey = clamp(0.35 + 0.55 * force.loyalty + 0.2 * force.bond

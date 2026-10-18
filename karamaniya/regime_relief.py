@@ -96,10 +96,9 @@ _BASELINE_CONSTITUTION = {"minority": "equal"}
 # Drivers a protest can name, in the order that breaks a tie. "unrest" is the fallback when none of
 # the named drivers is live (unrest can be driven by inflation, unemployment and the like).
 CAUSES = ("hunger", "repression", "status", "rationing", "price_controls", "requisition", "minority")
-RATIONS_PAIN = .35             # synthetic: the salience of rationing when it is in force
+RATIONING_PAIN = .35            # synthetic: the salience of rationing when it is in force
 PRICE_CONTROL_PAIN = {"none": 0.0, "food": .25, "all": .35}
 MINORITY_PAIN = {"equal": 0.0, "restricted": .4, "interned": 1.0}   # society.MINORITY_OPP, local to avoid a cycle
-
 
 def model(w: World) -> str:
     """The run's uprising model. Absent means legacy, as checkpoints saved before the option did."""
@@ -277,7 +276,7 @@ def _driver_scores(w: World, region: str, pops: list) -> dict:
         "hunger": .7 * hunger,
         "repression": .2 * repression,
         "status": _status_envy(w, region),
-        "rationing": RATIONS_PAIN if w.policy.rationing else 0.0,
+        "rationing": RATIONING_PAIN if w.policy.rationing else 0.0,
         "price_controls": PRICE_CONTROL_PAIN.get(w.policy.price_controls, 0.0),
         "requisition": REQUISITION.get(w.policy.requisition, 0.0),
         "minority": MINORITY_PAIN.get(w.const.minority, 0.0),

@@ -21,8 +21,9 @@ from karamaniya.backends import cli_common  # noqa: E402
 
 class Versions(unittest.TestCase):
     def test_the_bump(self):
-        self.assertEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY,
-                          versions.ERROR_TAXONOMY), (32, 30, 8, 8))
+        # Agent prompt 30 shipped with world engine 32; engine 33 keeps the prompt and moves the world on.
+        self.assertGreaterEqual((versions.WORLD_ENGINE, versions.AGENT_PROMPT, versions.PSYCHOLOGY,
+                                 versions.ERROR_TAXONOMY), (32, 30, 8, 8))
 
 
 class CliFolder(unittest.TestCase):

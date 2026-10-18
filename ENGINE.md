@@ -358,6 +358,26 @@ ends) or by collapse (no faction holds the capital). The month row carries the f
 ceasefire and outcome; `tools/civil_war_report.py` reports a run and `tools/civil_war_sweep.py` runs the scripted
 arms. The design, constants, prompts and calibration are in `docs/CIVIL_WAR.md`.
 
+## Regime realism (engine 33)
+
+`uprising_model = "legitimacy"` is a second world; `"legacy"` is the default and is engine 32 exactly. Under
+`legitimacy`:
+
+- the national uprising chance is multiplied by a legitimacy factor built from the democracy index, a fair election
+  won and a credible vote within 12 months, floored at half the odds (`karamaniya/uprising.py`);
+- a lethal crackdown draws police and army obedience on its own stream: both obey is the massacre plus a three-month
+  backlash, one refusal starts a civil war under `civil_war = "on"` (cause `"crackdown_split"`), both refusals are an
+  uprising success;
+- delivered concessions -- a status upgrade, an amnesty, a regional fund, a repeal a region's protest named, a
+  minority restoration -- make talks credible for six months, on top of their direct effects and under the existing
+  cap (`karamaniya/regime_relief.py`), and a new head of government gets a small approval grace period;
+- the baseline gains `scripted_replayed` and `passive_replayed`, which face the run's own recorded cabinets, and the
+  scorecard and report gain a six-area outcome profile.
+
+The month row carries `uprising_check` under legitimacy. `tools/regime_sweep.py` calibrates the option on scripted
+councils; the design, constants and sweep are in `docs/REGIME_REALISM.md`. The default can switch to `legitimacy` once
+the user accepts the calibration; nothing in this release merges to main before the SocioVerse batch is recorded.
+
 ## The world
 
 - **Money:** all three countries start in the imperial crown, so Veleria's printing pushes inflation onto

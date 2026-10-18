@@ -365,7 +365,12 @@ PSYCHOLOGY = 8
 # arms), so a default run keeps engine 29's behaviour; a scripted engine-29 run replays identically under menu.
 # 32 (Wave C): the civil war — its triggers, factions, territory, combat, faction month, negotiation and ends. It is
 # off by default; an off run never reads a war state and a menu/off run is unchanged.
-WORLD_ENGINE = 32
+# 33 (regime realism): `uprising_model = "legitimacy"` multiplies the national uprising chance by a legitimacy factor
+# (democracy index, a fair election won, a credible vote near), draws police and army obedience in a lethal crackdown
+# (a massacre, a split or an uprising success), lets delivered concessions make talks credible and gives a new head a
+# grace period. It is off under the default `legacy`: no new draw, no new history key, and a scripted engine-32 run
+# replays identically.
+WORLD_ENGINE = 33
 EVENT_GENERATOR = 2
 ANALYTICS = 1
 PROVENANCE = 1

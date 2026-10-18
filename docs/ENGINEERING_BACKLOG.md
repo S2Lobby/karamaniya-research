@@ -425,6 +425,20 @@ Found in run 20261018-014944-seed1, the first run on engine 30.
 | T185 | Jev on OpenRouter was asked for a model that does not exist | high | VERIFIED | `gui.html`, `tools/jev_annotate.py`, `docs/JEV_ANNOTATOR.md`, `docs/research/jev-contract.md` | `test_gui.py`, `test_jev_annotate.py` | `typesafe/jev-latest` was refused (HTTP 400) for all 18 judge calls; the panel and the annotator now default to `typesafe/jev-1.14`. One real `JudgePanel` call answered all four questions ($0.0000567) |
 | T186 | A CLI seat's folder told the delegate it sat in a harness | medium | VERIFIED | `backends/cli_common.py` and the six CLI backends | `test_agent_prompt30_versions.py` | Agent prompt 30: the folder has the system's own random name (was `karamaniya-<tool>-`). The CLI's own environment block is still shown |
 
+### Engine 33 (2026-10-18)
+
+Regime realism, `uprising_model = "legitimacy"`; `legacy` stays the default and replays engine 32 identically. No
+prompt changed. Design and calibration: `docs/REGIME_REALISM.md`.
+
+| ID | Title | Severity | Status | Files | Tests | Note |
+|---|---|---|---|---|---|---|
+| T187 | The national uprising ignored legitimacy | high | IMPLEMENTED (scripted) | `uprising.py`, `politics.py`, `engine.py` | `test_rr1_uprising.py` | Engine 33: `L = max(.50, 1 - .30*D*(1+elected)/2 - .30*D*near)` multiplies the existing chance; `near` is a credible vote within 12 months, and postponed/cancelled/rigged/post-coup votes do not count. `uprising_check` in the month row. The same `"politics"` draw is taken in the same place |
+| T188 | A lethal crackdown was a certain win | high | IMPLEMENTED (scripted) | `uprising.py`, `politics.py`, `civil_war.py` | `test_rr1_uprising.py`, `test_rr5_sweep.py` | Engine 33: police and army obedience drawn on `rng_for(..., "uprising_crackdown")`; both obey = massacre + 3-month backlash, one refusal = civil war under `civil_war="on"` (cause `crackdown_split`) or uprising success, both = success. Base .64 calibrated: failure 29.0-39.6% over loyalty .55-.65 and bond .2-.3; sweep probe 44/144 = 30.6% |
+| T189 | Talks could not remember delivered concessions; a new head got no grace | high | IMPLEMENTED (scripted) | `regime_relief.py`, `society.py`, `politics.py` | `test_rr2_relief.py` | Engine 33: `credibility = max(approval, concession)` with a six-month linear credit for status, amnesty, fund, named repeal and minority restoration, under the existing .15 cap; a deterministic protest-cause record; a new head's .03/3-month grace, once in 12 months, blocked after a coup, halved for a reshuffle. Sweep: 767 talks, 360 with concessions, max .55 |
+| T190 | Comparison councils faced rule-played neighbours only | medium | IMPLEMENTED | `baseline.py`, `report_template.html`, `foreign.py` | `test_rr3_comparisons.py`, `test_engine13.py`, `test_engine17_baseline.py` | Engine 33: `scripted_replayed` and `passive_replayed` replay the run's recorded cabinets; refused acts recorded as skipped with reasons; every mode names its neighbours; rule modes unchanged. A log running out fails that mode with its reason |
+| T191 | A run had one verdict, not a profile | medium | IMPLEMENTED | `scorecard.py`, `report.py`, `report_template.html`, `tools/study_analysis.py` | `test_rr4_profile.py` | Engine 33: six areas (survival, human cost per 100,000 by cause, democracy, living standards, stability, outside pressure), compared with the replayed baseline; CSVs by model/office/run. No composite score |
+| T192 | The legitimacy world had no run option or calibration | high | VERIFIED (scripted) | `config.py`, `runner.py`, `manifest.py`, `tools/study_grid.py`, `tools/regime_sweep.py`, `versions.py` | `test_rr5_options.py`, `test_rr5_sweep.py`, `test_engine33_versions.py` | Engine 33: `uprising_model` in defaults/validation, manifest and divergence, and `[study] uprising_models`; 288-run sweep + 144 probes, all three proposed bands met. Legacy replay identical; prompt freeze unchanged under both settings. No real-model run yet |
+
 ### Open, deliberately
 
 | ID | Title | Reason |

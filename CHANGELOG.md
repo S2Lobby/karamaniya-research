@@ -4,6 +4,42 @@ What changed in the simulator between published versions. Every run folder recor
 produced it (`manifest.json`, `karamaniya/versions.py`), and `docs/ENGINEERING_BACKLOG.md` keeps the
 task-by-task record with the tests behind each item.
 
+## World engine 33 (regime realism)
+
+`WORLD_ENGINE` 33, `AGENT_PROMPT` 30 unchanged (psychology 8, error taxonomy 8). The release adds a second world,
+`uprising_model = "legitimacy"`, behind the run option. The default is `"legacy"`: no new draw, no new history key, and
+a scripted engine-32 run replays identically (37 month records and the final checkpoint). No prompt changes, and the
+prompt fixture is not rewritten. Design, decisions and calibration: `docs/REGIME_REALISM.md`.
+
+- **The national uprising reads legitimacy (RR1, plan 4.1).** Under `legitimacy` the existing chance is multiplied by
+  `L = max(.50, 1 - .30*D*(1+elected)/2 - .30*D*near)`, where `D` is the democracy index, `elected` a fair election
+  won, and `near` a credible vote within 12 months (postponed, cancelled, rigged or post-coup votes do not count).
+  The month row gains `uprising_check` with every input, the final chance and the draw.
+- **A lethal crackdown is a gamble (RR1, plan 4.2).** Police and army obedience are drawn separately on
+  `rng_for(seed, month, "uprising_crackdown")` with `obey = clamp(.64 + .45*loyalty + .20*bond - .25*[unrest > .6] -
+  .15 - arrears, .05, .98)`. Both obey is the massacre plus a three-month backlash; one refusal is a civil war under
+  `civil_war = "on"` (new cause `"crackdown_split"`) and an uprising success otherwise; both refusals succeed. The
+  regional formula is unchanged. The `.64` base puts the both-obey failure chance at 29.0-39.6% over loyalty .55-.65
+  and bond .2-.3.
+- **Concessions make talks credible, and a new head gets a grace period (RR2, plan 4.3-4.4).** The negotiate response
+  reads `max(approval credibility, concession credibility)`: status upgrades, an amnesty, a regional fund, a repeal a
+  region's protest named, and a minority restoration count for six months, decaying linearly; the .15 monthly cap
+  stays. A deterministic per-region protest-cause record lets a repeal be credited to the right region. A new head of
+  government gets one .03 approval reaction a month for three months, halving, once in 12 months, never after a coup,
+  at half strength for a reshuffle among the same people.
+- **Comparison councils face the run's own neighbours (RR3, plan 4.5).** `baseline.MODES` adds
+  `scripted_replayed` and `passive_replayed`, which replay the run's recorded cabinet answers month by month. A
+  recorded act the comparison world refuses is recorded as skipped with its reason; every mode names its neighbours;
+  the report prints them and the limitation that replayed neighbours do not react.
+- **An outcome profile, not one verdict (RR4, plan 4.6).** The scorecard, report and `tools/study_analysis.py` report
+  survival, human cost per 100,000 by cause, democracy, living standards, stability and outside pressure, compared
+  with the replayed-neighbour baseline where one exists. No composite score.
+- **Options and calibration (RR5, plan 4.7).** `uprising_model` is in `config.RUN_DEFAULTS` and validated, stamped by
+  `runner.apply_run_options` (and checkpointed under legitimacy), recorded in the manifest, and a study-grid dimension
+  (`[study] uprising_models`). `tools/regime_sweep.py` plays 288 scripted runs (4 councils x 12 seeds x 2 models x 3
+  presets) and 144 forced crackdown probes: quiet runs 0/120 in revolution; stress-run revolution share 48/48 vs
+  48/48 (mean months 2.86 vs 2.39); crackdown failure 44/144 = 30.6%, census 29.0-39.6%. All three proposed bands met.
+
 ## Agent prompt 30 (world engine 32 unchanged)
 
 Found in run 20261018-014944-seed1, the first run on engine 30 (revolution in Month 18).

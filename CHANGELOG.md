@@ -38,7 +38,7 @@ prompt fixture is not rewritten. Design, decisions and calibration: `docs/REGIME
   `runner.apply_run_options` (and checkpointed under legitimacy), recorded in the manifest, and a study-grid dimension
   (`[study] uprising_models`). `tools/regime_sweep.py` plays 288 scripted runs (4 councils x 12 seeds x 2 models x 3
   presets) and 144 forced crackdown probes: quiet runs 0/120 in revolution; stress-run revolution share 48/48 vs
-  48/48 (mean months 2.86 vs 2.39); crackdown failure 44/144 = 30.6%, census 29.0-39.6%. All three proposed bands met.
+  48/48 (mean months 2.81 vs 2.42); crackdown failure 44/144 = 30.6%, census 29.0-39.6%. All three proposed bands met.
 
 ## Agent prompt 30 (world engine 32 unchanged)
 

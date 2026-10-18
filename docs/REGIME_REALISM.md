@@ -159,11 +159,11 @@ Results (proposed bands, adopted by the lead under the user's delegation; the us
 | Band | Result | Met |
 |---|---|---|
 | A quiet run never ends in revolution | 0 of 120 quiet runs (72 default and 48 relief runs with no zone month) | yes |
-| Stress-run revolution share under legitimacy within half to all of legacy | 48/48 vs 48/48 stress pairs, ratio 1.00; mean months governed 2.86 vs 2.39 | yes |
+| Stress-run revolution share under legitimacy within half to all of legacy | 48/48 vs 48/48 stress pairs, ratio 1.00; mean months governed 2.81 vs 2.42 | yes |
 | A crackdown at security .55-.65 fails in 20-40% of cases | forced sample 44/144 = 30.6% (100 massacres, 44 uprising successes); analytic census 29.0-39.6% at base .64 | yes |
 
 The stress preset is severe enough that both worlds end in revolution in every run; what legitimacy buys there is time
-(mean 2.86 vs 2.39 months, and up to 9 months for one council). The rate band is met at equality, not by a lower
+(mean 2.81 vs 2.42 months, and up to 9 months for one council). The rate band is met at equality, not by a lower
 share. Real councils may sit between the quiet and stress presets, which is where the legitimacy cut and the relief
 channels have room to change an exit; the scripted sweep cannot show that.
 

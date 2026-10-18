@@ -182,6 +182,13 @@ class ReplayedNeighbours(unittest.TestCase):
         self.assertEqual(deltas["scripted"]["neighbours"], "rule-played")
         self.assertIn("months_at_war", deltas["scripted_replayed"])
 
+    def test_the_rule_played_modes_are_unchanged_beside_the_same_recorded_log(self):
+        # The log beside the run must not reach the rule-played councils: they keep their stand-in cabinets and
+        # the base figures, even though the same run's log supplies the replayed modes.
+        for mode in RULE_MODES:
+            with self.subTest(mode=mode):
+                self.assertEqual(self.data["modes"][mode]["summary"], BASE_SUMMARIES[mode])
+
     def test_the_report_names_each_comparisons_neighbours(self):
         html = build_report(RunStore(self.run_dir)).read_text(encoding="utf-8")
         for needle in ('"neighbours":"rule-played"', '"neighbours":"replayed from recorded"',

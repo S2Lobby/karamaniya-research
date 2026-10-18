@@ -129,8 +129,9 @@ def _config(run_cfg: dict, seats: int, mode: str, months: int, replay: dict | No
     # cabinets are always on here (with them off the neighbours never set a demand, ultimatum or incident).
     run.update(months=months, survey=False, shuffle_seats=False, baseline=False, report=False, forecast_panel=False,
                foreign_cabinets=True)
-    if replay:
-        # The replayed modes keep the run's own recorded cabinets, answer for answer (plan 4.5).
+    if mode in REPLAYED:
+        # The replayed modes keep the run's own recorded cabinets, answer for answer (plan 4.5); a rule-played
+        # mode keeps its stand-in cabinets even when the run beside it has a replayable log.
         run["foreign_cabinet_backend"] = dict(replay)
     if mode_name == "passive":
         personas = ["passive"] * seats
